@@ -17,9 +17,12 @@ include_directories(
 include_directories (SYSTEM
 )
 
-add_library(gpxprovider MODULE ${GPX_SRCS})
+add_library(provider_gpx MODULE ${GPX_SRCS})
 
-target_link_libraries(gpxprovider
+# require c++17
+target_compile_features(provider_gpx PRIVATE cxx_std_17)
+
+target_link_libraries(provider_gpx
   ${EXPAT_LIBRARY}
   qgis_core
 )
@@ -28,6 +31,6 @@ target_link_libraries(gpxprovider
 ########################################################
 # Install
 
-install (TARGETS gpxprovider
+install (TARGETS provider_gpx
   RUNTIME DESTINATION ${QGIS_PLUGIN_DIR}
   LIBRARY DESTINATION ${QGIS_PLUGIN_DIR})

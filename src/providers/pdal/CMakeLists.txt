@@ -1,6 +1,9 @@
 ########################################################
 # Files
 
+if(MSVC)
+  add_definitions(-DWIN32_LEAN_AND_MEAN)
+endif(MSVC)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -102,6 +105,8 @@ include_directories(SYSTEM
 )
 
 add_executable(untwine ${UNTWINE_SRCS} ${UNTWINE_HDRS})
+target_compile_features(untwine PRIVATE cxx_std_17)
+
 set_target_properties(untwine PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${QGIS_OUTPUT_DIRECTORY}/${QGIS_LIBEXEC_SUBDIR}
 )
@@ -112,16 +117,18 @@ target_link_libraries (untwine
 )
 target_include_directories(untwine PRIVATE ${UNTWINE_INCLUDE_DIRS})
 
-add_library (pdalprovider MODULE ${PDAL_SRCS} ${PDAL_HDRS} ${PDAL_GUI_SRCS} ${PDAL_GUI_HDRS})
+add_library (provider_pdal MODULE ${PDAL_SRCS} ${PDAL_HDRS} ${PDAL_GUI_SRCS} ${PDAL_GUI_HDRS})
 
-target_link_libraries (pdalprovider
+target_compile_features(provider_pdal PRIVATE cxx_std_17)
+
+target_link_libraries (provider_pdal
   qgis_core
   ${PDAL_LIBRARIES}
   Threads::Threads
 )
 
 if (WITH_GUI)
-  target_link_libraries (pdalprovider
+  target_link_libraries (provider_pdal
     ${PDAL_LIBRARIES}
     ${Qt5Xml_LIBRARIES}
     ${Qt5Core_LIBRARIES}
@@ -131,12 +138,16 @@ if (WITH_GUI)
     ${Qt5Concurrent_LIBRARIES}
     qgis_gui
   )
-  add_dependencies(pdalprovider ui)
+  add_dependencies(provider_pdal ui)
 endif()
 
 # static library
-add_library (pdalprovider_a STATIC ${PDAL_SRCS} ${PDAL_HDRS})
-target_link_libraries (pdalprovider_a
+add_library (provider_pdal_a STATIC ${PDAL_SRCS} ${PDAL_HDRS})
+
+# require c++17
+target_compile_features(provider_pdal_a PRIVATE cxx_std_17)
+
+target_link_libraries (provider_pdal_a
   ${PDAL_LIBRARIES}
   ${Qt5Xml_LIBRARIES}
   ${Qt5Core_LIBRARIES}
@@ -148,8 +159,12 @@ target_link_libraries (pdalprovider_a
 )
 
 if (WITH_GUI)
-  add_library (pdalprovider_gui_a STATIC ${PDAL_GUI_SRCS} ${PDAL_GUI_HDRS})
-  target_link_libraries (pdalprovider_gui_a
+  add_library (provider_pdal_gui_a STATIC ${PDAL_GUI_SRCS} ${PDAL_GUI_HDRS})
+
+  # require c++17
+  target_compile_features(provider_pdal_gui_a PRIVATE cxx_std_17)
+
+  target_link_libraries (provider_pdal_gui_a
     ${PDAL_LIBRARIES}
     ${Qt5Xml_LIBRARIES}
     ${Qt5Core_LIBRARIES}
@@ -159,10 +174,10 @@ if (WITH_GUI)
     ${Qt5Concurrent_LIBRARIES}
     qgis_gui
   )
-  add_dependencies(pdalprovider_gui_a ui)
+  add_dependencies(provider_pdal_gui_a ui)
 endif()
 
-install(TARGETS pdalprovider
+install(TARGETS provider_pdal
   RUNTIME DESTINATION ${QGIS_PLUGIN_DIR}
   LIBRARY DESTINATION ${QGIS_PLUGIN_DIR})
 # override default path where built files are put to allow running qgis without installing

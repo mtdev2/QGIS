@@ -77,8 +77,9 @@ Qgs3DMapSettings::Qgs3DMapSettings( const Qgs3DMapSettings &other )
   , mDebugDepthMapEnabled( other.mDebugDepthMapEnabled )
   , mDebugDepthMapCorner( other.mDebugDepthMapCorner )
   , mDebugDepthMapSize( other.mDebugDepthMapSize )
+  , mTerrainRenderingEnabled( other.mTerrainRenderingEnabled )
 {
-  Q_FOREACH ( QgsAbstract3DRenderer *renderer, other.mRenderers )
+  for ( QgsAbstract3DRenderer *renderer : std::as_const( other.mRenderers ) )
   {
     mRenderers << renderer->clone();
   }
@@ -121,6 +122,7 @@ void Qgs3DMapSettings::readXml( const QDomElement &elem, const QgsReadWriteConte
   mCrs.readXml( elemCrs );
 
   QDomElement elemTerrain = elem.firstChildElement( QStringLiteral( "terrain" ) );
+  mTerrainRenderingEnabled = elemTerrain.attribute( QStringLiteral( "terrain-rendering-enabled" ), QStringLiteral( "1" ) ).toInt();
   mTerrainVerticalScale = elemTerrain.attribute( QStringLiteral( "exaggeration" ), QStringLiteral( "1" ) ).toFloat();
   mMapTileResolution = elemTerrain.attribute( QStringLiteral( "texture-size" ), QStringLiteral( "512" ) ).toInt();
   mMaxTerrainScreenError = elemTerrain.attribute( QStringLiteral( "max-terrain-error" ), QStringLiteral( "3" ) ).toFloat();
@@ -202,25 +204,25 @@ void Qgs3DMapSettings::readXml( const QDomElement &elem, const QgsReadWriteConte
   {
     QgsDemTerrainGenerator *demTerrainGenerator = new QgsDemTerrainGenerator;
     demTerrainGenerator->setCrs( mCrs, mTransformContext );
-    mTerrainGenerator.reset( demTerrainGenerator );
+    setTerrainGenerator( demTerrainGenerator );
   }
   else if ( terrainGenType == QLatin1String( "online" ) )
   {
     QgsOnlineTerrainGenerator *onlineTerrainGenerator = new QgsOnlineTerrainGenerator;
     onlineTerrainGenerator->setCrs( mCrs, mTransformContext );
-    mTerrainGenerator.reset( onlineTerrainGenerator );
+    setTerrainGenerator( onlineTerrainGenerator );
   }
   else if ( terrainGenType == QLatin1String( "mesh" ) )
   {
     QgsMeshTerrainGenerator *meshTerrainGenerator = new QgsMeshTerrainGenerator;
     meshTerrainGenerator->setCrs( mCrs, mTransformContext );
-    mTerrainGenerator.reset( meshTerrainGenerator );
+    setTerrainGenerator( meshTerrainGenerator );
   }
   else // "flat"
   {
     QgsFlatTerrainGenerator *flatGen = new QgsFlatTerrainGenerator;
     flatGen->setCrs( mCrs );
-    mTerrainGenerator.reset( flatGen );
+    setTerrainGenerator( flatGen );
   }
   mTerrainGenerator->readXml( elemTerrainGenerator );
 
@@ -323,6 +325,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elem.appendChild( elemCrs );
 
   QDomElement elemTerrain = doc.createElement( QStringLiteral( "terrain" ) );
+  elemTerrain.setAttribute( QStringLiteral( "terrain-rendering-enabled" ), mTerrainRenderingEnabled ? 1 : 0 );
   elemTerrain.setAttribute( QStringLiteral( "exaggeration" ), QString::number( mTerrainVerticalScale ) );
   elemTerrain.setAttribute( QStringLiteral( "texture-size" ), mMapTileResolution );
   elemTerrain.setAttribute( QStringLiteral( "max-terrain-error" ), QString::number( mMaxTerrainScreenError ) );
@@ -337,7 +340,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elemTerrain.setAttribute( QStringLiteral( "show-labels" ), mShowLabels ? 1 : 0 );
 
   QDomElement elemPointLights = doc.createElement( QStringLiteral( "point-lights" ) );
-  for ( const QgsPointLightSettings &pointLight : qgis::as_const( mPointLights ) )
+  for ( const QgsPointLightSettings &pointLight : std::as_const( mPointLights ) )
   {
     QDomElement elemPointLight = pointLight.writeXml( doc );
     elemPointLights.appendChild( elemPointLight );
@@ -345,7 +348,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elem.appendChild( elemPointLights );
 
   QDomElement elemDirectionalLights = doc.createElement( QStringLiteral( "directional-lights" ) );
-  for ( const QgsDirectionalLightSettings &directionalLight : qgis::as_const( mDirectionalLights ) )
+  for ( const QgsDirectionalLightSettings &directionalLight : std::as_const( mDirectionalLights ) )
   {
     QDomElement elemDirectionalLight = directionalLight.writeXml( doc );
     elemDirectionalLights.appendChild( elemDirectionalLight );
@@ -353,7 +356,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elem.appendChild( elemDirectionalLights );
 
   QDomElement elemMapLayers = doc.createElement( QStringLiteral( "layers" ) );
-  Q_FOREACH ( const QgsMapLayerRef &layerRef, mLayers )
+  for ( const QgsMapLayerRef &layerRef : mLayers )
   {
     QDomElement elemMapLayer = doc.createElement( QStringLiteral( "layer" ) );
     elemMapLayer.setAttribute( QStringLiteral( "id" ), layerRef.layerId );
@@ -362,7 +365,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elemTerrain.appendChild( elemMapLayers );
 
   QDomElement elemTerrainMapLayers = doc.createElement( QStringLiteral( "terrainLayers" ) );
-  Q_FOREACH ( const QgsMapLayerRef &layerRef, mTerrainLayers )
+  for ( const QgsMapLayerRef &layerRef : mTerrainLayers )
   {
     QDomElement elemMapLayer = doc.createElement( QStringLiteral( "layer" ) );
     elemMapLayer.setAttribute( QStringLiteral( "id" ), layerRef.layerId );
@@ -377,7 +380,7 @@ QDomElement Qgs3DMapSettings::writeXml( QDomDocument &doc, const QgsReadWriteCon
   elem.appendChild( elemTerrain );
 
   QDomElement elemRenderers = doc.createElement( QStringLiteral( "renderers" ) );
-  Q_FOREACH ( const QgsAbstract3DRenderer *renderer, mRenderers )
+  for ( const QgsAbstract3DRenderer *renderer : mRenderers )
   {
     QDomElement elemRenderer = doc.createElement( QStringLiteral( "renderer" ) );
     elemRenderer.setAttribute( QStringLiteral( "type" ), renderer->type() );
@@ -519,7 +522,7 @@ void Qgs3DMapSettings::setLayers( const QList<QgsMapLayer *> &layers )
 {
   QList<QgsMapLayerRef> lst;
   lst.reserve( layers.count() );
-  Q_FOREACH ( QgsMapLayer *layer, layers )
+  for ( QgsMapLayer *layer : layers )
   {
     lst.append( layer );
   }
@@ -535,7 +538,7 @@ QList<QgsMapLayer *> Qgs3DMapSettings::layers() const
 {
   QList<QgsMapLayer *> lst;
   lst.reserve( mLayers.count() );
-  Q_FOREACH ( const QgsMapLayerRef &layerRef, mLayers )
+  for ( const QgsMapLayerRef &layerRef : mLayers )
   {
     if ( layerRef.layer )
       lst.append( layerRef.layer );
@@ -547,7 +550,7 @@ void Qgs3DMapSettings::setTerrainLayers( const QList<QgsMapLayer *> &layers )
 {
   QList<QgsMapLayerRef> lst;
   lst.reserve( layers.count() );
-  Q_FOREACH ( QgsMapLayer *layer, layers )
+  for ( QgsMapLayer *layer : layers )
   {
     lst.append( layer );
   }
@@ -563,7 +566,7 @@ QList<QgsMapLayer *> Qgs3DMapSettings::terrainLayers() const
 {
   QList<QgsMapLayer *> lst;
   lst.reserve( mTerrainLayers.count() );
-  Q_FOREACH ( const QgsMapLayerRef &layerRef, mTerrainLayers )
+  for ( const QgsMapLayerRef &layerRef : mTerrainLayers )
   {
     if ( layerRef.layer )
       lst.append( layerRef.layer );
@@ -626,10 +629,12 @@ void Qgs3DMapSettings::setTerrainGenerator( QgsTerrainGenerator *gen )
   if ( mTerrainGenerator )
   {
     disconnect( mTerrainGenerator.get(), &QgsTerrainGenerator::extentChanged, this, &Qgs3DMapSettings::terrainGeneratorChanged );
+    disconnect( mTerrainGenerator.get(), &QgsTerrainGenerator::terrainChanged, this, &Qgs3DMapSettings::terrainGeneratorChanged );
   }
 
   mTerrainGenerator.reset( gen );
   connect( mTerrainGenerator.get(), &QgsTerrainGenerator::extentChanged, this, &Qgs3DMapSettings::terrainGeneratorChanged );
+  connect( mTerrainGenerator.get(), &QgsTerrainGenerator::terrainChanged, this, &Qgs3DMapSettings::terrainGeneratorChanged );
 
   emit terrainGeneratorChanged();
 }
@@ -827,4 +832,12 @@ void Qgs3DMapSettings::setIsFpsCounterEnabled( bool fpsCounterEnabled )
     return;
   mIsFpsCounterEnabled = fpsCounterEnabled;
   emit fpsCounterEnabledChanged( mIsFpsCounterEnabled );
+}
+
+void Qgs3DMapSettings::setTerrainRenderingEnabled( bool terrainRenderingEnabled )
+{
+  if ( terrainRenderingEnabled == mTerrainRenderingEnabled )
+    return;
+  mTerrainRenderingEnabled = terrainRenderingEnabled;
+  emit terrainGeneratorChanged();
 }

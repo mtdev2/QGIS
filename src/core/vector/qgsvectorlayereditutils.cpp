@@ -94,19 +94,19 @@ bool QgsVectorLayerEditUtils::moveVertex( const QgsPoint &p, QgsFeatureId atFeat
 }
 
 
-QgsVectorLayer::EditResult QgsVectorLayerEditUtils::deleteVertex( QgsFeatureId featureId, int vertex )
+Qgis::VectorEditResult QgsVectorLayerEditUtils::deleteVertex( QgsFeatureId featureId, int vertex )
 {
   if ( !mLayer->isSpatial() )
-    return QgsVectorLayer::InvalidLayer;
+    return Qgis::VectorEditResult::InvalidLayer;
 
   QgsFeature f;
   if ( !mLayer->getFeatures( QgsFeatureRequest().setFilterFid( featureId ).setNoAttributes() ).nextFeature( f ) || !f.hasGeometry() )
-    return QgsVectorLayer::FetchFeatureFailed; // geometry not found
+    return Qgis::VectorEditResult::FetchFeatureFailed; // geometry not found
 
   QgsGeometry geometry = f.geometry();
 
   if ( !geometry.deleteVertex( vertex ) )
-    return QgsVectorLayer::EditFailed;
+    return Qgis::VectorEditResult::EditFailed;
 
   if ( geometry.constGet() && geometry.constGet()->nCoordinates() == 0 )
   {
@@ -115,7 +115,7 @@ QgsVectorLayer::EditResult QgsVectorLayerEditUtils::deleteVertex( QgsFeatureId f
   }
 
   mLayer->changeGeometry( featureId, geometry );
-  return !geometry.isNull() ? QgsVectorLayer::Success : QgsVectorLayer::EmptyGeometry;
+  return !geometry.isNull() ? Qgis::VectorEditResult::Success : Qgis::VectorEditResult::EmptyGeometry;
 }
 
 QgsGeometry::OperationResult QgsVectorLayerEditUtils::addRing( const QVector<QgsPointXY> &ring, const QgsFeatureIds &targetFeatureIds, QgsFeatureId *modifiedFeatureId )
@@ -377,7 +377,7 @@ QgsGeometry::OperationResult QgsVectorLayerEditUtils::splitFeatures( const QgsCu
 
       //insert new features
       QgsAttributeMap attributeMap = feat.attributes().toMap();
-      for ( const QgsGeometry &geom : qgis::as_const( newGeometries ) )
+      for ( const QgsGeometry &geom : std::as_const( newGeometries ) )
       {
         featuresDataToAdd << QgsVectorLayerUtils::QgsFeatureData( geom, attributeMap );
       }
@@ -543,19 +543,19 @@ int QgsVectorLayerEditUtils::addTopologicalPoints( const QgsGeometry &geom )
     return 1;
   }
 
-  int returnVal = 0;
+  bool pointsAdded = false;
 
   QgsAbstractGeometry::vertex_iterator it = geom.vertices_begin();
   while ( it != geom.vertices_end() )
   {
-    if ( addTopologicalPoints( *it ) != 0 )
+    if ( addTopologicalPoints( *it ) == 0 )
     {
-      returnVal = 2;
+      pointsAdded = true;
     }
     ++it;
   }
 
-  return returnVal;
+  return pointsAdded ? 0 : 2;
 }
 
 int QgsVectorLayerEditUtils::addTopologicalPoints( const QgsPoint &p )

@@ -21,17 +21,23 @@
 #include "qgsdb2featureiterator.h"
 #include "qgsdb2geometrycolumns.h"
 #include "qgscoordinatereferencesystem.h"
-#include "qgsdataitem.h"
 #include "qgslogger.h"
 #include "qgscredentials.h"
 #include "qgsapplication.h"
 #include "qgssettings.h"
+#include <QThread>
+#include <QSqlRecord>
+#include <QSqlField>
 
 const QString QgsDb2Provider::DB2_PROVIDER_KEY = QStringLiteral( "DB2" );
 const QString QgsDb2Provider::DB2_PROVIDER_DESCRIPTION = QStringLiteral( "DB2 Spatial Extender provider" );
 
 int QgsDb2Provider::sConnectionId = 0;
-QMutex QgsDb2Provider::sMutex{ QMutex::Recursive };
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
+QMutex QgsDb2Provider::sMutex { QMutex::Recursive };
+#else
+QRecursiveMutex QgsDb2Provider::sMutex;
+#endif
 
 QgsDb2Provider::QgsDb2Provider( const QString &uri, const ProviderOptions &options,
                                 QgsDataProvider::ReadFlags flags )
@@ -515,7 +521,7 @@ QgsWkbTypes::Type QgsDb2Provider::wkbType() const
   return mWkbType;
 }
 
-long QgsDb2Provider::featureCount() const
+long long QgsDb2Provider::featureCount() const
 {
   // Return the count that we get from the subset.
   if ( !mSqlWhereClause.isEmpty() )
@@ -1132,8 +1138,8 @@ bool QgsDb2Provider::addFeatures( QgsFeatureList &flist, Flags flags )
       query.bindValue( bindIdx,  bytea, QSql::In | QSql::Binary );
     }
 
-// Show bound values
 #if 0
+    // Show bound values
     QList<QVariant> list = query.boundValues().values();
 
     for ( int i = 0; i < list.size(); ++i )
@@ -1278,7 +1284,7 @@ bool QgsDb2Provider::changeGeometryValues( const QgsGeometryMap &geometry_map )
   return true;
 }
 
-QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QString &uri,
+Qgis::VectorExportResult QgsDb2Provider::createEmptyLayer( const QString &uri,
     const QgsFields &fields,
     QgsWkbTypes::Type wkbType,
     const QgsCoordinateReferenceSystem &srs,
@@ -1301,7 +1307,7 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
   {
     if ( errorMessage )
       *errorMessage = errMsg;
-    return QgsVectorLayerExporter::ErrConnectionFailed;
+    return Qgis::VectorExportResult::ErrorConnectionFailed;
   }
 
   // Get the SRS name using srid, needed to register the spatial column
@@ -1426,7 +1432,7 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
         {
           *errorMessage = lastError;
         }
-        return QgsVectorLayerExporter::ErrCreateLayer;
+        return Qgis::VectorExportResult::ErrorCreatingLayer;
       }
     }
   }
@@ -1466,7 +1472,7 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
         {
           *errorMessage = QObject::tr( "Unsupported type for field %1" ).arg( fld.name() );
         }
-        return QgsVectorLayerExporter::ErrAttributeTypeUnsupported;
+        return Qgis::VectorExportResult::ErrorAttributeTypeUnsupported;
       }
 
       if ( oldToNewAttrIdxMap )
@@ -1506,7 +1512,7 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
       {
         *errorMessage = lastError;
       }
-      return QgsVectorLayerExporter::ErrCreateLayer;
+      return Qgis::VectorExportResult::ErrorCreatingLayer;
     }
 
 
@@ -1570,13 +1576,15 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
         }
       }
 
+#if 0
+      // Show bound values
       QList<QVariant> list = query.boundValues().values();
       for ( int i = 0; i < list.size(); ++i )
       {
         QgsDebugMsg( QStringLiteral( "i: %1; value: %2; type: %3" )
                      .arg( i ).arg( list.at( i ).toString().toLatin1().data(), list.at( i ).typeName() ) );
       }
-
+#endif
     }
     // clear any resources hold by the query
     q.clear();
@@ -1584,7 +1592,7 @@ QgsVectorLayerExporter::ExportError QgsDb2Provider::createEmptyLayer( const QStr
 
   }
   QgsDebugMsg( QStringLiteral( "successfully created empty layer" ) );
-  return QgsVectorLayerExporter::NoError;
+  return Qgis::VectorExportResult::Success;
 }
 
 QString QgsDb2Provider::qgsFieldToDb2Field( const QgsField &field )
@@ -1739,7 +1747,7 @@ QList< QgsDataItemProvider * > QgsDb2ProviderMetadata::dataItemProviders() const
   return providers;
 }
 
-QgsVectorLayerExporter::ExportError QgsDb2ProviderMetadata::createEmptyLayer(
+Qgis::VectorExportResult QgsDb2ProviderMetadata::createEmptyLayer(
   const QString &uri,
   const QgsFields &fields,
   QgsWkbTypes::Type wkbType,

@@ -15,6 +15,7 @@
  ***************************************************************************/
 
 #include <QObject>
+#include <QUuid>
 
 #include "qgscompositionconverter.h"
 #include "qgsreadwritecontext.h"
@@ -31,6 +32,9 @@
 #include "qgsmaplayerstylemanager.h"
 #include "qgsvectorlayer.h"
 #include "qgslinesymbollayer.h"
+#include "qgslinesymbol.h"
+#include "qgsfillsymbol.h"
+#include "qgsmarkersymbol.h"
 
 #include "qgsprintlayout.h"
 #include "qgslayoutatlas.h"
@@ -125,7 +129,7 @@ std::unique_ptr< QgsPrintLayout > QgsCompositionConverter::createLayoutFromCompo
 
   QDomElement parentElement = composerElement.parentNode().toElement();
 
-  std::unique_ptr< QgsPrintLayout > layout = qgis::make_unique< QgsPrintLayout >( project );
+  std::unique_ptr< QgsPrintLayout > layout = std::make_unique< QgsPrintLayout >( project );
   layout->undoStack()->blockCommands( true );
 
   layout->mCustomProperties.readXml( composerElement );
@@ -166,7 +170,7 @@ std::unique_ptr< QgsPrintLayout > QgsCompositionConverter::createLayoutFromCompo
       // Not necessary: double y2 = snapLineElem.attribute( QStringLiteral( "y2" ) ).toDouble();
       Qt::Orientation orientation( x1 == x2 ? Qt::Orientation::Vertical : Qt::Orientation::Horizontal );
       QgsLayoutMeasurement position( x1 == x2 ? x1 : y1 );
-      std::unique_ptr< QgsLayoutGuide > guide = qgis::make_unique< QgsLayoutGuide >( orientation, position, page );
+      std::unique_ptr< QgsLayoutGuide > guide = std::make_unique< QgsLayoutGuide >( orientation, position, page );
       layout->guides().addGuide( guide.release() );
     }
   }
@@ -454,6 +458,16 @@ QList<QgsLayoutObject *> QgsCompositionConverter::addItemsFromCompositionXml( Qg
     {
       adjustPos( layout, frame, position, pasteInPlace, zOrderOffset, pasteShiftPos, pageNumber );
     }
+    newItems << layoutItem ;
+  }
+
+  // Group
+  for ( int i = 0; i < parentElement.elementsByTagName( QStringLiteral( "ComposerItemGroup" ) ).size(); i++ )
+  {
+    QDomNode itemNode( parentElement.elementsByTagName( QStringLiteral( "ComposerItemGroup" ) ).at( i ) );
+    QgsLayoutItemGroup *layoutItem = new QgsLayoutItemGroup( layout );
+    readGroupXml( layoutItem, itemNode.toElement(), layout->project(), newItems );
+    adjustPos( layout, layoutItem, position, pasteInPlace, zOrderOffset, pasteShiftPos, pageNumber );
     newItems << layoutItem ;
   }
 
@@ -1102,8 +1116,8 @@ bool QgsCompositionConverter::readScaleBarXml( QgsLayoutItemScaleBar *layoutItem
     layoutItem->alternateFillSymbol()->setColor( QColor( itemElem.attribute( QStringLiteral( "brush2Color" ), QStringLiteral( "#ffffff" ) ) ) );
   }
 
-  std::unique_ptr< QgsLineSymbol > lineSymbol = qgis::make_unique< QgsLineSymbol >();
-  std::unique_ptr< QgsSimpleLineSymbolLayer > lineSymbolLayer = qgis::make_unique< QgsSimpleLineSymbolLayer >();
+  std::unique_ptr< QgsLineSymbol > lineSymbol = std::make_unique< QgsLineSymbol >();
+  std::unique_ptr< QgsSimpleLineSymbolLayer > lineSymbolLayer = std::make_unique< QgsSimpleLineSymbolLayer >();
   lineSymbolLayer->setWidth( itemElem.attribute( QStringLiteral( "outlineWidth" ), QStringLiteral( "0.3" ) ).toDouble() );
   lineSymbolLayer->setWidthUnit( QgsUnitTypes::RenderMillimeters );
   lineSymbolLayer->setPenJoinStyle( QgsSymbolLayerUtils::decodePenJoinStyle( itemElem.attribute( QStringLiteral( "lineJoinStyle" ), QStringLiteral( "miter" ) ) ) );
@@ -1552,6 +1566,30 @@ bool QgsCompositionConverter::readTableXml( QgsLayoutItemAttributeTable *layoutI
   return true;
 }
 
+bool QgsCompositionConverter::readGroupXml( QgsLayoutItemGroup *layoutItem, const QDomElement &itemElem, const QgsProject *project, const QList< QgsLayoutObject * > &items )
+{
+  Q_UNUSED( project )
+
+  restoreGeneralComposeItemProperties( layoutItem, itemElem );
+
+  QDomNodeList nodes = itemElem.elementsByTagName( "ComposerItemGroupElement" );
+  for ( int i = 0, n = nodes.size(); i < n; ++i )
+  {
+    QDomElement groupElement = nodes.at( i ).toElement();
+    QString elementUuid = groupElement.attribute( "uuid" );
+
+    for ( QgsLayoutObject *item : items )
+    {
+      if ( dynamic_cast<QgsLayoutItem *>( item ) && static_cast<QgsLayoutItem *>( item )->uuid() == elementUuid )
+      {
+        layoutItem->addItem( static_cast<QgsLayoutItem *>( item ) );
+        break;
+      }
+    }
+  }
+
+  return true;
+}
 
 template <class T, class T2>
 bool QgsCompositionConverter::readPolyXml( T *layoutItem, const QDomElement &itemElem, const QgsProject *project )

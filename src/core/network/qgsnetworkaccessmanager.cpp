@@ -35,9 +35,15 @@
 #include <QTimer>
 #include <QBuffer>
 #include <QNetworkReply>
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
+#include <QMutex>
+#else
+#include <QRecursiveMutex>
+#endif
 #include <QThreadStorage>
 #include <QAuthenticator>
 #include <QStandardPaths>
+#include <QUuid>
 
 #ifndef QT_NO_SSL
 #include <QSslConfiguration>
@@ -47,6 +53,8 @@
 #include "qgsauthmanager.h"
 
 QgsNetworkAccessManager *QgsNetworkAccessManager::sMainNAM = nullptr;
+
+static std::vector< std::pair< QString, std::function< void( QNetworkRequest * ) > > > sCustomPreprocessors;
 
 /// @cond PRIVATE
 class QgsNetworkProxyFactory : public QNetworkProxyFactory
@@ -115,6 +123,78 @@ class QgsNetworkProxyFactory : public QNetworkProxyFactory
 };
 ///@endcond
 
+/// @cond PRIVATE
+class QgsNetworkCookieJar : public QNetworkCookieJar
+{
+    Q_OBJECT
+
+  public:
+    QgsNetworkCookieJar( QgsNetworkAccessManager *parent )
+      : QNetworkCookieJar( parent )
+      , mNam( parent )
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
+      , mMutex( QMutex::Recursive )
+#endif
+    {}
+
+    bool deleteCookie( const QNetworkCookie &cookie ) override
+    {
+      QMutexLocker locker( &mMutex );
+      if ( QNetworkCookieJar::deleteCookie( cookie ) )
+      {
+        emit mNam->cookiesChanged( allCookies() );
+        return true;
+      }
+      return false;
+    }
+    bool insertCookie( const QNetworkCookie &cookie ) override
+    {
+      QMutexLocker locker( &mMutex );
+      if ( QNetworkCookieJar::insertCookie( cookie ) )
+      {
+        emit mNam->cookiesChanged( allCookies() );
+        return true;
+      }
+      return false;
+    }
+    bool setCookiesFromUrl( const QList<QNetworkCookie> &cookieList, const QUrl &url ) override
+    {
+      QMutexLocker locker( &mMutex );
+      return QNetworkCookieJar::setCookiesFromUrl( cookieList, url );
+    }
+    bool updateCookie( const QNetworkCookie &cookie ) override
+    {
+      QMutexLocker locker( &mMutex );
+      if ( QNetworkCookieJar::updateCookie( cookie ) )
+      {
+        emit mNam->cookiesChanged( allCookies() );
+        return true;
+      }
+      return false;
+    }
+
+    // Override these to make them public
+    QList<QNetworkCookie> allCookies() const
+    {
+      QMutexLocker locker( &mMutex );
+      return QNetworkCookieJar::allCookies();
+    }
+    void setAllCookies( const QList<QNetworkCookie> &cookieList )
+    {
+      QMutexLocker locker( &mMutex );
+      QNetworkCookieJar::setAllCookies( cookieList );
+    }
+
+    QgsNetworkAccessManager *mNam = nullptr;
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
+    mutable QMutex mMutex;
+#else
+    mutable QRecursiveMutex mMutex;
+#endif
+};
+///@endcond
+
+
 //
 // Static calls to enforce singleton behavior
 //
@@ -139,6 +219,7 @@ QgsNetworkAccessManager::QgsNetworkAccessManager( QObject *parent )
   : QNetworkAccessManager( parent )
 {
   setProxyFactory( new QgsNetworkProxyFactory() );
+  setCookieJar( new QgsNetworkCookieJar( this ) );
 }
 
 void QgsNetworkAccessManager::setSslErrorHandler( std::unique_ptr<QgsSslErrorHandler> handler )
@@ -257,6 +338,11 @@ QNetworkReply *QgsNetworkAccessManager::createRequest( QNetworkAccessManager::Op
     // if caching is disabled then we override whatever the request actually has set!
     pReq->setAttribute( QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork );
     pReq->setAttribute( QNetworkRequest::CacheSaveControlAttribute, false );
+  }
+
+  for ( const auto &preprocessor :  sCustomPreprocessors )
+  {
+    preprocessor.second( pReq );
   }
 
   static QAtomicInt sRequestId = 0;
@@ -463,6 +549,37 @@ void QgsNetworkAccessManager::onAuthRequired( QNetworkReply *reply, QAuthenticat
   }
 }
 
+void QgsNetworkAccessManager::requestAuthOpenBrowser( const QUrl &url ) const
+{
+  if ( this != sMainNAM )
+  {
+    sMainNAM->requestAuthOpenBrowser( url );
+    connect( sMainNAM, &QgsNetworkAccessManager::authBrowserAborted, this, &QgsNetworkAccessManager::abortAuthBrowser );
+    return;
+  }
+  mAuthHandler->handleAuthRequestOpenBrowser( url );
+}
+
+void QgsNetworkAccessManager::requestAuthCloseBrowser() const
+{
+  if ( this != sMainNAM )
+  {
+    sMainNAM->requestAuthCloseBrowser();
+    disconnect( sMainNAM, &QgsNetworkAccessManager::authBrowserAborted, this, &QgsNetworkAccessManager::abortAuthBrowser );
+    return;
+  }
+  mAuthHandler->handleAuthRequestCloseBrowser();
+}
+
+void QgsNetworkAccessManager::abortAuthBrowser()
+{
+  if ( this != sMainNAM )
+  {
+    disconnect( sMainNAM, &QgsNetworkAccessManager::authBrowserAborted, this, &QgsNetworkAccessManager::abortAuthBrowser );
+  }
+  emit authBrowserAborted();
+}
+
 void QgsNetworkAccessManager::handleAuthRequest( QNetworkReply *reply, QAuthenticator *auth )
 {
   mAuthHandler->handleAuthRequest( reply, auth );
@@ -522,17 +639,17 @@ void QgsNetworkAccessManager::setupDefaultProxyAndCache( Qt::ConnectionType conn
              sMainNAM, &QNetworkAccessManager::proxyAuthenticationRequired,
              connectionType );
 
-    connect( this, qgis::overload< QNetworkReply *>::of( &QgsNetworkAccessManager::requestTimedOut ),
-             sMainNAM, qgis::overload< QNetworkReply *>::of( &QgsNetworkAccessManager::requestTimedOut ) );
+    connect( this, qOverload< QNetworkReply *>( &QgsNetworkAccessManager::requestTimedOut ),
+             sMainNAM, qOverload< QNetworkReply *>( &QgsNetworkAccessManager::requestTimedOut ) );
 
-    connect( this, qgis::overload< QgsNetworkRequestParameters >::of( &QgsNetworkAccessManager::requestTimedOut ),
-             sMainNAM, qgis::overload< QgsNetworkRequestParameters >::of( &QgsNetworkAccessManager::requestTimedOut ) );
+    connect( this, qOverload< QgsNetworkRequestParameters >( &QgsNetworkAccessManager::requestTimedOut ),
+             sMainNAM, qOverload< QgsNetworkRequestParameters >( &QgsNetworkAccessManager::requestTimedOut ) );
 
-    connect( this, qgis::overload< QgsNetworkRequestParameters >::of( &QgsNetworkAccessManager::requestAboutToBeCreated ),
-             sMainNAM, qgis::overload< QgsNetworkRequestParameters >::of( &QgsNetworkAccessManager::requestAboutToBeCreated ) );
+    connect( this, qOverload< QgsNetworkRequestParameters >( &QgsNetworkAccessManager::requestAboutToBeCreated ),
+             sMainNAM, qOverload< QgsNetworkRequestParameters >( &QgsNetworkAccessManager::requestAboutToBeCreated ) );
 
-    connect( this, qgis::overload< QgsNetworkReplyContent >::of( &QgsNetworkAccessManager::finished ),
-             sMainNAM, qgis::overload< QgsNetworkReplyContent >::of( &QgsNetworkAccessManager::finished ) );
+    connect( this, qOverload< QgsNetworkReplyContent >( &QgsNetworkAccessManager::finished ),
+             sMainNAM, qOverload< QgsNetworkReplyContent >( &QgsNetworkAccessManager::finished ) );
 
     connect( this, &QgsNetworkAccessManager::downloadProgress, sMainNAM, &QgsNetworkAccessManager::downloadProgress );
 
@@ -545,13 +662,15 @@ void QgsNetworkAccessManager::setupDefaultProxyAndCache( Qt::ConnectionType conn
 #endif
 
     connect( this, &QgsNetworkAccessManager::requestRequiresAuth, sMainNAM, &QgsNetworkAccessManager::requestRequiresAuth );
+    connect( sMainNAM, &QgsNetworkAccessManager::cookiesChanged, this, &QgsNetworkAccessManager::syncCookies );
+    connect( this, &QgsNetworkAccessManager::cookiesChanged, sMainNAM, &QgsNetworkAccessManager::syncCookies );
   }
   else
   {
 #ifndef QT_NO_SSL
-    setSslErrorHandler( qgis::make_unique< QgsSslErrorHandler >() );
+    setSslErrorHandler( std::make_unique< QgsSslErrorHandler >() );
 #endif
-    setAuthHandler( qgis::make_unique< QgsNetworkAuthenticationHandler>() );
+    setAuthHandler( std::make_unique< QgsNetworkAuthenticationHandler>() );
   }
 #ifndef QT_NO_SSL
   connect( this, &QgsNetworkAccessManager::sslErrorsOccurred, sMainNAM, &QgsNetworkAccessManager::handleSslErrors );
@@ -650,16 +769,33 @@ void QgsNetworkAccessManager::setupDefaultProxyAndCache( Qt::ConnectionType conn
 
   if ( cache() != newcache )
     setCache( newcache );
+
+  if ( this != sMainNAM )
+  {
+    static_cast<QgsNetworkCookieJar *>( cookieJar() )->setAllCookies( static_cast<QgsNetworkCookieJar *>( sMainNAM->cookieJar() )->allCookies() );
+  }
+}
+
+void QgsNetworkAccessManager::syncCookies( const QList<QNetworkCookie> &cookies )
+{
+  if ( sender() != this )
+  {
+    static_cast<QgsNetworkCookieJar *>( cookieJar() )->setAllCookies( cookies );
+    if ( this == sMainNAM )
+    {
+      emit cookiesChanged( cookies );
+    }
+  }
 }
 
 int QgsNetworkAccessManager::timeout()
 {
-  return QgsSettings().value( QStringLiteral( "/qgis/networkAndProxy/networkTimeout" ), 60000 ).toInt();
+  return settingsNetworkTimeout.value();
 }
 
 void QgsNetworkAccessManager::setTimeout( const int time )
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/networkAndProxy/networkTimeout" ), time );
+  settingsNetworkTimeout.setValue( time );
 }
 
 QgsNetworkReplyContent QgsNetworkAccessManager::blockingGet( QNetworkRequest &request, const QString &authCfg, bool forceRefresh, QgsFeedback *feedback )
@@ -676,6 +812,31 @@ QgsNetworkReplyContent QgsNetworkAccessManager::blockingPost( QNetworkRequest &r
   br.setAuthCfg( authCfg );
   br.post( request, data, forceRefresh, feedback );
   return br.reply();
+}
+
+QString QgsNetworkAccessManager::setRequestPreprocessor( const std::function<void ( QNetworkRequest * )> &processor )
+{
+  QString id = QUuid::createUuid().toString();
+  sCustomPreprocessors.emplace_back( std::make_pair( id, processor ) );
+  return id;
+}
+
+bool QgsNetworkAccessManager::removeRequestPreprocessor( const QString &id )
+{
+  const size_t prevCount = sCustomPreprocessors.size();
+  sCustomPreprocessors.erase( std::remove_if( sCustomPreprocessors.begin(), sCustomPreprocessors.end(), [id]( std::pair< QString, std::function< void( QNetworkRequest * ) > > &a )
+  {
+    return a.first == id;
+  } ), sCustomPreprocessors.end() );
+  return prevCount != sCustomPreprocessors.size();
+}
+
+void QgsNetworkAccessManager::preprocessRequest( QNetworkRequest *req ) const
+{
+  for ( const auto &preprocessor :  sCustomPreprocessors )
+  {
+    preprocessor.second( req );
+  }
 }
 
 
@@ -714,3 +875,17 @@ void QgsNetworkAuthenticationHandler::handleAuthRequest( QNetworkReply *reply, Q
   Q_UNUSED( reply )
   QgsDebugMsg( QStringLiteral( "Network reply required authentication, but no handler was in place to provide this authentication request while accessing the URL:\n%1" ).arg( reply->request().url().toString() ) );
 }
+
+void QgsNetworkAuthenticationHandler::handleAuthRequestOpenBrowser( const QUrl &url )
+{
+  Q_UNUSED( url )
+  QgsDebugMsg( QStringLiteral( "Network authentication required external browser to open URL %1, but no handler was in place" ).arg( url.toString() ) );
+}
+
+void QgsNetworkAuthenticationHandler::handleAuthRequestCloseBrowser()
+{
+  QgsDebugMsg( QStringLiteral( "Network authentication required external browser closed, but no handler was in place" ) );
+}
+
+// For QgsNetworkCookieJar
+#include "qgsnetworkaccessmanager.moc"

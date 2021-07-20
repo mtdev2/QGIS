@@ -175,6 +175,7 @@
 %Include auto_generated/qgsprovidersourcewidgetproviderregistry.sip
 %Include auto_generated/qgsproxystyle.sip
 %Include auto_generated/qgsquerybuilder.sip
+%Include auto_generated/qgsqueryresultwidget.sip
 %Include auto_generated/qgsrangeslider.sip
 %Include auto_generated/qgsrasterformatsaveoptionswidget.sip
 %Include auto_generated/qgsrasterlayersaveasdialog.sip
@@ -183,6 +184,7 @@
 %Include auto_generated/qgsrelationeditorwidget.sip
 %Include auto_generated/qgsabstractrelationeditorwidget.sip
 %Include auto_generated/qgsrelationwidgetregistry.sip
+%Include auto_generated/qgsrichtexteditor.sip
 %Include auto_generated/qgsrubberband.sip
 %Include auto_generated/qgsscalecombobox.sip
 %Include auto_generated/qgsscalerangewidget.sip
@@ -269,6 +271,9 @@
 %Include auto_generated/codeeditors/qgscodeeditorjs.sip
 %End
 %If ( HAVE_QSCI_SIP )
+%Include auto_generated/codeeditors/qgscodeeditorjson.sip
+%End
+%If ( HAVE_QSCI_SIP )
 %Include auto_generated/codeeditors/qgscodeeditorpython.sip
 %End
 %If ( HAVE_QSCI_SIP )
@@ -289,6 +294,7 @@
 %Include auto_generated/editorwidgets/qgsdefaultsearchwidgetwrapper.sip
 %Include auto_generated/editorwidgets/qgsdoublespinbox.sip
 %Include auto_generated/editorwidgets/qgshtmlwidgetwrapper.sip
+%Include auto_generated/editorwidgets/qgsjsoneditwidget.sip
 %Include auto_generated/editorwidgets/qgsmultiedittoolbutton.sip
 %Include auto_generated/editorwidgets/qgsrelationaggregatesearchwidgetwrapper.sip
 %Include auto_generated/editorwidgets/qgsrelationreferencesearchwidgetwrapper.sip
@@ -390,9 +396,11 @@
 %Include auto_generated/symbology/qgsdashspacedialog.sip
 %Include auto_generated/symbology/qgsdatadefinedsizelegendwidget.sip
 %Include auto_generated/symbology/qgsellipsesymbollayerwidget.sip
+%Include auto_generated/symbology/qgsembeddedsymbolrendererwidget.sip
 %Include auto_generated/symbology/qgsgraduatedhistogramwidget.sip
 %Include auto_generated/symbology/qgsgraduatedsymbolrendererwidget.sip
 %Include auto_generated/symbology/qgsheatmaprendererwidget.sip
+%Include auto_generated/symbology/qgsinterpolatedlinesymbollayerwidget.sip
 %Include auto_generated/symbology/qgsinvertedpolygonrendererwidget.sip
 %Include auto_generated/symbology/qgslayerpropertieswidget.sip
 %Include auto_generated/symbology/qgsmergedfeaturerendererwidget.sip
@@ -417,6 +425,7 @@
 %Include auto_generated/symbology/qgssymbolslistwidget.sip
 %Include auto_generated/symbology/qgssymbolwidgetcontext.sip
 %Include auto_generated/symbology/qgsvectorfieldsymbollayerwidget.sip
+%Include auto_generated/settings/qgssettingsregistrygui.sip
 %Include auto_generated/tableeditor/qgstableeditordialog.sip
 %Include auto_generated/tableeditor/qgstableeditorwidget.sip
 %Include auto_generated/editorwidgets/qgsqmlwidgetwrapper.sip

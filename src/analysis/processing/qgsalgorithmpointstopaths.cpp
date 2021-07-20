@@ -19,6 +19,9 @@
 #include "qgsvectorlayer.h"
 #include "qgsmultipoint.h"
 
+#include <QCollator>
+#include <QTextStream>
+
 ///@cond PRIVATE
 
 QString QgsPointsToPathsAlgorithm::name() const
@@ -43,7 +46,7 @@ QString QgsPointsToPathsAlgorithm::shortHelpString() const
 
 QStringList QgsPointsToPathsAlgorithm::tags() const
 {
-  return QObject::tr( "create,lines,points,connect,convert,join" ).split( ',' );
+  return QObject::tr( "create,lines,points,connect,convert,join,path" ).split( ',' );
 }
 
 QString QgsPointsToPathsAlgorithm::group() const
@@ -326,10 +329,13 @@ QVariantMap QgsPointsToPathsAlgorithm::processAlgorithm( const QVariantMap &para
     {
       const QString filename = QDir( textDir ).filePath( hit.key().toString() + QString( ".txt" ) );
       QFile textFile( filename );
-      if ( !textFile.open( QIODevice::WriteOnly | QIODevice::Text ) )
+      if ( !textFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) )
         throw QgsProcessingException( QObject::tr( "Cannot open file for writing " ) + filename );
 
       QTextStream out( &textFile );
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+      out.setCodec( "UTF-8" );
+#endif
       out << QString( "angle=Azimuth\n"
                       "heading=Coordinate_System\n"
                       "dist_units=Default\n"

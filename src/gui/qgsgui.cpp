@@ -61,6 +61,7 @@
 #include "qgssubsetstringeditorproviderregistry.h"
 #include "qgsprovidersourcewidgetproviderregistry.h"
 #include "qgsrelationwidgetregistry.h"
+#include "qgssettingsregistrygui.h"
 
 QgsGui *QgsGui::instance()
 {
@@ -71,6 +72,11 @@ QgsGui *QgsGui::instance()
 QgsNative *QgsGui::nativePlatformInterface()
 {
   return instance()->mNative;
+}
+
+QgsSettingsRegistryGui *QgsGui::settingsRegistryGui()
+{
+  return instance()->mSettingsRegistryGui;
 }
 
 QgsEditorWidgetRegistry *QgsGui::editorWidgetRegistry()
@@ -174,8 +180,7 @@ void QgsGui::setWindowManager( QgsWindowManagerInterface *manager )
 
 QgsGui::HigFlags QgsGui::higFlags()
 {
-  QgsSettings settings;
-  if ( settings.value( QStringLiteral( "locale/userLocale" ), QString() ).toString().startsWith( QLatin1String( "en" ) ) )
+  if ( QgsApplication::settingsLocaleUserLocale.value().startsWith( QLatin1String( "en" ) ) )
   {
     return HigMenuTextIsTitleCase | HigDialogTitleIsTitleCase;
   }
@@ -205,6 +210,7 @@ QgsGui::~QgsGui()
   delete mSubsetStringEditorProviderRegistry;
   delete mProviderSourceWidgetProviderRegistry;
   delete mRelationEditorRegistry;
+  delete mSettingsRegistryGui;
 }
 
 QColor QgsGui::sampleColor( QPoint point )
@@ -249,6 +255,8 @@ QgsGui::QgsGui()
 #else
   mNative = new QgsNative();
 #endif
+
+  mSettingsRegistryGui = new QgsSettingsRegistryGui();
 
   mCodeEditorColorSchemeRegistry = new QgsCodeEditorColorSchemeRegistry();
 
@@ -331,7 +339,7 @@ bool QgsGui::pythonMacroAllowed( void ( *lambda )(), QgsMessageBar *messageBar )
             tr( "Security warning" ),
             tr( "Python macros cannot currently be run." ),
             btnEnableMacros,
-            Qgis::Warning,
+            Qgis::MessageLevel::Warning,
             0,
             messageBar );
 

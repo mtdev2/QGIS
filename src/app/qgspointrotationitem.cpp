@@ -15,6 +15,7 @@
 
 #include "qgspointrotationitem.h"
 #include <QPainter>
+#include <QLocale>
 #include <cmath>
 #include "qgsguiutils.h"
 
@@ -77,7 +78,7 @@ void QgsPointRotationItem::paint( QPainter *painter )
   bufferPen.setWidthF( QgsGuiUtils::scaleIconSize( 4 ) );
   QFontMetricsF fm( mFont );
   QPainterPath label;
-  label.addText( mPixmap.width(), mPixmap.height() / 2.0 + fm.height() / 2.0, mFont, QString::number( mRotation ) );
+  label.addText( mPixmap.width(), mPixmap.height() / 2.0 + fm.height() / 2.0, mFont, QLocale().toString( mRotation ) );
   painter->setPen( bufferPen );
   painter->setBrush( Qt::NoBrush );
   painter->drawPath( label );
@@ -100,11 +101,7 @@ void QgsPointRotationItem::setSymbol( const QImage &symbolImage )
   QFontMetricsF fm( mFont );
 
   //set item size
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-  mItemSize.setWidth( mPixmap.width() + fm.width( QStringLiteral( "360" ) ) );
-#else
   mItemSize.setWidth( mPixmap.width() + fm.horizontalAdvance( QStringLiteral( "360" ) ) );
-#endif
   const double pixmapHeight = mPixmap.height();
   double fontHeight = fm.height();
   if ( pixmapHeight >= fontHeight )

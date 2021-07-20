@@ -150,7 +150,7 @@ QgsRasterLayer *QgisAppInterface::addRasterLayer( const QString &rasterLayerPath
     QFileInfo fi( rasterLayerPath );
     nonNullBaseName = fi.completeBaseName();
   }
-  return qgis->addRasterLayer( rasterLayerPath, nonNullBaseName );
+  return qgis->addRasterLayer( rasterLayerPath, nonNullBaseName, QString() );
 }
 
 QgsRasterLayer *QgisAppInterface::addRasterLayer( const QString &url, const QString &baseName, const QString &providerKey )
@@ -497,17 +497,17 @@ QgsAdvancedDigitizingDockWidget *QgisAppInterface::cadDockWidget()
   return qgis->cadDockWidget();
 }
 
-void QgisAppInterface::showLayerProperties( QgsMapLayer *l )
+void QgisAppInterface::showLayerProperties( QgsMapLayer *l, const QString &page )
 {
   if ( l && qgis )
   {
-    qgis->showLayerProperties( l );
+    qgis->showLayerProperties( l, page );
   }
 }
 
 QDialog *QgisAppInterface::showAttributeTable( QgsVectorLayer *l, const QString &filterExpression )
 {
-  if ( l )
+  if ( l && l->dataProvider() )
   {
     QgsAttributeTableDialog *dialog = new QgsAttributeTableDialog( l, QgsAttributeTableFilterModel::ShowFilteredList );
     dialog->setFilterExpression( filterExpression );

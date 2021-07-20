@@ -82,6 +82,12 @@ QgsStatisticalSummaryDockWidget::QgsStatisticalSummaryDockWidget( QWidget *paren
   mFieldType = DataType::Numeric;
   mPreviousFieldType = DataType::Numeric;
   refreshStatisticsMenu();
+
+  connect( this, &QgsDockWidget::visibilityChanged, this, [ = ]( bool visible )
+  {
+    if ( mPendingCalculate && visible )
+      refreshStatistics();
+  } );
 }
 
 QgsStatisticalSummaryDockWidget::~QgsStatisticalSummaryDockWidget()
@@ -137,6 +143,16 @@ void QgsStatisticalSummaryDockWidget::refreshStatistics()
     return;
   }
 
+  if ( !isUserVisible() )
+  {
+    //defer calculation until dock is visible -- no point calculating stats if the user can't
+    //see them!
+    mPendingCalculate = true;
+    return;
+  }
+
+  mPendingCalculate = false;
+
   // determine field type
   mFieldType = DataType::Numeric;
   if ( !mFieldExpressionWidget->isExpression() )
@@ -163,7 +179,7 @@ void QgsStatisticalSummaryDockWidget::refreshStatistics()
   if ( ok )
   {
     long featureCount = selectedOnly ? mLayer->selectedFeatureCount() : mLayer->featureCount();
-    std::unique_ptr< QgsStatisticsValueGatherer > gatherer = qgis::make_unique< QgsStatisticsValueGatherer >( mLayer, fit, featureCount, sourceFieldExp );
+    std::unique_ptr< QgsStatisticsValueGatherer > gatherer = std::make_unique< QgsStatisticsValueGatherer >( mLayer, fit, featureCount, sourceFieldExp );
     switch ( mFieldType )
     {
       case DataType::Numeric:
@@ -264,7 +280,7 @@ void QgsStatisticalSummaryDockWidget::updateNumericStatistics()
   {
     double val = stats.statistic( stat );
     addRow( row, QgsStatisticalSummary::displayName( stat ),
-            std::isnan( val ) ? QString() : QString::number( val ),
+            std::isnan( val ) ? QString() : QLocale().toString( val ),
             stats.count() != 0 );
     row++;
   }
@@ -272,7 +288,7 @@ void QgsStatisticalSummaryDockWidget::updateNumericStatistics()
   if ( mStatsActions.value( MISSING_VALUES )->isChecked() )
   {
     addRow( row, tr( "Missing (null) values" ),
-            QString::number( missingValues ),
+            QLocale().toString( missingValues ),
             stats.count() != 0 || missingValues != 0 );
     row++;
   }
@@ -567,7 +583,7 @@ QgsStatisticalSummaryDockWidget::DataType QgsStatisticalSummaryDockWidget::field
 }
 
 QgsStatisticsValueGatherer::QgsStatisticsValueGatherer( QgsVectorLayer *layer, const QgsFeatureIterator &fit, long featureCount, const QString &sourceFieldExp )
-  : QgsTask( tr( "Fetching statistic values" ) )
+  : QgsTask( tr( "Fetching statistic values" ), QgsTask::CanCancel | QgsTask::CancelWithoutPrompt )
   , mFeatureIterator( fit )
   , mFeatureCount( featureCount )
   , mFieldExpression( sourceFieldExp )

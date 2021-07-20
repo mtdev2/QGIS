@@ -29,7 +29,9 @@
 #include "qgssymbolselectordialog.h"
 #include "qgsvectorlayer.h"
 #include "qgsexpressioncontextutils.h"
-
+#include "qgsdoublevalidator.h"
+#include "qgsmarkersymbol.h"
+#include "qgslinesymbol.h"
 
 QgsDataDefinedSizeLegendWidget::QgsDataDefinedSizeLegendWidget( const QgsDataDefinedSizeLegend *ddsLegend, const QgsProperty &ddSize, QgsMarkerSymbol *overrideSymbol, QgsMapCanvas *canvas, QWidget *parent )
   : QgsPanelWidget( parent )
@@ -39,7 +41,7 @@ QgsDataDefinedSizeLegendWidget::QgsDataDefinedSizeLegendWidget( const QgsDataDef
   setupUi( this );
   setPanelTitle( tr( "Data-defined Size Legend" ) );
 
-  mLineSymbolButton->setSymbolType( QgsSymbol::Line );
+  mLineSymbolButton->setSymbolType( Qgis::SymbolType::Line );
 
   QgsMarkerSymbol *symbol = nullptr;
 
@@ -93,7 +95,7 @@ QgsDataDefinedSizeLegendWidget::QgsDataDefinedSizeLegendWidget( const QgsDataDef
     const auto constClasses = ddsLegend->classes();
     for ( const QgsDataDefinedSizeLegend::SizeClass &sc : constClasses )
     {
-      QStandardItem *item = new QStandardItem( QString::number( sc.size ) );
+      QStandardItem *item = new QStandardItem( QLocale().toString( sc.size ) );
       item->setData( sc.size );
       QStandardItem *itemLabel = new QStandardItem( sc.label );
       mSizeClassesModel->appendRow( QList<QStandardItem *>() << item << itemLabel );
@@ -157,8 +159,8 @@ QgsDataDefinedSizeLegend *QgsDataDefinedSizeLegendWidget::dataDefinedSizeLegend(
     QList<QgsDataDefinedSizeLegend::SizeClass> classes;
     for ( int i = 0; i < mSizeClassesModel->rowCount(); ++i )
     {
-      double value = mSizeClassesModel->item( i, 0 )->data().toDouble();
-      QString label = mSizeClassesModel->item( i, 1 )->text();
+      const double value = mSizeClassesModel->item( i, 0 )->data().toDouble();
+      const QString label = mSizeClassesModel->item( i, 1 )->text();
       classes << QgsDataDefinedSizeLegend::SizeClass( value, label );
     }
     ddsLegend->setClasses( classes );
@@ -196,7 +198,7 @@ void QgsDataDefinedSizeLegendWidget::changeSymbol()
 
   QString crsAuthId = mMapCanvas ? mMapCanvas->mapSettings().destinationCrs().authid() : QString();
   QgsVectorLayer::LayerOptions options { QgsProject::instance()->transformContext() };
-  std::unique_ptr<QgsVectorLayer> layer = qgis::make_unique<QgsVectorLayer>( QStringLiteral( "Point?crs=%1" ).arg( crsAuthId ),
+  std::unique_ptr<QgsVectorLayer> layer = std::make_unique<QgsVectorLayer>( QStringLiteral( "Point?crs=%1" ).arg( crsAuthId ),
                                           QStringLiteral( "tmp" ),
                                           QStringLiteral( "memory" ),
                                           options ) ;
@@ -222,9 +224,9 @@ void QgsDataDefinedSizeLegendWidget::addSizeClass()
   if ( !ok )
     return;
 
-  QStandardItem *item = new QStandardItem( QString::number( v ) );
+  QStandardItem *item = new QStandardItem( QLocale().toString( v ) );
   item->setData( v );
-  QStandardItem *itemLabel = new QStandardItem( QString::number( v ) );
+  QStandardItem *itemLabel = new QStandardItem( QLocale().toString( v ) );
   mSizeClassesModel->appendRow( QList<QStandardItem *>() << item << itemLabel );
   mSizeClassesModel->sort( 0 );
   emit widgetChanged();
@@ -245,7 +247,7 @@ void QgsDataDefinedSizeLegendWidget::onSizeClassesChanged()
   for ( int row = 0; row < mSizeClassesModel->rowCount(); ++row )
   {
     QStandardItem *item = mSizeClassesModel->item( row, 0 );
-    item->setData( item->text().toDouble() );
+    item->setData( QgsDoubleValidator::toDouble( item->text() ) );
   }
 
   mSizeClassesModel->sort( 0 );

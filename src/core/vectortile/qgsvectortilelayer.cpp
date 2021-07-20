@@ -31,6 +31,10 @@
 #include "qgsmapboxglstyleconverter.h"
 #include "qgsjsonutils.h"
 #include "qgspainting.h"
+#include "qgsmaplayerfactory.h"
+
+#include <QUrl>
+#include <QUrlQuery>
 
 QgsVectorTileLayer::QgsVectorTileLayer( const QString &uri, const QString &baseName )
   : QgsMapLayer( QgsMapLayerType::VectorTileLayer, baseName )
@@ -120,9 +124,16 @@ bool QgsVectorTileLayer::loadDataSource()
 
 bool QgsVectorTileLayer::setupArcgisVectorTileServiceConnection( const QString &uri, const QgsDataSourceUri &dataSourceUri )
 {
-  QNetworkRequest request = QNetworkRequest( QUrl( uri ) );
+  QUrl url( uri );
+  // some services don't default to json format, while others do... so let's explicitly request it!
+  // (refs https://github.com/qgis/QGIS/issues/4231)
+  QUrlQuery query;
+  query.addQueryItem( QStringLiteral( "f" ), QStringLiteral( "pjson" ) );
+  url.setQuery( query );
 
-  QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) );
+  QNetworkRequest request = QNetworkRequest( url );
+
+  QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) )
 
   QgsBlockingNetworkRequest networkRequest;
   switch ( networkRequest.get( request ) )
@@ -206,7 +217,7 @@ bool QgsVectorTileLayer::readXml( const QDomNode &layerNode, QgsReadWriteContext
 bool QgsVectorTileLayer::writeXml( QDomNode &layerNode, QDomDocument &doc, const QgsReadWriteContext &context ) const
 {
   QDomElement mapLayerNode = layerNode.toElement();
-  mapLayerNode.setAttribute( QStringLiteral( "type" ), QStringLiteral( "vector-tile" ) );
+  mapLayerNode.setAttribute( QStringLiteral( "type" ), QgsMapLayerFactory::typeToString( QgsMapLayerType::VectorTileLayer ) );
 
   writeStyleManager( layerNode, doc );
 
@@ -341,6 +352,7 @@ bool QgsVectorTileLayer::writeSymbology( QDomNode &node, QDomDocument &doc, QStr
 void QgsVectorTileLayer::setTransformContext( const QgsCoordinateTransformContext &transformContext )
 {
   Q_UNUSED( transformContext )
+  invalidateWgs84Extent();
 }
 
 QString QgsVectorTileLayer::loadDefaultStyle( bool &resultFlag )
@@ -412,8 +424,10 @@ bool QgsVectorTileLayer::loadDefaultStyle( QString &error, QStringList &warnings
 
       for ( int resolution = 2; resolution > 0; resolution-- )
       {
-        QNetworkRequest request = QNetworkRequest( QUrl( spriteUriBase + QStringLiteral( "%1.json" ).arg( resolution > 1 ? QStringLiteral( "@%1x" ).arg( resolution ) : QString() ) ) );
-        QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) );
+        QUrl spriteUrl = QUrl( spriteUriBase );
+        spriteUrl.setPath( spriteUrl.path() + QStringLiteral( "%1.json" ).arg( resolution > 1 ? QStringLiteral( "@%1x" ).arg( resolution ) : QString() ) );
+        QNetworkRequest request = QNetworkRequest( spriteUrl );
+        QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) )
         QgsBlockingNetworkRequest networkRequest;
         switch ( networkRequest.get( request ) )
         {
@@ -423,10 +437,10 @@ bool QgsVectorTileLayer::loadDefaultStyle( QString &error, QStringList &warnings
             const QVariantMap spriteDefinition = QgsJsonUtils::parseJson( content.content() ).toMap();
 
             // retrieve sprite images
-            QNetworkRequest request = QNetworkRequest( QUrl( spriteUriBase + QStringLiteral( "%1.png" ).arg( resolution > 1 ? QStringLiteral( "@%1x" ).arg( resolution ) : QString() ) ) );
-
-            QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) );
-
+            QUrl spriteUrl = QUrl( spriteUriBase );
+            spriteUrl.setPath( spriteUrl.path() + QStringLiteral( "%1.png" ).arg( resolution > 1 ? QStringLiteral( "@%1x" ).arg( resolution ) : QString() ) );
+            QNetworkRequest request = QNetworkRequest( spriteUrl );
+            QgsSetRequestInitiatorClass( request, QStringLiteral( "QgsVectorTileLayer" ) )
             QgsBlockingNetworkRequest networkRequest;
             switch ( networkRequest.get( request ) )
             {
@@ -593,10 +607,11 @@ QString QgsVectorTileLayer::htmlMetadata() const
   info += QStringLiteral( "<tr><td class=\"highlight\">" ) % tr( "Source path" ) % QStringLiteral( "</td><td>%1" ).arg( QStringLiteral( "<a href=\"%1\">%2</a>" ).arg( QUrl( url ).toString(), sourcePath() ) ) + QStringLiteral( "</td></tr>\n" );
 
   info += QStringLiteral( "<tr><td class=\"highlight\">" ) % tr( "Zoom levels" ) % QStringLiteral( "</td><td>" ) % QStringLiteral( "%1 - %2" ).arg( sourceMinZoom() ).arg( sourceMaxZoom() ) % QStringLiteral( "</td></tr>\n" );
-  info += QLatin1String( "</table>" );
 
-  // End Provider section
   info += QLatin1String( "</table>\n<br><br>" );
+
+  // CRS
+  info += crsHtmlMetadata();
 
   // Identification section
   info += QStringLiteral( "<h1>" ) % tr( "Identification" ) % QStringLiteral( "</h1>\n<hr>\n" ) %

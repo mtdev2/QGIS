@@ -17,10 +17,11 @@
 
 #include <QCoreApplication>
 #include <QTimer>
-#include <QtTest>
+#include <QTest>
 #include <QAbstractNetworkCache>
 #include <iostream>
 #include <memory>
+#include <QSignalSpy>
 
 #include "qgsapplication.h"
 #include "qgstiledownloadmanager.h"
@@ -28,7 +29,7 @@
 
 const QString url_1 = "https://www.qwant.com/maps/tiles/ozbasemap/0/0/0.pbf";
 const QString url_2 = "https://www.qwant.com/maps/tiles/ozbasemap/1/0/0.pbf";
-const QString url_bad = "http://www.example.com/download-manager-fail";
+const QString url_bad = "https://www.qwant.com/maps/tiles/ozbasemap/1/0/90913.pbf";
 
 
 class TestQgsTileDownloadManager : public QObject
@@ -151,6 +152,7 @@ void TestQgsTileDownloadManager::testOneRequestTwice()
   QSignalSpy spy1( r1.get(), &QgsTileDownloadManagerReply::finished );
   QSignalSpy spy2( r2.get(), &QgsTileDownloadManagerReply::finished );
   spy1.wait();
+  spy2.wait();
   QCoreApplication::processEvents();
   QCOMPARE( spy1.count(), 1 );
   QCOMPARE( spy2.count(), 1 );
@@ -183,12 +185,12 @@ void TestQgsTileDownloadManager::testOneRequestTwiceAndEarlyDelete()
   std::unique_ptr<QgsTileDownloadManagerReply> r2( manager.get( QNetworkRequest( url_1 ) ) );
 
   QVERIFY( manager.hasPendingRequests() );
+  QSignalSpy spy( r2.get(), &QgsTileDownloadManagerReply::finished );
 
   QThread::usleep( 1000 );  // sleep 1ms - enough time to start request but not enough to finish it
 
   r1.reset();
 
-  QSignalSpy spy( r2.get(), &QgsTileDownloadManagerReply::finished );
   spy.wait();
   QCOMPARE( spy.count(), 1 );
   QVERIFY( !r2->data().isEmpty() );

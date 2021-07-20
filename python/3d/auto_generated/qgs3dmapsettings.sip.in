@@ -17,8 +17,8 @@
 
 class Qgs3DMapSettings : QObject, QgsTemporalRangeObject
 {
-%Docstring
-Definition of the world
+%Docstring(signature="appended")
+Definition of the world.
 
 .. versionadded:: 3.0
 %End
@@ -625,6 +625,24 @@ Sets whether FPS counter label is enabled
 .. seealso:: :py:func:`isFpsCounterEnabled`
 
 .. versionadded:: 3.18
+%End
+
+    bool terrainRenderingEnabled();
+%Docstring
+Returns whether the 2D terrain surface will be rendered.
+
+.. seealso:: :py:func:`setTerrainRenderingEnabled`
+
+.. versionadded:: 3.22
+%End
+
+    void setTerrainRenderingEnabled( bool terrainRenderingEnabled );
+%Docstring
+Sets whether the 2D terrain surface will be rendered in.
+
+.. seealso:: :py:func:`terrainRenderingEnabled`
+
+.. versionadded:: 3.22
 %End
 
   signals:

@@ -19,12 +19,14 @@
 #include "qgssettings.h"
 #include "qgshelp.h"
 #include "qgsgui.h"
+#include "fromencodedcomponenthelper.h"
 
 #include <QMessageBox>
 #include <QUrl>
 #include <QPushButton>
-#include <QRegExp>
-#include <QRegExpValidator>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QUrlQuery>
 
 QgsNewArcGisRestConnectionDialog::QgsNewArcGisRestConnectionDialog( QWidget *parent, const QString &baseKey, const QString &connectionName, Qt::WindowFlags fl )
   : QDialog( parent, fl )
@@ -37,16 +39,17 @@ QgsNewArcGisRestConnectionDialog::QgsNewArcGisRestConnectionDialog( QWidget *par
 
   connect( buttonBox, &QDialogButtonBox::helpRequested, this, &QgsNewArcGisRestConnectionDialog::showHelp );
 
-  QRegExp rx( "/connections-([^/]+)/" );
-  if ( rx.indexIn( baseKey ) != -1 )
+  const QRegularExpression rx( QStringLiteral( "/connections-([^/]+)/" ) );
+  const QRegularExpressionMatch match = rx.match( baseKey );
+  if ( match.hasMatch() )
   {
-    QString connectionType( rx.cap( 1 ).toUpper() );
+    QString connectionType( match.captured( 1 ).toUpper() );
     setWindowTitle( tr( "Create a New %1 Connection" ).arg( connectionType ) );
   }
 
   mCredentialsBaseKey = mBaseKey.split( '-' ).last().toUpper();
 
-  txtName->setValidator( new QRegExpValidator( QRegExp( "[^\\/]+" ), txtName ) );
+  txtName->setValidator( new QRegularExpressionValidator( QRegularExpression( QStringLiteral( "[^\\/]+" ) ), txtName ) );
 
   if ( !connectionName.isEmpty() )
   {
@@ -141,82 +144,6 @@ bool QgsNewArcGisRestConnectionDialog::validate()
 
   return true;
 }
-
-// Mega ewwww. all this is taken from Qt's QUrl::setEncodedPath compatibility helper.
-// (I can't see any way to port the below code to NOT require this).
-
-inline char toHexUpper( uint value ) noexcept
-{
-  return "0123456789ABCDEF"[value & 0xF];
-}
-
-static inline ushort encodeNibble( ushort c )
-{
-  return ushort( toHexUpper( c ) );
-}
-
-bool qt_is_ascii( const char *&ptr, const char *end ) noexcept
-{
-  while ( ptr + 4 <= end )
-  {
-    quint32 data = qFromUnaligned<quint32>( ptr );
-    if ( data &= 0x80808080U )
-    {
-#if Q_BYTE_ORDER == Q_BIG_ENDIAN
-      uint idx = qCountLeadingZeroBits( data );
-#else
-      uint idx = qCountTrailingZeroBits( data );
-#endif
-      ptr += idx / 8;
-      return false;
-    }
-    ptr += 4;
-  }
-  while ( ptr != end )
-  {
-    if ( quint8( *ptr ) & 0x80 )
-      return false;
-    ++ptr;
-  }
-  return true;
-}
-
-QString fromEncodedComponent_helper( const QByteArray &ba )
-{
-  if ( ba.isNull() )
-    return QString();
-  // scan ba for anything above or equal to 0x80
-  // control points below 0x20 are fine in QString
-  const char *in = ba.constData();
-  const char *const end = ba.constEnd();
-  if ( qt_is_ascii( in, end ) )
-  {
-    // no non-ASCII found, we're safe to convert to QString
-    return QString::fromLatin1( ba, ba.size() );
-  }
-  // we found something that we need to encode
-  QByteArray intermediate = ba;
-  intermediate.resize( ba.size() * 3 - ( in - ba.constData() ) );
-  uchar *out = reinterpret_cast<uchar *>( intermediate.data() + ( in - ba.constData() ) );
-  for ( ; in < end; ++in )
-  {
-    if ( *in & 0x80 )
-    {
-      // encode
-      *out++ = '%';
-      *out++ = encodeNibble( uchar( *in ) >> 4 );
-      *out++ = encodeNibble( uchar( *in ) & 0xf );
-    }
-    else
-    {
-      // keep
-      *out++ = uchar( *in );
-    }
-  }
-  // now it's safe to call fromLatin1
-  return QString::fromLatin1( intermediate, out - reinterpret_cast<uchar *>( intermediate.data() ) );
-}
-
 
 QUrl QgsNewArcGisRestConnectionDialog::urlTrimmed() const
 {

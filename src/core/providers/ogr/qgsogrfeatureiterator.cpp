@@ -28,6 +28,7 @@
 #include "qgsexception.h"
 #include "qgswkbtypes.h"
 #include "qgsogrtransaction.h"
+#include "qgssymbol.h"
 
 #include <QTextCodec>
 #include <QFile>
@@ -48,6 +49,7 @@ QgsOgrFeatureIterator::QgsOgrFeatureIterator( QgsOgrFeatureSource *source, bool 
   , mFirstFieldIsFid( source->mFirstFieldIsFid )
   , mFieldsWithoutFid( source->mFieldsWithoutFid )
   , mAuthCfg( source->mAuthCfg )
+  , mSymbolType( QgsSymbol::symbolTypeForGeometryType( QgsWkbTypes::geometryType( source->mWkbType ) ) )
 {
 
   /* When inside a transaction for GPKG/SQLite and fetching fid(s) we might be nested inside an outer fetching loop,
@@ -60,7 +62,7 @@ QgsOgrFeatureIterator::QgsOgrFeatureIterator( QgsOgrFeatureSource *source, bool 
                          && mRequest.filterType() != QgsFeatureRequest::FilterType::FilterFids );
 
   QgsCPLHTTPFetchOverrider oCPLHTTPFetcher( mAuthCfg );
-  QgsSetCPLHTTPFetchOverriderInitiatorClass( oCPLHTTPFetcher, QStringLiteral( "QgsOgrFeatureIterator" ) );
+  QgsSetCPLHTTPFetchOverriderInitiatorClass( oCPLHTTPFetcher, QStringLiteral( "QgsOgrFeatureIterator" ) )
 
   for ( const auto &id :  mRequest.filterFids() )
   {
@@ -81,9 +83,13 @@ QgsOgrFeatureIterator::QgsOgrFeatureIterator( QgsOgrFeatureSource *source, bool 
   else
   {
     //QgsDebugMsg( "Feature iterator of " + mSource->mLayerName + ": acquiring connection");
-    mConn = QgsOgrConnPool::instance()->acquireConnection( QgsOgrProviderUtils::connectionPoolId( mSource->mDataSource, mSource->mShareSameDatasetAmongLayers ), mRequest.timeout(), mRequest.requestMayBeNested() );
+    mConn = QgsOgrConnPool::instance()->acquireConnection( QgsOgrProviderUtils::connectionPoolId( mSource->mDataSource, mSource->mShareSameDatasetAmongLayers ),
+            mRequest.timeout(),
+            mRequest.requestMayBeNested(),
+            mRequest.feedback() );
     if ( !mConn || !mConn->ds )
     {
+      iteratorClosed();
       return;
     }
 
@@ -154,6 +160,7 @@ QgsOgrFeatureIterator::QgsOgrFeatureIterator( QgsOgrFeatureSource *source, bool 
   {
     QSet<int> attributeIndexes;
     const auto usedAttributeIndices = mRequest.orderBy().usedAttributeIndices( mSource->mFields );
+    attributeIndexes.reserve( usedAttributeIndices.size() );
     for ( int attrIdx : usedAttributeIndices )
     {
       attributeIndexes << attrIdx;
@@ -270,7 +277,6 @@ bool QgsOgrFeatureIterator::fetchFeatureWithId( QgsFeatureId id, QgsFeature &fea
   feature.setValid( false );
   gdal::ogr_feature_unique_ptr fet;
 
-#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(2,2,0)
   if ( mAllowResetReading && !QgsOgrProviderUtils::canDriverShareSameDatasetAmongLayers( mSource->mDriverName ) )
   {
     OGRLayerH nextFeatureBelongingLayer;
@@ -306,7 +312,6 @@ bool QgsOgrFeatureIterator::fetchFeatureWithId( QgsFeatureId id, QgsFeature &fea
     }
   }
   else
-#endif
   {
     fet.reset( OGR_L_GetFeature( mOgrLayer, FID_TO_NUMBER( id ) ) );
   }
@@ -348,7 +353,7 @@ bool QgsOgrFeatureIterator::fetchFeature( QgsFeature &feature )
   QMutexLocker locker( mSharedDS ? &mSharedDS->mutex() : nullptr );
 
   QgsCPLHTTPFetchOverrider oCPLHTTPFetcher( mAuthCfg, mInterruptionChecker );
-  QgsSetCPLHTTPFetchOverriderInitiatorClass( oCPLHTTPFetcher, QStringLiteral( "QgsOgrFeatureIterator" ) );
+  QgsSetCPLHTTPFetchOverriderInitiatorClass( oCPLHTTPFetcher, QStringLiteral( "QgsOgrFeatureIterator" ) )
 
   feature.setValid( false );
 
@@ -379,8 +384,6 @@ bool QgsOgrFeatureIterator::fetchFeature( QgsFeature &feature )
 
   // OSM layers (especially large ones) need the GDALDataset::GetNextFeature() call rather than OGRLayer::GetNextFeature()
   // see more details here: https://trac.osgeo.org/gdal/wiki/rfc66_randomlayerreadwrite
-
-#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(2,2,0)
   if ( !QgsOgrProviderUtils::canDriverShareSameDatasetAmongLayers( mSource->mDriverName ) )
   {
     OGRLayerH nextFeatureBelongingLayer;
@@ -393,7 +396,6 @@ bool QgsOgrFeatureIterator::fetchFeature( QgsFeature &feature )
     }
   }
   else
-#endif
   {
 
     while ( fet.reset( OGR_L_GetNextFeature( mOgrLayer ) ), fet )
@@ -415,13 +417,11 @@ void QgsOgrFeatureIterator::resetReading()
   {
     return;
   }
-#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(2,2,0)
   if ( !QgsOgrProviderUtils::canDriverShareSameDatasetAmongLayers( mSource->mDriverName ) )
   {
     GDALDatasetResetReading( mConn->ds );
   }
   else
-#endif
   {
     OGR_L_ResetReading( mOgrLayer );
   }
@@ -507,7 +507,7 @@ void QgsOgrFeatureIterator::getFeatureAttribute( OGRFeatureH ogrFet, QgsFeature 
   f.setAttribute( attindex, value );
 }
 
-bool QgsOgrFeatureIterator::readFeature( gdal::ogr_feature_unique_ptr fet, QgsFeature &feature ) const
+bool QgsOgrFeatureIterator::readFeature( const gdal::ogr_feature_unique_ptr &fet, QgsFeature &feature ) const
 {
   feature.setId( OGR_F_GetFID( fet.get() ) );
   feature.initAttributes( mSource->mFields.count() );
@@ -539,12 +539,12 @@ bool QgsOgrFeatureIterator::readFeature( gdal::ogr_feature_unique_ptr fet, QgsFe
     {
       // OK
     }
-    else if ( ( useIntersect && ( !feature.hasGeometry()
-                                  || ( mRequest.flags() & QgsFeatureRequest::ExactIntersect && !feature.geometry().intersects( mFilterRect ) )
-                                  || ( !( mRequest.flags() & QgsFeatureRequest::ExactIntersect ) && !feature.geometry().boundingBoxIntersects( mFilterRect ) )
-                                )
-              )
-              || ( geometryTypeFilter && ( !feature.hasGeometry() || QgsOgrProvider::ogrWkbSingleFlatten( ( OGRwkbGeometryType )feature.geometry().wkbType() ) != mSource->mOgrGeometryTypeFilter ) ) )
+    else if ( ( geometryTypeFilter && ( !feature.hasGeometry() || QgsOgrProviderUtils::ogrWkbSingleFlatten( ( OGRwkbGeometryType )feature.geometry().wkbType() ) != mSource->mOgrGeometryTypeFilter ) )
+              || ( useIntersect && ( !feature.hasGeometry()
+                                     || ( mRequest.flags() & QgsFeatureRequest::ExactIntersect && !feature.geometry().intersects( mFilterRect ) )
+                                     || ( !( mRequest.flags() & QgsFeatureRequest::ExactIntersect ) && !feature.geometry().boundingBoxIntersects( mFilterRect ) )
+                                   )
+                 ) )
     {
       return false;
     }
@@ -574,6 +574,12 @@ bool QgsOgrFeatureIterator::readFeature( gdal::ogr_feature_unique_ptr fet, QgsFe
     }
   }
 
+  if ( mRequest.flags() & QgsFeatureRequest::EmbeddedSymbols )
+  {
+    const QString styleString( OGR_F_GetStyleString( fet.get() ) );
+    feature.setEmbeddedSymbol( QgsOgrUtils::symbolFromStyleString( styleString, mSymbolType ).release() );
+  }
+
   return true;
 }
 
@@ -588,7 +594,7 @@ QgsOgrFeatureSource::QgsOgrFeatureSource( const QgsOgrProvider *p )
   , mEncoding( p->textEncoding() ) // no copying - this is a borrowed pointer from Qt
   , mFields( p->mAttributeFields )
   , mFirstFieldIsFid( p->mFirstFieldIsFid )
-  , mOgrGeometryTypeFilter( QgsOgrProvider::ogrWkbSingleFlatten( p->mOgrGeometryTypeFilter ) )
+  , mOgrGeometryTypeFilter( QgsOgrProviderUtils::ogrWkbSingleFlatten( p->mOgrGeometryTypeFilter ) )
   , mDriverName( p->mGDALDriverName )
   , mCrs( p->crs() )
   , mWkbType( p->wkbType() )

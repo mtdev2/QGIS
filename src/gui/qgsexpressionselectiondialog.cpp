@@ -101,7 +101,7 @@ void QgsExpressionSelectionDialog::setMapCanvas( QgsMapCanvas *canvas )
 void QgsExpressionSelectionDialog::mActionSelect_triggered()
 {
   mLayer->selectByExpression( mExpressionBuilder->expressionText(),
-                              QgsVectorLayer::SetSelection );
+                              Qgis::SelectBehavior::SetSelection );
   pushSelectedFeaturesMessage();
   saveRecent();
 }
@@ -109,7 +109,7 @@ void QgsExpressionSelectionDialog::mActionSelect_triggered()
 void QgsExpressionSelectionDialog::mActionAddToSelection_triggered()
 {
   mLayer->selectByExpression( mExpressionBuilder->expressionText(),
-                              QgsVectorLayer::AddToSelection );
+                              Qgis::SelectBehavior::AddToSelection );
   pushSelectedFeaturesMessage();
   saveRecent();
 }
@@ -117,7 +117,7 @@ void QgsExpressionSelectionDialog::mActionAddToSelection_triggered()
 void QgsExpressionSelectionDialog::mActionSelectIntersect_triggered()
 {
   mLayer->selectByExpression( mExpressionBuilder->expressionText(),
-                              QgsVectorLayer::IntersectSelection );
+                              Qgis::SelectBehavior::IntersectSelection );
   pushSelectedFeaturesMessage();
   saveRecent();
 }
@@ -125,7 +125,7 @@ void QgsExpressionSelectionDialog::mActionSelectIntersect_triggered()
 void QgsExpressionSelectionDialog::mActionRemoveFromSelection_triggered()
 {
   mLayer->selectByExpression( mExpressionBuilder->expressionText(),
-                              QgsVectorLayer::RemoveFromSelection );
+                              Qgis::SelectBehavior::RemoveFromSelection );
   pushSelectedFeaturesMessage();
   saveRecent();
 }
@@ -140,13 +140,13 @@ void QgsExpressionSelectionDialog::pushSelectedFeaturesMessage()
   {
     mMessageBar->pushMessage( QString(),
                               tr( "%n matching feature(s) selected", "matching features", count ),
-                              Qgis::Info );
+                              Qgis::MessageLevel::Info );
   }
   else
   {
     mMessageBar->pushMessage( QString(),
                               tr( "No matching features found" ),
-                              Qgis::Info );
+                              Qgis::MessageLevel::Info );
   }
 }
 
@@ -186,14 +186,14 @@ void QgsExpressionSelectionDialog::mButtonZoomToFeatures_clicked()
     {
       mMessageBar->pushMessage( QString(),
                                 tr( "Zoomed to %n matching feature(s)", "number of matching features", featureCount ),
-                                Qgis::Info );
+                                Qgis::MessageLevel::Info );
     }
   }
   else if ( mMessageBar )
   {
     mMessageBar->pushMessage( QString(),
                               tr( "No matching features found" ),
-                              Qgis::Info );
+                              Qgis::MessageLevel::Info );
   }
   saveRecent();
 }

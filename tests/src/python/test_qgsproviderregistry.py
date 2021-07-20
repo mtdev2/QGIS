@@ -12,12 +12,32 @@ __copyright__ = 'Copyright 2020, The QGIS Project'
 
 import qgis  # NOQA
 
-from qgis.core import QgsProviderRegistry
+from qgis.core import (
+    QgsProviderRegistry,
+    QgsMapLayerType,
+    QgsProviderMetadata,
+    QgsProviderSublayerDetails,
+    Qgis
+)
 from qgis.testing import start_app, unittest
 
 # Convenience instances in case you may need them
 # to find the srs.db
 start_app()
+
+
+class TestProviderMetadata(QgsProviderMetadata):
+    """
+    Test metadata
+    """
+
+    def __init__(self, key):
+        super().__init__(key, key)
+
+    def querySublayers(self, uri: str, flags=Qgis.SublayerQueryFlags(), feedback=None):
+        res = QgsProviderSublayerDetails()
+        res.setProviderKey(self.key())
+        return [res]
 
 
 class TestQgsProviderRegistry(unittest.TestCase):
@@ -90,6 +110,33 @@ class TestQgsProviderRegistry(unittest.TestCase):
 
         self.assertEqual(parts[1], 'All Files (*.*)')
         self.assertIn('Entwine Point Clouds (ept.json EPT.JSON)', parts)
+
+    def testUnusableUriDetails(self):
+        """
+        Test retrieving user-friendly details about an unusable URI
+        """
+        res, details = QgsProviderRegistry.instance().handleUnusableUri('')
+        self.assertFalse(res)
+        res, details = QgsProviderRegistry.instance().handleUnusableUri('/home/me/test.png')
+        self.assertFalse(res)
+        res, details = QgsProviderRegistry.instance().handleUnusableUri('/home/me/test.las')
+        self.assertTrue(res)
+        self.assertIn('LAS', details.warning)
+        res, details = QgsProviderRegistry.instance().handleUnusableUri('/home/me/test.laz')
+        self.assertTrue(res)
+        self.assertIn('LAZ', details.warning)
+
+    def testSublayerDetails(self):
+        provider1 = TestProviderMetadata('p1')
+        provider2 = TestProviderMetadata('p2')
+
+        self.assertFalse(QgsProviderRegistry.instance().querySublayers('test_uri'))
+
+        self.assertTrue(QgsProviderRegistry.instance().registerProvider(provider1))
+        self.assertTrue(QgsProviderRegistry.instance().registerProvider(provider2))
+
+        self.assertCountEqual([p.providerKey() for p in QgsProviderRegistry.instance().querySublayers('test_uri')],
+                              ['p1', 'p2'])
 
 
 if __name__ == '__main__':

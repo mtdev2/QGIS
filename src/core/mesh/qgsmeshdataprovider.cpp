@@ -44,6 +44,8 @@ void QgsMeshDataProvider::setTemporalUnit( QgsUnitTypes::TemporalUnit unit )
     reloadData();
 }
 
+QgsMeshDriverMetadata QgsMeshDataProvider::driverMetadata() const { return QgsMeshDriverMetadata();}
+
 QgsMeshDatasetIndex QgsMeshDatasetSourceInterface::datasetIndexAtTime(
   const QDateTime &referenceTime,
   int groupIndex, quint64 time,
@@ -71,7 +73,7 @@ QgsMeshDatasetIndex QgsMeshDatasetSourceInterface::datasetIndexAtTime(
 }
 
 QgsMeshDatasetSourceInterface::QgsMeshDatasetSourceInterface():
-  mTemporalCapabilities( qgis::make_unique<QgsMeshDataProviderTemporalCapabilities>() ) {}
+  mTemporalCapabilities( std::make_unique<QgsMeshDataProviderTemporalCapabilities>() ) {}
 
 int QgsMeshDatasetSourceInterface::datasetCount( QgsMeshDatasetIndex index ) const
 {

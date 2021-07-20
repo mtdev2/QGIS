@@ -19,6 +19,7 @@
 
 #include <limits>
 #include <QRegExpValidator>
+#include <QRegularExpression>
 #include <QLocale>
 #include "qgis_gui.h"
 
@@ -71,6 +72,12 @@ QgsDoubleValidator::QgsDoubleValidator( int decimal, QObject *parent )
 {
   // The regular expression accept double with point as decimal point but also the locale decimal point
   QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( QString::number( decimal ) ) );
+  setRegularExpression( reg );
+}
+
+void QgsDoubleValidator::setMaxDecimals( int maxDecimals )
+{
+  QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( QString::number( maxDecimals ) ) );
   setRegularExpression( reg );
 }
 

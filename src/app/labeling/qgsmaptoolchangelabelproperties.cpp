@@ -111,6 +111,7 @@ void QgsMapToolChangeLabelProperties::canvasReleaseEvent( QgsMapMouseEvent *e )
                               labeltext,
                               mCurrentLabel.pos.isPinned,
                               mCurrentLabel.settings,
+                              mCanvas,
                               nullptr );
     d.setMapCanvas( canvas() );
 
@@ -122,6 +123,11 @@ void QgsMapToolChangeLabelProperties::canvasReleaseEvent( QgsMapMouseEvent *e )
 
     deleteRubberBands();
   }
+}
+
+void QgsMapToolChangeLabelProperties::cadCanvasMoveEvent( QgsMapMouseEvent *e )
+{
+  updateHoveredLabel( e );
 }
 
 void QgsMapToolChangeLabelProperties::applyChanges( const QgsAttributeMap &changes )

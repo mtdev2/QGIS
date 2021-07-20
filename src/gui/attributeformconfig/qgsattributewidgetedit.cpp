@@ -100,11 +100,14 @@ QgsAttributeWidgetRelationEditWidget::QgsAttributeWidgetRelationEditWidget( QWid
     it.next();
     mWidgetTypeComboBox->addItem( it.value()->name(), it.key() );
   }
+
+  connect( mRelationCardinalityCombo, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsAttributeWidgetRelationEditWidget::relationCardinalityComboCurrentIndexChanged );
 }
 
 void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const QgsAttributesFormProperties::RelationEditorConfiguration &config, const QString &relationId )
 {
   //load the combo mRelationCardinalityCombo
+  mRelationCardinalityCombo->clear();
   setCardinalityCombo( tr( "Many to one relation" ) );
 
   QgsRelation relation = QgsProject::instance()->relationManager()->relation( relationId );
@@ -123,7 +126,9 @@ void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const
   }
 
   int widgetTypeIdx = mWidgetTypeComboBox->findData( config.mRelationWidgetType );
-  mWidgetTypeComboBox->setCurrentIndex( widgetTypeIdx >= 0 ? widgetTypeIdx : 0 );
+  mWidgetTypeComboBox->setCurrentIndex( widgetTypeIdx >= 0
+                                        ? widgetTypeIdx
+                                        : mWidgetTypeComboBox->findData( QgsGui::relationWidgetRegistry()->defaultWidgetType() ) );
 
   const QString widgetType = mWidgetTypeComboBox->currentData().toString();
   mConfigWidget = QgsGui::relationWidgetRegistry()->createConfigWidget( widgetType, relation, this );
@@ -161,6 +166,18 @@ QgsAttributesFormProperties::RelationEditorConfiguration QgsAttributeWidgetRelat
   relEdCfg.forceSuppressFormPopup = mRelationForceSuppressFormPopupCheckBox->isChecked();
   relEdCfg.label = mRelationLabelEdit->text();
   return relEdCfg;
+}
+
+void QgsAttributeWidgetRelationEditWidget::relationCardinalityComboCurrentIndexChanged( int index )
+{
+  if ( index < 0 )
+    return;
+
+  if ( !mConfigWidget )
+    return;
+
+  QgsRelation nmRelation = QgsProject::instance()->relationManager()->relation( mRelationCardinalityCombo->currentData().toString() );
+  mConfigWidget->setNmRelation( nmRelation );
 }
 
 void QgsAttributeWidgetRelationEditWidget::setCardinalityCombo( const QString &cardinalityComboItem, const QVariant &auserData )

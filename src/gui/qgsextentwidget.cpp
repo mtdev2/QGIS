@@ -208,10 +208,10 @@ void QgsExtentWidget::setOutputExtent( const QgsRectangle &r, const QgsCoordinat
   mYMinLineEdit->setText( QLocale().toString( extent.yMinimum(), 'f', decimals ) );
   mYMaxLineEdit->setText( QLocale().toString( extent.yMaximum(), 'f', decimals ) );
 
-  QString condensed = QStringLiteral( "%1,%2,%3,%4" ).arg( mXMinLineEdit->text(),
-                      mXMaxLineEdit->text(),
-                      mYMinLineEdit->text(),
-                      mYMaxLineEdit->text() );
+  QString condensed = QStringLiteral( "%1,%2,%3,%4" ).arg( QString::number( extent.xMinimum(), 'f', decimals ),
+                      QString::number( extent.xMaximum(), 'f', decimals ),
+                      QString::number( extent.yMinimum(), 'f', decimals ),
+                      QString::number( extent.yMaximum(), 'f', decimals ) );
   condensed += QStringLiteral( " [%1]" ).arg( mOutputCrs.userFriendlyIdentifier( QgsCoordinateReferenceSystem::ShortString ) );
   mCondensedLineEdit->setText( condensed );
 
@@ -241,10 +241,11 @@ void QgsExtentWidget::setOutputExtentFromCondensedLineEdit()
     const QRegularExpressionMatch match = mCondensedRe.match( text );
     if ( match.hasMatch() )
     {
-      whileBlocking( mXMinLineEdit )->setText( match.captured( 1 ) );
-      whileBlocking( mXMaxLineEdit )->setText( match.captured( 2 ) );
-      whileBlocking( mYMinLineEdit )->setText( match.captured( 3 ) );
-      whileBlocking( mYMaxLineEdit )->setText( match.captured( 4 ) );
+      // Localization
+      whileBlocking( mXMinLineEdit )->setText( QLocale().toString( match.captured( 1 ).toDouble() ) );
+      whileBlocking( mXMaxLineEdit )->setText( QLocale().toString( match.captured( 2 ).toDouble() ) );
+      whileBlocking( mYMinLineEdit )->setText( QLocale().toString( match.captured( 3 ).toDouble() ) );
+      whileBlocking( mYMaxLineEdit )->setText( QLocale().toString( match.captured( 4 ).toDouble() ) );
       if ( !match.captured( 5 ).isEmpty() )
       {
         mOutputCrs = QgsCoordinateReferenceSystem( match.captured( 5 ) );

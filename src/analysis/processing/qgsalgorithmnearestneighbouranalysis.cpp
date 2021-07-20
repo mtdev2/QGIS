@@ -17,6 +17,7 @@
 
 #include "qgsalgorithmnearestneighbouranalysis.h"
 #include "qgsapplication.h"
+#include <QTextStream>
 
 ///@cond PRIVATE
 
@@ -116,7 +117,7 @@ QVariantMap QgsNearestNeighbourAnalysisAlgorithm::processAlgorithm( const QVaria
     feedback->setProgress( i * step );
   }
 
-  int count = source->featureCount() > 0 ? source->featureCount() : 1;
+  long long count = source->featureCount() > 0 ? source->featureCount() : 1;
   double observedDistance = sumDist / count;
   double expectedDistance = 0.5 / std::sqrt( count / area );
   double nnIndex = observedDistance / expectedDistance;
@@ -133,9 +134,12 @@ QVariantMap QgsNearestNeighbourAnalysisAlgorithm::processAlgorithm( const QVaria
   if ( !outputFile.isEmpty() )
   {
     QFile file( outputFile );
-    if ( file.open( QIODevice::WriteOnly | QIODevice::Text ) )
+    if ( file.open( QIODevice::WriteOnly | QIODevice::Truncate ) )
     {
       QTextStream out( &file );
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+      out.setCodec( "UTF-8" );
+#endif
       out << QStringLiteral( "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\"/></head><body>\n" );
       out << QObject::tr( "<p>Observed mean distance: %1</p>\n" ).arg( observedDistance, 0, 'f', 11 );
       out << QObject::tr( "<p>Expected mean distance: %1</p>\n" ).arg( expectedDistance, 0, 'f', 11 );

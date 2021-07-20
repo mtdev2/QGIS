@@ -25,11 +25,13 @@
 #include "qgsvectorlayer.h"
 #include "qgsexpressioncontextutils.h"
 #include "qgslogger.h"
+#include "qgsstringutils.h"
 
 #include <QColor>
 #include <QStringList>
 #include <QTextStream>
 #include <QObject>
+#include <QRegularExpression>
 
 #ifndef Q_OS_WIN
 #include <netinet/in.h>
@@ -2679,8 +2681,13 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 static QString mapBinarySpatialToOgc( const QString &name )
 {
   QString nameCompare( name );
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 2)
   if ( name.size() > 3 && name.midRef( 0, 3 ).compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
     nameCompare = name.mid( 3 );
+#else
+  if ( name.size() > 3 && QStringView {name}.mid( 0, 3 ).toString().compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
+    nameCompare = name.mid( 3 );
+#endif
   QStringList spatialOps;
   spatialOps << QStringLiteral( "BBOX" ) << QStringLiteral( "Intersects" ) << QStringLiteral( "Contains" ) << QStringLiteral( "Crosses" ) << QStringLiteral( "Equals" )
              << QStringLiteral( "Disjoint" ) << QStringLiteral( "Overlaps" ) << QStringLiteral( "Touches" ) << QStringLiteral( "Within" );
@@ -2696,8 +2703,13 @@ static QString mapBinarySpatialToOgc( const QString &name )
 static QString mapTernarySpatialToOgc( const QString &name )
 {
   QString nameCompare( name );
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 2)
   if ( name.size() > 3 && name.midRef( 0, 3 ).compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
     nameCompare = name.mid( 3 );
+#else
+  if ( name.size() > 3 && QStringView {name}.mid( 0, 3 ).compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
+    nameCompare = name.mid( 3 );
+#endif
   if ( nameCompare.compare( QLatin1String( "DWithin" ), Qt::CaseInsensitive ) == 0 )
     return QStringLiteral( "DWithin" );
   if ( nameCompare.compare( QLatin1String( "Beyond" ), Qt::CaseInsensitive ) == 0 )
@@ -3298,12 +3310,15 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
         {
           oprValue.replace( 0, 1, QStringLiteral( "%" ) );
         }
-        QRegExp rx( "[^" + QRegExp::escape( escape ) + "](" + QRegExp::escape( wildCard ) + ")" );
-        int pos = 0;
-        while ( ( pos = rx.indexIn( oprValue, pos ) ) != -1 )
+        const QRegularExpression rx( "[^" + QgsStringUtils::qRegExpEscape( escape ) + "](" + QgsStringUtils::qRegExpEscape( wildCard ) + ")" );
+        QRegularExpressionMatch match = rx.match( oprValue );
+        int pos;
+        while ( match.hasMatch() )
         {
+          pos = match.capturedStart();
           oprValue.replace( pos + 1, 1, QStringLiteral( "%" ) );
           pos += 1;
+          match = rx.match( oprValue, pos );
         }
         oprValue.replace( escape + wildCard, wildCard );
       }
@@ -3314,12 +3329,15 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
         {
           oprValue.replace( 0, 1, QStringLiteral( "_" ) );
         }
-        QRegExp rx( "[^" + QRegExp::escape( escape ) + "](" + QRegExp::escape( singleChar ) + ")" );
-        int pos = 0;
-        while ( ( pos = rx.indexIn( oprValue, pos ) ) != -1 )
+        const QRegularExpression rx( "[^" + QgsStringUtils::qRegExpEscape( escape ) + "](" + QgsStringUtils::qRegExpEscape( singleChar ) + ")" );
+        QRegularExpressionMatch match = rx.match( oprValue );
+        int pos;
+        while ( match.hasMatch() )
         {
+          pos = match.capturedStart();
           oprValue.replace( pos + 1, 1, QStringLiteral( "_" ) );
           pos += 1;
+          match = rx.match( oprValue, pos );
         }
         oprValue.replace( escape + singleChar, singleChar );
       }

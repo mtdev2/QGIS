@@ -201,7 +201,7 @@ void QgsHistogramWidget::drawHistogram()
 
   // make colors list
   mHistoColors.clear();
-  for ( const QgsRendererRange &range : qgis::as_const( mRanges ) )
+  for ( const QgsRendererRange &range : std::as_const( mRanges ) )
   {
     mHistoColors << ( range.symbol() ? range.symbol()->color() : Qt::black );
   }
@@ -248,13 +248,13 @@ void QgsHistogramWidget::drawHistogram()
   plotHistogram->attach( mpPlot );
 
   mRangeMarkers.clear();
-  for ( const QgsRendererRange &range : qgis::as_const( mRanges ) )
+  for ( const QgsRendererRange &range : std::as_const( mRanges ) )
   {
     QwtPlotMarker *rangeMarker = new QwtPlotMarker();
     rangeMarker->attach( mpPlot );
     rangeMarker->setLineStyle( QwtPlotMarker::VLine );
     rangeMarker->setXValue( range.upperValue() );
-    rangeMarker->setLabel( QString::number( range.upperValue() ) );
+    rangeMarker->setLabel( QLocale().toString( range.upperValue() ) );
     rangeMarker->setLabelOrientation( Qt::Vertical );
     rangeMarker->setLabelAlignment( Qt::AlignLeft | Qt::AlignTop );
     rangeMarker->show();

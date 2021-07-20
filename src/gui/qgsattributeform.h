@@ -22,7 +22,6 @@
 #include "qgseditorwidgetwrapper.h"
 
 #include <QWidget>
-#include <QSvgWidget>
 #include <QLabel>
 #include <QDialogButtonBox>
 #include "qgis_gui.h"
@@ -36,6 +35,7 @@ class QgsWidgetWrapper;
 class QgsTabWidget;
 class QgsAttributeFormWidget;
 class QgsRelationWidgetWrapper;
+class QSvgWidget;
 
 /**
  * \ingroup gui
@@ -331,6 +331,11 @@ class GUI_EXPORT QgsAttributeForm : public QWidget
      */
     void parentFormValueChanged( const QString &attribute, const QVariant &newValue );
 
+    /**
+     * Returns TRUE if any of the form widgets need feature geometry
+     * \since QGIS 3.20
+     */
+    bool needsGeometry() const;
 
   private slots:
     void onAttributeChanged( const QVariant &value, const QVariantList &additionalFieldValues );
@@ -340,7 +345,7 @@ class GUI_EXPORT QgsAttributeForm : public QWidget
     void onConstraintStatusChanged( const QString &constraint,
                                     const QString &description, const QString &err, QgsEditorWidgetWrapper::ConstraintResult result );
     void preventFeatureRefresh();
-    void synchronizeEnabledState();
+    void synchronizeState();
     void layerSelectionChanged();
 
     //! Save multi edit changes
@@ -409,7 +414,7 @@ class GUI_EXPORT QgsAttributeForm : public QWidget
 
     void clearMultiEditMessages();
     void pushSelectedFeaturesMessage();
-    void runSearchSelect( QgsVectorLayer::SelectBehavior behavior );
+    void runSearchSelect( Qgis::SelectBehavior behavior );
 
     QString createFilterExpression() const;
 
@@ -448,6 +453,9 @@ class GUI_EXPORT QgsAttributeForm : public QWidget
     bool mValuesInitialized = false;
     bool mDirty = false;
     bool mIsSettingFeature = false;
+
+    bool mValidConstraints = true;
+    QgsMessageBarItem *mConstraintsFailMessageBarItem = nullptr;
 
     struct ContainerInformation
     {
@@ -513,9 +521,10 @@ class GUI_EXPORT QgsAttributeForm : public QWidget
     //! List of updated fields to avoid recursion on the setting of defaultValues
     QList<int> mAlreadyUpdatedFields;
 
+    bool mNeedsGeometry = false;
+
     friend class TestQgsDualView;
     friend class TestQgsAttributeForm;
 };
 
 #endif // QGSATTRIBUTEFORM_H
-
