@@ -17,24 +17,25 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgsexpressioncontext.h"
 
+#include <QDomDocument>
 #include <QString>
 #include <QVariantMap>
-#include <QDomDocument>
-
 
 class QgsReadWriteContext;
 
 /**
  * \ingroup core
- * A context for numeric formats
+ * \brief A context for numeric formats.
  *
  * \since QGIS 3.12
  */
 class CORE_EXPORT QgsNumericFormatContext
 {
-  public:
+    Q_GADGET
 
+  public:
     /**
      * Constructor for QgsNumericFormatContext.
      *
@@ -42,146 +43,150 @@ class CORE_EXPORT QgsNumericFormatContext
      */
     QgsNumericFormatContext();
 
-
     /**
      * Returns the thousands separator character.
      *
      * \see setThousandsSeparator()
      */
-    QChar thousandsSeparator() const
-    {
-      return mThousandsSep;
-    }
+    QChar thousandsSeparator() const { return mThousandsSep; }
 
     /**
      * Sets the thousands \a separator character.
      *
      * \see thousandsSeparator()
      */
-    void setThousandsSeparator( const QChar &separator )
-    {
-      mThousandsSep = separator;
-    }
+    void setThousandsSeparator( const QChar &separator ) { mThousandsSep = separator; }
 
     /**
      * Returns the decimal separator character.
      *
      * \see setDecimalSeparator()
      */
-    QChar decimalSeparator() const
-    {
-      return mDecimalSep;
-    }
+    QChar decimalSeparator() const { return mDecimalSep; }
 
     /**
      * Returns the decimal separator character.
      *
      * \see setDecimalSeparator()
      */
-    void setDecimalSeparator( const QChar &separator )
-    {
-      mDecimalSep = separator;
-    }
+    void setDecimalSeparator( const QChar &separator ) { mDecimalSep = separator; }
 
     /**
      * Returns the percent character.
      *
      * \see setPercent()
      */
-    QChar percent() const
-    {
-      return mPercent;
-    }
+    QChar percent() const { return mPercent; }
 
     /**
      * Sets the percent \a character.
      *
      * \see percent()
      */
-    void setPercent( const QChar &character )
-    {
-      mPercent = character;
-    }
+    void setPercent( const QChar &character ) { mPercent = character; }
 
     /**
      * Returns the zero digit character.
      *
      * \see setZeroDigit()
      */
-    QChar zeroDigit() const
-    {
-      return mZeroDigit;
-    }
+    QChar zeroDigit() const { return mZeroDigit; }
 
     /**
      * Returns the zero digit \a character.
      *
      * \see zeroDigit()
      */
-    void setZeroDigit( const QChar &character )
-    {
-      mZeroDigit = character;
-    }
+    void setZeroDigit( const QChar &character ) { mZeroDigit = character; }
 
     /**
      * Returns the negative sign character.
      *
      * \see setNegativeSign()
      */
-    QChar negativeSign() const
-    {
-      return mNegativeSign;
-    }
+    QChar negativeSign() const { return mNegativeSign; }
 
     /**
      * Sets the negative sign \a character.
      *
      * \see negativeSign()
      */
-    void setNegativeSign( const QChar &character )
-    {
-      mNegativeSign = character;
-    }
+    void setNegativeSign( const QChar &character ) { mNegativeSign = character; }
 
     /**
      * Returns the positive sign character.
      *
      * \see setPositiveSign()
      */
-    QChar positiveSign() const
-    {
-      return mPositiveSign;
-    }
+    QChar positiveSign() const { return mPositiveSign; }
 
     /**
      * Sets the positive sign \a character.
      *
      * \see positiveSign()
      */
-    void setPositiveSign( const QChar &character )
-    {
-      mPositiveSign = character;
-    }
+    void setPositiveSign( const QChar &character ) { mPositiveSign = character; }
 
     /**
      * Returns the exponential character.
      *
      * \see setExponential()
      */
-    QChar exponential() const
-    {
-      return mExponential;
-    }
+    QChar exponential() const { return mExponential; }
 
     /**
      * Sets the exponential \a character.
      *
      * \see exponential()
      */
-    void setExponential( const QChar &character )
+    void setExponential( const QChar &character ) { mExponential = character; }
+
+    /**
+     * Interpretation of numeric values.
+     *
+     * \since QGIS 3.26
+     */
+    enum class Interpretation
     {
-      mExponential = character;
-    }
+      Generic,   //!< Generic
+      Latitude,  //!< Latitude values
+      Longitude, //!< Longitude values
+    };
+    Q_ENUM( Interpretation )
+
+    /**
+     * Returns the interpretation of the numbers being converted.
+     *
+     * \see setInterpretation()
+     *
+     * \since QGIS 3.26
+     */
+    Interpretation interpretation() const { return mInterpretation; }
+
+    /**
+     * Sets the \a interpretation of the numbers being converted.
+     *
+     * \see interpretation()
+     *
+     * \since QGIS 3.26
+     */
+    void setInterpretation( Interpretation interpretation ) { mInterpretation = interpretation; }
+
+    /**
+     * Returns the expression context to use when evaluating QgsExpressions.
+     *
+     * \see setExpressionContext()
+     * \since QGIS 3.40
+     */
+    QgsExpressionContext expressionContext() const;
+
+    /**
+     * Sets the expression \a context to use when evaluating QgsExpressions.
+     *
+     * \see expressionContext()
+     * \since QGIS 3.40
+     */
+    void setExpressionContext( const QgsExpressionContext &context );
 
   private:
     QChar mThousandsSep;
@@ -191,9 +196,14 @@ class CORE_EXPORT QgsNumericFormatContext
     QChar mNegativeSign;
     QChar mPositiveSign;
     QChar mExponential;
+
+    Interpretation mInterpretation = Interpretation::Generic;
+
+    QgsExpressionContext mExpressionContext;
 };
 
 #ifdef SIP_RUN
+// clang-format off
 % ModuleHeaderCode
 #include <qgsbasicnumericformat.h>
 #include <qgsbearingnumericformat.h>
@@ -201,26 +211,31 @@ class CORE_EXPORT QgsNumericFormatContext
 #include <qgsfallbacknumericformat.h>
 #include <qgspercentagenumericformat.h>
 #include <qgsscientificnumericformat.h>
+#include <qgscoordinatenumericformat.h>
+#include <qgsexpressionbasednumericformat.h>
 % End
+// clang-format on
 #endif
 
-/**
+  /**
  * \ingroup core
- * A numeric formatter allows for formatting a numeric value for display, using
- * a variety of different formatting techniques (e.g. as scientific notation, currency values,
- * percentage values, etc)
+ * \brief Abstract base class for numeric formatters, which allow for formatting a numeric value for display.
+ *
+ * Numeric formatters use a variety of different formatting techniques
+ * (e.g. as scientific notation, currency values, percentage values, etc).
  *
  * This is an abstract base class and will always need to be subclassed.
  *
  * \since QGIS 3.12
  */
-class CORE_EXPORT QgsNumericFormat
+  class CORE_EXPORT QgsNumericFormat
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( dynamic_cast< QgsBearingNumericFormat * >( sipCpp ) )
       sipType = sipType_QgsBearingNumericFormat;
+    else if ( dynamic_cast< QgsGeographicCoordinateNumericFormat * >( sipCpp ) )
+      sipType = sipType_QgsGeographicCoordinateNumericFormat;
     else if ( dynamic_cast< QgsFallbackNumericFormat * >( sipCpp ) )
       sipType = sipType_QgsFallbackNumericFormat;
     else if ( dynamic_cast< QgsPercentageNumericFormat * >( sipCpp ) )
@@ -233,16 +248,15 @@ class CORE_EXPORT QgsNumericFormat
       sipType = sipType_QgsBasicNumericFormat;
     else if ( dynamic_cast< QgsFractionNumericFormat * >( sipCpp ) )
       sipType = sipType_QgsFractionNumericFormat;
+    else if ( dynamic_cast< QgsExpressionBasedNumericFormat * >( sipCpp ) )
+      sipType = sipType_QgsExpressionBasedNumericFormat;
     else
       sipType = NULL;
-    SIP_END
+  SIP_END
 #endif
 
   public:
 
-    /**
-      * Default constructor
-      */
     QgsNumericFormat() = default;
 
     virtual ~QgsNumericFormat() = default;
@@ -305,6 +319,8 @@ class CORE_EXPORT QgsNumericFormat
     bool operator==( const QgsNumericFormat &other ) const;
     bool operator!=( const QgsNumericFormat &other ) const;
 
+  protected:
+    static constexpr int DEFAULT_SORT_KEY = 100;
 };
 
 #endif // QGSNUMERICFORMAT_H

@@ -17,15 +17,26 @@
 
 #include "qgslogger.h"
 
+#include <QString>
+
+#include "moc_qgstabwidget.cpp"
+
+using namespace Qt::StringLiterals;
+
 QgsTabWidget::QgsTabWidget( QWidget *parent )
   : QTabWidget( parent )
 {
+  QgsTabBar *qgsTabBar = new QgsTabBar( this );
+  setTabBar( qgsTabBar );
+  mTabBarStyle = new QgsTabBarProxyStyle( tabBar() );
+  qgsTabBar->setTabBarStyle( mTabBarStyle );
+  setStyle( mTabBarStyle );
 }
 
 void QgsTabWidget::hideTab( QWidget *tab )
 {
-  QgsDebugMsg( QStringLiteral( "Hide" ) );
-  TabInformation &info = mTabs[ realTabIndex( tab )];
+  QgsDebugMsgLevel( u"Hide"_s, 3 );
+  TabInformation &info = mTabs[realTabIndex( tab )];
   if ( info.visible )
   {
     mSetTabVisibleFlag = true;
@@ -37,9 +48,9 @@ void QgsTabWidget::hideTab( QWidget *tab )
 
 void QgsTabWidget::showTab( QWidget *tab )
 {
-  QgsDebugMsg( QStringLiteral( "Show" ) );
-  TabInformation &info = mTabs[ realTabIndex( tab )];
-  if ( ! info.visible )
+  QgsDebugMsgLevel( u"Show"_s, 3 );
+  TabInformation &info = mTabs[realTabIndex( tab )];
+  if ( !info.visible )
   {
     mSetTabVisibleFlag = true;
     insertTab( info.sourceIndex + 1, info.widget, info.label );
@@ -67,6 +78,11 @@ int QgsTabWidget::realTabIndex( QWidget *widget )
     ++realIndex;
   }
   return -1;
+}
+
+void QgsTabWidget::setTabStyle( int tabIndex, const QgsAttributeEditorElement::LabelStyle &labelStyle )
+{
+  mTabBarStyle->addStyle( tabIndex, labelStyle );
 }
 
 void QgsTabWidget::tabInserted( int index )
@@ -125,7 +141,7 @@ void QgsTabWidget::tabRemoved( int index )
 
 void QgsTabWidget::synchronizeIndexes()
 {
-  QgsDebugMsg( QStringLiteral( "---------" ) );
+  QgsDebugMsgLevel( u"---------"_s, 3 );
   int i = -1;
   QWidget *nextWidget = widget( 0 );
 
@@ -139,7 +155,7 @@ void QgsTabWidget::synchronizeIndexes()
       nextWidget = widget( i + 1 );
     }
     it->sourceIndex = i;
-    QgsDebugMsg( QStringLiteral( "Tab %1 (%2): %3" ).arg( it->sourceIndex ).arg( it->label ).arg( i ) );
+    QgsDebugMsgLevel( u"Tab %1 (%2): %3"_s.arg( it->sourceIndex ).arg( it->label ).arg( i ), 3 );
   }
 }
 
@@ -154,7 +170,12 @@ QgsTabWidget::TabInformation QgsTabWidget::tabInfo( QWidget *widget )
   return TabInformation();
 }
 
-bool QgsTabWidget::TabInformation::operator ==( const QgsTabWidget::TabInformation &other )
+bool QgsTabWidget::TabInformation::operator==( const QgsTabWidget::TabInformation &other ) const
 {
   return other.widget == widget && other.sourceIndex == sourceIndex;
+}
+
+bool QgsTabWidget::TabInformation::operator!=( const TabInformation &other ) const
+{
+  return !( *this == other );
 }

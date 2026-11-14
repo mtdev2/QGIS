@@ -17,9 +17,10 @@
 #ifndef QGSHANAEXCEPTION_H
 #define QGSHANAEXCEPTION_H
 
-#include "qexception.h"
-#include "qgslogger.h"
 #include "qgshanautils.h"
+#include "qgslogger.h"
+
+#include <qexception.h>
 
 class QgsHanaException final : public QException
 {
@@ -27,29 +28,23 @@ class QgsHanaException final : public QException
     explicit QgsHanaException( const QString &what ) noexcept
       : mMessage( QgsHanaUtils::formatErrorMessage( what.toStdString().c_str() ).toStdString() )
     {
-      QgsDebugMsg( what );
+      QgsDebugError( what );
     }
 
     explicit QgsHanaException( const char *what ) noexcept
       : mMessage( QgsHanaUtils::formatErrorMessage( what ).toStdString() )
     {
-      QgsDebugMsg( what );
+      QgsDebugError( what );
     }
 
-    void raise() const override  { throw *this;  }
+    void raise() const override { throw *this; }
 
-    QgsHanaException *clone() const override
-    {
-      return new QgsHanaException( *this );
-    }
+    QgsHanaException *clone() const override { return new QgsHanaException( *this ); }
 
-    char const *what() const noexcept override
-    {
-      return mMessage.c_str();
-    }
+    char const *what() const noexcept override { return mMessage.c_str(); }
 
   private:
     std::string mMessage;
 };
 
-#endif  // QGSHANAEXCEPTION_H
+#endif // QGSHANAEXCEPTION_H

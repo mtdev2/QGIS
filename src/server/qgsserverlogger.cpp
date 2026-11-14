@@ -17,6 +17,8 @@
 
 #include "qgsserverlogger.h"
 
+#include "moc_qgsserverlogger.cpp"
+
 QgsServerLogger *QgsServerLogger::sInstance = nullptr;
 
 QgsServerLogger *QgsServerLogger::instance()
@@ -30,8 +32,7 @@ QgsServerLogger *QgsServerLogger::instance()
 
 QgsServerLogger::QgsServerLogger()
   : QgsMessageLogConsole()
-{
-}
+{}
 
 void QgsServerLogger::logMessage( const QString &message, const QString &tag, Qgis::MessageLevel level )
 {
@@ -41,7 +42,7 @@ void QgsServerLogger::logMessage( const QString &message, const QString &tag, Qg
   }
   if ( mLogFile.isOpen() )
   {
-    QString formattedMessage = formatLogMessage( message, tag, level );
+    const QString formattedMessage = formatLogMessage( message, tag, level );
     mTextStream << formattedMessage;
     mTextStream.flush();
   }
@@ -49,6 +50,12 @@ void QgsServerLogger::logMessage( const QString &message, const QString &tag, Qg
   {
     QgsMessageLogConsole::logMessage( message, tag, level );
   }
+}
+
+void QgsServerLogger::logMessage( const QString &message, const QString &tag, Qgis::MessageLevel level, Qgis::StringFormat format )
+{
+  ( void ) format;
+  logMessage( message, tag, level );
 }
 
 void QgsServerLogger::setLogLevel( const Qgis::MessageLevel level )
@@ -62,7 +69,7 @@ void QgsServerLogger::setLogFile( const QString &filename )
   mLogFile.close();
   mLogFile.setFileName( filename );
 
-  if ( ( ! filename.isEmpty() ) && mLogFile.open( QIODevice::Append ) )
+  if ( ( !filename.isEmpty() ) && mLogFile.open( QIODevice::Append ) )
   {
     mTextStream.setDevice( &mLogFile );
   }

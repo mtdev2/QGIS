@@ -21,13 +21,18 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgshttpheaders.h"
 #include "qgswkbtypes.h"
 
 #include <QMap>
+#include <QSet>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
- * Class for storing the component parts of a RDBMS data source URI (e.g. a Postgres data source).
+ * \brief Stores the component parts of a data source URI (e.g. a Postgres data source).
  *
  * This structure stores the database connection information, including host, database,
  * user name, password, schema, password, and SQL where clause.
@@ -36,7 +41,6 @@ class CORE_EXPORT QgsDataSourceUri
 {
     Q_GADGET
   public:
-
     /**
      * Available SSL connection modes.
      */
@@ -133,23 +137,14 @@ class CORE_EXPORT QgsDataSourceUri
     /**
      * Sets all connection related members at once.
      */
-    void setConnection( const QString &aHost,
-                        const QString &aPort,
-                        const QString &aDatabase,
-                        const QString &aUsername,
-                        const QString &aPassword,
-                        SslMode sslmode = SslPrefer,
-                        const QString &authConfigId = QString() );
+    void setConnection(
+      const QString &aHost, const QString &aPort, const QString &aDatabase, const QString &aUsername, const QString &aPassword, SslMode sslmode = SslPrefer, const QString &authConfigId = QString()
+    );
 
     /**
      * Sets all connection related members at once (for a service case).
      */
-    void setConnection( const QString &aService,
-                        const QString &aDatabase,
-                        const QString &aUsername,
-                        const QString &aPassword,
-                        SslMode sslmode = SslPrefer,
-                        const QString &authConfigId = QString() );
+    void setConnection( const QString &aService, const QString &aDatabase, const QString &aUsername, const QString &aPassword, SslMode sslmode = SslPrefer, const QString &authConfigId = QString() );
 
     /**
      * Sets the URI database name.
@@ -162,11 +157,7 @@ class CORE_EXPORT QgsDataSourceUri
      * The \a aSql argument represents a subset filter string to be applied to the source, and should take the
      * form of a SQL "where" clause (e.g. "VALUE > 5", "CAT IN (1,2,3)").
      */
-    void setDataSource( const QString &aSchema,
-                        const QString &aTable,
-                        const QString &aGeometryColumn,
-                        const QString &aSql = QString(),
-                        const QString &aKeyColumn = QString() );
+    void setDataSource( const QString &aSchema, const QString &aTable, const QString &aGeometryColumn, const QString &aSql = QString(), const QString &aKeyColumn = QString() );
 
     /**
      * Sets the authentication configuration ID for the URI.
@@ -185,8 +176,13 @@ class CORE_EXPORT QgsDataSourceUri
 
     /**
      * Removes the password element from a URI.
+     *
+     * \param aUri A data source uri
+     * \param hide TRUE to replace the password value with 'xxxxxxxx', FALSE to remove password (key and value) (since QGIS 3.34)
+     *
+     * \returns The data source uri without the password
      */
-    static QString removePassword( const QString &aUri );
+    static QString removePassword( const QString &aUri, bool hide = false );
 
     /**
      * Returns any associated authentication configuration ID stored in the URI.
@@ -232,7 +228,6 @@ class CORE_EXPORT QgsDataSourceUri
 
     /**
      * Sets the \a scheme for the URI.
-     * \since QGIS 2.12
      */
     void setSchema( const QString &schema );
 
@@ -246,32 +241,80 @@ class CORE_EXPORT QgsDataSourceUri
      */
     void setSql( const QString &sql );
 
-    //! Returns the host name stored in the URI.
+    /**
+     * Sets the \a host name stored in the URI.
+     *
+     * \see host()
+     * \since QGIS 3.42
+     */
+    void setHost( const QString &host );
+
+    /**
+     * Returns the host name stored in the URI.
+     *
+     * \see setHost()
+     */
     QString host() const;
+
     //! Returns the database name stored in the URI.
     QString database() const;
-    //! Returns the port stored in the URI.
+
+    /**
+     * Sets the \a port stored in the URI.
+     *
+     * \see port()
+     * \since QGIS 3.42
+     */
+    void setPort( const QString &port );
+
+    /**
+     * Returns the port stored in the URI.
+     *
+     * \see setPort()
+     */
     QString port() const;
 
     /**
      * Returns the driver name stored in the URI
-     * \since QGIS 2.16
      */
     QString driver() const;
 
     /**
      * Sets the \a driver name stored in the URI.
-     * \since QGIS 2.16
      */
     void setDriver( const QString &driver );
 
     //! Returns the password stored in the URI.
     QString password() const;
 
-    //! Returns the SSL mode associated with the URI.
+    /**
+     * Sets the SSL \a mode associated with the URI.
+     *
+     * \see sslMode()
+     * \since QGIS 3.42
+     */
+    void setSslMode( SslMode mode );
+
+    /**
+     * Returns the SSL mode associated with the URI.
+     *
+     * \see setSslMode()
+     */
     SslMode sslMode() const;
 
-    //! Returns the service name associated with the URI.
+    /**
+     * Sets the \a service name associated with the URI.
+     *
+     * \see service()
+     * \since QGIS 3.42
+     */
+    void setService( const QString &service );
+
+    /**
+     * Returns the service name associated with the URI.
+     *
+     * \see setService()
+     */
     QString service() const;
 
     //! Returns the name of the (primary) key column for the referenced table.
@@ -283,10 +326,10 @@ class CORE_EXPORT QgsDataSourceUri
     /**
      * Returns the WKB type associated with the URI.
      */
-    QgsWkbTypes::Type wkbType() const;
+    Qgis::WkbType wkbType() const;
 
     //! Sets the WKB \a type associated with the URI.
-    void setWkbType( QgsWkbTypes::Type type );
+    void setWkbType( Qgis::WkbType type );
 
     //! Returns the spatial reference ID associated with the URI.
     QString srid() const;
@@ -318,13 +361,47 @@ class CORE_EXPORT QgsDataSourceUri
      */
     void setGeometryColumn( const QString &geometryColumn );
 
+    /**
+     * Returns parameter keys used in the uri: specialized ones ("table", "schema", etc.) or generic parameters.
+     * \since QGIS 3.26
+     */
+    QSet<QString> parameterKeys() const;
+
+#ifndef SIP_RUN
+    //! Returns http headers
+    QgsHttpHeaders httpHeaders() const { return mHttpHeaders; }
+#endif
+
+    /**
+     * Returns http headers
+     * \since QGIS 3.26
+     */
+    QgsHttpHeaders &httpHeaders() { return mHttpHeaders; }
+
+    /**
+     * Returns the http header value according to \a key
+     * \since QGIS 3.26
+     */
+    QString httpHeader( const QString &key ) { return mHttpHeaders[key].toString(); }
+
+    /**
+     * Sets headers to \a headers
+     * \since QGIS 3.26
+     */
+    void setHttpHeaders( const QgsHttpHeaders &headers ) { mHttpHeaders = headers; }
+
 #ifdef SIP_RUN
+    // clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsDataSourceUri: %1>" ).arg( sipCpp->uri( false ) );
+    QString str = u"<QgsDataSourceUri: %1>"_s.arg( sipCpp->uri( false ) );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
+
+      bool operator==( const QgsDataSourceUri &other ) const;
+    bool operator!=( const QgsDataSourceUri &other ) const;
 
   private:
     void skipBlanks( const QString &uri, int &i );
@@ -365,13 +442,16 @@ class CORE_EXPORT QgsDataSourceUri
     bool mUseEstimatedMetadata = false;
     //! Disable SelectAtId capability (e.g., to trigger the attribute table memory model for expensive views)
     bool mSelectAtIdDisabled = false;
+    //! Whether mSelectAtIdDisabled has been explicitly set to true or false
+    bool mSelectAtIdDisabledSet = false;
     //! geometry type (or QgsWkbTypes::Unknown if not specified)
-    QgsWkbTypes::Type mWkbType = QgsWkbTypes::Unknown;
+    Qgis::WkbType mWkbType = Qgis::WkbType::Unknown;
     //! SRID or a null string if not specified
     QString mSrid;
     //! Generic params store
     QMultiMap<QString, QString> mParams;
+    //! http header store
+    QgsHttpHeaders mHttpHeaders;
 };
 
 #endif //QGSDATASOURCEURI_H
-

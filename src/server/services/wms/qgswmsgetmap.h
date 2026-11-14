@@ -19,14 +19,20 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgswmsrequest.h"
+
+class QgsServerInterface;
+class QgsProject;
+class QgsServerResponse;
+
 namespace QgsWms
 {
+
+  class QgsWmsRequest;
 
   /**
    * Output GetMap response in DXF format
    */
-  void writeGetMap( QgsServerInterface *serverIface, const QgsProject *project,
-                    const QString &version,  const QgsServerRequest &request,
-                    QgsServerResponse &response );
+  void writeGetMap( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response );
 
 } // namespace QgsWms

@@ -15,12 +15,16 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
 #include "qgslayertree.h"
 #include "qgslayertreemodel.h"
 #include "qgsmapthemecollection.h"
 #include "qgsrulebasedrenderer.h"
+#include "qgstest.h"
 #include "qgsvectorlayer.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQgsMapThemeCollection : public QObject
 {
@@ -30,8 +34,8 @@ class TestQgsMapThemeCollection : public QObject
     TestQgsMapThemeCollection() = default;
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     void expandedState();
     void checkedState();
@@ -57,17 +61,14 @@ void TestQgsMapThemeCollection::initTestCase()
   QgsApplication::init();
   QgsApplication::initQgis();
 
-  QFileInfo pointFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
-  mPointsLayer = new QgsVectorLayer( pointFileInfo.filePath(),
-                                     pointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QFileInfo pointFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
+  mPointsLayer = new QgsVectorLayer( pointFileInfo.filePath(), pointFileInfo.completeBaseName(), u"ogr"_s );
 
-  QFileInfo polyFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/polys.shp" );
-  mPolysLayer = new QgsVectorLayer( polyFileInfo.filePath(),
-                                    polyFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QFileInfo polyFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/polys.shp" );
+  mPolysLayer = new QgsVectorLayer( polyFileInfo.filePath(), polyFileInfo.completeBaseName(), u"ogr"_s );
 
-  QFileInfo lineFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/lines.shp" );
-  mLinesLayer = new QgsVectorLayer( lineFileInfo.filePath(),
-                                    lineFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QFileInfo lineFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/lines.shp" );
+  mLinesLayer = new QgsVectorLayer( lineFileInfo.filePath(), lineFileInfo.completeBaseName(), u"ogr"_s );
 
   // rule-based renderer for points layer with two levels of rules
   QgsRuleBasedRenderer::Rule *rule0 = new QgsRuleBasedRenderer::Rule( nullptr );
@@ -125,7 +126,7 @@ void TestQgsMapThemeCollection::expandedState()
   const QList<QgsLayerTreeModelLegendNode *> legendNodes = mLayerTreeModel->layerLegendNodes( mNodeLayerPoints, true );
   for ( QgsLayerTreeModelLegendNode *legendNode : legendNodes )
   {
-    QString key = legendNode->data( QgsLayerTreeModelLegendNode::RuleKeyRole ).toString();
+    const QString key = legendNode->data( static_cast<int>( QgsLayerTreeModelLegendNode::CustomRole::RuleKey ) ).toString();
     pointLayerRootLegendNodes << key;
   }
   QCOMPARE( pointLayerRootLegendNodes.count(), 4 );
@@ -154,17 +155,17 @@ void TestQgsMapThemeCollection::expandedState()
 
   // check theme data
 
-  QgsMapThemeCollection::MapThemeRecord recCollapsed = themes.mapThemeState( "all-collapsed" );
+  const QgsMapThemeCollection::MapThemeRecord recCollapsed = themes.mapThemeState( "all-collapsed" );
   QVERIFY( recCollapsed.hasExpandedStateInfo() );
   QCOMPARE( recCollapsed.expandedGroupNodes().count(), 0 );
-  QgsMapThemeCollection::MapThemeLayerRecord recCollapsedPoints = _recordForLayer( mPointsLayer, recCollapsed );
+  const QgsMapThemeCollection::MapThemeLayerRecord recCollapsedPoints = _recordForLayer( mPointsLayer, recCollapsed );
   QCOMPARE( recCollapsedPoints.expandedLayerNode, false );
   QVERIFY( recCollapsedPoints.expandedLegendItems.isEmpty() );
 
-  QgsMapThemeCollection::MapThemeRecord recExpanded = themes.mapThemeState( "all-expanded" );
+  const QgsMapThemeCollection::MapThemeRecord recExpanded = themes.mapThemeState( "all-expanded" );
   QVERIFY( recExpanded.hasExpandedStateInfo() );
   QCOMPARE( recExpanded.expandedGroupNodes().count(), 3 );
-  QgsMapThemeCollection::MapThemeLayerRecord recExpandedPoints = _recordForLayer( mPointsLayer, recExpanded );
+  const QgsMapThemeCollection::MapThemeLayerRecord recExpandedPoints = _recordForLayer( mPointsLayer, recExpanded );
   QCOMPARE( recExpandedPoints.expandedLayerNode, true );
   QCOMPARE( recExpandedPoints.expandedLegendItems.count(), 4 );
 
@@ -185,24 +186,24 @@ void TestQgsMapThemeCollection::expandedState()
   // test read+write
 
   QDomDocument doc;
-  QDomElement elemRoot = doc.createElement( "qgis" );
+  const QDomElement elemRoot = doc.createElement( "qgis" );
   doc.appendChild( elemRoot );
   themes.writeXml( doc );
 
   QgsMapThemeCollection themes2( mProject );
   themes2.readXml( doc );
 
-  QgsMapThemeCollection::MapThemeRecord recCollapsed2 = themes2.mapThemeState( "all-collapsed" );
+  const QgsMapThemeCollection::MapThemeRecord recCollapsed2 = themes2.mapThemeState( "all-collapsed" );
   QVERIFY( recCollapsed2.hasExpandedStateInfo() );
   QCOMPARE( recCollapsed2.expandedGroupNodes().count(), 0 );
-  QgsMapThemeCollection::MapThemeLayerRecord recCollapsedPoints2 = _recordForLayer( mPointsLayer, recCollapsed2 );
+  const QgsMapThemeCollection::MapThemeLayerRecord recCollapsedPoints2 = _recordForLayer( mPointsLayer, recCollapsed2 );
   QCOMPARE( recCollapsedPoints2.expandedLayerNode, false );
   QVERIFY( recCollapsedPoints2.expandedLegendItems.isEmpty() );
 
-  QgsMapThemeCollection::MapThemeRecord recExpanded2 = themes2.mapThemeState( "all-expanded" );
+  const QgsMapThemeCollection::MapThemeRecord recExpanded2 = themes2.mapThemeState( "all-expanded" );
   QVERIFY( recExpanded2.hasExpandedStateInfo() );
   QCOMPARE( recExpanded2.expandedGroupNodes().count(), 3 );
-  QgsMapThemeCollection::MapThemeLayerRecord recExpandedPoints2 = _recordForLayer( mPointsLayer, recExpanded2 );
+  const QgsMapThemeCollection::MapThemeLayerRecord recExpandedPoints2 = _recordForLayer( mPointsLayer, recExpanded2 );
   QCOMPARE( recExpandedPoints2.expandedLayerNode, true );
   QCOMPARE( recExpandedPoints2.expandedLegendItems.count(), 4 );
 }
@@ -215,7 +216,7 @@ void TestQgsMapThemeCollection::checkedState()
   const QList<QgsLayerTreeModelLegendNode *> legendNodes = mLayerTreeModel->layerLegendNodes( mNodeLayerPoints, true );
   for ( QgsLayerTreeModelLegendNode *legendNode : legendNodes )
   {
-    QString key = legendNode->data( QgsLayerTreeModelLegendNode::RuleKeyRole ).toString();
+    const QString key = legendNode->data( static_cast<int>( QgsLayerTreeModelLegendNode::CustomRole::RuleKey ) ).toString();
     pointLayerRootLegendNodes << key;
   }
   QCOMPARE( pointLayerRootLegendNodes.count(), 4 );
@@ -241,23 +242,23 @@ void TestQgsMapThemeCollection::checkedState()
 
   // check theme data
 
-  QgsMapThemeCollection::MapThemeRecord recUnchecked = themes.mapThemeState( "all-unchecked" );
+  const QgsMapThemeCollection::MapThemeRecord recUnchecked = themes.mapThemeState( "all-unchecked" );
   QVERIFY( recUnchecked.hasCheckedStateInfo() );
   QCOMPARE( recUnchecked.checkedGroupNodes().count(), 0 );
-  QVERIFY( themes.mapThemeVisibleLayers( QStringLiteral( "all-unchecked" ) ).isEmpty() );
-  QVERIFY( themes.mapThemeVisibleLayerIds( QStringLiteral( "all-unchecked" ) ).isEmpty() );
+  QVERIFY( themes.mapThemeVisibleLayers( u"all-unchecked"_s ).isEmpty() );
+  QVERIFY( themes.mapThemeVisibleLayerIds( u"all-unchecked"_s ).isEmpty() );
   QCOMPARE( mNodeLayerLines->itemVisibilityChecked(), false );
   QCOMPARE( mNodeLayerPolys->itemVisibilityChecked(), true );
 
-  QgsMapThemeCollection::MapThemeRecord recChecked = themes.mapThemeState( "all-checked" );
+  const QgsMapThemeCollection::MapThemeRecord recChecked = themes.mapThemeState( "all-checked" );
   QVERIFY( recChecked.hasCheckedStateInfo() );
   QCOMPARE( recChecked.checkedGroupNodes().count(), 3 );
-  QCOMPARE( themes.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).size(), 2 );
-  QVERIFY( themes.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).contains( mPolysLayer ) );
-  QVERIFY( themes.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).contains( mPointsLayer ) );
-  QCOMPARE( themes.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).size(), 2 );
-  QVERIFY( themes.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).contains( mPolysLayer->id() ) );
-  QVERIFY( themes.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).contains( mPointsLayer->id() ) );
+  QCOMPARE( themes.mapThemeVisibleLayers( u"all-checked"_s ).size(), 2 );
+  QVERIFY( themes.mapThemeVisibleLayers( u"all-checked"_s ).contains( mPolysLayer ) );
+  QVERIFY( themes.mapThemeVisibleLayers( u"all-checked"_s ).contains( mPointsLayer ) );
+  QCOMPARE( themes.mapThemeVisibleLayerIds( u"all-checked"_s ).size(), 2 );
+  QVERIFY( themes.mapThemeVisibleLayerIds( u"all-checked"_s ).contains( mPolysLayer->id() ) );
+  QVERIFY( themes.mapThemeVisibleLayerIds( u"all-checked"_s ).contains( mPointsLayer->id() ) );
 
   QCOMPARE( mNodeLayerLines->itemVisibilityChecked(), false );
   QCOMPARE( mNodeLayerPolys->itemVisibilityChecked(), true );
@@ -279,28 +280,28 @@ void TestQgsMapThemeCollection::checkedState()
   // test read+write
 
   QDomDocument doc;
-  QDomElement elemRoot = doc.createElement( "qgis" );
+  const QDomElement elemRoot = doc.createElement( "qgis" );
   doc.appendChild( elemRoot );
   themes.writeXml( doc );
 
   QgsMapThemeCollection themes2( mProject );
   themes2.readXml( doc );
 
-  QgsMapThemeCollection::MapThemeRecord recUnchecked2 = themes2.mapThemeState( "all-unchecked" );
+  const QgsMapThemeCollection::MapThemeRecord recUnchecked2 = themes2.mapThemeState( "all-unchecked" );
   QVERIFY( recUnchecked2.hasCheckedStateInfo() );
   QCOMPARE( recUnchecked2.checkedGroupNodes().count(), 0 );
-  QVERIFY( themes2.mapThemeVisibleLayers( QStringLiteral( "all-unchecked" ) ).isEmpty() );
-  QVERIFY( themes2.mapThemeVisibleLayerIds( QStringLiteral( "all-unchecked" ) ).isEmpty() );
+  QVERIFY( themes2.mapThemeVisibleLayers( u"all-unchecked"_s ).isEmpty() );
+  QVERIFY( themes2.mapThemeVisibleLayerIds( u"all-unchecked"_s ).isEmpty() );
 
-  QgsMapThemeCollection::MapThemeRecord recChecked2 = themes2.mapThemeState( "all-checked" );
+  const QgsMapThemeCollection::MapThemeRecord recChecked2 = themes2.mapThemeState( "all-checked" );
   QVERIFY( recChecked2.hasCheckedStateInfo() );
   QCOMPARE( recChecked2.checkedGroupNodes().count(), 3 );
-  QCOMPARE( themes2.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).size(), 2 );
-  QVERIFY( themes2.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).contains( mPolysLayer ) );
-  QVERIFY( themes2.mapThemeVisibleLayers( QStringLiteral( "all-checked" ) ).contains( mPointsLayer ) );
-  QCOMPARE( themes2.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).size(), 2 );
-  QVERIFY( themes2.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).contains( mPolysLayer->id() ) );
-  QVERIFY( themes2.mapThemeVisibleLayerIds( QStringLiteral( "all-checked" ) ).contains( mPointsLayer->id() ) );
+  QCOMPARE( themes2.mapThemeVisibleLayers( u"all-checked"_s ).size(), 2 );
+  QVERIFY( themes2.mapThemeVisibleLayers( u"all-checked"_s ).contains( mPolysLayer ) );
+  QVERIFY( themes2.mapThemeVisibleLayers( u"all-checked"_s ).contains( mPointsLayer ) );
+  QCOMPARE( themes2.mapThemeVisibleLayerIds( u"all-checked"_s ).size(), 2 );
+  QVERIFY( themes2.mapThemeVisibleLayerIds( u"all-checked"_s ).contains( mPolysLayer->id() ) );
+  QVERIFY( themes2.mapThemeVisibleLayerIds( u"all-checked"_s ).contains( mPointsLayer->id() ) );
 }
 
 QGSTEST_MAIN( TestQgsMapThemeCollection )

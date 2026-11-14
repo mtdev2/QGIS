@@ -18,15 +18,17 @@
 
 class QgsVectorLayer;
 
-#include "qgis_core.h"
-#include <QSet>
-#include <QVector>
 #include <memory>
 
-#include "qgsfeatureid.h"
+#include "qgis_core.h"
 #include "qgscoordinatereferencesystem.h"
-#include "qgsrectangle.h"
+#include "qgscoordinatetransformcontext.h"
+#include "qgsfeatureid.h"
 #include "qgsgeometry.h"
+#include "qgsrectangle.h"
+
+#include <QSet>
+#include <QVector>
 
 struct QgsTracerGraph;
 class QgsFeatureRenderer;
@@ -34,17 +36,15 @@ class QgsRenderContext;
 
 /**
  * \ingroup core
- * Utility class that construct a planar graph from the input vector
+ * \brief Utility class that constructs a planar graph from the input vector
  * layers and provides shortest path search for tracing of existing
  * features.
  *
- * \since QGIS 2.14
  */
 class CORE_EXPORT QgsTracer : public QObject
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsTracer.
      */
@@ -82,26 +82,26 @@ class CORE_EXPORT QgsTracer : public QObject
     /**
      * Gets offset in map units that should be applied to the traced paths returned from findShortestPath().
      * Positive offset for right side, negative offset for left side.
-     * \since QGIS 3.0
      */
     double offset() const { return mOffset; }
 
     /**
      * Set offset in map units that should be applied to the traced paths returned from findShortestPath().
      * Positive offset for right side, negative offset for left side.
-     * \since QGIS 3.0
      */
     void setOffset( double offset );
 
+    // TODO QGIS 5.0 -- use Qgis::JoinStyle instead of int!
+
     /**
      * Gets extra parameters for offset curve algorithm (used when offset is non-zero)
-     * \since QGIS 3.0
      */
     void offsetParameters( int &quadSegments SIP_OUT, int &joinStyle SIP_OUT, double &miterLimit SIP_OUT );
 
+    // TODO QGIS 5.0 -- use Qgis::JoinStyle instead of int!
+
     /**
      * Set extra parameters for offset curve algorithm (used when offset is non-zero)
-     * \since QGIS 3.0
      */
     void setOffsetParameters( int quadSegments, int joinStyle, double miterLimit );
 
@@ -124,18 +124,17 @@ class CORE_EXPORT QgsTracer : public QObject
     /**
      * Whether there was an error during graph creation due to noding exception,
      * indicating some input data topology problems
-     * \since QGIS 2.16
      */
     bool hasTopologyProblem() const { return mHasTopologyProblem; }
 
     //! Possible errors that may happen when calling findShortestPath()
     enum PathError
     {
-      ErrNone,               //!< No error
-      ErrTooManyFeatures,    //!< Max feature count threshold was reached while reading features
-      ErrPoint1,             //!< Start point cannot be joined to the graph
-      ErrPoint2,             //!< End point cannot be joined to the graph
-      ErrNoPath,             //!< Points are not connected in the graph
+      ErrNone,            //!< No error
+      ErrTooManyFeatures, //!< Max feature count threshold was reached while reading features
+      ErrPoint1,          //!< Start point cannot be joined to the graph
+      ErrPoint2,          //!< End point cannot be joined to the graph
+      ErrNoPath,          //!< Points are not connected in the graph
     };
 
     /**
@@ -148,8 +147,21 @@ class CORE_EXPORT QgsTracer : public QObject
     //! Find out whether the point is snapped to a vertex or edge (i.e. it can be used for tracing start/stop)
     bool isPointSnapped( const QgsPointXY &pt );
 
-  protected:
+    /**
+     * When \a enable is TRUE, the shortest path's straight segments will include vertices where the input layers intersect, even if
+     * no such vertex existed on the input layers
+     * \since QGIS 3.40
+     */
+    void setAddPointsOnIntersectionsEnabled( bool enable );
 
+    /**
+     * Returns whether the shortest path's straight segments will include vertices where the input layers intersect, even if
+     * no such vertex existed on the input layers
+     * \since QGIS 3.40
+     */
+    bool addPointsOnIntersectionsEnabled() const { return mAddPointsOnIntersections; }
+
+  protected:
     /**
      * Allows derived classes to setup the settings just before the tracer is initialized.
      * This allows the configuration to be set in a lazy way only when it is really necessary.
@@ -169,8 +181,8 @@ class CORE_EXPORT QgsTracer : public QObject
     void onFeatureDeleted( QgsFeatureId fid );
     void onGeometryChanged( QgsFeatureId fid, const QgsGeometry &geom );
     void onAttributeValueChanged( QgsFeatureId fid, int idx, const QVariant &value );
-    void onDataChanged( );
-    void onStyleChanged( );
+    void onDataChanged();
+    void onStyleChanged();
     void onLayerDestroyed( QObject *obj );
 
   private:
@@ -186,13 +198,17 @@ class CORE_EXPORT QgsTracer : public QObject
     std::unique_ptr<QgsRenderContext> mRenderContext;
     //! Extent for graph building (empty extent means no limit)
     QgsRectangle mExtent;
+    //! If FALSE, no vertices will be added on intersections unless they exist in the original layers
+    bool mAddPointsOnIntersections = true;
+    //! Holds the input layers' intersections. Only populated when mAddPointsOnIntersections == false
+    QgsGeometry mIntersections;
 
     //! Offset in map units that should be applied to the traced paths
     double mOffset = 0;
     //! Offset parameter: Number of segments (approximation of circle quarter) when using round join style
     int mOffsetSegments = 8;
     //! Offset parameter: Join style (1 = round, 2 = miter, 3 = bevel)
-    int mOffsetJoinStyle = 2;
+    Qgis::JoinStyle mOffsetJoinStyle = Qgis::JoinStyle::Miter;
     //! Offset parameter: Limit for miter join style
     double mOffsetMiterLimit = 5.;
 

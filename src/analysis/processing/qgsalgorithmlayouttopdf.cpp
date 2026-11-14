@@ -16,17 +16,22 @@
  ***************************************************************************/
 
 #include "qgsalgorithmlayouttopdf.h"
+
 #include "qgslayout.h"
+#include "qgslayoutexporter.h"
 #include "qgslayoutitemmap.h"
 #include "qgsprintlayout.h"
 #include "qgsprocessingoutputs.h"
-#include "qgslayoutexporter.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsLayoutToPdfAlgorithm::name() const
 {
-  return QStringLiteral( "printlayouttopdf" );
+  return u"printlayouttopdf"_s;
 }
 
 QString QgsLayoutToPdfAlgorithm::displayName() const
@@ -46,7 +51,7 @@ QString QgsLayoutToPdfAlgorithm::group() const
 
 QString QgsLayoutToPdfAlgorithm::groupId() const
 {
-  return QStringLiteral( "cartography" );
+  return u"cartography"_s;
 }
 
 QString QgsLayoutToPdfAlgorithm::shortDescription() const
@@ -61,56 +66,64 @@ QString QgsLayoutToPdfAlgorithm::shortHelpString() const
 
 void QgsLayoutToPdfAlgorithm::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterLayout( QStringLiteral( "LAYOUT" ), QObject::tr( "Print layout" ) ) );
+  addParameter( new QgsProcessingParameterLayout( u"LAYOUT"_s, QObject::tr( "Print layout" ) ) );
 
-  std::unique_ptr< QgsProcessingParameterMultipleLayers > layersParam = qgis::make_unique< QgsProcessingParameterMultipleLayers>( QStringLiteral( "LAYERS" ), QObject::tr( "Map layers to assign to unlocked map item(s)" ), QgsProcessing::TypeMapLayer, QVariant(), true );
-  layersParam->setFlags( layersParam->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto layersParam
+    = std::make_unique<QgsProcessingParameterMultipleLayers>( u"LAYERS"_s, QObject::tr( "Map layers to assign to unlocked map item(s)" ), Qgis::ProcessingSourceType::MapLayer, QVariant(), true );
+  layersParam->setFlags( layersParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( layersParam.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > dpiParam = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "DPI" ), QObject::tr( "DPI (leave blank for default layout DPI)" ), QgsProcessingParameterNumber::Double, QVariant(), true, 0 );
-  dpiParam->setFlags( dpiParam->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto dpiParam = std::make_unique<QgsProcessingParameterNumber>( u"DPI"_s, QObject::tr( "DPI (leave blank for default layout DPI)" ), Qgis::ProcessingNumberParameterType::Double, QVariant(), true, 0 );
+  dpiParam->setFlags( dpiParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( dpiParam.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > forceVectorParam = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "FORCE_VECTOR" ), QObject::tr( "Always export as vectors" ), false );
-  forceVectorParam->setFlags( forceVectorParam->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto forceVectorParam = std::make_unique<QgsProcessingParameterBoolean>( u"FORCE_VECTOR"_s, QObject::tr( "Always export as vectors" ), false );
+  forceVectorParam->setFlags( forceVectorParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( forceVectorParam.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > appendGeorefParam = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "GEOREFERENCE" ), QObject::tr( "Append georeference information" ), true );
-  appendGeorefParam->setFlags( appendGeorefParam->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto forceRasterParam = std::make_unique<QgsProcessingParameterBoolean>( u"FORCE_RASTER"_s, QObject::tr( "Always export as raster" ), false );
+  forceRasterParam->setFlags( forceRasterParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
+  addParameter( forceRasterParam.release() );
+
+  auto appendGeorefParam = std::make_unique<QgsProcessingParameterBoolean>( u"GEOREFERENCE"_s, QObject::tr( "Append georeference information" ), true );
+  appendGeorefParam->setFlags( appendGeorefParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( appendGeorefParam.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > exportRDFParam = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "INCLUDE_METADATA" ), QObject::tr( "Export RDF metadata (title, author, etc.)" ), true );
-  exportRDFParam->setFlags( exportRDFParam->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto exportRDFParam = std::make_unique<QgsProcessingParameterBoolean>( u"INCLUDE_METADATA"_s, QObject::tr( "Export RDF metadata (title, author, etc.)" ), true );
+  exportRDFParam->setFlags( exportRDFParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( exportRDFParam.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > disableTiled = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "DISABLE_TILED" ), QObject::tr( "Disable tiled raster layer exports" ), false );
-  disableTiled->setFlags( disableTiled->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto disableTiled = std::make_unique<QgsProcessingParameterBoolean>( u"DISABLE_TILED"_s, QObject::tr( "Disable tiled raster layer exports" ), false );
+  disableTiled->setFlags( disableTiled->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( disableTiled.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > simplify = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "SIMPLIFY" ), QObject::tr( "Simplify geometries to reduce output file size" ), true );
-  simplify->setFlags( simplify->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto simplify = std::make_unique<QgsProcessingParameterBoolean>( u"SIMPLIFY"_s, QObject::tr( "Simplify geometries to reduce output file size" ), true );
+  simplify->setFlags( simplify->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( simplify.release() );
 
-  QStringList textExportOptions
-  {
-    QObject::tr( "Always Export Text as Paths (Recommended)" ),
-    QObject::tr( "Always Export Text as Text Objects" )
-  };
+  const QStringList
+    textExportOptions { QObject::tr( "Always Export Text as Paths (Recommended)" ), QObject::tr( "Always Export Text as Text Objects" ), QObject::tr( "Prefer Exporting Text as Text Objects" ) };
 
-  std::unique_ptr< QgsProcessingParameterEnum > textFormat = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "TEXT_FORMAT" ), QObject::tr( "Text export" ), textExportOptions, false, 0 );
-  textFormat->setFlags( textFormat->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  auto textFormat = std::make_unique<QgsProcessingParameterEnum>( u"TEXT_FORMAT"_s, QObject::tr( "Text export" ), textExportOptions, false, 0 );
+  textFormat->setFlags( textFormat->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( textFormat.release() );
 
-  std::unique_ptr< QgsProcessingParameterBoolean > layeredExport = qgis::make_unique< QgsProcessingParameterBoolean >( QStringLiteral( "SEPARATE_LAYERS" ), QObject::tr( "Export layers as separate PDF files" ), false );
-  layeredExport->setFlags( layeredExport->flags() | QgsProcessingParameterDefinition::FlagAdvanced );
+  const QStringList imageCompressionOptions { QObject::tr( "Lossy (JPEG)" ), QObject::tr( "Lossless" ) };
+
+  auto imageCompression = std::make_unique<QgsProcessingParameterEnum>( u"IMAGE_COMPRESSION"_s, QObject::tr( "Image compression" ), imageCompressionOptions, false, 0 );
+  imageCompression->setFlags( imageCompression->flags() | Qgis::ProcessingParameterFlag::Advanced );
+  addParameter( imageCompression.release() );
+
+  auto layeredExport = std::make_unique<QgsProcessingParameterBoolean>( u"SEPARATE_LAYERS"_s, QObject::tr( "Export layers as separate PDF files" ), false );
+  layeredExport->setFlags( layeredExport->flags() | Qgis::ProcessingParameterFlag::Advanced );
   addParameter( layeredExport.release() );
 
-  addParameter( new QgsProcessingParameterFileDestination( QStringLiteral( "OUTPUT" ), QObject::tr( "PDF file" ), QObject::tr( "PDF Format" ) + " (*.pdf *.PDF)" ) );
+  addParameter( new QgsProcessingParameterFileDestination( u"OUTPUT"_s, QObject::tr( "PDF file" ), QObject::tr( "PDF Format" ) + " (*.pdf *.PDF)" ) );
 }
 
-QgsProcessingAlgorithm::Flags QgsLayoutToPdfAlgorithm::flags() const
+Qgis::ProcessingAlgorithmFlags QgsLayoutToPdfAlgorithm::flags() const
 {
-  return QgsProcessingAlgorithm::flags() | FlagNoThreading;
+  return QgsProcessingAlgorithm::flags() | Qgis::ProcessingAlgorithmFlag::NoThreading | Qgis::ProcessingAlgorithmFlag::RequiresProject;
 }
 
 QgsLayoutToPdfAlgorithm *QgsLayoutToPdfAlgorithm::createInstance() const
@@ -120,13 +133,15 @@ QgsLayoutToPdfAlgorithm *QgsLayoutToPdfAlgorithm::createInstance() const
 
 QVariantMap QgsLayoutToPdfAlgorithm::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  // this needs to be done in main thread, layouts are not thread safe
-  QgsPrintLayout *l = parameterAsLayout( parameters, QStringLiteral( "LAYOUT" ), context );
-  if ( !l )
-    throw QgsProcessingException( QObject::tr( "Cannot find layout with name \"%1\"" ).arg( parameters.value( QStringLiteral( "LAYOUT" ) ).toString() ) );
-  std::unique_ptr< QgsPrintLayout > layout( l->clone() );
+  QGS_MARK_ALGORITHM_SOURCE
 
-  const QList< QgsMapLayer * > layers = parameterAsLayerList( parameters, QStringLiteral( "LAYERS" ), context );
+  // this needs to be done in main thread, layouts are not thread safe
+  QgsPrintLayout *l = parameterAsLayout( parameters, u"LAYOUT"_s, context );
+  if ( !l )
+    throw QgsProcessingException( QObject::tr( "Cannot find layout with name \"%1\"" ).arg( parameters.value( u"LAYOUT"_s ).toString() ) );
+  std::unique_ptr<QgsPrintLayout> layout( l->clone() );
+
+  const QList<QgsMapLayer *> layers = parameterAsLayerList( parameters, u"LAYERS"_s, context );
   if ( layers.size() > 0 )
   {
     const QList<QGraphicsItem *> items = layout->items();
@@ -142,28 +157,47 @@ QVariantMap QgsLayoutToPdfAlgorithm::processAlgorithm( const QVariantMap &parame
     }
   }
 
-  const QString dest = parameterAsFileOutput( parameters, QStringLiteral( "OUTPUT" ), context );
+  const QString dest = parameterAsFileOutput( parameters, u"OUTPUT"_s, context );
 
   QgsLayoutExporter exporter( layout.get() );
   QgsLayoutExporter::PdfExportSettings settings;
 
-  if ( parameters.value( QStringLiteral( "DPI" ) ).isValid() )
+  if ( parameters.value( u"DPI"_s ).isValid() )
   {
-    settings.dpi = parameterAsDouble( parameters, QStringLiteral( "DPI" ), context );
+    settings.dpi = parameterAsDouble( parameters, u"DPI"_s, context );
   }
 
-  settings.forceVectorOutput = parameterAsBool( parameters, QStringLiteral( "FORCE_VECTOR" ), context );
-  settings.appendGeoreference = parameterAsBool( parameters, QStringLiteral( "GEOREFERENCE" ), context );
-  settings.exportMetadata = parameterAsBool( parameters, QStringLiteral( "INCLUDE_METADATA" ), context );
-  settings.exportMetadata = parameterAsBool( parameters, QStringLiteral( "INCLUDE_METADATA" ), context );
-  settings.simplifyGeometries = parameterAsBool( parameters, QStringLiteral( "SIMPLIFY" ), context );
-  settings.textRenderFormat = parameterAsEnum( parameters, QStringLiteral( "TEXT_FORMAT" ), context ) == 0 ? QgsRenderContext::TextFormatAlwaysOutlines : QgsRenderContext::TextFormatAlwaysText;
-  settings.exportLayersAsSeperateFiles = parameterAsBool( parameters, QStringLiteral( "SEPARATE_LAYERS" ), context );  //#spellok
+  settings.forceVectorOutput = parameterAsBool( parameters, u"FORCE_VECTOR"_s, context );
+  settings.rasterizeWholeImage = parameterAsBool( parameters, u"FORCE_RASTER"_s, context );
+  settings.appendGeoreference = parameterAsBool( parameters, u"GEOREFERENCE"_s, context );
+  settings.exportMetadata = parameterAsBool( parameters, u"INCLUDE_METADATA"_s, context );
+  settings.simplifyGeometries = parameterAsBool( parameters, u"SIMPLIFY"_s, context );
+  const int textFormat = parameterAsEnum( parameters, u"TEXT_FORMAT"_s, context );
+  switch ( textFormat )
+  {
+    case 0:
+      settings.textRenderFormat = Qgis::TextRenderFormat::AlwaysOutlines;
+      break;
+    case 1:
+      settings.textRenderFormat = Qgis::TextRenderFormat::AlwaysText;
+      break;
+    case 2:
+      settings.textRenderFormat = Qgis::TextRenderFormat::PreferText;
+      break;
+    default:
+      break;
+  }
+  settings.exportLayersAsSeperateFiles = parameterAsBool( parameters, u"SEPARATE_LAYERS"_s, context ); //#spellok
 
-  if ( parameterAsBool( parameters, QStringLiteral( "DISABLE_TILED" ), context ) )
-    settings.flags = settings.flags | QgsLayoutRenderContext::FlagDisableTiledRasterLayerRenders;
+  if ( parameterAsBool( parameters, u"DISABLE_TILED"_s, context ) )
+    settings.flags = settings.flags | Qgis::LayoutRenderFlag::DisableTiledRasterLayerRenders;
   else
-    settings.flags = settings.flags & ~QgsLayoutRenderContext::FlagDisableTiledRasterLayerRenders;
+    settings.flags = settings.flags & ~static_cast< int >( Qgis::LayoutRenderFlag::DisableTiledRasterLayerRenders );
+
+  if ( parameterAsEnum( parameters, u"IMAGE_COMPRESSION"_s, context ) == 1 )
+    settings.flags = settings.flags | Qgis::LayoutRenderFlag::LosslessImageRendering;
+  else
+    settings.flags = settings.flags & ~static_cast< int >( Qgis::LayoutRenderFlag::LosslessImageRendering );
 
   switch ( exporter.exportToPdf( dest, settings ) )
   {
@@ -174,15 +208,22 @@ QVariantMap QgsLayoutToPdfAlgorithm::processAlgorithm( const QVariantMap &parame
     }
 
     case QgsLayoutExporter::FileError:
-      throw QgsProcessingException( QObject::tr( "Cannot write to %1.\n\nThis file may be open in another application." ).arg( QDir::toNativeSeparators( dest ) ) );
+      throw QgsProcessingException(
+        !exporter.errorMessage().isEmpty() ? exporter.errorMessage() : QObject::tr( "Cannot write to %1.\n\nThis file may be open in another application." ).arg( QDir::toNativeSeparators( dest ) )
+      );
 
     case QgsLayoutExporter::PrintError:
-      throw QgsProcessingException( QObject::tr( "Could not create print device." ) );
+      throw QgsProcessingException( !exporter.errorMessage().isEmpty() ? exporter.errorMessage() : QObject::tr( "Could not create print device." ) );
 
     case QgsLayoutExporter::MemoryError:
-      throw QgsProcessingException( QObject::tr( "Exporting the PDF "
-                                    "resulted in a memory overflow.\n\n"
-                                    "Please try a lower resolution or a smaller paper size." ) );
+      throw QgsProcessingException(
+        !exporter.errorMessage().isEmpty() ? exporter.errorMessage()
+                                           : QObject::tr(
+                                               "Exporting the PDF "
+                                               "resulted in a memory overflow.\n\n"
+                                               "Please try a lower resolution or a smaller paper size."
+                                             )
+      );
 
     case QgsLayoutExporter::SvgLayerError:
     case QgsLayoutExporter::IteratorError:
@@ -194,9 +235,8 @@ QVariantMap QgsLayoutToPdfAlgorithm::processAlgorithm( const QVariantMap &parame
   feedback->setProgress( 100 );
 
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OUTPUT" ), dest );
+  outputs.insert( u"OUTPUT"_s, dest );
   return outputs;
 }
 
 ///@endcond
-

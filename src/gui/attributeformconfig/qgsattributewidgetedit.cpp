@@ -14,76 +14,83 @@
  ***************************************************************************/
 
 #include "qgsattributewidgetedit.h"
+
 #include "qgsattributesformproperties.h"
+#include "qgsgui.h"
 #include "qgsrelationwidgetregistry.h"
 
+#include <QString>
 
-QgsAttributeWidgetEdit::QgsAttributeWidgetEdit( QTreeWidgetItem *item, QWidget *parent )
+#include "moc_qgsattributewidgetedit.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsAttributeWidgetEdit::QgsAttributeWidgetEdit( const QgsAttributesFormData::AttributeFormItemData &itemData, QWidget *parent )
   : QgsCollapsibleGroupBox( parent )
-  , mTreeItem( item )
-
 {
   setupUi( this );
-
-  const QgsAttributesFormProperties::DnDTreeItemData itemData = mTreeItem->data( 0, QgsAttributesFormProperties::DnDTreeRole ).value<QgsAttributesFormProperties::DnDTreeItemData>();
+  mHozStretchSpin->setClearValue( 0, tr( "Default" ) );
+  mVertStretchSpin->setClearValue( 0, tr( "Default" ) );
 
   // common configs
   mShowLabelCheckBox->setChecked( itemData.showLabel() );
 
-  switch ( itemData.type() )
-  {
-    case QgsAttributesFormProperties::DnDTreeItemData::Relation:
-    {
-      QGridLayout *layout = new QGridLayout;
-      QgsAttributeWidgetRelationEditWidget *editWidget = new QgsAttributeWidgetRelationEditWidget( this );
-      editWidget->setRelationEditorConfiguration( itemData.relationEditorConfiguration(), itemData.name() );
-      mSpecificEditWidget = editWidget;
-      layout->addWidget( mSpecificEditWidget );
-      mWidgetSpecificConfigGroupBox->setLayout( layout );
-      mWidgetSpecificConfigGroupBox->setTitle( editWidget->title() );
+  mFormLabelFormatWidget->setLabelStyle( itemData.labelStyle() );
+  mHozStretchSpin->setValue( itemData.horizontalStretch() );
+  mVertStretchSpin->setValue( itemData.verticalStretch() );
 
-    }
-    break;
-
-    case QgsAttributesFormProperties::DnDTreeItemData::Field:
-    case QgsAttributesFormProperties::DnDTreeItemData::Container:
-    case QgsAttributesFormProperties::DnDTreeItemData::QmlWidget:
-    case QgsAttributesFormProperties::DnDTreeItemData::HtmlWidget:
-    case QgsAttributesFormProperties::DnDTreeItemData::WidgetType:
-      mWidgetSpecificConfigGroupBox->hide();
-      break;
-  }
+  mWidgetSpecificConfigGroupBox->hide();
 }
 
-void QgsAttributeWidgetEdit::updateItemData()
+void QgsAttributeWidgetEdit::setRelationSpecificWidget( const QgsAttributesFormData::RelationEditorConfiguration &configuration, const QString &relationId )
 {
-  QgsAttributesFormProperties::DnDTreeItemData itemData = mTreeItem->data( 0, QgsAttributesFormProperties::DnDTreeRole ).value<QgsAttributesFormProperties::DnDTreeItemData>();
+  QGridLayout *layout = new QGridLayout;
+  QgsAttributeWidgetRelationEditWidget *editWidget = new QgsAttributeWidgetRelationEditWidget( this );
+  editWidget->setRelationEditorConfiguration( configuration, relationId );
+  mSpecificEditWidget = editWidget;
+  layout->addWidget( mSpecificEditWidget );
+  mWidgetSpecificConfigGroupBox->setLayout( layout );
+  mWidgetSpecificConfigGroupBox->setTitle( QgsAttributeWidgetRelationEditWidget::title() );
+  mWidgetSpecificConfigGroupBox->show();
+}
 
+void QgsAttributeWidgetEdit::updateItemData( QgsAttributesFormData::AttributeFormItemData &itemData ) const
+{
   // common configs
   itemData.setShowLabel( mShowLabelCheckBox->isChecked() );
+  itemData.setLabelStyle( mFormLabelFormatWidget->labelStyle() );
+  itemData.setHorizontalStretch( mHozStretchSpin->value() );
+  itemData.setVerticalStretch( mVertStretchSpin->value() );
+}
 
-  // specific configs
-  switch ( itemData.type() )
+QgsAttributesFormData::RelationEditorConfiguration QgsAttributeWidgetEdit::updatedRelationConfiguration() const
+{
+  QgsAttributeWidgetRelationEditWidget *editWidget = qobject_cast<QgsAttributeWidgetRelationEditWidget *>( mSpecificEditWidget );
+  if ( editWidget )
   {
-    case QgsAttributesFormProperties::DnDTreeItemData::Relation:
-    {
-      QgsAttributeWidgetRelationEditWidget *editWidget = qobject_cast<QgsAttributeWidgetRelationEditWidget *>( mSpecificEditWidget );
-      if ( editWidget )
-      {
-        itemData.setRelationEditorConfiguration( editWidget->relationEditorConfiguration() );
-      }
-    }
-    break;
-
-    case QgsAttributesFormProperties::DnDTreeItemData::Field:
-    case QgsAttributesFormProperties::DnDTreeItemData::Container:
-    case QgsAttributesFormProperties::DnDTreeItemData::QmlWidget:
-    case QgsAttributesFormProperties::DnDTreeItemData::HtmlWidget:
-    case QgsAttributesFormProperties::DnDTreeItemData::WidgetType:
-      break;
+    return editWidget->relationEditorConfiguration();
   }
+  return QVariant().value< QgsAttributesFormData::RelationEditorConfiguration >();
+}
 
-  mTreeItem->setData( 0, QgsAttributesFormProperties::DnDTreeRole, itemData );
+void QgsAttributeWidgetEdit::setLabelStyle( const QgsAttributeEditorElement::LabelStyle &labelStyle )
+{
+  mFormLabelFormatWidget->setLabelStyle( labelStyle );
+}
+
+void QgsAttributeWidgetEdit::setShowLabel( bool showLabel )
+{
+  mShowLabelCheckBox->setChecked( showLabel );
+}
+
+void QgsAttributeWidgetEdit::setHorizontalStretch( const int horizontalStretch )
+{
+  mHozStretchSpin->setValue( horizontalStretch );
+}
+
+void QgsAttributeWidgetEdit::setVerticalStretch( const int verticalStretch )
+{
+  mVertStretchSpin->setValue( verticalStretch );
 }
 
 // Relation Widget Specific Edit
@@ -100,30 +107,32 @@ QgsAttributeWidgetRelationEditWidget::QgsAttributeWidgetRelationEditWidget( QWid
     it.next();
     mWidgetTypeComboBox->addItem( it.value()->name(), it.key() );
   }
+
+  connect( mRelationCardinalityCombo, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsAttributeWidgetRelationEditWidget::relationCardinalityComboCurrentIndexChanged );
 }
 
-void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const QgsAttributesFormProperties::RelationEditorConfiguration &config, const QString &relationId )
+void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const QgsAttributesFormData::RelationEditorConfiguration &config, const QString &relationId )
 {
   //load the combo mRelationCardinalityCombo
+  mRelationCardinalityCombo->clear();
   setCardinalityCombo( tr( "Many to one relation" ) );
 
-  QgsRelation relation = QgsProject::instance()->relationManager()->relation( relationId );
+  const QgsRelation relation = QgsProject::instance()->relationManager()->relation( relationId );
   const QList<QgsRelation> relations = QgsProject::instance()->relationManager()->referencingRelations( relation.referencingLayer() );
   if ( !relation.fieldPairs().isEmpty() )
   {
     const QgsRelation::FieldPair relationFirstFieldPair = relation.fieldPairs().at( 0 );
     for ( const QgsRelation &nmrel : relations )
     {
-      if ( !nmrel.fieldPairs().isEmpty() &&
-           nmrel.fieldPairs().at( 0 ).referencingField() != relationFirstFieldPair.referencingField() )
+      if ( !nmrel.fieldPairs().isEmpty() && nmrel.fieldPairs().at( 0 ).referencingField() != relationFirstFieldPair.referencingField() )
       {
-        setCardinalityCombo( QStringLiteral( "%1 (%2)" ).arg( nmrel.referencedLayer()->name(), nmrel.fieldPairs().at( 0 ).referencedField() ), nmrel.id() );
+        setCardinalityCombo( u"%1 (%2)"_s.arg( nmrel.referencedLayer()->name(), nmrel.fieldPairs().at( 0 ).referencedField() ), nmrel.id() );
       }
     }
   }
 
-  int widgetTypeIdx = mWidgetTypeComboBox->findData( config.mRelationWidgetType );
-  mWidgetTypeComboBox->setCurrentIndex( widgetTypeIdx >= 0 ? widgetTypeIdx : 0 );
+  const int widgetTypeIdx = mWidgetTypeComboBox->findData( config.mRelationWidgetType );
+  mWidgetTypeComboBox->setCurrentIndex( widgetTypeIdx >= 0 ? widgetTypeIdx : mWidgetTypeComboBox->findData( QgsGui::relationWidgetRegistry()->defaultWidgetType() ) );
 
   const QString widgetType = mWidgetTypeComboBox->currentData().toString();
   mConfigWidget = QgsGui::relationWidgetRegistry()->createConfigWidget( widgetType, relation, this );
@@ -132,8 +141,7 @@ void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const
 
   disconnect( mWidgetTypeComboBoxConnection );
 
-  mWidgetTypeComboBoxConnection = connect( mWidgetTypeComboBox, &QComboBox::currentTextChanged, this, [ = ]()
-  {
+  mWidgetTypeComboBoxConnection = connect( mWidgetTypeComboBox, &QComboBox::currentTextChanged, this, [this, relation, config]() {
     const QString widgetId = mWidgetTypeComboBox->currentData().toString();
 
     mWidgetTypePlaceholderLayout->removeWidget( mConfigWidget );
@@ -152,15 +160,27 @@ void QgsAttributeWidgetRelationEditWidget::setRelationEditorConfiguration( const
   mRelationForceSuppressFormPopupCheckBox->setChecked( config.forceSuppressFormPopup );
 }
 
-QgsAttributesFormProperties::RelationEditorConfiguration QgsAttributeWidgetRelationEditWidget::relationEditorConfiguration() const
+QgsAttributesFormData::RelationEditorConfiguration QgsAttributeWidgetRelationEditWidget::relationEditorConfiguration() const
 {
-  QgsAttributesFormProperties::RelationEditorConfiguration relEdCfg;
+  QgsAttributesFormData::RelationEditorConfiguration relEdCfg;
   relEdCfg.mRelationWidgetType = mWidgetTypeComboBox->currentData().toString();
   relEdCfg.mRelationWidgetConfig = mConfigWidget->config();
   relEdCfg.nmRelationId = mRelationCardinalityCombo->currentData();
   relEdCfg.forceSuppressFormPopup = mRelationForceSuppressFormPopupCheckBox->isChecked();
   relEdCfg.label = mRelationLabelEdit->text();
   return relEdCfg;
+}
+
+void QgsAttributeWidgetRelationEditWidget::relationCardinalityComboCurrentIndexChanged( int index )
+{
+  if ( index < 0 )
+    return;
+
+  if ( !mConfigWidget )
+    return;
+
+  const QgsRelation nmRelation = QgsProject::instance()->relationManager()->relation( mRelationCardinalityCombo->currentData().toString() );
+  mConfigWidget->setNmRelation( nmRelation );
 }
 
 void QgsAttributeWidgetRelationEditWidget::setCardinalityCombo( const QString &cardinalityComboItem, const QVariant &auserData )
@@ -170,7 +190,7 @@ void QgsAttributeWidgetRelationEditWidget::setCardinalityCombo( const QString &c
 
 void QgsAttributeWidgetRelationEditWidget::setNmRelationId( const QVariant &auserData )
 {
-  int idx = mRelationCardinalityCombo->findData( auserData );
+  const int idx = mRelationCardinalityCombo->findData( auserData );
 
   if ( idx != -1 )
     mRelationCardinalityCombo->setCurrentIndex( idx );

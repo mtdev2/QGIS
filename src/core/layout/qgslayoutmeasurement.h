@@ -18,28 +18,30 @@
 #ifndef QGSLAYOUTMEASUREMENT_H
 #define QGSLAYOUTMEASUREMENT_H
 
+#include "qgis.h"
 #include "qgis_core.h"
-
 #include "qgsunittypes.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
  * \class QgsLayoutMeasurement
- * \brief This class provides a method of storing measurements for use in QGIS layouts
+ * \brief Provides a method of storing measurements for use in QGIS layouts
  * using a variety of different measurement units.
  * \see QgsLayoutMeasurementConverter
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutMeasurement
 {
   public:
-
     /**
      * Constructor for QgsLayoutMeasurement.
      * \param length measurement length
      * \param units measurement units
     */
-    explicit QgsLayoutMeasurement( double length, QgsUnitTypes::LayoutUnit units = QgsUnitTypes::LayoutMillimeters );
+    explicit QgsLayoutMeasurement( double length, Qgis::LayoutUnit units = Qgis::LayoutUnit::Millimeters );
 
     /**
      * Returns the length of the measurement.
@@ -57,14 +59,14 @@ class CORE_EXPORT QgsLayoutMeasurement
      * Returns the units for the measurement.
      * \see setUnits()
     */
-    QgsUnitTypes::LayoutUnit units() const { return mUnits; }
+    Qgis::LayoutUnit units() const { return mUnits; }
 
     /**
      * Sets the \a units for the measurement. Does not alter the stored length,
      * ie. no length conversion is done.
      * \see units()
     */
-    void setUnits( const QgsUnitTypes::LayoutUnit units ) { mUnits = units; }
+    void setUnits( const Qgis::LayoutUnit units ) { mUnits = units; }
 
     /**
      * Encodes the layout measurement to a string
@@ -122,18 +124,22 @@ class CORE_EXPORT QgsLayoutMeasurement
     QgsLayoutMeasurement operator/=( double v );
 
 #ifdef SIP_RUN
+    // clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsLayoutMeasurement: %1 %2 >" ).arg( sipCpp->length() ).arg( QgsUnitTypes::toAbbreviatedString( sipCpp->units() ) );
+    QString str = u"<QgsLayoutMeasurement: %1 %2 >"_s.arg( sipCpp->length() ).arg( QgsUnitTypes::toAbbreviatedString( sipCpp->units() ) );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
-  private:
+    // clang-format off
+    private:
+    // clang-format on
 
-    double mLength = 0.0;
-    QgsUnitTypes::LayoutUnit mUnits = QgsUnitTypes::LayoutMillimeters;
-
+    double mLength
+    = 0.0;
+    Qgis::LayoutUnit mUnits = Qgis::LayoutUnit::Millimeters;
 };
 
 #endif // QGSLAYOUTMEASUREMENT_H

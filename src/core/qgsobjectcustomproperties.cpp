@@ -16,11 +16,15 @@
  ***************************************************************************/
 
 #include "qgsobjectcustomproperties.h"
+
 #include "qgis.h"
+#include "qgsxmlutils.h"
 
 #include <QDomNode>
+#include <QString>
 #include <QStringList>
 
+using namespace Qt::StringLiterals;
 
 QStringList QgsObjectCustomProperties::keys() const
 {
@@ -49,7 +53,7 @@ bool QgsObjectCustomProperties::contains( const QString &key ) const
 
 void QgsObjectCustomProperties::readXml( const QDomNode &parentNode, const QString &keyStartsWith )
 {
-  QDomNode propsNode = parentNode.namedItem( QStringLiteral( "customproperties" ) );
+  const QDomNode propsNode = parentNode.namedItem( u"customproperties"_s );
   if ( propsNode.isNull() ) // no properties stored...
     return;
 
@@ -77,77 +81,57 @@ void QgsObjectCustomProperties::readXml( const QDomNode &parentNode, const QStri
     mMap.clear();
   }
 
-  QDomNodeList nodes = propsNode.childNodes();
-
-  for ( int i = 0; i < nodes.size(); i++ )
+  const QVariant newProps = QgsXmlUtils::readVariant( propsNode.firstChildElement() );
+  if ( newProps.userType() == QMetaType::Type::QVariantMap )
   {
-    QDomNode propNode = nodes.at( i );
-    if ( propNode.isNull() || propNode.nodeName() != QLatin1String( "property" ) )
-      continue;
-    QDomElement propElement = propNode.toElement();
+    mMap.insert( newProps.toMap() );
+  }
+  else
+  {
+    // backward compatibility code for QGIS < 3.20
+    const QDomNodeList nodes = propsNode.childNodes();
 
-    QString key = propElement.attribute( QStringLiteral( "key" ) );
-    if ( key.isEmpty() || key.startsWith( keyStartsWith ) )
+    for ( int i = 0; i < nodes.size(); i++ )
     {
-      if ( propElement.hasAttribute( QStringLiteral( "value" ) ) )
-      {
-        QString value = propElement.attribute( QStringLiteral( "value" ) );
-        mMap[key] = QVariant( value );
-      }
-      else
-      {
-        QStringList list;
+      const QDomNode propNode = nodes.at( i );
+      if ( propNode.isNull() || propNode.nodeName() != "property"_L1 )
+        continue;
+      const QDomElement propElement = propNode.toElement();
 
-        for ( QDomElement itemElement = propElement.firstChildElement( QStringLiteral( "value" ) );
-              !itemElement.isNull();
-              itemElement = itemElement.nextSiblingElement( QStringLiteral( "value" ) ) )
+      const QString key = propElement.attribute( u"key"_s );
+      if ( key.isEmpty() || key.startsWith( keyStartsWith ) )
+      {
+        if ( propElement.hasAttribute( u"value"_s ) )
         {
-          list << itemElement.text();
+          const QString value = propElement.attribute( u"value"_s );
+          mMap[key] = QVariant( value );
         }
+        else
+        {
+          QStringList list;
 
-        mMap[key] = QVariant( list );
+          for ( QDomElement itemElement = propElement.firstChildElement( u"value"_s ); !itemElement.isNull(); itemElement = itemElement.nextSiblingElement( u"value"_s ) )
+          {
+            list << itemElement.text();
+          }
+
+          mMap[key] = QVariant( list );
+        }
       }
     }
   }
-
 }
 
 void QgsObjectCustomProperties::writeXml( QDomNode &parentNode, QDomDocument &doc ) const
 {
   //remove already existing <customproperties> tags
-  QDomNodeList propertyList = parentNode.toElement().elementsByTagName( QStringLiteral( "customproperties" ) );
+  const QDomNodeList propertyList = parentNode.toElement().elementsByTagName( u"customproperties"_s );
   for ( int i = 0; i < propertyList.size(); ++i )
   {
     parentNode.removeChild( propertyList.at( i ) );
   }
 
-  QDomElement propsElement = doc.createElement( QStringLiteral( "customproperties" ) );
-
-  auto keys = mMap.keys();
-
-  std::sort( keys.begin(), keys.end() );
-
-  for ( const auto &key : qgis::as_const( keys ) )
-  {
-    QDomElement propElement = doc.createElement( QStringLiteral( "property" ) );
-    propElement.setAttribute( QStringLiteral( "key" ), key );
-    const QVariant value = mMap.value( key );
-    if ( value.canConvert<QString>() )
-    {
-      propElement.setAttribute( QStringLiteral( "value" ), value.toString() );
-    }
-    else if ( value.canConvert<QStringList>() )
-    {
-      const auto constToStringList = value.toStringList();
-      for ( const QString &valueStr : constToStringList )
-      {
-        QDomElement itemElement = doc.createElement( QStringLiteral( "value" ) );
-        itemElement.appendChild( doc.createTextNode( valueStr ) );
-        propElement.appendChild( itemElement );
-      }
-    }
-    propsElement.appendChild( propElement );
-  }
-
+  QDomElement propsElement = doc.createElement( u"customproperties"_s );
+  propsElement.appendChild( QgsXmlUtils::writeVariant( mMap, doc ) );
   parentNode.appendChild( propsElement );
 }

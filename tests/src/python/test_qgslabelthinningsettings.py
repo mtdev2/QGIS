@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for QgsLabelThinningSettings
 
 .. note:: This program is free software; you can redistribute it and/or modify
@@ -6,22 +5,21 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 """
-__author__ = 'Nyall Dawson'
-__date__ = '2019-12-07'
-__copyright__ = 'Copyright 2019, The QGIS Project'
 
-import qgis  # NOQA
+__author__ = "Nyall Dawson"
+__date__ = "2019-12-07"
+__copyright__ = "Copyright 2019, The QGIS Project"
 
-from qgis.core import (QgsPalLayerSettings,
-                       QgsLabelThinningSettings)
 
-from qgis.testing import unittest, start_app
+import unittest
+
+from qgis.core import QgsLabelThinningSettings, QgsPalLayerSettings
+from qgis.testing import QgisTestCase, start_app
 
 start_app()
 
 
-class TestQgsLabelThinningSettings(unittest.TestCase):
-
+class TestQgsLabelThinningSettings(QgisTestCase):
     def test_thinning_settings(self):
         """
         Test thinning settings
@@ -56,5 +54,5 @@ class TestQgsLabelThinningSettings(unittest.TestCase):
         self.assertEqual(pal_settings.thinningSettings().minimumFeatureSize(), 4.6)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

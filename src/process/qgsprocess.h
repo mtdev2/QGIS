@@ -17,10 +17,14 @@
 #ifndef QGSPROCESS_H
 #define QGSPROCESS_H
 
-#include "qgsprocessingfeedback.h"
+#ifdef WITH_BINDINGS
 #include "qgspythonrunner.h"
 #include "qgspythonutils.h"
-#include "qgsunittypes.h"
+
+#endif
+
+#include "qgsprocessingfeedback.h"
+#include "qgsprocessingcontext.h"
 #include <QElapsedTimer>
 
 class QgsApplication;
@@ -32,9 +36,8 @@ class ConsoleFeedback : public QgsProcessingFeedback
     Q_OBJECT
 
   public:
-
     /**
-     * Constructor for QgsProcessingAlgorithmDialogFeedback.
+     * Constructor for ConsoleFeedback.
      */
     ConsoleFeedback( bool useJson );
 
@@ -47,6 +50,8 @@ class ConsoleFeedback : public QgsProcessingFeedback
     void pushCommandInfo( const QString &info ) override;
     void pushDebugInfo( const QString &info ) override;
     void pushConsoleInfo( const QString &info ) override;
+    void pushFormattedMessage( const QString &html, const QString &text ) override;
+
     QVariantMap jsonLog() const;
 
   private slots:
@@ -62,35 +67,48 @@ class ConsoleFeedback : public QgsProcessingFeedback
 
 class QgsProcessingExec
 {
-
   public:
+    enum class Flag
+    {
+      UseJson = 1 << 0,
+      SkipPython = 1 << 1,
+      SkipLoadingPlugins = 1 << 2,
+    };
+    Q_DECLARE_FLAGS( Flags, Flag )
 
     QgsProcessingExec();
-    int run( const QStringList &args );
+    int run( const QStringList &args, Qgis::ProcessingLogLevel logLevel, Flags flags );
+    static void showUsage( const QString &appName );
+    static void showVersionInformation();
 
   private:
-
-    void showUsage( const QString &appName );
     void loadPlugins();
-    void listAlgorithms( bool useJson );
+    void addModelProvider();
+    void listAlgorithms();
     void listPlugins( bool useJson, bool showLoaded );
     int enablePlugin( const QString &name, bool enabled );
-    int showAlgorithmHelp( const QString &id, bool useJson );
-    int execute( const QString &algId,
-                 const QVariantMap &parameters,
-                 const QString &ellipsoid,
-                 QgsUnitTypes::DistanceUnit distanceUnit,
-                 QgsUnitTypes::AreaUnit areaUnit,
-                 bool useJson,
-                 const QString &projectPath = QString() );
+    int showAlgorithmHelp( const QString &id );
+    int execute(
+      const QString &algId,
+      const QVariantMap &parameters,
+      const QString &ellipsoid,
+      Qgis::DistanceUnit distanceUnit,
+      Qgis::AreaUnit areaUnit,
+      Qgis::ProcessingLogLevel logLevel,
+      const QString &projectPath = QString()
+    );
 
     void addVersionInformation( QVariantMap &json );
     void addAlgorithmInformation( QVariantMap &json, const QgsProcessingAlgorithm *algorithm );
     void addProviderInformation( QVariantMap &json, QgsProcessingProvider *provider );
 
-    std::unique_ptr< QgsPythonUtils > mPythonUtils;
+    Flags mFlags;
+#ifdef WITH_BINDINGS
+    std::unique_ptr<QgsPythonUtils> mPythonUtils;
     std::unique_ptr<QgsPythonUtils> loadPythonSupport();
+#endif
 };
 
-#endif // QGSPROCESS_H
+Q_DECLARE_OPERATORS_FOR_FLAGS( QgsProcessingExec::Flags );
 
+#endif // QGSPROCESS_H

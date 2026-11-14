@@ -19,20 +19,24 @@
 #include <QEvent>
 #include <QWidget>
 
-QgsFocusKeeper::QgsFocusKeeper(): mWidgetToKeepFocused( QApplication::focusWidget() )
+#include "moc_qgsfocuskeeper.cpp"
+
+QgsFocusKeeper::QgsFocusKeeper()
+  : mWidgetToKeepFocused( QApplication::focusWidget() )
 {
-  mWidgetToKeepFocused->installEventFilter( this );
+  if ( mWidgetToKeepFocused )
+    mWidgetToKeepFocused->installEventFilter( this );
 }
 
 QgsFocusKeeper::~QgsFocusKeeper()
 {
-  mWidgetToKeepFocused->removeEventFilter( this );
+  if ( mWidgetToKeepFocused )
+    mWidgetToKeepFocused->removeEventFilter( this );
 }
 
 bool QgsFocusKeeper::eventFilter( QObject *obj, QEvent *event )
 {
-  if ( obj == mWidgetToKeepFocused && event &&
-       ( event->type() == QEvent::FocusOut ||  event->type() == QEvent::FocusAboutToChange ) )
+  if ( obj == mWidgetToKeepFocused && event && ( event->type() == QEvent::FocusOut || event->type() == QEvent::FocusAboutToChange ) )
   {
     return true;
   }

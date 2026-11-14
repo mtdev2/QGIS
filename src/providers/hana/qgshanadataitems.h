@@ -17,9 +17,17 @@
 #ifndef QGSHANADATAITEMS_H
 #define QGSHANADATAITEMS_H
 
-#include "qgsdataitem.h"
+#include "qgsconnectionsitem.h"
+#include "qgsdatabaseschemaitem.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
+#include "qgsdatasourceuri.h"
 #include "qgshanatablemodel.h"
+#include "qgslayeritem.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsHanaRootItem;
 class QgsHanaConnectionItem;
@@ -36,8 +44,6 @@ class QgsHanaRootItem : public QgsConnectionsRootItem
 
     QVariant sortKey() const override { return 3; }
 
-    QWidget *paramWidget() override;
-
   public slots:
     void onConnectionsChanged();
 };
@@ -51,8 +57,7 @@ class QgsHanaConnectionItem : public QgsDataCollectionItem
     QVector<QgsDataItem *> createChildren() override;
     bool equal( const QgsDataItem *other ) override;
 
-    using QgsDataCollectionItem::handleDrop;
-    bool handleDrop( const QMimeData *data, const QString &toSchema );
+    QgsDataSourceUri connectionUri() const;
 
   private:
     void updateToolTip( const QString &userName, const QString &dbmsVersion );
@@ -69,8 +74,7 @@ class QgsHanaSchemaItem : public QgsDatabaseSchemaItem
 {
     Q_OBJECT
   public:
-    QgsHanaSchemaItem( QgsDataItem *parent, const QString &connectionName, const QString &name,
-                       const QString &path );
+    QgsHanaSchemaItem( QgsDataItem *parent, const QString &connectionName, const QString &name, const QString &path );
 
     const QString &connectionName() const { return mConnectionName; }
     QVector<QgsDataItem *> createChildren() override;
@@ -89,8 +93,7 @@ class QgsHanaLayerItem : public QgsLayerItem
     Q_OBJECT
 
   public:
-    QgsHanaLayerItem( QgsDataItem *parent, const QString &name, const QString &path,
-                      QgsLayerItem::LayerType layerType, const QgsHanaLayerProperty &layerProperties );
+    QgsHanaLayerItem( QgsDataItem *parent, const QString &name, const QString &path, Qgis::BrowserLayerType layerType, const QgsHanaLayerProperty &layerProperties );
 
     QVector<QgsDataItem *> createChildren() override;
 
@@ -108,9 +111,9 @@ class QgsHanaLayerItem : public QgsLayerItem
 class QgsHanaDataItemProvider : public QgsDataItemProvider
 {
   public:
-    QString name() override { return QStringLiteral( "SAP HANA" ); }
-    QString dataProviderKey() const override { return QStringLiteral( "hana" ); }
-    int capabilities() const override { return QgsDataProvider::Database; }
+    QString name() override { return u"SAP HANA"_s; }
+    QString dataProviderKey() const override { return u"hana"_s; }
+    Qgis::DataItemProviderCapabilities capabilities() const override { return Qgis::DataItemProviderCapability::Databases; }
     QgsDataItem *createDataItem( const QString &pathIn, QgsDataItem *parentItem ) override;
 };
 

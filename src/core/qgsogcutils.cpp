@@ -14,22 +14,34 @@
  ***************************************************************************/
 #include "qgsogcutils.h"
 
-#include "qgsexpression.h"
-#include "qgsexpressionnodeimpl.h"
-#include "qgsexpressionfunction.h"
-#include "qgsexpression_p.h"
-#include "qgsgeometry.h"
-#include "qgswkbptr.h"
+#include <functional>
+#include <memory>
+#include <ogr_api.h>
+
 #include "qgscoordinatereferencesystem.h"
-#include "qgsrectangle.h"
-#include "qgsvectorlayer.h"
+#include "qgsexpression.h"
+#include "qgsexpression_p.h"
 #include "qgsexpressioncontextutils.h"
+#include "qgsexpressionfunction.h"
+#include "qgsexpressionnodeimpl.h"
+#include "qgsgeometry.h"
 #include "qgslogger.h"
+#include "qgsmultipolygon.h"
+#include "qgsogrutils.h"
+#include "qgspolygon.h"
+#include "qgsrectangle.h"
+#include "qgsstringutils.h"
+#include "qgsvectorlayer.h"
+#include "qgswkbptr.h"
 
 #include <QColor>
+#include <QObject>
+#include <QRegularExpression>
+#include <QString>
 #include <QStringList>
 #include <QTextStream>
-#include <QObject>
+
+using namespace Qt::StringLiterals;
 
 #ifndef Q_OS_WIN
 #include <netinet/in.h>
@@ -38,28 +50,37 @@
 #endif
 
 
-#define GML_NAMESPACE QStringLiteral( "http://www.opengis.net/gml" )
-#define GML32_NAMESPACE QStringLiteral( "http://www.opengis.net/gml/3.2" )
-#define OGC_NAMESPACE QStringLiteral( "http://www.opengis.net/ogc" )
-#define FES_NAMESPACE QStringLiteral( "http://www.opengis.net/fes/2.0" )
+#define GML_NAMESPACE u"http://www.opengis.net/gml"_s
+#define GML32_NAMESPACE u"http://www.opengis.net/gml/3.2"_s
+#define OGC_NAMESPACE u"http://www.opengis.net/ogc"_s
+#define FES_NAMESPACE u"http://www.opengis.net/fes/2.0"_s
+#define SE_NAMESPACE u"http://www.opengis.net/se"_s
 
-QgsOgcUtilsExprToFilter::QgsOgcUtilsExprToFilter( QDomDocument &doc,
-    QgsOgcUtils::GMLVersion gmlVersion,
-    QgsOgcUtils::FilterVersion filterVersion,
-    const QString &geometryName,
-    const QString &srsName,
-    bool honourAxisOrientation,
-    bool invertAxisOrientation )
+QgsOgcUtilsExprToFilter::QgsOgcUtilsExprToFilter(
+  QDomDocument &doc,
+  QgsOgcUtils::GMLVersion gmlVersion,
+  QgsOgcUtils::FilterVersion filterVersion,
+  const QString &namespacePrefix,
+  const QString &namespaceURI,
+  const QString &geometryName,
+  const QString &srsName,
+  bool honourAxisOrientation,
+  bool invertAxisOrientation,
+  const QMap<QString, QString> &fieldNameToXPathMap,
+  const QMap<QString, QString> &namespacePrefixToUriMap
+)
   : mDoc( doc )
-  , mGMLUsed( false )
   , mGMLVersion( gmlVersion )
   , mFilterVersion( filterVersion )
+  , mNamespacePrefix( namespacePrefix )
+  , mNamespaceURI( namespaceURI )
   , mGeometryName( geometryName )
   , mSrsName( srsName )
   , mInvertAxisOrientation( invertAxisOrientation )
+  , mFieldNameToXPathMap( fieldNameToXPathMap )
+  , mNamespacePrefixToUriMap( namespacePrefixToUriMap )
   , mFilterPrefix( ( filterVersion == QgsOgcUtils::FILTER_FES_2_0 ) ? "fes" : "ogc" )
   , mPropertyName( ( filterVersion == QgsOgcUtils::FILTER_FES_2_0 ) ? "ValueReference" : "PropertyName" )
-  , mGeomId( 1 )
 {
   QgsCoordinateReferenceSystem crs;
   if ( !mSrsName.isEmpty() )
@@ -79,11 +100,17 @@ QgsGeometry QgsOgcUtils::geometryFromGML( const QDomNode &geometryNode, const Co
   QString geomType = geometryTypeElement.tagName();
   QgsGeometry geometry;
 
-  if ( !( geomType == QLatin1String( "Point" ) || geomType == QLatin1String( "LineString" ) || geomType == QLatin1String( "Polygon" ) ||
-          geomType == QLatin1String( "MultiPoint" ) || geomType == QLatin1String( "MultiLineString" ) || geomType == QLatin1String( "MultiPolygon" ) ||
-          geomType == QLatin1String( "Box" ) || geomType == QLatin1String( "Envelope" ) ) )
+  if ( !( geomType == "Point"_L1
+          || geomType == "LineString"_L1
+          || geomType == "Polygon"_L1
+          || geomType == "MultiPoint"_L1
+          || geomType == "MultiLineString"_L1
+          || geomType == "MultiPolygon"_L1
+          || geomType == "Box"_L1
+          || geomType == "Envelope"_L1
+          || geomType == "MultiCurve"_L1 ) )
   {
-    QDomNode geometryChild = geometryNode.firstChild();
+    const QDomNode geometryChild = geometryNode.firstChild();
     if ( geometryChild.isNull() )
     {
       return geometry;
@@ -92,91 +119,101 @@ QgsGeometry QgsOgcUtils::geometryFromGML( const QDomNode &geometryNode, const Co
     geomType = geometryTypeElement.tagName();
   }
 
-  if ( !( geomType == QLatin1String( "Point" ) || geomType == QLatin1String( "LineString" ) || geomType == QLatin1String( "Polygon" ) ||
-          geomType == QLatin1String( "MultiPoint" ) || geomType == QLatin1String( "MultiLineString" ) || geomType == QLatin1String( "MultiPolygon" ) ||
-          geomType == QLatin1String( "Box" ) || geomType == QLatin1String( "Envelope" ) ) )
+  if ( !( geomType == "Point"_L1
+          || geomType == "LineString"_L1
+          || geomType == "Polygon"_L1
+          || geomType == "MultiPoint"_L1
+          || geomType == "MultiLineString"_L1
+          || geomType == "MultiPolygon"_L1
+          || geomType == "Box"_L1
+          || geomType == "Envelope"_L1
+          || geomType == "MultiCurve"_L1 ) )
     return QgsGeometry();
 
-  if ( geomType == QLatin1String( "Point" ) )
+  if ( geomType == "Point"_L1 )
   {
     geometry = geometryFromGMLPoint( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "LineString" ) )
+  else if ( geomType == "LineString"_L1 )
   {
     geometry = geometryFromGMLLineString( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "Polygon" ) )
+  else if ( geomType == "Polygon"_L1 )
   {
     geometry = geometryFromGMLPolygon( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "MultiPoint" ) )
+  else if ( geomType == "MultiPoint"_L1 )
   {
     geometry = geometryFromGMLMultiPoint( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "MultiLineString" ) )
+  else if ( geomType == "MultiLineString"_L1 )
   {
     geometry = geometryFromGMLMultiLineString( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "MultiPolygon" ) )
+  else if ( geomType == "MultiCurve"_L1 )
+  {
+    geometry = geometryFromGMLMultiCurve( geometryTypeElement );
+  }
+  else if ( geomType == "MultiPolygon"_L1 )
   {
     geometry = geometryFromGMLMultiPolygon( geometryTypeElement );
   }
-  else if ( geomType == QLatin1String( "Box" ) )
+  else if ( geomType == "Box"_L1 )
   {
     geometry = QgsGeometry::fromRect( rectangleFromGMLBox( geometryTypeElement ) );
   }
-  else if ( geomType == QLatin1String( "Envelope" ) )
+  else if ( geomType == "Envelope"_L1 )
   {
     geometry = QgsGeometry::fromRect( rectangleFromGMLEnvelope( geometryTypeElement ) );
   }
   else //unknown type
   {
+    QgsDebugMsgLevel( u"Unknown geometry type %1"_s.arg( geomType ), 2 );
     return geometry;
   }
 
-  // Handle srsName if context has information about the layer and the transformation context
-  if ( context.layer )
+  // Handle srsName
+  // Check if the XY coordinates of geometry need to be swapped by checking the srs from the GML
+  QgsCoordinateReferenceSystem geomSrs;
+  if ( geometryTypeElement.hasAttribute( u"srsName"_s ) )
   {
-    QgsCoordinateReferenceSystem geomSrs;
+    QString srsName { geometryTypeElement.attribute( u"srsName"_s ) };
 
-    if ( geometryTypeElement.hasAttribute( QStringLiteral( "srsName" ) ) )
+    // The logic here follows WFS GeoServer conventions from https://docs.geoserver.org/latest/en/user/services/wfs/axis_order.html
+    const bool ignoreAxisOrientation { srsName.startsWith( "http://www.opengis.net/gml/srs/"_L1 ) || srsName.startsWith( "EPSG:"_L1 ) };
+
+    // GDAL does not recognise http://www.opengis.net/gml/srs/epsg.xml#4326 but it does
+    // http://www.opengis.net/def/crs/EPSG/0/4326 so, let's try that
+    if ( srsName.startsWith( "http://www.opengis.net/gml/srs/"_L1 ) )
     {
-      QString srsName { geometryTypeElement.attribute( QStringLiteral( "srsName" ) ) };
-
-      // The logic here follows WFS GeoServer conventions from https://docs.geoserver.org/latest/en/user/services/wfs/axis_order.html
-      const bool ignoreAxisOrientation { srsName.startsWith( QLatin1String( "http://www.opengis.net/gml/srs/" ) ) || srsName.startsWith( QLatin1String( "EPSG:" ) ) };
-
-      // GDAL does not recognise http://www.opengis.net/gml/srs/epsg.xml#4326 but it does
-      // http://www.opengis.net/def/crs/EPSG/0/4326 so, let's try that
-      if ( srsName.startsWith( QLatin1String( "http://www.opengis.net/gml/srs/" ) ) )
+      const auto parts { srsName.split( QRegularExpression( QStringLiteral( R"raw(/|#|\.)raw" ) ) ) };
+      if ( parts.length() == 10 )
       {
-        const auto parts { srsName.split( QRegularExpression( QStringLiteral( R"raw(/|#|\.)raw" ) ) ) };
-        if ( parts.length() == 10 )
-        {
-          srsName = QStringLiteral( "http://www.opengis.net/def/crs/%1/0/%2" ).arg( parts[ 7 ].toUpper(), parts[ 9 ] );
-        }
+        srsName = u"http://www.opengis.net/def/crs/%1/0/%2"_s.arg( parts[7].toUpper(), parts[9] );
       }
-      geomSrs.createFromUserInput( srsName );
-      if ( geomSrs.isValid() && geomSrs != context.layer->crs() )
+    }
+    geomSrs.createFromUserInput( srsName );
+    if ( geomSrs.isValid() && geomSrs.hasAxisInverted() && !ignoreAxisOrientation )
+    {
+      geometry.get()->swapXy();
+    }
+  }
+
+  // Apply a coordinate transformation if context has information about the layer and the transformation context
+  if ( geomSrs.isValid() && context.layer && geomSrs != context.layer->crs() )
+  {
+    const QgsCoordinateTransform transformer { geomSrs, context.layer->crs(), context.transformContext };
+    try
+    {
+      const Qgis::GeometryOperationResult result = geometry.transform( transformer );
+      if ( result != Qgis::GeometryOperationResult::Success )
       {
-        if ( geomSrs.hasAxisInverted() && ! ignoreAxisOrientation )
-        {
-          geometry.get()->swapXy();
-        }
-        const QgsCoordinateTransform transformer { geomSrs, context.layer->crs(), context.transformContext };
-        try
-        {
-          const QgsGeometry::OperationResult result = geometry.transform( transformer );
-          if ( result != QgsGeometry::OperationResult::Success )
-          {
-            QgsDebugMsgLevel( QStringLiteral( "Error transforming geometry: %1" ).arg( result ), 2 );
-          }
-        }
-        catch ( QgsCsException & )
-        {
-          QgsDebugMsgLevel( QStringLiteral( "CS error transforming geometry" ), 2 );
-        }
+        QgsDebugMsgLevel( u"Error transforming geometry: %1"_s.arg( qgsEnumValueToKey( result ) ), 2 );
       }
+    }
+    catch ( QgsCsException & )
+    {
+      QgsDebugMsgLevel( u"CS error transforming geometry"_s, 2 );
     }
   }
 
@@ -186,7 +223,7 @@ QgsGeometry QgsOgcUtils::geometryFromGML( const QDomNode &geometryNode, const Co
 QgsGeometry QgsOgcUtils::geometryFromGML( const QString &xmlString, const Context &context )
 {
   // wrap the string into a root tag to have "gml" namespace (and also as a default namespace)
-  QString xml = QStringLiteral( "<tmp xmlns=\"%1\" xmlns:gml=\"%1\">%2</tmp>" ).arg( GML_NAMESPACE, xmlString );
+  const QString xml = u"<tmp xmlns=\"%1\" xmlns:gml=\"%1\">%2</tmp>"_s.arg( GML_NAMESPACE, xmlString );
   QDomDocument doc;
   if ( !doc.setContent( xml, true ) )
     return QgsGeometry();
@@ -197,12 +234,12 @@ QgsGeometry QgsOgcUtils::geometryFromGML( const QString &xmlString, const Contex
 
 QgsGeometry QgsOgcUtils::geometryFromGMLPoint( const QDomElement &geometryElement )
 {
-  QgsPolylineXY pointCoordinate;
+  QgsPolyline pointCoordinate;
 
-  QDomNodeList coordList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+  const QDomNodeList coordList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
   if ( !coordList.isEmpty() )
   {
-    QDomElement coordElement = coordList.at( 0 ).toElement();
+    const QDomElement coordElement = coordList.at( 0 ).toElement();
     if ( readGMLCoordinates( pointCoordinate, coordElement ) != 0 )
     {
       return QgsGeometry();
@@ -210,12 +247,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPoint( const QDomElement &geometryElemen
   }
   else
   {
-    QDomNodeList posList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "pos" ) );
+    const QDomNodeList posList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"pos"_s );
     if ( posList.size() < 1 )
     {
       return QgsGeometry();
     }
-    QDomElement posElement = posList.at( 0 ).toElement();
+    const QDomElement posElement = posList.at( 0 ).toElement();
     if ( readGMLPositions( pointCoordinate, posElement ) != 0 )
     {
       return QgsGeometry();
@@ -227,13 +264,14 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPoint( const QDomElement &geometryElemen
     return QgsGeometry();
   }
 
-  QgsPolylineXY::const_iterator point_it = pointCoordinate.constBegin();
-  char e = htonl( 1 ) != 1;
-  double x = point_it->x();
-  double y = point_it->y();
-  int size = 1 + sizeof( int ) + 2 * sizeof( double );
+  const bool hasZ { !std::isnan( pointCoordinate.first().z() ) };
+  QgsPolyline::const_iterator point_it = pointCoordinate.constBegin();
+  const char e = static_cast<char>( htonl( 1 ) != 1 );
+  const double x = point_it->x();
+  const double y = point_it->y();
+  const int size = 1 + static_cast<int>( sizeof( int ) ) + ( hasZ ? 3 : 2 ) * static_cast<int>( sizeof( double ) );
 
-  QgsWkbTypes::Type type = QgsWkbTypes::Point;
+  const Qgis::WkbType type { hasZ ? Qgis::WkbType::PointZ : Qgis::WkbType::Point };
   unsigned char *wkb = new unsigned char[size];
 
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
@@ -245,6 +283,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPoint( const QDomElement &geometryElemen
   wkbPosition += sizeof( double );
   memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
 
+  if ( hasZ )
+  {
+    wkbPosition += sizeof( double );
+    double z = point_it->z();
+    memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+  }
+
   QgsGeometry g;
   g.fromWkb( wkb, size );
   return g;
@@ -252,12 +297,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPoint( const QDomElement &geometryElemen
 
 QgsGeometry QgsOgcUtils::geometryFromGMLLineString( const QDomElement &geometryElement )
 {
-  QgsPolylineXY lineCoordinates;
+  QgsPolyline lineCoordinates;
 
-  QDomNodeList coordList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+  const QDomNodeList coordList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
   if ( !coordList.isEmpty() )
   {
-    QDomElement coordElement = coordList.at( 0 ).toElement();
+    const QDomElement coordElement = coordList.at( 0 ).toElement();
     if ( readGMLCoordinates( lineCoordinates, coordElement ) != 0 )
     {
       return QgsGeometry();
@@ -265,22 +310,24 @@ QgsGeometry QgsOgcUtils::geometryFromGMLLineString( const QDomElement &geometryE
   }
   else
   {
-    QDomNodeList posList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "posList" ) );
+    const QDomNodeList posList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"posList"_s );
     if ( posList.size() < 1 )
     {
       return QgsGeometry();
     }
-    QDomElement posElement = posList.at( 0 ).toElement();
+    const QDomElement posElement = posList.at( 0 ).toElement();
     if ( readGMLPositions( lineCoordinates, posElement ) != 0 )
     {
       return QgsGeometry();
     }
   }
 
-  char e = htonl( 1 ) != 1;
-  int size = 1 + 2 * sizeof( int ) + lineCoordinates.size() * 2 * sizeof( double );
+  const bool hasZ { !std::isnan( lineCoordinates.first().z() ) };
 
-  QgsWkbTypes::Type type = QgsWkbTypes::LineString;
+  char e = static_cast<char>( htonl( 1 ) != 1 );
+  const int size = 1 + 2 * static_cast<int>( sizeof( int ) + lineCoordinates.size() ) * ( hasZ ? 3 : 2 ) * static_cast<int>( sizeof( double ) );
+
+  const Qgis::WkbType type { hasZ ? Qgis::WkbType::LineStringZ : Qgis::WkbType::LineString };
   unsigned char *wkb = new unsigned char[size];
 
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
@@ -295,7 +342,7 @@ QgsGeometry QgsOgcUtils::geometryFromGMLLineString( const QDomElement &geometryE
   memcpy( &( wkb )[wkbPosition], &nPoints, sizeof( int ) );
   wkbPosition += sizeof( int );
 
-  QgsPolylineXY::const_iterator iter;
+  QgsPolyline::const_iterator iter;
   for ( iter = lineCoordinates.constBegin(); iter != lineCoordinates.constEnd(); ++iter )
   {
     x = iter->x();
@@ -304,6 +351,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLLineString( const QDomElement &geometryE
     wkbPosition += sizeof( double );
     memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
     wkbPosition += sizeof( double );
+
+    if ( hasZ )
+    {
+      double z = iter->z();
+      memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+      wkbPosition += sizeof( double );
+    }
   }
 
   QgsGeometry g;
@@ -314,11 +368,11 @@ QgsGeometry QgsOgcUtils::geometryFromGMLLineString( const QDomElement &geometryE
 QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElement )
 {
   //read all the coordinates (as QgsPoint) into memory. Each linear ring has an entry in the vector
-  QgsMultiPolylineXY ringCoordinates;
+  QgsMultiPolyline ringCoordinates;
 
   //read coordinates for outer boundary
-  QgsPolylineXY exteriorPointList;
-  QDomNodeList outerBoundaryList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "outerBoundaryIs" ) );
+  QgsPolyline exteriorPointList;
+  const QDomNodeList outerBoundaryList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"outerBoundaryIs"_s );
   if ( !outerBoundaryList.isEmpty() ) //outer ring is necessary
   {
     QDomElement coordinatesElement = outerBoundaryList.at( 0 ).firstChild().firstChild().toElement();
@@ -333,10 +387,10 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
     ringCoordinates.push_back( exteriorPointList );
 
     //read coordinates for inner boundary
-    QDomNodeList innerBoundaryList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "innerBoundaryIs" ) );
+    const QDomNodeList innerBoundaryList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"innerBoundaryIs"_s );
     for ( int i = 0; i < innerBoundaryList.size(); ++i )
     {
-      QgsPolylineXY interiorPointList;
+      QgsPolyline interiorPointList;
       coordinatesElement = innerBoundaryList.at( i ).firstChild().firstChild().toElement();
       if ( coordinatesElement.isNull() )
       {
@@ -352,12 +406,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
   else
   {
     //read coordinates for exterior
-    QDomNodeList exteriorList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "exterior" ) );
+    const QDomNodeList exteriorList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"exterior"_s );
     if ( exteriorList.size() < 1 ) //outer ring is necessary
     {
       return QgsGeometry();
     }
-    QDomElement posElement = exteriorList.at( 0 ).firstChild().firstChild().toElement();
+    const QDomElement posElement = exteriorList.at( 0 ).firstChild().firstChild().toElement();
     if ( posElement.isNull() )
     {
       return QgsGeometry();
@@ -369,11 +423,11 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
     ringCoordinates.push_back( exteriorPointList );
 
     //read coordinates for inner boundary
-    QDomNodeList interiorList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "interior" ) );
+    const QDomNodeList interiorList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"interior"_s );
     for ( int i = 0; i < interiorList.size(); ++i )
     {
-      QgsPolylineXY interiorPointList;
-      QDomElement posElement = interiorList.at( i ).firstChild().firstChild().toElement();
+      QgsPolyline interiorPointList;
+      const QDomElement posElement = interiorList.at( i ).firstChild().firstChild().toElement();
       if ( posElement.isNull() )
       {
         return QgsGeometry();
@@ -392,21 +446,24 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
   if ( nrings < 1 )
     return QgsGeometry();
 
-  int npoints = 0;//total number of points
-  for ( QgsMultiPolylineXY::const_iterator it = ringCoordinates.constBegin(); it != ringCoordinates.constEnd(); ++it )
+  int npoints = 0; //total number of points
+  for ( QgsMultiPolyline::const_iterator it = ringCoordinates.constBegin(); it != ringCoordinates.constEnd(); ++it )
   {
     npoints += it->size();
   }
-  int size = 1 + 2 * sizeof( int ) + nrings * sizeof( int ) + 2 * npoints * sizeof( double );
 
-  QgsWkbTypes::Type type = QgsWkbTypes::Polygon;
+  const bool hasZ { !std::isnan( ringCoordinates.first().first().z() ) };
+
+  const int size = 1 + 2 * static_cast<int>( sizeof( int ) ) + nrings * static_cast<int>( sizeof( int ) ) + ( hasZ ? 3 : 2 ) * npoints * static_cast<int>( sizeof( double ) );
+
+  const Qgis::WkbType type { hasZ ? Qgis::WkbType::PolygonZ : Qgis::WkbType::Polygon };
   unsigned char *wkb = new unsigned char[size];
 
   //char e = QgsApplication::endian();
-  char e = htonl( 1 ) != 1;
+  char e = static_cast<char>( htonl( 1 ) != 1 );
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
   int nPointsInRing = 0;
-  double x, y;
+  double x, y, z;
 
   //fill the contents into *wkb
   memcpy( &( wkb )[wkbPosition], &e, 1 );
@@ -415,13 +472,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
   wkbPosition += sizeof( int );
   memcpy( &( wkb )[wkbPosition], &nrings, sizeof( int ) );
   wkbPosition += sizeof( int );
-  for ( QgsMultiPolylineXY::const_iterator it = ringCoordinates.constBegin(); it != ringCoordinates.constEnd(); ++it )
+  for ( QgsMultiPolyline::const_iterator it = ringCoordinates.constBegin(); it != ringCoordinates.constEnd(); ++it )
   {
     nPointsInRing = it->size();
     memcpy( &( wkb )[wkbPosition], &nPointsInRing, sizeof( int ) );
     wkbPosition += sizeof( int );
     //iterate through the string list converting the strings to x-/y- doubles
-    QgsPolylineXY::const_iterator iter;
+    QgsPolyline::const_iterator iter;
     for ( iter = it->begin(); iter != it->end(); ++iter )
     {
       x = iter->x();
@@ -431,6 +488,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
       wkbPosition += sizeof( double );
       memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
       wkbPosition += sizeof( double );
+
+      if ( hasZ )
+      {
+        z = iter->z();
+        memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+        wkbPosition += sizeof( double );
+      }
     }
   }
 
@@ -441,9 +505,9 @@ QgsGeometry QgsOgcUtils::geometryFromGMLPolygon( const QDomElement &geometryElem
 
 QgsGeometry QgsOgcUtils::geometryFromGMLMultiPoint( const QDomElement &geometryElement )
 {
-  QgsPolylineXY pointList;
-  QgsPolylineXY currentPoint;
-  QDomNodeList pointMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "pointMember" ) );
+  QgsPolyline pointList;
+  QgsPolyline currentPoint;
+  const QDomNodeList pointMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"pointMember"_s );
   if ( pointMemberList.size() < 1 )
   {
     return QgsGeometry();
@@ -455,13 +519,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPoint( const QDomElement &geometryE
   for ( int i = 0; i < pointMemberList.size(); ++i )
   {
     //<Point> element
-    pointNodeList = pointMemberList.at( i ).toElement().elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "Point" ) );
+    pointNodeList = pointMemberList.at( i ).toElement().elementsByTagNameNS( GML_NAMESPACE, u"Point"_s );
     if ( pointNodeList.size() < 1 )
     {
       continue;
     }
     //<coordinates> element
-    coordinatesList = pointNodeList.at( 0 ).toElement().elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+    coordinatesList = pointNodeList.at( 0 ).toElement().elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
     if ( !coordinatesList.isEmpty() )
     {
       currentPoint.clear();
@@ -479,7 +543,7 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPoint( const QDomElement &geometryE
     else
     {
       //<pos> element
-      posList = pointNodeList.at( 0 ).toElement().elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "pos" ) );
+      posList = pointNodeList.at( 0 ).toElement().elementsByTagNameNS( GML_NAMESPACE, u"pos"_s );
       if ( posList.size() < 1 )
       {
         continue;
@@ -501,28 +565,30 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPoint( const QDomElement &geometryE
   if ( nPoints < 1 )
     return QgsGeometry();
 
-  //calculate the required wkb size
-  int size = 1 + 2 * sizeof( int ) + pointList.size() * ( 2 * sizeof( double ) + 1 + sizeof( int ) );
+  const bool hasZ { !std::isnan( pointList.first().z() ) };
 
-  QgsWkbTypes::Type type = QgsWkbTypes::MultiPoint;
+  //calculate the required wkb size
+  const int size = 1 + 2 * static_cast<int>( sizeof( int ) ) + static_cast<int>( pointList.size() ) * ( ( hasZ ? 3 : 2 ) * static_cast<int>( sizeof( double ) ) + 1 + static_cast<int>( sizeof( int ) ) );
+
+  const Qgis::WkbType type { hasZ ? Qgis::WkbType::MultiPointZ : Qgis::WkbType::MultiPoint };
   unsigned char *wkb = new unsigned char[size];
 
   //fill the wkb content
-  char e = htonl( 1 ) != 1;
+  char e = static_cast<char>( htonl( 1 ) != 1 );
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
-  double x, y;
+  double x, y, z;
   memcpy( &( wkb )[wkbPosition], &e, 1 );
   wkbPosition += 1;
   memcpy( &( wkb )[wkbPosition], &type, sizeof( int ) );
   wkbPosition += sizeof( int );
   memcpy( &( wkb )[wkbPosition], &nPoints, sizeof( int ) );
   wkbPosition += sizeof( int );
-  type = QgsWkbTypes::Point;
-  for ( QgsPolylineXY::const_iterator it = pointList.constBegin(); it != pointList.constEnd(); ++it )
+  const Qgis::WkbType pointType { hasZ ? Qgis::WkbType::PointZ : Qgis::WkbType::Point };
+  for ( QgsPolyline::const_iterator it = pointList.constBegin(); it != pointList.constEnd(); ++it )
   {
     memcpy( &( wkb )[wkbPosition], &e, 1 );
     wkbPosition += 1;
-    memcpy( &( wkb )[wkbPosition], &type, sizeof( int ) );
+    memcpy( &( wkb )[wkbPosition], &pointType, sizeof( int ) );
     wkbPosition += sizeof( int );
     x = it->x();
     memcpy( &( wkb )[wkbPosition], &x, sizeof( double ) );
@@ -530,6 +596,13 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPoint( const QDomElement &geometryE
     y = it->y();
     memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
     wkbPosition += sizeof( double );
+
+    if ( hasZ )
+    {
+      z = it->z();
+      memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+      wkbPosition += sizeof( double );
+    }
   }
 
   QgsGeometry g;
@@ -548,26 +621,27 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
   //<gml:MultiLineString
   //<gml:LineString
 
-  QList< QgsPolylineXY > lineCoordinates; //first list: lines, second list: points of one line
+
+  QList< QgsPolyline > lineCoordinates; //first list: lines, second list: points of one line
   QDomElement currentLineStringElement;
   QDomNodeList currentCoordList;
   QDomNodeList currentPosList;
 
-  QDomNodeList lineStringMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "lineStringMember" ) );
+  const QDomNodeList lineStringMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"lineStringMember"_s );
   if ( !lineStringMemberList.isEmpty() ) //geoserver
   {
     for ( int i = 0; i < lineStringMemberList.size(); ++i )
     {
-      QDomNodeList lineStringNodeList = lineStringMemberList.at( i ).toElement().elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LineString" ) );
+      const QDomNodeList lineStringNodeList = lineStringMemberList.at( i ).toElement().elementsByTagNameNS( GML_NAMESPACE, u"LineString"_s );
       if ( lineStringNodeList.size() < 1 )
       {
         return QgsGeometry();
       }
       currentLineStringElement = lineStringNodeList.at( 0 ).toElement();
-      currentCoordList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+      currentCoordList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
       if ( !currentCoordList.isEmpty() )
       {
-        QgsPolylineXY currentPointList;
+        QgsPolyline currentPointList;
         if ( readGMLCoordinates( currentPointList, currentCoordList.at( 0 ).toElement() ) != 0 )
         {
           return QgsGeometry();
@@ -576,12 +650,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
       }
       else
       {
-        currentPosList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "posList" ) );
+        currentPosList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, u"posList"_s );
         if ( currentPosList.size() < 1 )
         {
           return QgsGeometry();
         }
-        QgsPolylineXY currentPointList;
+        QgsPolyline currentPointList;
         if ( readGMLPositions( currentPointList, currentPosList.at( 0 ).toElement() ) != 0 )
         {
           return QgsGeometry();
@@ -592,16 +666,16 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
   }
   else
   {
-    QDomNodeList lineStringList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LineString" ) );
+    const QDomNodeList lineStringList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"LineString"_s );
     if ( !lineStringList.isEmpty() ) //mapserver
     {
       for ( int i = 0; i < lineStringList.size(); ++i )
       {
         currentLineStringElement = lineStringList.at( i ).toElement();
-        currentCoordList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+        currentCoordList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
         if ( !currentCoordList.isEmpty() )
         {
-          QgsPolylineXY currentPointList;
+          QgsPolyline currentPointList;
           if ( readGMLCoordinates( currentPointList, currentCoordList.at( 0 ).toElement() ) != 0 )
           {
             return QgsGeometry();
@@ -611,12 +685,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
         }
         else
         {
-          currentPosList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "posList" ) );
+          currentPosList = currentLineStringElement.elementsByTagNameNS( GML_NAMESPACE, u"posList"_s );
           if ( currentPosList.size() < 1 )
           {
             return QgsGeometry();
           }
-          QgsPolylineXY currentPointList;
+          QgsPolyline currentPointList;
           if ( readGMLPositions( currentPointList, currentPosList.at( 0 ).toElement() ) != 0 )
           {
             return QgsGeometry();
@@ -635,46 +709,56 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
   if ( nLines < 1 )
     return QgsGeometry();
 
+  const bool hasZ { !std::isnan( lineCoordinates.first().first().z() ) };
+  const int coordSize { hasZ ? 3 : 2 };
+
   //calculate the required wkb size
-  int size = ( lineCoordinates.size() + 1 ) * ( 1 + 2 * sizeof( int ) );
-  for ( QList< QgsPolylineXY >::const_iterator it = lineCoordinates.constBegin(); it != lineCoordinates.constEnd(); ++it )
+  int size = static_cast<int>( lineCoordinates.size() + 1 ) * ( 1 + 2 * sizeof( int ) );
+  for ( QList< QgsPolyline >::const_iterator it = lineCoordinates.constBegin(); it != lineCoordinates.constEnd(); ++it )
   {
-    size += it->size() * 2 * sizeof( double );
+    size += it->size() * coordSize * sizeof( double );
   }
 
-  QgsWkbTypes::Type type = QgsWkbTypes::MultiLineString;
+  const Qgis::WkbType type { hasZ ? Qgis::WkbType::MultiLineStringZ : Qgis::WkbType::MultiLineString };
   unsigned char *wkb = new unsigned char[size];
 
   //fill the wkb content
-  char e = htonl( 1 ) != 1;
+  char e = static_cast<char>( htonl( 1 ) != 1 );
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
-  int nPoints; //number of points in a line
-  double x, y;
+  int nPoints;         //number of points in a line
+  double x, y, z;
   memcpy( &( wkb )[wkbPosition], &e, 1 );
   wkbPosition += 1;
   memcpy( &( wkb )[wkbPosition], &type, sizeof( int ) );
   wkbPosition += sizeof( int );
   memcpy( &( wkb )[wkbPosition], &nLines, sizeof( int ) );
   wkbPosition += sizeof( int );
-  type = QgsWkbTypes::LineString;
-  for ( QList< QgsPolylineXY >::const_iterator it = lineCoordinates.constBegin(); it != lineCoordinates.constEnd(); ++it )
+  const Qgis::WkbType lineType { hasZ ? Qgis::WkbType::LineStringZ : Qgis::WkbType::LineString };
+  for ( QList< QgsPolyline >::const_iterator it = lineCoordinates.constBegin(); it != lineCoordinates.constEnd(); ++it )
   {
     memcpy( &( wkb )[wkbPosition], &e, 1 );
     wkbPosition += 1;
-    memcpy( &( wkb )[wkbPosition], &type, sizeof( int ) );
+    memcpy( &( wkb )[wkbPosition], &lineType, sizeof( int ) );
     wkbPosition += sizeof( int );
     nPoints = it->size();
     memcpy( &( wkb )[wkbPosition], &nPoints, sizeof( int ) );
     wkbPosition += sizeof( int );
-    for ( QgsPolylineXY::const_iterator iter = it->begin(); iter != it->end(); ++iter )
+    for ( QgsPolyline::const_iterator iter = it->begin(); iter != it->end(); ++iter )
     {
       x = iter->x();
       y = iter->y();
-      // QgsDebugMsg( QStringLiteral( "x, y is %1,%2" ).arg( x, 'f' ).arg( y, 'f' ) );
+      // QgsDebugMsgLevel( u"x, y is %1,%2"_s.arg( x, 'f' ).arg( y, 'f' ), 2 );
       memcpy( &( wkb )[wkbPosition], &x, sizeof( double ) );
       wkbPosition += sizeof( double );
       memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
       wkbPosition += sizeof( double );
+
+      if ( hasZ )
+      {
+        z = iter->z();
+        memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+        wkbPosition += sizeof( double );
+      }
     }
   }
 
@@ -686,34 +770,32 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiLineString( const QDomElement &geom
 QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometryElement )
 {
   //first list: different polygons, second list: different rings, third list: different points
-  QgsMultiPolygonXY multiPolygonPoints;
+  QVector<QgsMultiPolyline> multiPolygonPoints;
   QDomElement currentPolygonMemberElement;
   QDomNodeList polygonList;
   QDomElement currentPolygonElement;
   // rings in GML2
   QDomNodeList outerBoundaryList;
   QDomElement currentOuterBoundaryElement;
-  QDomNodeList innerBoundaryList;
   QDomElement currentInnerBoundaryElement;
   // rings in GML3
   QDomNodeList exteriorList;
   QDomElement currentExteriorElement;
   QDomElement currentInteriorElement;
-  QDomNodeList interiorList;
-  // lienar ring
+  // linear ring
   QDomNodeList linearRingNodeList;
   QDomElement currentLinearRingElement;
   // Coordinates or position list
   QDomNodeList currentCoordinateList;
   QDomNodeList currentPosList;
 
-  QDomNodeList polygonMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "polygonMember" ) );
-  QgsPolygonXY currentPolygonList;
+  const QDomNodeList polygonMemberList = geometryElement.elementsByTagNameNS( GML_NAMESPACE, u"polygonMember"_s );
+  QgsMultiPolyline currentPolygonList;
   for ( int i = 0; i < polygonMemberList.size(); ++i )
   {
     currentPolygonList.resize( 0 ); // preserve capacity - don't use clear
     currentPolygonMemberElement = polygonMemberList.at( i ).toElement();
-    polygonList = currentPolygonMemberElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "Polygon" ) );
+    polygonList = currentPolygonMemberElement.elementsByTagNameNS( GML_NAMESPACE, u"Polygon"_s );
     if ( polygonList.size() < 1 )
     {
       continue;
@@ -721,19 +803,19 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
     currentPolygonElement = polygonList.at( 0 ).toElement();
 
     //find exterior ring
-    outerBoundaryList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "outerBoundaryIs" ) );
+    outerBoundaryList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, u"outerBoundaryIs"_s );
     if ( !outerBoundaryList.isEmpty() )
     {
       currentOuterBoundaryElement = outerBoundaryList.at( 0 ).toElement();
-      QgsPolylineXY ringCoordinates;
+      QgsPolyline ringCoordinates;
 
-      linearRingNodeList = currentOuterBoundaryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LinearRing" ) );
+      linearRingNodeList = currentOuterBoundaryElement.elementsByTagNameNS( GML_NAMESPACE, u"LinearRing"_s );
       if ( linearRingNodeList.size() < 1 )
       {
         continue;
       }
       currentLinearRingElement = linearRingNodeList.at( 0 ).toElement();
-      currentCoordinateList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+      currentCoordinateList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
       if ( currentCoordinateList.size() < 1 )
       {
         continue;
@@ -745,18 +827,18 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
       currentPolygonList.push_back( ringCoordinates );
 
       //find interior rings
-      QDomNodeList innerBoundaryList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "innerBoundaryIs" ) );
+      const QDomNodeList innerBoundaryList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, u"innerBoundaryIs"_s );
       for ( int j = 0; j < innerBoundaryList.size(); ++j )
       {
-        QgsPolylineXY ringCoordinates;
+        QgsPolyline ringCoordinates;
         currentInnerBoundaryElement = innerBoundaryList.at( j ).toElement();
-        linearRingNodeList = currentInnerBoundaryElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LinearRing" ) );
+        linearRingNodeList = currentInnerBoundaryElement.elementsByTagNameNS( GML_NAMESPACE, u"LinearRing"_s );
         if ( linearRingNodeList.size() < 1 )
         {
           continue;
         }
         currentLinearRingElement = linearRingNodeList.at( 0 ).toElement();
-        currentCoordinateList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "coordinates" ) );
+        currentCoordinateList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, u"coordinates"_s );
         if ( currentCoordinateList.size() < 1 )
         {
           continue;
@@ -771,22 +853,22 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
     else
     {
       //find exterior ring
-      exteriorList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "exterior" ) );
+      exteriorList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, u"exterior"_s );
       if ( exteriorList.size() < 1 )
       {
         continue;
       }
 
       currentExteriorElement = exteriorList.at( 0 ).toElement();
-      QgsPolylineXY ringPositions;
+      QgsPolyline ringPositions;
 
-      linearRingNodeList = currentExteriorElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LinearRing" ) );
+      linearRingNodeList = currentExteriorElement.elementsByTagNameNS( GML_NAMESPACE, u"LinearRing"_s );
       if ( linearRingNodeList.size() < 1 )
       {
         continue;
       }
       currentLinearRingElement = linearRingNodeList.at( 0 ).toElement();
-      currentPosList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "posList" ) );
+      currentPosList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, u"posList"_s );
       if ( currentPosList.size() < 1 )
       {
         continue;
@@ -798,18 +880,18 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
       currentPolygonList.push_back( ringPositions );
 
       //find interior rings
-      QDomNodeList interiorList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "interior" ) );
+      const QDomNodeList interiorList = currentPolygonElement.elementsByTagNameNS( GML_NAMESPACE, u"interior"_s );
       for ( int j = 0; j < interiorList.size(); ++j )
       {
-        QgsPolylineXY ringPositions;
+        QgsPolyline ringPositions;
         currentInteriorElement = interiorList.at( j ).toElement();
-        linearRingNodeList = currentInteriorElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "LinearRing" ) );
+        linearRingNodeList = currentInteriorElement.elementsByTagNameNS( GML_NAMESPACE, u"LinearRing"_s );
         if ( linearRingNodeList.size() < 1 )
         {
           continue;
         }
         currentLinearRingElement = linearRingNodeList.at( 0 ).toElement();
-        currentPosList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "posList" ) );
+        currentPosList = currentLinearRingElement.elementsByTagNameNS( GML_NAMESPACE, u"posList"_s );
         if ( currentPosList.size() < 1 )
         {
           continue;
@@ -828,21 +910,24 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
   if ( nPolygons < 1 )
     return QgsGeometry();
 
+  const bool hasZ { !std::isnan( multiPolygonPoints.first().first().first().z() ) };
+
   int size = 1 + 2 * sizeof( int );
   //calculate the wkb size
-  for ( QgsMultiPolygonXY::const_iterator it = multiPolygonPoints.constBegin(); it != multiPolygonPoints.constEnd(); ++it )
+
+  for ( auto it = multiPolygonPoints.constBegin(); it != multiPolygonPoints.constEnd(); ++it )
   {
     size += 1 + 2 * sizeof( int );
-    for ( QgsPolygonXY::const_iterator iter = it->begin(); iter != it->end(); ++iter )
+    for ( auto iter = it->begin(); iter != it->end(); ++iter )
     {
-      size += sizeof( int ) + 2 * iter->size() * sizeof( double );
+      size += static_cast<int>( sizeof( int ) ) + ( hasZ ? 3 : 2 ) * static_cast<int>( iter->size() * sizeof( double ) );
     }
   }
 
-  QgsWkbTypes::Type type = QgsWkbTypes::MultiPolygon;
+  Qgis::WkbType type = hasZ ? Qgis::WkbType::MultiPolygonZ : Qgis::WkbType::MultiPolygon;
   unsigned char *wkb = new unsigned char[size];
 
-  char e = htonl( 1 ) != 1;
+  char e = static_cast<char>( htonl( 1 ) != 1 );
   int wkbPosition = 0; //current offset from wkb beginning (in bytes)
   double x, y;
   int nRings;
@@ -856,9 +941,9 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
   memcpy( &( wkb )[wkbPosition], &nPolygons, sizeof( int ) );
   wkbPosition += sizeof( int );
 
-  type = QgsWkbTypes::Polygon;
+  type = hasZ ? Qgis::WkbType::PolygonZ : Qgis::WkbType::Polygon;
 
-  for ( QgsMultiPolygonXY::const_iterator it = multiPolygonPoints.constBegin(); it != multiPolygonPoints.constEnd(); ++it )
+  for ( auto it = multiPolygonPoints.constBegin(); it != multiPolygonPoints.constEnd(); ++it )
   {
     memcpy( &( wkb )[wkbPosition], &e, 1 );
     wkbPosition += 1;
@@ -867,12 +952,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
     nRings = it->size();
     memcpy( &( wkb )[wkbPosition], &nRings, sizeof( int ) );
     wkbPosition += sizeof( int );
-    for ( QgsPolygonXY::const_iterator iter = it->begin(); iter != it->end(); ++iter )
+    for ( auto iter = it->begin(); iter != it->end(); ++iter )
     {
       nPointsInRing = iter->size();
       memcpy( &( wkb )[wkbPosition], &nPointsInRing, sizeof( int ) );
       wkbPosition += sizeof( int );
-      for ( QgsPolylineXY::const_iterator iterator = iter->begin(); iterator != iter->end(); ++iterator )
+      for ( auto iterator = iter->begin(); iterator != iter->end(); ++iterator )
       {
         x = iterator->x();
         y = iterator->y();
@@ -880,6 +965,12 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
         wkbPosition += sizeof( double );
         memcpy( &( wkb )[wkbPosition], &y, sizeof( double ) );
         wkbPosition += sizeof( double );
+        if ( hasZ )
+        {
+          double z = iterator->z();
+          memcpy( &( wkb )[wkbPosition], &z, sizeof( double ) );
+          wkbPosition += sizeof( double );
+        }
       }
     }
   }
@@ -889,40 +980,49 @@ QgsGeometry QgsOgcUtils::geometryFromGMLMultiPolygon( const QDomElement &geometr
   return g;
 }
 
-bool QgsOgcUtils::readGMLCoordinates( QgsPolylineXY &coords, const QDomElement &elem )
+QDomElement QgsOgcUtils::filterElement( QDomDocument &doc, GMLVersion gmlVersion, FilterVersion filterVersion, bool GMLUsed )
 {
-  QString coordSeparator = QStringLiteral( "," );
-  QString tupelSeparator = QStringLiteral( " " );
+  QDomElement filterElem = ( filterVersion == FILTER_FES_2_0 ) ? doc.createElementNS( FES_NAMESPACE, u"fes:Filter"_s ) : doc.createElementNS( OGC_NAMESPACE, u"ogc:Filter"_s );
+
+  if ( GMLUsed )
+  {
+    QDomAttr attr = doc.createAttribute( u"xmlns:gml"_s );
+    if ( gmlVersion == GML_3_2_1 )
+      attr.setValue( GML32_NAMESPACE );
+    else
+      attr.setValue( GML_NAMESPACE );
+    filterElem.setAttributeNode( attr );
+  }
+  return filterElem;
+}
+
+
+bool QgsOgcUtils::readGMLCoordinates( QgsPolyline &coords, const QDomElement &elem )
+{
+  QString coordSeparator = u","_s;
+  QString tupleSeparator = u" "_s;
   //"decimal" has to be "."
 
   coords.clear();
 
-  if ( elem.hasAttribute( QStringLiteral( "cs" ) ) )
+  if ( elem.hasAttribute( u"cs"_s ) )
   {
-    coordSeparator = elem.attribute( QStringLiteral( "cs" ) );
+    coordSeparator = elem.attribute( u"cs"_s );
   }
-  if ( elem.hasAttribute( QStringLiteral( "ts" ) ) )
+  if ( elem.hasAttribute( u"ts"_s ) )
   {
-    tupelSeparator = elem.attribute( QStringLiteral( "ts" ) );
+    tupleSeparator = elem.attribute( u"ts"_s );
   }
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  QStringList tupels = elem.text().split( tupelSeparator, QString::SkipEmptyParts );
-#else
-  QStringList tupels = elem.text().split( tupelSeparator, Qt::SkipEmptyParts );
-#endif
+  const QStringList tupels = elem.text().split( tupleSeparator, Qt::SkipEmptyParts );
   QStringList tuple_coords;
-  double x, y;
+  double x, y, z;
   bool conversionSuccess;
 
   QStringList::const_iterator it;
   for ( it = tupels.constBegin(); it != tupels.constEnd(); ++it )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    tuple_coords = ( *it ).split( coordSeparator, QString::SkipEmptyParts );
-#else
     tuple_coords = ( *it ).split( coordSeparator, Qt::SkipEmptyParts );
-#endif
     if ( tuple_coords.size() < 2 )
     {
       continue;
@@ -937,7 +1037,19 @@ bool QgsOgcUtils::readGMLCoordinates( QgsPolylineXY &coords, const QDomElement &
     {
       return true;
     }
-    coords.push_back( QgsPointXY( x, y ) );
+    if ( tuple_coords.size() > 2 )
+    {
+      z = tuple_coords.at( 2 ).toDouble( &conversionSuccess );
+      if ( !conversionSuccess )
+      {
+        return true;
+      }
+    }
+    else
+    {
+      z = std::numeric_limits<double>::quiet_NaN();
+    }
+    coords.append( QgsPoint( x, y, z ) );
   }
   return false;
 }
@@ -946,28 +1058,28 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLBox( const QDomNode &boxNode )
 {
   QgsRectangle rect;
 
-  QDomElement boxElem = boxNode.toElement();
-  if ( boxElem.tagName() != QLatin1String( "Box" ) )
+  const QDomElement boxElem = boxNode.toElement();
+  if ( boxElem.tagName() != "Box"_L1 )
     return rect;
 
-  QDomElement bElem = boxElem.firstChild().toElement();
-  QString coordSeparator = QStringLiteral( "," );
-  QString tupelSeparator = QStringLiteral( " " );
-  if ( bElem.hasAttribute( QStringLiteral( "cs" ) ) )
+  const QDomElement bElem = boxElem.firstChild().toElement();
+  QString coordSeparator = u","_s;
+  QString tupleSeparator = u" "_s;
+  if ( bElem.hasAttribute( u"cs"_s ) )
   {
-    coordSeparator = bElem.attribute( QStringLiteral( "cs" ) );
+    coordSeparator = bElem.attribute( u"cs"_s );
   }
-  if ( bElem.hasAttribute( QStringLiteral( "ts" ) ) )
+  if ( bElem.hasAttribute( u"ts"_s ) )
   {
-    tupelSeparator = bElem.attribute( QStringLiteral( "ts" ) );
+    tupleSeparator = bElem.attribute( u"ts"_s );
   }
 
-  QString bString = bElem.text();
+  const QString bString = bElem.text();
   bool ok1, ok2, ok3, ok4;
-  double xmin = bString.section( tupelSeparator, 0, 0 ).section( coordSeparator, 0, 0 ).toDouble( &ok1 );
-  double ymin = bString.section( tupelSeparator, 0, 0 ).section( coordSeparator, 1, 1 ).toDouble( &ok2 );
-  double xmax = bString.section( tupelSeparator, 1, 1 ).section( coordSeparator, 0, 0 ).toDouble( &ok3 );
-  double ymax = bString.section( tupelSeparator, 1, 1 ).section( coordSeparator, 1, 1 ).toDouble( &ok4 );
+  const double xmin = bString.section( tupleSeparator, 0, 0 ).section( coordSeparator, 0, 0 ).toDouble( &ok1 );
+  const double ymin = bString.section( tupleSeparator, 0, 0 ).section( coordSeparator, 1, 1 ).toDouble( &ok2 );
+  const double xmax = bString.section( tupleSeparator, 1, 1 ).section( coordSeparator, 0, 0 ).toDouble( &ok3 );
+  const double ymax = bString.section( tupleSeparator, 1, 1 ).section( coordSeparator, 1, 1 ).toDouble( &ok4 );
 
   if ( ok1 && ok2 && ok3 && ok4 )
   {
@@ -978,31 +1090,27 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLBox( const QDomNode &boxNode )
   return rect;
 }
 
-bool QgsOgcUtils::readGMLPositions( QgsPolylineXY &coords, const QDomElement &elem )
+bool QgsOgcUtils::readGMLPositions( QgsPolyline &coords, const QDomElement &elem )
 {
   coords.clear();
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  QStringList pos = elem.text().split( ' ', QString::SkipEmptyParts );
-#else
-  QStringList pos = elem.text().split( ' ', Qt::SkipEmptyParts );
-#endif
-  double x, y;
+  const QStringList pos = elem.text().split( ' ', Qt::SkipEmptyParts );
+  double x, y, z;
   bool conversionSuccess;
-  int posSize = pos.size();
+  const int posSize = pos.size();
 
   int srsDimension = 2;
-  if ( elem.hasAttribute( QStringLiteral( "srsDimension" ) ) )
+  if ( elem.hasAttribute( u"srsDimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "srsDimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"srsDimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
     }
   }
-  else if ( elem.hasAttribute( QStringLiteral( "dimension" ) ) )
+  else if ( elem.hasAttribute( u"dimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "dimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"dimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
@@ -1021,7 +1129,19 @@ bool QgsOgcUtils::readGMLPositions( QgsPolylineXY &coords, const QDomElement &el
     {
       return true;
     }
-    coords.push_back( QgsPointXY( x, y ) );
+    if ( srsDimension > 2 )
+    {
+      z = pos.at( i * srsDimension + 2 ).toDouble( &conversionSuccess );
+      if ( !conversionSuccess )
+      {
+        return true;
+      }
+    }
+    else
+    {
+      z = std::numeric_limits<double>::quiet_NaN();
+    }
+    coords.append( QgsPoint( x, y, z ) );
   }
   return false;
 }
@@ -1031,15 +1151,15 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLEnvelope( const QDomNode &envelopeNode
 {
   QgsRectangle rect;
 
-  QDomElement envelopeElem = envelopeNode.toElement();
-  if ( envelopeElem.tagName() != QLatin1String( "Envelope" ) )
+  const QDomElement envelopeElem = envelopeNode.toElement();
+  if ( envelopeElem.tagName() != "Envelope"_L1 )
     return rect;
 
-  QDomNodeList lowerCornerList = envelopeElem.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "lowerCorner" ) );
+  const QDomNodeList lowerCornerList = envelopeElem.elementsByTagNameNS( GML_NAMESPACE, u"lowerCorner"_s );
   if ( lowerCornerList.size() < 1 )
     return rect;
 
-  QDomNodeList upperCornerList = envelopeElem.elementsByTagNameNS( GML_NAMESPACE, QStringLiteral( "upperCorner" ) );
+  const QDomNodeList upperCornerList = envelopeElem.elementsByTagNameNS( GML_NAMESPACE, u"upperCorner"_s );
   if ( upperCornerList.size() < 1 )
     return rect;
 
@@ -1047,17 +1167,17 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLEnvelope( const QDomNode &envelopeNode
   int srsDimension = 2;
 
   QDomElement elem = lowerCornerList.at( 0 ).toElement();
-  if ( elem.hasAttribute( QStringLiteral( "srsDimension" ) ) )
+  if ( elem.hasAttribute( u"srsDimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "srsDimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"srsDimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
     }
   }
-  else if ( elem.hasAttribute( QStringLiteral( "dimension" ) ) )
+  else if ( elem.hasAttribute( u"dimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "dimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"dimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
@@ -1065,25 +1185,25 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLEnvelope( const QDomNode &envelopeNode
   }
   QString bString = elem.text();
 
-  double xmin = bString.section( ' ', 0, 0 ).toDouble( &conversionSuccess );
+  const double xmin = bString.section( ' ', 0, 0 ).toDouble( &conversionSuccess );
   if ( !conversionSuccess )
     return rect;
-  double ymin = bString.section( ' ', 1, 1 ).toDouble( &conversionSuccess );
+  const double ymin = bString.section( ' ', 1, 1 ).toDouble( &conversionSuccess );
   if ( !conversionSuccess )
     return rect;
 
   elem = upperCornerList.at( 0 ).toElement();
-  if ( elem.hasAttribute( QStringLiteral( "srsDimension" ) ) )
+  if ( elem.hasAttribute( u"srsDimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "srsDimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"srsDimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
     }
   }
-  else if ( elem.hasAttribute( QStringLiteral( "dimension" ) ) )
+  else if ( elem.hasAttribute( u"dimension"_s ) )
   {
-    srsDimension = elem.attribute( QStringLiteral( "dimension" ) ).toInt( &conversionSuccess );
+    srsDimension = elem.attribute( u"dimension"_s ).toInt( &conversionSuccess );
     if ( !conversionSuccess )
     {
       srsDimension = 2;
@@ -1093,10 +1213,10 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLEnvelope( const QDomNode &envelopeNode
   Q_UNUSED( srsDimension )
 
   bString = elem.text();
-  double xmax = bString.section( ' ', 0, 0 ).toDouble( &conversionSuccess );
+  const double xmax = bString.section( ' ', 0, 0 ).toDouble( &conversionSuccess );
   if ( !conversionSuccess )
     return rect;
-  double ymax = bString.section( ' ', 1, 1 ).toDouble( &conversionSuccess );
+  const double ymax = bString.section( ' ', 1, 1 ).toDouble( &conversionSuccess );
   if ( !conversionSuccess )
     return rect;
 
@@ -1106,29 +1226,26 @@ QgsRectangle QgsOgcUtils::rectangleFromGMLEnvelope( const QDomNode &envelopeNode
   return rect;
 }
 
-QDomElement QgsOgcUtils::rectangleToGMLBox( QgsRectangle *box, QDomDocument &doc, int precision )
+QDomElement QgsOgcUtils::rectangleToGMLBox( const QgsRectangle *box, QDomDocument &doc, int precision )
 {
   return rectangleToGMLBox( box, doc, QString(), false, precision );
 }
 
-QDomElement QgsOgcUtils::rectangleToGMLBox( QgsRectangle *box, QDomDocument &doc,
-    const QString &srsName,
-    bool invertAxisOrientation,
-    int precision )
+QDomElement QgsOgcUtils::rectangleToGMLBox( const QgsRectangle *box, QDomDocument &doc, const QString &srsName, bool invertAxisOrientation, int precision )
 {
   if ( !box )
   {
     return QDomElement();
   }
 
-  QDomElement boxElem = doc.createElement( QStringLiteral( "gml:Box" ) );
+  QDomElement boxElem = doc.createElement( u"gml:Box"_s );
   if ( !srsName.isEmpty() )
   {
-    boxElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+    boxElem.setAttribute( u"srsName"_s, srsName );
   }
-  QDomElement coordElem = doc.createElement( QStringLiteral( "gml:coordinates" ) );
-  coordElem.setAttribute( QStringLiteral( "cs" ), QStringLiteral( "," ) );
-  coordElem.setAttribute( QStringLiteral( "ts" ), QStringLiteral( " " ) );
+  QDomElement coordElem = doc.createElement( u"gml:coordinates"_s );
+  coordElem.setAttribute( u"cs"_s, u","_s );
+  coordElem.setAttribute( u"ts"_s, u" "_s );
 
   QString coordString;
   coordString += qgsDoubleToString( invertAxisOrientation ? box->yMinimum() : box->xMinimum(), precision );
@@ -1139,48 +1256,45 @@ QDomElement QgsOgcUtils::rectangleToGMLBox( QgsRectangle *box, QDomDocument &doc
   coordString += ',';
   coordString += qgsDoubleToString( invertAxisOrientation ? box->xMaximum() : box->yMaximum(), precision );
 
-  QDomText coordText = doc.createTextNode( coordString );
+  const QDomText coordText = doc.createTextNode( coordString );
   coordElem.appendChild( coordText );
   boxElem.appendChild( coordElem );
 
   return boxElem;
 }
 
-QDomElement QgsOgcUtils::rectangleToGMLEnvelope( QgsRectangle *env, QDomDocument &doc, int precision )
+QDomElement QgsOgcUtils::rectangleToGMLEnvelope( const QgsRectangle *env, QDomDocument &doc, int precision )
 {
   return rectangleToGMLEnvelope( env, doc, QString(), false, precision );
 }
 
-QDomElement QgsOgcUtils::rectangleToGMLEnvelope( QgsRectangle *env, QDomDocument &doc,
-    const QString &srsName,
-    bool invertAxisOrientation,
-    int precision )
+QDomElement QgsOgcUtils::rectangleToGMLEnvelope( const QgsRectangle *env, QDomDocument &doc, const QString &srsName, bool invertAxisOrientation, int precision )
 {
   if ( !env )
   {
     return QDomElement();
   }
 
-  QDomElement envElem = doc.createElement( QStringLiteral( "gml:Envelope" ) );
+  QDomElement envElem = doc.createElement( u"gml:Envelope"_s );
   if ( !srsName.isEmpty() )
   {
-    envElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+    envElem.setAttribute( u"srsName"_s, srsName );
   }
   QString posList;
 
-  QDomElement lowerCornerElem = doc.createElement( QStringLiteral( "gml:lowerCorner" ) );
+  QDomElement lowerCornerElem = doc.createElement( u"gml:lowerCorner"_s );
   posList = qgsDoubleToString( invertAxisOrientation ? env->yMinimum() : env->xMinimum(), precision );
   posList += ' ';
   posList += qgsDoubleToString( invertAxisOrientation ? env->xMinimum() : env->yMinimum(), precision );
-  QDomText lowerCornerText = doc.createTextNode( posList );
+  const QDomText lowerCornerText = doc.createTextNode( posList );
   lowerCornerElem.appendChild( lowerCornerText );
   envElem.appendChild( lowerCornerElem );
 
-  QDomElement upperCornerElem = doc.createElement( QStringLiteral( "gml:upperCorner" ) );
+  QDomElement upperCornerElem = doc.createElement( u"gml:upperCorner"_s );
   posList = qgsDoubleToString( invertAxisOrientation ? env->yMaximum() : env->xMaximum(), precision );
   posList += ' ';
   posList += qgsDoubleToString( invertAxisOrientation ? env->xMaximum() : env->yMaximum(), precision );
-  QDomText upperCornerText = doc.createTextNode( posList );
+  const QDomText upperCornerText = doc.createTextNode( posList );
   upperCornerElem.appendChild( upperCornerText );
   envElem.appendChild( upperCornerElem );
 
@@ -1189,30 +1303,24 @@ QDomElement QgsOgcUtils::rectangleToGMLEnvelope( QgsRectangle *env, QDomDocument
 
 QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry, QDomDocument &doc, const QString &format, int precision )
 {
-  return geometryToGML( geometry, doc, ( format == QLatin1String( "GML2" ) ) ? GML_2_1_2 : GML_3_2_1, QString(), false, QString(), precision );
+  return geometryToGML( geometry, doc, ( format == "GML2"_L1 ) ? GML_2_1_2 : GML_3_2_1, QString(), false, QString(), precision );
 }
 
-QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
-                                        QDomDocument &doc,
-                                        GMLVersion gmlVersion,
-                                        const QString &srsName,
-                                        bool invertAxisOrientation,
-                                        const QString &gmlIdBase,
-                                        int precision )
+QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry, QDomDocument &doc, GMLVersion gmlVersion, const QString &srsName, bool invertAxisOrientation, const QString &gmlIdBase, int precision )
 {
   if ( geometry.isNull() )
     return QDomElement();
 
   // coordinate separator
-  QString cs = QStringLiteral( "," );
+  QString cs = u","_s;
   // tuple separator
-  QString ts = QStringLiteral( " " );
+  const QString ts = u" "_s;
   // coord element tagname
   QDomElement baseCoordElem;
 
   bool hasZValue = false;
 
-  QByteArray wkb( geometry.asWkb() );
+  const QByteArray wkb( geometry.asWkb() );
   QgsConstWkbPtr wkbPtr( wkb );
   try
   {
@@ -1229,38 +1337,43 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
   {
     switch ( geometry.wkbType() )
     {
-      case QgsWkbTypes::Point25D:
-      case QgsWkbTypes::Point:
-      case QgsWkbTypes::MultiPoint25D:
-      case QgsWkbTypes::MultiPoint:
-        baseCoordElem = doc.createElement( QStringLiteral( "gml:pos" ) );
+      case Qgis::WkbType::Point25D:
+      case Qgis::WkbType::Point:
+      case Qgis::WkbType::PointZ:
+      case Qgis::WkbType::MultiPoint25D:
+      case Qgis::WkbType::MultiPointZ:
+      case Qgis::WkbType::MultiPoint:
+        baseCoordElem = doc.createElement( u"gml:pos"_s );
         break;
       default:
-        baseCoordElem = doc.createElement( QStringLiteral( "gml:posList" ) );
+        baseCoordElem = doc.createElement( u"gml:posList"_s );
         break;
     }
-    baseCoordElem.setAttribute( QStringLiteral( "srsDimension" ), QStringLiteral( "2" ) );
     cs = ' ';
   }
   else
   {
-    baseCoordElem = doc.createElement( QStringLiteral( "gml:coordinates" ) );
-    baseCoordElem.setAttribute( QStringLiteral( "cs" ), cs );
-    baseCoordElem.setAttribute( QStringLiteral( "ts" ), ts );
+    baseCoordElem = doc.createElement( u"gml:coordinates"_s );
+    baseCoordElem.setAttribute( u"cs"_s, cs );
+    baseCoordElem.setAttribute( u"ts"_s, ts );
   }
 
   try
   {
     switch ( geometry.wkbType() )
     {
-      case QgsWkbTypes::Point25D:
-      case QgsWkbTypes::Point:
+      case Qgis::WkbType::Point25D:
+      case Qgis::WkbType::PointZ:
+        hasZValue = true;
+        //intentional fall-through
+        [[fallthrough]];
+      case Qgis::WkbType::Point:
       {
-        QDomElement pointElem = doc.createElement( QStringLiteral( "gml:Point" ) );
+        QDomElement pointElem = doc.createElement( u"gml:Point"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          pointElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          pointElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          pointElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          pointElem.setAttribute( u"srsName"_s, srsName );
         QDomElement coordElem = baseCoordElem.cloneNode().toElement();
 
         double x, y;
@@ -1269,33 +1382,46 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
           wkbPtr >> y >> x;
         else
           wkbPtr >> x >> y;
-        QDomText coordText = doc.createTextNode( qgsDoubleToString( x, precision ) + cs + qgsDoubleToString( y, precision ) );
+
+        QString coordString = qgsDoubleToString( x, precision ) + cs + qgsDoubleToString( y, precision );
+
+        // Add Z
+        if ( hasZValue )
+        {
+          double z = 0;
+          wkbPtr >> z;
+          coordString += cs + qgsDoubleToString( z, precision );
+        }
+        const QDomText coordText = doc.createTextNode( coordString );
 
         coordElem.appendChild( coordText );
+        if ( gmlVersion != GML_2_1_2 )
+          coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
         pointElem.appendChild( coordElem );
         return pointElem;
       }
-      case QgsWkbTypes::MultiPoint25D:
+      case Qgis::WkbType::MultiPoint25D:
+      case Qgis::WkbType::MultiPointZ:
         hasZValue = true;
         //intentional fall-through
-        FALLTHROUGH
-      case QgsWkbTypes::MultiPoint:
+        [[fallthrough]];
+      case Qgis::WkbType::MultiPoint:
       {
-        QDomElement multiPointElem = doc.createElement( QStringLiteral( "gml:MultiPoint" ) );
+        QDomElement multiPointElem = doc.createElement( u"gml:MultiPoint"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          multiPointElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          multiPointElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          multiPointElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          multiPointElem.setAttribute( u"srsName"_s, srsName );
 
         int nPoints;
         wkbPtr >> nPoints;
 
         for ( int idx = 0; idx < nPoints; ++idx )
         {
-          QDomElement pointMemberElem = doc.createElement( QStringLiteral( "gml:pointMember" ) );
-          QDomElement pointElem = doc.createElement( QStringLiteral( "gml:Point" ) );
+          QDomElement pointMemberElem = doc.createElement( u"gml:pointMember"_s );
+          QDomElement pointElem = doc.createElement( u"gml:Point"_s );
           if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-            pointElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase + QStringLiteral( ".%1" ).arg( idx + 1 ) );
+            pointElem.setAttribute( u"gml:id"_s, gmlIdBase + u".%1"_s.arg( idx + 1 ) );
           QDomElement coordElem = baseCoordElem.cloneNode().toElement();
 
           wkbPtr.readHeader();
@@ -1306,31 +1432,41 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
             wkbPtr >> y >> x;
           else
             wkbPtr >> x >> y;
-          QDomText coordText = doc.createTextNode( qgsDoubleToString( x, precision ) + cs + qgsDoubleToString( y, precision ) );
 
-          coordElem.appendChild( coordText );
-          pointElem.appendChild( coordElem );
-
+          QString coordString = qgsDoubleToString( x, precision ) + cs + qgsDoubleToString( y, precision );
+          // Add Z
           if ( hasZValue )
           {
-            wkbPtr += sizeof( double );
+            double z = 0;
+            wkbPtr >> z;
+            coordString += cs + qgsDoubleToString( z, precision );
           }
+
+          const QDomText coordText = doc.createTextNode( coordString );
+
+          coordElem.appendChild( coordText );
+          if ( gmlVersion != GML_2_1_2 )
+            coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
+          pointElem.appendChild( coordElem );
+
+
           pointMemberElem.appendChild( pointElem );
           multiPointElem.appendChild( pointMemberElem );
         }
         return multiPointElem;
       }
-      case QgsWkbTypes::LineString25D:
+      case Qgis::WkbType::LineString25D:
+      case Qgis::WkbType::LineStringZ:
         hasZValue = true;
         //intentional fall-through
-        FALLTHROUGH
-      case QgsWkbTypes::LineString:
+        [[fallthrough]];
+      case Qgis::WkbType::LineString:
       {
-        QDomElement lineStringElem = doc.createElement( QStringLiteral( "gml:LineString" ) );
+        QDomElement lineStringElem = doc.createElement( u"gml:LineString"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          lineStringElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          lineStringElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          lineStringElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          lineStringElem.setAttribute( u"srsName"_s, srsName );
         // get number of points in the line
 
         int nPoints;
@@ -1355,35 +1491,40 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
 
           if ( hasZValue )
           {
-            wkbPtr += sizeof( double );
+            double z = 0;
+            wkbPtr >> z;
+            coordString += cs + qgsDoubleToString( z, precision );
           }
         }
-        QDomText coordText = doc.createTextNode( coordString );
+        const QDomText coordText = doc.createTextNode( coordString );
         coordElem.appendChild( coordText );
+        if ( gmlVersion != GML_2_1_2 )
+          coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
         lineStringElem.appendChild( coordElem );
         return lineStringElem;
       }
-      case QgsWkbTypes::MultiLineString25D:
+      case Qgis::WkbType::MultiLineString25D:
+      case Qgis::WkbType::MultiLineStringZ:
         hasZValue = true;
         //intentional fall-through
-        FALLTHROUGH
-      case QgsWkbTypes::MultiLineString:
+        [[fallthrough]];
+      case Qgis::WkbType::MultiLineString:
       {
-        QDomElement multiLineStringElem = doc.createElement( QStringLiteral( "gml:MultiLineString" ) );
+        QDomElement multiLineStringElem = doc.createElement( u"gml:MultiLineString"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          multiLineStringElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          multiLineStringElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          multiLineStringElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          multiLineStringElem.setAttribute( u"srsName"_s, srsName );
 
         int nLines;
         wkbPtr >> nLines;
 
         for ( int jdx = 0; jdx < nLines; jdx++ )
         {
-          QDomElement lineStringMemberElem = doc.createElement( QStringLiteral( "gml:lineStringMember" ) );
-          QDomElement lineStringElem = doc.createElement( QStringLiteral( "gml:LineString" ) );
+          QDomElement lineStringMemberElem = doc.createElement( u"gml:lineStringMember"_s );
+          QDomElement lineStringElem = doc.createElement( u"gml:LineString"_s );
           if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-            lineStringElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase + QStringLiteral( ".%1" ).arg( jdx + 1 ) );
+            lineStringElem.setAttribute( u"gml:id"_s, gmlIdBase + u".%1"_s.arg( jdx + 1 ) );
 
           wkbPtr.readHeader();
 
@@ -1410,28 +1551,33 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
 
             if ( hasZValue )
             {
-              wkbPtr += sizeof( double );
+              double z = 0;
+              wkbPtr >> z;
+              coordString += cs + qgsDoubleToString( z, precision );
             }
           }
-          QDomText coordText = doc.createTextNode( coordString );
+          const QDomText coordText = doc.createTextNode( coordString );
           coordElem.appendChild( coordText );
+          if ( gmlVersion != GML_2_1_2 )
+            coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
           lineStringElem.appendChild( coordElem );
           lineStringMemberElem.appendChild( lineStringElem );
           multiLineStringElem.appendChild( lineStringMemberElem );
         }
         return multiLineStringElem;
       }
-      case QgsWkbTypes::Polygon25D:
+      case Qgis::WkbType::Polygon25D:
+      case Qgis::WkbType::PolygonZ:
         hasZValue = true;
         //intentional fall-through
-        FALLTHROUGH
-      case QgsWkbTypes::Polygon:
+        [[fallthrough]];
+      case Qgis::WkbType::Polygon:
       {
-        QDomElement polygonElem = doc.createElement( QStringLiteral( "gml:Polygon" ) );
+        QDomElement polygonElem = doc.createElement( u"gml:Polygon"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          polygonElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          polygonElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          polygonElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          polygonElem.setAttribute( u"srsName"_s, srsName );
 
         // get number of rings in the polygon
         int numRings;
@@ -1448,7 +1594,7 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
             boundaryName = ( gmlVersion == GML_2_1_2 ) ? "gml:innerBoundaryIs" : "gml:interior";
           }
           QDomElement boundaryElem = doc.createElement( boundaryName );
-          QDomElement ringElem = doc.createElement( QStringLiteral( "gml:LinearRing" ) );
+          QDomElement ringElem = doc.createElement( u"gml:LinearRing"_s );
           // get number of points in the ring
           int nPoints = 0;
           wkbPtr >> nPoints;
@@ -1470,40 +1616,47 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
               wkbPtr >> x >> y;
 
             coordString += qgsDoubleToString( x, precision ) + cs + qgsDoubleToString( y, precision );
+
             if ( hasZValue )
             {
-              wkbPtr += sizeof( double );
+              double z = 0;
+              wkbPtr >> z;
+              coordString += cs + qgsDoubleToString( z, precision );
             }
           }
-          QDomText coordText = doc.createTextNode( coordString );
+          const QDomText coordText = doc.createTextNode( coordString );
           coordElem.appendChild( coordText );
+          if ( gmlVersion != GML_2_1_2 )
+            coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
           ringElem.appendChild( coordElem );
           boundaryElem.appendChild( ringElem );
           polygonElem.appendChild( boundaryElem );
         }
+
         return polygonElem;
       }
-      case QgsWkbTypes::MultiPolygon25D:
+      case Qgis::WkbType::MultiPolygon25D:
+      case Qgis::WkbType::MultiPolygonZ:
         hasZValue = true;
         //intentional fall-through
-        FALLTHROUGH
-      case QgsWkbTypes::MultiPolygon:
+        [[fallthrough]];
+      case Qgis::WkbType::MultiPolygon:
       {
-        QDomElement multiPolygonElem = doc.createElement( QStringLiteral( "gml:MultiPolygon" ) );
+        QDomElement multiPolygonElem = doc.createElement( u"gml:MultiPolygon"_s );
         if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-          multiPolygonElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase );
+          multiPolygonElem.setAttribute( u"gml:id"_s, gmlIdBase );
         if ( !srsName.isEmpty() )
-          multiPolygonElem.setAttribute( QStringLiteral( "srsName" ), srsName );
+          multiPolygonElem.setAttribute( u"srsName"_s, srsName );
 
         int numPolygons;
         wkbPtr >> numPolygons;
 
         for ( int kdx = 0; kdx < numPolygons; kdx++ )
         {
-          QDomElement polygonMemberElem = doc.createElement( QStringLiteral( "gml:polygonMember" ) );
-          QDomElement polygonElem = doc.createElement( QStringLiteral( "gml:Polygon" ) );
+          QDomElement polygonMemberElem = doc.createElement( u"gml:polygonMember"_s );
+          QDomElement polygonElem = doc.createElement( u"gml:Polygon"_s );
           if ( gmlVersion == GML_3_2_1 && !gmlIdBase.isEmpty() )
-            polygonElem.setAttribute( QStringLiteral( "gml:id" ), gmlIdBase + QStringLiteral( ".%1" ).arg( kdx + 1 ) );
+            polygonElem.setAttribute( u"gml:id"_s, gmlIdBase + u".%1"_s.arg( kdx + 1 ) );
 
           wkbPtr.readHeader();
 
@@ -1518,7 +1671,7 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
               boundaryName = ( gmlVersion == GML_2_1_2 ) ? "gml:innerBoundaryIs" : "gml:interior";
             }
             QDomElement boundaryElem = doc.createElement( boundaryName );
-            QDomElement ringElem = doc.createElement( QStringLiteral( "gml:LinearRing" ) );
+            QDomElement ringElem = doc.createElement( u"gml:LinearRing"_s );
 
             int nPoints;
             wkbPtr >> nPoints;
@@ -1543,11 +1696,15 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
 
               if ( hasZValue )
               {
-                wkbPtr += sizeof( double );
+                double z = 0;
+                wkbPtr >> z;
+                coordString += cs + qgsDoubleToString( z, precision );
               }
             }
-            QDomText coordText = doc.createTextNode( coordString );
+            const QDomText coordText = doc.createTextNode( coordString );
             coordElem.appendChild( coordText );
+            if ( gmlVersion != GML_2_1_2 )
+              coordElem.setAttribute( u"srsDimension"_s, hasZValue ? u"3"_s : u"2"_s );
             ringElem.appendChild( coordElem );
             boundaryElem.appendChild( ringElem );
             polygonElem.appendChild( boundaryElem );
@@ -1570,14 +1727,14 @@ QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry,
 
 QDomElement QgsOgcUtils::geometryToGML( const QgsGeometry &geometry, QDomDocument &doc, int precision )
 {
-  return geometryToGML( geometry, doc, QStringLiteral( "GML2" ), precision );
+  return geometryToGML( geometry, doc, u"GML2"_s, precision );
 }
 
 QDomElement QgsOgcUtils::createGMLCoordinates( const QgsPolylineXY &points, QDomDocument &doc )
 {
-  QDomElement coordElem = doc.createElement( QStringLiteral( "gml:coordinates" ) );
-  coordElem.setAttribute( QStringLiteral( "cs" ), QStringLiteral( "," ) );
-  coordElem.setAttribute( QStringLiteral( "ts" ), QStringLiteral( " " ) );
+  QDomElement coordElem = doc.createElement( u"gml:coordinates"_s );
+  coordElem.setAttribute( u"cs"_s, u","_s );
+  coordElem.setAttribute( u"ts"_s, u" "_s );
 
   QString coordString;
   QVector<QgsPointXY>::const_iterator pointIt = points.constBegin();
@@ -1592,17 +1749,17 @@ QDomElement QgsOgcUtils::createGMLCoordinates( const QgsPolylineXY &points, QDom
     coordString += qgsDoubleToString( pointIt->y() );
   }
 
-  QDomText coordText = doc.createTextNode( coordString );
+  const QDomText coordText = doc.createTextNode( coordString );
   coordElem.appendChild( coordText );
   return coordElem;
 }
 
 QDomElement QgsOgcUtils::createGMLPositions( const QgsPolylineXY &points, QDomDocument &doc )
 {
-  QDomElement posElem = doc.createElement( QStringLiteral( "gml:pos" ) );
+  QDomElement posElem = doc.createElement( u"gml:pos"_s );
   if ( points.size() > 1 )
-    posElem = doc.createElement( QStringLiteral( "gml:posList" ) );
-  posElem.setAttribute( QStringLiteral( "srsDimension" ), QStringLiteral( "2" ) );
+    posElem = doc.createElement( u"gml:posList"_s );
+  posElem.setAttribute( u"srsDimension"_s, u"2"_s );
 
   QString coordString;
   QVector<QgsPointXY>::const_iterator pointIt = points.constBegin();
@@ -1617,12 +1774,10 @@ QDomElement QgsOgcUtils::createGMLPositions( const QgsPolylineXY &points, QDomDo
     coordString += qgsDoubleToString( pointIt->y() );
   }
 
-  QDomText coordText = doc.createTextNode( coordString );
+  const QDomText coordText = doc.createTextNode( coordString );
   posElem.appendChild( coordText );
   return posElem;
 }
-
-
 
 // -----------------------------------------
 
@@ -1636,21 +1791,21 @@ QColor QgsOgcUtils::colorFromOgcFill( const QDomElement &fillElement )
   QString cssName;
   QString elemText;
   QColor color;
-  QDomElement cssElem = fillElement.firstChildElement( QStringLiteral( "CssParameter" ) );
+  QDomElement cssElem = fillElement.firstChildElement( u"CssParameter"_s );
   while ( !cssElem.isNull() )
   {
-    cssName = cssElem.attribute( QStringLiteral( "name" ), QStringLiteral( "not_found" ) );
-    if ( cssName != QLatin1String( "not_found" ) )
+    cssName = cssElem.attribute( u"name"_s, u"not_found"_s );
+    if ( cssName != "not_found"_L1 )
     {
       elemText = cssElem.text();
-      if ( cssName == QLatin1String( "fill" ) )
+      if ( cssName == "fill"_L1 )
       {
         color.setNamedColor( elemText );
       }
-      else if ( cssName == QLatin1String( "fill-opacity" ) )
+      else if ( cssName == "fill-opacity"_L1 )
       {
         bool ok;
-        double opacity = elemText.toDouble( &ok );
+        const double opacity = elemText.toDouble( &ok );
         if ( ok )
         {
           color.setAlphaF( opacity );
@@ -1658,7 +1813,7 @@ QColor QgsOgcUtils::colorFromOgcFill( const QDomElement &fillElement )
       }
     }
 
-    cssElem = cssElem.nextSiblingElement( QStringLiteral( "CssParameter" ) );
+    cssElem = cssElem.nextSiblingElement( u"CssParameter"_s );
   }
 
   return color;
@@ -1704,11 +1859,11 @@ QgsExpression *QgsOgcUtils::expressionFromOgcFilter( const QDomElement &element,
     // use the concat binary operator to append to the root node
     if ( !expr->d->mRootNode )
     {
-      expr->d->mRootNode = node;
+      expr->d->mRootNode.reset( node );
     }
     else
     {
-      expr->d->mRootNode = new QgsExpressionNodeBinaryOperator( QgsExpressionNodeBinaryOperator::boConcat, expr->d->mRootNode, node );
+      expr->d->mRootNode = std::make_unique<QgsExpressionNodeBinaryOperator>( QgsExpressionNodeBinaryOperator::boConcat, expr->d->mRootNode.release(), node );
     }
 
     childElem = childElem.nextSiblingElement();
@@ -1721,29 +1876,31 @@ QgsExpression *QgsOgcUtils::expressionFromOgcFilter( const QDomElement &element,
 }
 
 typedef QMap<QString, int> IntMap;
-Q_GLOBAL_STATIC_WITH_ARGS( IntMap, BINARY_OPERATORS_TAG_NAMES_MAP, (
-{
-  // logical
-  {  QLatin1String( "Or" ), QgsExpressionNodeBinaryOperator::boOr },
-  {  QLatin1String( "And" ), QgsExpressionNodeBinaryOperator::boAnd },
-  // comparison
-  {  QLatin1String( "PropertyIsEqualTo" ), QgsExpressionNodeBinaryOperator::boEQ },
-  {  QLatin1String( "PropertyIsNotEqualTo" ), QgsExpressionNodeBinaryOperator::boNE },
-  {  QLatin1String( "PropertyIsLessThanOrEqualTo" ), QgsExpressionNodeBinaryOperator::boLE },
-  {  QLatin1String( "PropertyIsGreaterThanOrEqualTo" ), QgsExpressionNodeBinaryOperator::boGE },
-  {  QLatin1String( "PropertyIsLessThan" ), QgsExpressionNodeBinaryOperator::boLT },
-  {  QLatin1String( "PropertyIsGreaterThan" ), QgsExpressionNodeBinaryOperator::boGT },
-  {  QLatin1String( "PropertyIsLike" ), QgsExpressionNodeBinaryOperator::boLike },
-  // arithmetic
-  {  QLatin1String( "Add" ), QgsExpressionNodeBinaryOperator::boPlus },
-  {  QLatin1String( "Sub" ), QgsExpressionNodeBinaryOperator::boMinus },
-  {  QLatin1String( "Mul" ), QgsExpressionNodeBinaryOperator::boMul },
-  {  QLatin1String( "Div" ), QgsExpressionNodeBinaryOperator::boDiv },
-} ) )
+Q_GLOBAL_STATIC_WITH_ARGS(
+  IntMap,
+  BINARY_OPERATORS_TAG_NAMES_MAP,
+  ( {
+    // logical
+    { "Or"_L1, QgsExpressionNodeBinaryOperator::boOr },
+    { "And"_L1, QgsExpressionNodeBinaryOperator::boAnd },
+    // comparison
+    { "PropertyIsEqualTo"_L1, QgsExpressionNodeBinaryOperator::boEQ },
+    { "PropertyIsNotEqualTo"_L1, QgsExpressionNodeBinaryOperator::boNE },
+    { "PropertyIsLessThanOrEqualTo"_L1, QgsExpressionNodeBinaryOperator::boLE },
+    { "PropertyIsGreaterThanOrEqualTo"_L1, QgsExpressionNodeBinaryOperator::boGE },
+    { "PropertyIsLessThan"_L1, QgsExpressionNodeBinaryOperator::boLT },
+    { "PropertyIsGreaterThan"_L1, QgsExpressionNodeBinaryOperator::boGT },
+    { "PropertyIsLike"_L1, QgsExpressionNodeBinaryOperator::boLike },
+    // arithmetic
+    { "Add"_L1, QgsExpressionNodeBinaryOperator::boPlus },
+    { "Sub"_L1, QgsExpressionNodeBinaryOperator::boMinus },
+    { "Mul"_L1, QgsExpressionNodeBinaryOperator::boMul },
+    { "Div"_L1, QgsExpressionNodeBinaryOperator::boDiv },
+  } )
+)
 
 static int binaryOperatorFromTagName( const QString &tagName )
 {
-
   return BINARY_OPERATORS_TAG_NAMES_MAP()->value( tagName, -1 );
 }
 
@@ -1751,7 +1908,7 @@ static QString binaryOperatorToTagName( QgsExpressionNodeBinaryOperator::BinaryO
 {
   if ( op == QgsExpressionNodeBinaryOperator::boILike )
   {
-    return QStringLiteral( "PropertyIsLike" );
+    return u"PropertyIsLike"_s;
   }
   return BINARY_OPERATORS_TAG_NAMES_MAP()->key( op, QString() );
 }
@@ -1767,8 +1924,7 @@ static bool isSpatialOperator( const QString &tagName )
   static QStringList spatialOps;
   if ( spatialOps.isEmpty() )
   {
-    spatialOps << QStringLiteral( "BBOX" ) << QStringLiteral( "Intersects" ) << QStringLiteral( "Contains" ) << QStringLiteral( "Crosses" ) << QStringLiteral( "Equals" )
-               << QStringLiteral( "Disjoint" ) << QStringLiteral( "Overlaps" ) << QStringLiteral( "Touches" ) << QStringLiteral( "Within" );
+    spatialOps << u"BBOX"_s << u"Intersects"_s << u"Contains"_s << u"Crosses"_s << u"Equals"_s << u"Disjoint"_s << u"Overlaps"_s << u"Touches"_s << u"Within"_s;
   }
 
   return spatialOps.contains( tagName );
@@ -1852,25 +2008,35 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtils::nodePropertyIsNullFromOgcFilter( Q
 
 QDomElement QgsOgcUtils::expressionToOgcFilter( const QgsExpression &exp, QDomDocument &doc, QString *errorMessage )
 {
-  return expressionToOgcFilter( exp, doc, GML_2_1_2, FILTER_OGC_1_0,
-                                QStringLiteral( "geometry" ), QString(), false, false, errorMessage );
+  return expressionToOgcFilter( exp, doc, GML_2_1_2, FILTER_OGC_1_0, QString(), QString(), u"geometry"_s, QString(), false, false, errorMessage );
 }
 
-QDomElement QgsOgcUtils::expressionToOgcExpression( const QgsExpression &exp, QDomDocument &doc, QString *errorMessage )
+QDomElement QgsOgcUtils::expressionToOgcExpression( const QgsExpression &exp, QDomDocument &doc, QString *errorMessage, bool requiresFilterElement )
 {
-  return expressionToOgcExpression( exp, doc, GML_2_1_2, FILTER_OGC_1_0,
-                                    QStringLiteral( "geometry" ), QString(), false, false, errorMessage );
+  return expressionToOgcExpression( exp, doc, GML_2_1_2, FILTER_OGC_1_0, u"geometry"_s, QString(), false, false, errorMessage, requiresFilterElement );
 }
 
-QDomElement QgsOgcUtils::expressionToOgcFilter( const QgsExpression &expression,
-    QDomDocument &doc,
-    GMLVersion gmlVersion,
-    FilterVersion filterVersion,
-    const QString &geometryName,
-    const QString &srsName,
-    bool honourAxisOrientation,
-    bool invertAxisOrientation,
-    QString *errorMessage )
+QDomElement QgsOgcUtils::elseFilterExpression( QDomDocument &doc )
+{
+  return doc.createElementNS( SE_NAMESPACE, u"se:ElseFilter"_s );
+}
+
+
+QDomElement QgsOgcUtils::expressionToOgcFilter(
+  const QgsExpression &expression,
+  QDomDocument &doc,
+  GMLVersion gmlVersion,
+  FilterVersion filterVersion,
+  const QString &namespacePrefix,
+  const QString &namespaceURI,
+  const QString &geometryName,
+  const QString &srsName,
+  bool honourAxisOrientation,
+  bool invertAxisOrientation,
+  QString *errorMessage,
+  const QMap<QString, QString> &fieldNameToXPathMap,
+  const QMap<QString, QString> &namespacePrefixToUriMap
+)
 {
   if ( !expression.rootNode() )
     return QDomElement();
@@ -1879,39 +2045,41 @@ QDomElement QgsOgcUtils::expressionToOgcFilter( const QgsExpression &expression,
 
   QgsExpressionContext context;
   context << QgsExpressionContextUtils::globalScope();
-  QgsOgcUtilsExprToFilter utils( doc, gmlVersion, filterVersion, geometryName, srsName, honourAxisOrientation, invertAxisOrientation );
-  QDomElement exprRootElem = utils.expressionNodeToOgcFilter( exp.rootNode(), &exp, &context );
+  QgsOgcUtilsExprToFilter
+    utils( doc, gmlVersion, filterVersion, namespacePrefix, namespaceURI, geometryName, srsName, honourAxisOrientation, invertAxisOrientation, fieldNameToXPathMap, namespacePrefixToUriMap );
+  const QDomElement exprRootElem = utils.expressionNodeToOgcFilter( exp.rootNode(), &exp, &context );
   if ( errorMessage )
     *errorMessage = utils.errorMessage();
   if ( exprRootElem.isNull() )
     return QDomElement();
 
-  QDomElement filterElem =
-    ( filterVersion == FILTER_FES_2_0 ) ?
-    doc.createElementNS( FES_NAMESPACE, QStringLiteral( "fes:Filter" ) ) :
-    doc.createElementNS( OGC_NAMESPACE, QStringLiteral( "ogc:Filter" ) );
-  if ( utils.GMLNamespaceUsed() )
+  QDomElement filterElem = filterElement( doc, gmlVersion, filterVersion, utils.GMLNamespaceUsed() );
+
+  if ( !namespacePrefix.isEmpty() && !namespaceURI.isEmpty() )
   {
-    QDomAttr attr = doc.createAttribute( QStringLiteral( "xmlns:gml" ) );
-    if ( gmlVersion == GML_3_2_1 )
-      attr.setValue( GML32_NAMESPACE );
-    else
-      attr.setValue( GML_NAMESPACE );
+    QDomAttr attr = doc.createAttribute( u"xmlns:"_s + namespacePrefix );
+    attr.setValue( namespaceURI );
     filterElem.setAttributeNode( attr );
   }
+
   filterElem.appendChild( exprRootElem );
   return filterElem;
 }
 
-QDomElement QgsOgcUtils::expressionToOgcExpression( const QgsExpression &expression,
-    QDomDocument &doc,
-    GMLVersion gmlVersion,
-    FilterVersion filterVersion,
-    const QString &geometryName,
-    const QString &srsName,
-    bool honourAxisOrientation,
-    bool invertAxisOrientation,
-    QString *errorMessage )
+QDomElement QgsOgcUtils::expressionToOgcExpression(
+  const QgsExpression &expression,
+  QDomDocument &doc,
+  GMLVersion gmlVersion,
+  FilterVersion filterVersion,
+  const QString &geometryName,
+  const QString &srsName,
+  bool honourAxisOrientation,
+  bool invertAxisOrientation,
+  QString *errorMessage,
+  bool requiresFilterElement,
+  const QMap<QString, QString> &fieldNameToXPathMap,
+  const QMap<QString, QString> &namespacePrefixToUriMap
+)
 {
   QgsExpressionContext context;
   context << QgsExpressionContextUtils::globalScope();
@@ -1922,71 +2090,88 @@ QDomElement QgsOgcUtils::expressionToOgcExpression( const QgsExpression &express
   if ( !node )
     return QDomElement();
 
-  switch ( node->nodeType() )
+  QgsOgcUtilsExprToFilter utils( doc, gmlVersion, filterVersion, QString(), QString(), geometryName, srsName, honourAxisOrientation, invertAxisOrientation, fieldNameToXPathMap, namespacePrefixToUriMap );
+  const QDomElement exprRootElem = utils.expressionNodeToOgcFilter( node, &exp, &context );
+
+  if ( errorMessage )
   {
-    case QgsExpressionNode::ntFunction:
-    case QgsExpressionNode::ntLiteral:
-    case QgsExpressionNode::ntColumnRef:
-    {
-      QgsOgcUtilsExprToFilter utils( doc, gmlVersion, filterVersion, geometryName, srsName, honourAxisOrientation, invertAxisOrientation );
-      QDomElement exprRootElem = utils.expressionNodeToOgcFilter( node, &exp, &context );
-
-      if ( errorMessage )
-        *errorMessage = utils.errorMessage();
-
-      if ( !exprRootElem.isNull() )
-      {
-        return exprRootElem;
-      }
-      break;
-    }
-    default:
-    {
-      if ( errorMessage )
-        *errorMessage = QObject::tr( "Node type not supported in expression translation: %1" ).arg( node->nodeType() );
-    }
+    *errorMessage = utils.errorMessage();
   }
-  // got an error
+
+  if ( !exprRootElem.isNull() )
+  {
+    if ( requiresFilterElement )
+    {
+      QDomElement filterElem = filterElement( doc, gmlVersion, filterVersion, utils.GMLNamespaceUsed() );
+
+      filterElem.appendChild( exprRootElem );
+      return filterElem;
+    }
+    return exprRootElem;
+  }
+
   return QDomElement();
 }
 
-QDomElement QgsOgcUtils::SQLStatementToOgcFilter( const QgsSQLStatement &statement,
-    QDomDocument &doc,
-    GMLVersion gmlVersion,
-    FilterVersion filterVersion,
-    const QList<LayerProperties> &layerProperties,
-    bool honourAxisOrientation,
-    bool invertAxisOrientation,
-    const QMap< QString, QString> &mapUnprefixedTypenameToPrefixedTypename,
-    QString *errorMessage )
+QDomElement QgsOgcUtils::SQLStatementToOgcFilter(
+  const QgsSQLStatement &statement,
+  QDomDocument &doc,
+  GMLVersion gmlVersion,
+  FilterVersion filterVersion,
+  const QList<LayerProperties> &layerProperties,
+  bool honourAxisOrientation,
+  bool invertAxisOrientation,
+  const QMap< QString, QString> &mapUnprefixedTypenameToPrefixedTypename,
+  QString *errorMessage,
+  const QMap<QString, QString> &fieldNameToXPathMap,
+  const QMap<QString, QString> &namespacePrefixToUriMap
+)
 {
   if ( !statement.rootNode() )
     return QDomElement();
 
-  QgsOgcUtilsSQLStatementToFilter utils( doc, gmlVersion, filterVersion,
-                                         layerProperties, honourAxisOrientation, invertAxisOrientation,
-                                         mapUnprefixedTypenameToPrefixedTypename );
-  QDomElement exprRootElem = utils.toOgcFilter( statement.rootNode() );
+  QgsOgcUtilsSQLStatementToFilter
+    utils( doc, gmlVersion, filterVersion, layerProperties, honourAxisOrientation, invertAxisOrientation, mapUnprefixedTypenameToPrefixedTypename, fieldNameToXPathMap, namespacePrefixToUriMap );
+  const QDomElement exprRootElem = utils.toOgcFilter( statement.rootNode() );
   if ( errorMessage )
     *errorMessage = utils.errorMessage();
   if ( exprRootElem.isNull() )
     return QDomElement();
 
-  QDomElement filterElem =
-    ( filterVersion == FILTER_FES_2_0 ) ?
-    doc.createElementNS( FES_NAMESPACE, QStringLiteral( "fes:Filter" ) ) :
-    doc.createElementNS( OGC_NAMESPACE, QStringLiteral( "ogc:Filter" ) );
-  if ( utils.GMLNamespaceUsed() )
+  QDomElement filterElem = filterElement( doc, gmlVersion, filterVersion, utils.GMLNamespaceUsed() );
+
+  QSet<QString> setNamespaceURI;
+  for ( const LayerProperties &props : layerProperties )
   {
-    QDomAttr attr = doc.createAttribute( QStringLiteral( "xmlns:gml" ) );
-    if ( gmlVersion == GML_3_2_1 )
-      attr.setValue( GML32_NAMESPACE );
-    else
-      attr.setValue( GML_NAMESPACE );
-    filterElem.setAttributeNode( attr );
+    if ( !props.mNamespacePrefix.isEmpty() && !props.mNamespaceURI.isEmpty() && !setNamespaceURI.contains( props.mNamespaceURI ) )
+    {
+      setNamespaceURI.insert( props.mNamespaceURI );
+      QDomAttr attr = doc.createAttribute( u"xmlns:"_s + props.mNamespacePrefix );
+      attr.setValue( props.mNamespaceURI );
+      filterElem.setAttributeNode( attr );
+    }
   }
   filterElem.appendChild( exprRootElem );
   return filterElem;
+}
+
+//
+
+/* static */ Qgis::WkbType QgsOgcUtils::geomTypeFromPropertyType( const QString &gmlGeomType )
+{
+  if ( gmlGeomType == "Point"_L1 )
+    return Qgis::WkbType::Point;
+  if ( gmlGeomType == "LineString"_L1 || gmlGeomType == "Curve"_L1 )
+    return Qgis::WkbType::LineString;
+  if ( gmlGeomType == "Polygon"_L1 || gmlGeomType == "Surface"_L1 )
+    return Qgis::WkbType::Polygon;
+  if ( gmlGeomType == "MultiPoint"_L1 )
+    return Qgis::WkbType::MultiPoint;
+  if ( gmlGeomType == "MultiLineString"_L1 || gmlGeomType == "MultiCurve"_L1 )
+    return Qgis::WkbType::MultiLineString;
+  if ( gmlGeomType == "MultiPolygon"_L1 || gmlGeomType == "MultiSurface"_L1 )
+    return Qgis::WkbType::MultiPolygon;
+  return Qgis::WkbType::Unknown;
 }
 
 //
@@ -2017,7 +2202,7 @@ QDomElement QgsOgcUtilsExprToFilter::expressionNodeToOgcFilter( const QgsExpress
 
 QDomElement QgsOgcUtilsExprToFilter::expressionUnaryOperatorToOgcFilter( const QgsExpressionNodeUnaryOperator *node, QgsExpression *expression, const QgsExpressionContext *context )
 {
-  QDomElement operandElem = expressionNodeToOgcFilter( node->operand(), expression, context );
+  const QDomElement operandElem = expressionNodeToOgcFilter( node->operand(), expression, context );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
 
@@ -2055,11 +2240,45 @@ QDomElement QgsOgcUtilsExprToFilter::expressionUnaryOperatorToOgcFilter( const Q
 
 QDomElement QgsOgcUtilsExprToFilter::expressionBinaryOperatorToOgcFilter( const QgsExpressionNodeBinaryOperator *node, QgsExpression *expression, const QgsExpressionContext *context )
 {
-  QDomElement leftElem = expressionNodeToOgcFilter( node->opLeft(), expression, context );
+  QgsExpressionNodeBinaryOperator::BinaryOperator op = node->op();
+
+  // Special handling for concatenation operator (||)
+  if ( op == QgsExpressionNodeBinaryOperator::boConcat )
+  {
+    QDomElement funcElem = mDoc.createElement( mFilterPrefix + u":Function"_s );
+    funcElem.setAttribute( u"name"_s, u"Concatenate"_s );
+
+    std::function<bool( const QgsExpressionNode * )> appendParts = [&]( const QgsExpressionNode *n ) -> bool {
+      if ( n->nodeType() == QgsExpressionNode::ntBinaryOperator )
+      {
+        const auto *binNode = static_cast<const QgsExpressionNodeBinaryOperator *>( n );
+        if ( binNode->op() == QgsExpressionNodeBinaryOperator::boConcat )
+        {
+          return appendParts( binNode->opLeft() ) && appendParts( binNode->opRight() );
+        }
+      }
+
+      // Try to convert the expression node to an OGC filter element
+      QDomElement subElem = expressionNodeToOgcFilter( n, expression, context );
+
+      if ( subElem.isNull() )
+      {
+        return false;
+      }
+      funcElem.appendChild( subElem );
+      return true;
+    };
+
+    if ( !appendParts( node ) )
+    {
+      return QDomElement(); // Return empty element if any part of the concatenation could not be converted
+    }
+    return funcElem;
+  }
+  // Handle other binary operators
+  const QDomElement leftElem = expressionNodeToOgcFilter( node->opLeft(), expression, context );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
-
-  QgsExpressionNodeBinaryOperator::BinaryOperator op = node->op();
 
   // before right operator is parsed: to allow NULL handling
   if ( op == QgsExpressionNodeBinaryOperator::boIs || op == QgsExpressionNodeBinaryOperator::boIsNot )
@@ -2067,9 +2286,8 @@ QDomElement QgsOgcUtilsExprToFilter::expressionBinaryOperatorToOgcFilter( const 
     if ( node->opRight()->nodeType() == QgsExpressionNode::ntLiteral )
     {
       const QgsExpressionNodeLiteral *rightLit = static_cast<const QgsExpressionNodeLiteral *>( node->opRight() );
-      if ( rightLit->value().isNull() )
+      if ( QgsVariantUtils::isNull( rightLit->value() ) )
       {
-
         QDomElement elem = mDoc.createElement( mFilterPrefix + ":PropertyIsNull" );
         elem.appendChild( leftElem );
 
@@ -2086,15 +2304,14 @@ QDomElement QgsOgcUtilsExprToFilter::expressionBinaryOperatorToOgcFilter( const 
       // continue with equal / not equal operator once the null case is handled
       op = ( op == QgsExpressionNodeBinaryOperator::boIs ? QgsExpressionNodeBinaryOperator::boEQ : QgsExpressionNodeBinaryOperator::boNE );
     }
-
   }
 
-  QDomElement rightElem = expressionNodeToOgcFilter( node->opRight(), expression, context );
+  const QDomElement rightElem = expressionNodeToOgcFilter( node->opRight(), expression, context );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
 
 
-  QString opText = binaryOperatorToTagName( op );
+  const QString opText = binaryOperatorToTagName( op );
   if ( opText.isEmpty() )
   {
     // not implemented binary operators
@@ -2108,15 +2325,15 @@ QDomElement QgsOgcUtilsExprToFilter::expressionBinaryOperatorToOgcFilter( const 
   if ( op == QgsExpressionNodeBinaryOperator::boLike || op == QgsExpressionNodeBinaryOperator::boILike )
   {
     if ( op == QgsExpressionNodeBinaryOperator::boILike )
-      boElem.setAttribute( QStringLiteral( "matchCase" ), QStringLiteral( "false" ) );
+      boElem.setAttribute( u"matchCase"_s, u"false"_s );
 
     // setup wildCards to <ogc:PropertyIsLike>
-    boElem.setAttribute( QStringLiteral( "wildCard" ), QStringLiteral( "%" ) );
-    boElem.setAttribute( QStringLiteral( "singleChar" ), QStringLiteral( "_" ) );
+    boElem.setAttribute( u"wildCard"_s, u"%"_s );
+    boElem.setAttribute( u"singleChar"_s, u"_"_s );
     if ( mFilterVersion == QgsOgcUtils::FILTER_OGC_1_0 )
-      boElem.setAttribute( QStringLiteral( "escape" ), QStringLiteral( "\\" ) );
+      boElem.setAttribute( u"escape"_s, u"\\"_s );
     else
-      boElem.setAttribute( QStringLiteral( "escapeChar" ), QStringLiteral( "\\" ) );
+      boElem.setAttribute( u"escapeChar"_s, u"\\"_s );
   }
 
   boElem.appendChild( leftElem );
@@ -2130,26 +2347,26 @@ QDomElement QgsOgcUtilsExprToFilter::expressionLiteralToOgcFilter( const QgsExpr
   Q_UNUSED( expression )
   Q_UNUSED( context )
   QString value;
-  switch ( node->value().type() )
+  switch ( node->value().userType() )
   {
-    case QVariant::Int:
+    case QMetaType::Type::Int:
       value = QString::number( node->value().toInt() );
       break;
-    case QVariant::Double:
+    case QMetaType::Type::Double:
       value = qgsDoubleToString( node->value().toDouble() );
       break;
-    case QVariant::String:
+    case QMetaType::Type::QString:
       value = node->value().toString();
       break;
-    case QVariant::Date:
+    case QMetaType::Type::QDate:
       value = node->value().toDate().toString( Qt::ISODate );
       break;
-    case QVariant::DateTime:
+    case QMetaType::Type::QDateTime:
       value = node->value().toDateTime().toString( Qt::ISODate );
       break;
 
     default:
-      mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( node->value().type() );
+      mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( static_cast<QMetaType::Type>( node->value().userType() ) );
       return QDomElement();
   }
 
@@ -2164,24 +2381,72 @@ QDomElement QgsOgcUtilsExprToFilter::expressionColumnRefToOgcFilter( const QgsEx
   Q_UNUSED( expression )
   Q_UNUSED( context )
   QDomElement propElem = mDoc.createElement( mFilterPrefix + ":" + mPropertyName );
-  propElem.appendChild( mDoc.createTextNode( node->name() ) );
+  if ( !mFieldNameToXPathMap.isEmpty() )
+  {
+    const auto iterFieldName = mFieldNameToXPathMap.constFind( node->name() );
+    if ( iterFieldName != mFieldNameToXPathMap.constEnd() )
+    {
+      const QString xpath( *iterFieldName );
+
+      if ( !mNamespacePrefixToUriMap.isEmpty() )
+      {
+        const QStringList parts = xpath.split( '/' );
+        QSet<QString> setNamespacePrefix;
+        for ( const QString &part : std::as_const( parts ) )
+        {
+          const QStringList subparts = part.split( ':' );
+          if ( subparts.size() == 2 && !setNamespacePrefix.contains( subparts[0] ) )
+          {
+            const auto iterNamespacePrefix = mNamespacePrefixToUriMap.constFind( subparts[0] );
+            if ( iterNamespacePrefix != mNamespacePrefixToUriMap.constEnd() )
+            {
+              setNamespacePrefix.insert( subparts[0] );
+              QDomAttr attr = mDoc.createAttribute( u"xmlns:"_s + subparts[0] );
+              attr.setValue( *iterNamespacePrefix );
+              propElem.setAttributeNode( attr );
+            }
+          }
+        }
+      }
+
+      propElem.appendChild( mDoc.createTextNode( xpath ) );
+
+      return propElem;
+    }
+  }
+  QString columnRef( node->name() );
+  if ( !mNamespacePrefix.isEmpty() && !mNamespaceURI.isEmpty() )
+    columnRef = mNamespacePrefix + u":"_s + columnRef;
+  propElem.appendChild( mDoc.createTextNode( columnRef ) );
   return propElem;
 }
-
 
 
 QDomElement QgsOgcUtilsExprToFilter::expressionInOperatorToOgcFilter( const QgsExpressionNodeInOperator *node, QgsExpression *expression, const QgsExpressionContext *context )
 {
   if ( node->list()->list().size() == 1 )
-    return expressionNodeToOgcFilter( node->list()->list()[0], expression, context );
+  {
+    const QDomElement leftNode = expressionNodeToOgcFilter( node->node(), expression, context );
+    const QDomElement firstListNode = expressionNodeToOgcFilter( node->list()->list().first(), expression, context );
+    QDomElement eqElem = mDoc.createElement( mFilterPrefix + ":PropertyIsEqualTo" );
+    eqElem.appendChild( leftNode );
+    eqElem.appendChild( firstListNode );
+    if ( node->isNotIn() )
+    {
+      QDomElement notElem = mDoc.createElement( mFilterPrefix + ":Not" );
+      notElem.appendChild( eqElem );
+      return notElem;
+    }
+    return eqElem;
+  }
 
   QDomElement orElem = mDoc.createElement( mFilterPrefix + ":Or" );
-  QDomElement leftNode = expressionNodeToOgcFilter( node->node(), expression, context );
+  const QDomElement leftNode = expressionNodeToOgcFilter( node->node(), expression, context );
 
   const auto constList = node->list()->list();
   for ( QgsExpressionNode *n : constList )
   {
-    QDomElement listNode = expressionNodeToOgcFilter( n, expression, context );
+    const QDomElement listNode = expressionNodeToOgcFilter( n, expression, context );
     if ( !mErrorMessage.isEmpty() )
       return QDomElement();
 
@@ -2202,16 +2467,19 @@ QDomElement QgsOgcUtilsExprToFilter::expressionInOperatorToOgcFilter( const QgsE
   return orElem;
 }
 
-Q_GLOBAL_STATIC_WITH_ARGS( QgsStringMap, BINARY_SPATIAL_OPS_MAP, (
-{
-  { QLatin1String( "disjoint" ),   QLatin1String( "Disjoint" ) },
-  { QLatin1String( "intersects" ), QLatin1String( "Intersects" )},
-  { QLatin1String( "touches" ),    QLatin1String( "Touches" ) },
-  { QLatin1String( "crosses" ),    QLatin1String( "Crosses" ) },
-  { QLatin1String( "contains" ),   QLatin1String( "Contains" ) },
-  { QLatin1String( "overlaps" ),   QLatin1String( "Overlaps" ) },
-  { QLatin1String( "within" ),     QLatin1String( "Within" ) }
-} ) )
+Q_GLOBAL_STATIC_WITH_ARGS(
+  QgsStringMap,
+  BINARY_SPATIAL_OPS_MAP,
+  (
+    { { "disjoint"_L1, "Disjoint"_L1 },
+      { "intersects"_L1, "Intersects"_L1 },
+      { "touches"_L1, "Touches"_L1 },
+      { "crosses"_L1, "Crosses"_L1 },
+      { "contains"_L1, "Contains"_L1 },
+      { "overlaps"_L1, "Overlaps"_L1 },
+      { "within"_L1, "Within"_L1 } }
+  )
+)
 
 static bool isBinarySpatialOperator( const QString &fnName )
 {
@@ -2223,14 +2491,48 @@ static QString tagNameForSpatialOperator( const QString &fnName )
   return BINARY_SPATIAL_OPS_MAP()->value( fnName );
 }
 
+Q_GLOBAL_STATIC_WITH_ARGS(
+  QgsStringMap,
+  OGC_FUNCTIONS_MAP,
+  (
+    { { "lower"_L1, "strToLowerCase"_L1 },
+      { "upper"_L1, "strToUpperCase"_L1 },
+      { "trim"_L1, "strTrim"_L1 },
+      { "if"_L1, "if_then_else"_L1 },
+      { "exp"_L1, "exp"_L1 },
+      { "floor"_L1, "floor"_L1 },
+      { "ceil"_L1, "ceil"_L1 },
+      { "round"_L1, "round"_L1 },
+      { "sin"_L1, "sin"_L1 },
+      { "cos"_L1, "cos"_L1 },
+      { "tan"_L1, "tan"_L1 },
+      { "asin"_L1, "asin"_L1 },
+      { "acos"_L1, "acos"_L1 },
+      { "atan"_L1, "atan"_L1 },
+      { "attribute"_L1, "attribute"_L1 },
+      { "get_feature"_L1, "get_feature"_L1 } }
+  )
+)
+
+static bool isSupportedOgcFunction( const QString &fnName )
+{
+  return OGC_FUNCTIONS_MAP()->contains( fnName );
+}
+
+static QString ogcFunctionName( const QString &fnName )
+{
+  return OGC_FUNCTIONS_MAP()->value( fnName );
+}
+
 static bool isGeometryColumn( const QgsExpressionNode *node )
 {
   if ( node->nodeType() != QgsExpressionNode::ntFunction )
     return false;
 
   const QgsExpressionNodeFunction *fn = static_cast<const QgsExpressionNodeFunction *>( node );
-  QgsExpressionFunction *fd = QgsExpression::Functions()[fn->fnIndex()];
-  return fd->name() == QLatin1String( "$geometry" );
+  const QgsExpression::SharedFunctionPtr fd = fn->function();
+
+  return fd->name() == "$geometry"_L1 || ( fd->name() == "var"_L1 && fn->referencedVariables().contains( "geometry"_L1 ) );
 }
 
 static QgsGeometry geometryFromConstExpr( const QgsExpressionNode *node )
@@ -2241,13 +2543,13 @@ static QgsGeometry geometryFromConstExpr( const QgsExpressionNode *node )
   if ( node->nodeType() == QgsExpressionNode::ntFunction )
   {
     const QgsExpressionNodeFunction *fnNode = static_cast<const QgsExpressionNodeFunction *>( node );
-    QgsExpressionFunction *fnDef = QgsExpression::Functions()[fnNode->fnIndex()];
-    if ( fnDef->name() == QLatin1String( "geom_from_wkt" ) )
+    const QgsExpression::SharedFunctionPtr fd = fnNode->function();
+    if ( fd->name() == "geom_from_wkt"_L1 )
     {
       const QList<QgsExpressionNode *> &args = fnNode->args()->list();
       if ( args[0]->nodeType() == QgsExpressionNode::ntLiteral )
       {
-        QString wkt = static_cast<const QgsExpressionNodeLiteral *>( args[0] )->value().toString();
+        const QString wkt = static_cast<const QgsExpressionNodeLiteral *>( args[0] )->value().toString();
         return QgsGeometry::fromWkt( wkt );
       }
     }
@@ -2258,35 +2560,42 @@ static QgsGeometry geometryFromConstExpr( const QgsExpressionNode *node )
 
 QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExpressionNodeFunction *node, QgsExpression *expression, const QgsExpressionContext *context )
 {
-  QgsExpressionFunction *fd = QgsExpression::Functions()[node->fnIndex()];
+  const QgsExpression::SharedFunctionPtr fd = node->function();
 
-  if ( fd->name() == QLatin1String( "intersects_bbox" ) )
+  if ( fd->name() == "intersects_bbox"_L1 )
   {
     QList<QgsExpressionNode *> argNodes = node->args()->list();
     Q_ASSERT( argNodes.count() == 2 ); // binary spatial ops must have two args
 
-    QgsGeometry geom = geometryFromConstExpr( argNodes[1] );
+    const QgsGeometry geom = geometryFromConstExpr( argNodes[1] );
     if ( !geom.isNull() && isGeometryColumn( argNodes[0] ) )
     {
       QgsRectangle rect = geom.boundingBox();
 
       mGMLUsed = true;
 
-      QDomElement elemBox = ( mGMLVersion == QgsOgcUtils::GML_2_1_2 ) ?
-                            QgsOgcUtils::rectangleToGMLBox( &rect, mDoc, mSrsName, mInvertAxisOrientation ) :
-                            QgsOgcUtils::rectangleToGMLEnvelope( &rect, mDoc, mSrsName, mInvertAxisOrientation );
-
-      QDomElement geomProperty = mDoc.createElement( mFilterPrefix + ":" + mPropertyName );
-      geomProperty.appendChild( mDoc.createTextNode( mGeometryName ) );
+      const QDomElement elemBox = ( mGMLVersion == QgsOgcUtils::GML_2_1_2 ) ? QgsOgcUtils::rectangleToGMLBox( &rect, mDoc, mSrsName, mInvertAxisOrientation )
+                                                                            : QgsOgcUtils::rectangleToGMLEnvelope( &rect, mDoc, mSrsName, mInvertAxisOrientation );
 
       QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":BBOX" );
-      funcElem.appendChild( geomProperty );
+
+      if ( !mGeometryName.isEmpty() )
+      {
+        // Geometry column is optional for a BBOX filter.
+        QDomElement geomProperty = mDoc.createElement( mFilterPrefix + ":" + mPropertyName );
+        QString columnRef( mGeometryName );
+        if ( !mNamespacePrefix.isEmpty() && !mNamespaceURI.isEmpty() )
+          columnRef = mNamespacePrefix + u":"_s + columnRef;
+        geomProperty.appendChild( mDoc.createTextNode( columnRef ) );
+
+        funcElem.appendChild( geomProperty );
+      }
       funcElem.appendChild( elemBox );
       return funcElem;
     }
     else
     {
-      mErrorMessage = QObject::tr( "<BBOX> is currently supported only in form: bbox($geometry, geomFromWKT('…'))" );
+      mErrorMessage = QObject::tr( "<BBOX> is currently supported only in form: bbox(@geometry, geomFromWKT('…'))" );
       return QDomElement();
     }
   }
@@ -2317,8 +2626,8 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
     }
 
     const QgsExpressionNodeFunction *otherFn = static_cast<const QgsExpressionNodeFunction *>( otherNode );
-    QgsExpressionFunction *otherFnDef = QgsExpression::Functions()[otherFn->fnIndex()];
-    if ( otherFnDef->name() == QLatin1String( "geom_from_wkt" ) )
+    const QgsExpression::SharedFunctionPtr otherFnDef = otherFn->function();
+    if ( otherFnDef->name() == "geom_from_wkt"_L1 )
     {
       QgsExpressionNode *firstFnArg = otherFn->args()->list()[0];
       if ( firstFnArg->nodeType() != QgsExpressionNode::ntLiteral )
@@ -2326,13 +2635,17 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
         mErrorMessage = QObject::tr( "geom_from_wkt: argument must be string literal" );
         return QDomElement();
       }
-      QString wkt = static_cast<const QgsExpressionNodeLiteral *>( firstFnArg )->value().toString();
-      QgsGeometry geom = QgsGeometry::fromWkt( wkt );
-      otherGeomElem = QgsOgcUtils::geometryToGML( geom, mDoc, mGMLVersion, mSrsName, mInvertAxisOrientation,
-                      QStringLiteral( "qgis_id_geom_%1" ).arg( mGeomId ) );
-      mGeomId ++;
+      const QString wkt = static_cast<const QgsExpressionNodeLiteral *>( firstFnArg )->value().toString();
+      const QgsGeometry geom = QgsGeometry::fromWkt( wkt );
+      otherGeomElem = QgsOgcUtils::geometryToGML( geom, mDoc, mGMLVersion, mSrsName, mInvertAxisOrientation, u"qgis_id_geom_%1"_s.arg( mGeomId ) );
+      if ( otherGeomElem.isNull() )
+      {
+        mErrorMessage = QObject::tr( "geom_from_wkt: unable to generate GML from wkt geometry" );
+        return QDomElement();
+      }
+      mGeomId++;
     }
-    else if ( otherFnDef->name() == QLatin1String( "geom_from_gml" ) )
+    else if ( otherFnDef->name() == "geom_from_gml"_L1 )
     {
       QgsExpressionNode *firstFnArg = otherFn->args()->list()[0];
       if ( firstFnArg->nodeType() != QgsExpressionNode::ntLiteral )
@@ -2342,15 +2655,28 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
       }
 
       QDomDocument geomDoc;
-      QString gml = static_cast<const QgsExpressionNodeLiteral *>( firstFnArg )->value().toString();
-      if ( !geomDoc.setContent( gml, true ) )
+      const QString gml = static_cast<const QgsExpressionNodeLiteral *>( firstFnArg )->value().toString();
+      // wrap the string into a root tag to have "gml" namespace
+      const QString xml = u"<tmp xmlns:gml=\"%1\">%2</tmp>"_s.arg( GML_NAMESPACE, gml );
+      if ( !geomDoc.setContent( xml, true ) )
       {
         mErrorMessage = QObject::tr( "geom_from_gml: unable to parse XML" );
         return QDomElement();
       }
 
-      QDomNode geomNode = mDoc.importNode( geomDoc.documentElement(), true );
+      const QDomNode geomNode = mDoc.importNode( geomDoc.documentElement().firstChildElement(), true );
       otherGeomElem = geomNode.toElement();
+    }
+    else if ( otherNode->hasCachedStaticValue() && otherNode->cachedStaticValue().userType() == qMetaTypeId< QgsGeometry>() )
+    {
+      QgsGeometry geom = otherNode->cachedStaticValue().value<QgsGeometry>();
+      otherGeomElem = QgsOgcUtils::geometryToGML( geom, mDoc, mGMLVersion, mSrsName, mInvertAxisOrientation, u"qgis_id_geom_%1"_s.arg( mGeomId ) );
+      if ( otherGeomElem.isNull() )
+      {
+        mErrorMessage = QObject::tr( "geom from static value: unable to generate GML from static variable" );
+        return QDomElement();
+      }
+      mGeomId++;
     }
     else
     {
@@ -2362,7 +2688,10 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
 
     QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":" + tagNameForSpatialOperator( fd->name() ) );
     QDomElement geomProperty = mDoc.createElement( mFilterPrefix + ":" + mPropertyName );
-    geomProperty.appendChild( mDoc.createTextNode( mGeometryName ) );
+    QString columnRef( mGeometryName );
+    if ( !mNamespacePrefix.isEmpty() && !mNamespaceURI.isEmpty() )
+      columnRef = mNamespacePrefix + u":"_s + columnRef;
+    geomProperty.appendChild( mDoc.createTextNode( columnRef ) );
     funcElem.appendChild( geomProperty );
     funcElem.appendChild( otherGeomElem );
     return funcElem;
@@ -2370,8 +2699,8 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
 
   if ( fd->isStatic( node, expression, context ) )
   {
-    QVariant result = fd->run( node->args(), context, expression, node );
-    QgsExpressionNodeLiteral literal( result );
+    const QVariant result = fd->run( node->args(), context, expression, node );
+    const QgsExpressionNodeLiteral literal( result );
     return expressionLiteralToOgcFilter( &literal, expression, context );
   }
 
@@ -2381,33 +2710,40 @@ QDomElement QgsOgcUtilsExprToFilter::expressionFunctionToOgcFilter( const QgsExp
     return QDomElement();
   }
 
-  // this is somehow wrong - we are just hoping that the other side supports the same functions as we do...
-  QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":Function" );
-  funcElem.setAttribute( QStringLiteral( "name" ), fd->name() );
-  const auto constList = node->args()->list();
-  for ( QgsExpressionNode *n : constList )
+  if ( isSupportedOgcFunction( fd->name() ) )
   {
-    QDomElement childElem = expressionNodeToOgcFilter( n, expression, context );
-    if ( !mErrorMessage.isEmpty() )
-      return QDomElement();
+    QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":Function" );
+    funcElem.setAttribute( u"name"_s, ogcFunctionName( fd->name() ) );
+    const auto constList = node->args()->list();
+    for ( QgsExpressionNode *n : constList )
+    {
+      const QDomElement childElem = expressionNodeToOgcFilter( n, expression, context );
+      if ( !mErrorMessage.isEmpty() )
+        return QDomElement();
 
-    funcElem.appendChild( childElem );
+      funcElem.appendChild( childElem );
+    }
+    return funcElem;
   }
 
-  return funcElem;
+  mErrorMessage = QObject::tr( "Function not supported." );
+  return QDomElement();
 }
 
 //
 
-QgsOgcUtilsSQLStatementToFilter::QgsOgcUtilsSQLStatementToFilter( QDomDocument &doc,
-    QgsOgcUtils::GMLVersion gmlVersion,
-    QgsOgcUtils::FilterVersion filterVersion,
-    const QList<QgsOgcUtils::LayerProperties> &layerProperties,
-    bool honourAxisOrientation,
-    bool invertAxisOrientation,
-    const QMap< QString, QString> &mapUnprefixedTypenameToPrefixedTypename )
+QgsOgcUtilsSQLStatementToFilter::QgsOgcUtilsSQLStatementToFilter(
+  QDomDocument &doc,
+  QgsOgcUtils::GMLVersion gmlVersion,
+  QgsOgcUtils::FilterVersion filterVersion,
+  const QList<QgsOgcUtils::LayerProperties> &layerProperties,
+  bool honourAxisOrientation,
+  bool invertAxisOrientation,
+  const QMap< QString, QString> &mapUnprefixedTypenameToPrefixedTypename,
+  const QMap<QString, QString> &fieldNameToXPathMap,
+  const QMap<QString, QString> &namespacePrefixToUriMap
+)
   : mDoc( doc )
-  , mGMLUsed( false )
   , mGMLVersion( gmlVersion )
   , mFilterVersion( filterVersion )
   , mLayerProperties( layerProperties )
@@ -2415,10 +2751,10 @@ QgsOgcUtilsSQLStatementToFilter::QgsOgcUtilsSQLStatementToFilter( QDomDocument &
   , mInvertAxisOrientation( invertAxisOrientation )
   , mFilterPrefix( ( filterVersion == QgsOgcUtils::FILTER_FES_2_0 ) ? "fes" : "ogc" )
   , mPropertyName( ( filterVersion == QgsOgcUtils::FILTER_FES_2_0 ) ? "ValueReference" : "PropertyName" )
-  , mGeomId( 1 )
   , mMapUnprefixedTypenameToPrefixedTypename( mapUnprefixedTypenameToPrefixedTypename )
-{
-}
+  , mFieldNameToXPathMap( fieldNameToXPathMap )
+  , mNamespacePrefixToUriMap( namespacePrefixToUriMap )
+{}
 
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::Node *node )
 {
@@ -2450,8 +2786,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeUnaryOperator *node )
 {
-
-  QDomElement operandElem = toOgcFilter( node->operand() );
+  const QDomElement operandElem = toOgcFilter( node->operand() );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
 
@@ -2489,7 +2824,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeBinaryOperator *node )
 {
-  QDomElement leftElem = toOgcFilter( node->opLeft() );
+  const QDomElement leftElem = toOgcFilter( node->opLeft() );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
 
@@ -2501,9 +2836,8 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
     if ( node->opRight()->nodeType() == QgsSQLStatement::ntLiteral )
     {
       const QgsSQLStatement::NodeLiteral *rightLit = static_cast<const QgsSQLStatement::NodeLiteral *>( node->opRight() );
-      if ( rightLit->value().isNull() )
+      if ( QgsVariantUtils::isNull( rightLit->value() ) )
       {
-
         QDomElement elem = mDoc.createElement( mFilterPrefix + ":PropertyIsNull" );
         elem.appendChild( leftElem );
 
@@ -2520,35 +2854,34 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       // continue with equal / not equal operator once the null case is handled
       op = ( op == QgsSQLStatement::boIs ? QgsSQLStatement::boEQ : QgsSQLStatement::boNE );
     }
-
   }
 
-  QDomElement rightElem = toOgcFilter( node->opRight() );
+  const QDomElement rightElem = toOgcFilter( node->opRight() );
   if ( !mErrorMessage.isEmpty() )
     return QDomElement();
 
 
   QString opText;
   if ( op == QgsSQLStatement::boOr )
-    opText = QStringLiteral( "Or" );
+    opText = u"Or"_s;
   else if ( op == QgsSQLStatement::boAnd )
-    opText = QStringLiteral( "And" );
+    opText = u"And"_s;
   else if ( op == QgsSQLStatement::boEQ )
-    opText = QStringLiteral( "PropertyIsEqualTo" );
+    opText = u"PropertyIsEqualTo"_s;
   else if ( op == QgsSQLStatement::boNE )
-    opText = QStringLiteral( "PropertyIsNotEqualTo" );
+    opText = u"PropertyIsNotEqualTo"_s;
   else if ( op == QgsSQLStatement::boLE )
-    opText = QStringLiteral( "PropertyIsLessThanOrEqualTo" );
+    opText = u"PropertyIsLessThanOrEqualTo"_s;
   else if ( op == QgsSQLStatement::boGE )
-    opText = QStringLiteral( "PropertyIsGreaterThanOrEqualTo" );
+    opText = u"PropertyIsGreaterThanOrEqualTo"_s;
   else if ( op == QgsSQLStatement::boLT )
-    opText = QStringLiteral( "PropertyIsLessThan" );
+    opText = u"PropertyIsLessThan"_s;
   else if ( op == QgsSQLStatement::boGT )
-    opText = QStringLiteral( "PropertyIsGreaterThan" );
+    opText = u"PropertyIsGreaterThan"_s;
   else if ( op == QgsSQLStatement::boLike )
-    opText = QStringLiteral( "PropertyIsLike" );
+    opText = u"PropertyIsLike"_s;
   else if ( op == QgsSQLStatement::boILike )
-    opText = QStringLiteral( "PropertyIsLike" );
+    opText = u"PropertyIsLike"_s;
 
   if ( opText.isEmpty() )
   {
@@ -2562,15 +2895,15 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
   if ( op == QgsSQLStatement::boLike || op == QgsSQLStatement::boILike )
   {
     if ( op == QgsSQLStatement::boILike )
-      boElem.setAttribute( QStringLiteral( "matchCase" ), QStringLiteral( "false" ) );
+      boElem.setAttribute( u"matchCase"_s, u"false"_s );
 
     // setup wildCards to <ogc:PropertyIsLike>
-    boElem.setAttribute( QStringLiteral( "wildCard" ), QStringLiteral( "%" ) );
-    boElem.setAttribute( QStringLiteral( "singleChar" ), QStringLiteral( "_" ) );
+    boElem.setAttribute( u"wildCard"_s, u"%"_s );
+    boElem.setAttribute( u"singleChar"_s, u"_"_s );
     if ( mFilterVersion == QgsOgcUtils::FILTER_OGC_1_0 )
-      boElem.setAttribute( QStringLiteral( "escape" ), QStringLiteral( "\\" ) );
+      boElem.setAttribute( u"escape"_s, u"\\"_s );
     else
-      boElem.setAttribute( QStringLiteral( "escapeChar" ), QStringLiteral( "\\" ) );
+      boElem.setAttribute( u"escapeChar"_s, u"\\"_s );
   }
 
   boElem.appendChild( leftElem );
@@ -2582,23 +2915,23 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeLiteral *node )
 {
   QString value;
-  switch ( node->value().type() )
+  switch ( node->value().userType() )
   {
-    case QVariant::Int:
+    case QMetaType::Type::Int:
       value = QString::number( node->value().toInt() );
       break;
-    case QVariant::LongLong:
+    case QMetaType::Type::LongLong:
       value = QString::number( node->value().toLongLong() );
       break;
-    case QVariant::Double:
+    case QMetaType::Type::Double:
       value = qgsDoubleToString( node->value().toDouble() );
       break;
-    case QVariant::String:
+    case QMetaType::Type::QString:
       value = node->value().toString();
       break;
 
     default:
-      mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( node->value().type() );
+      mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( static_cast<QMetaType::Type>( node->value().userType() ) );
       return QDomElement();
   }
 
@@ -2612,7 +2945,45 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 {
   QDomElement propElem = mDoc.createElement( mFilterPrefix + ":" + mPropertyName );
   if ( node->tableName().isEmpty() || mLayerProperties.size() == 1 )
-    propElem.appendChild( mDoc.createTextNode( node->name() ) );
+  {
+    if ( !mFieldNameToXPathMap.isEmpty() )
+    {
+      const auto iterFieldName = mFieldNameToXPathMap.constFind( node->name() );
+      if ( iterFieldName != mFieldNameToXPathMap.constEnd() )
+      {
+        const QString xpath( *iterFieldName );
+
+        if ( !mNamespacePrefixToUriMap.isEmpty() )
+        {
+          const QStringList parts = xpath.split( '/' );
+          QSet<QString> setNamespacePrefix;
+          for ( const QString &part : std::as_const( parts ) )
+          {
+            const QStringList subparts = part.split( ':' );
+            if ( subparts.size() == 2 && !setNamespacePrefix.contains( subparts[0] ) )
+            {
+              const auto iterNamespacePrefix = mNamespacePrefixToUriMap.constFind( subparts[0] );
+              if ( iterNamespacePrefix != mNamespacePrefixToUriMap.constEnd() )
+              {
+                setNamespacePrefix.insert( subparts[0] );
+                QDomAttr attr = mDoc.createAttribute( u"xmlns:"_s + subparts[0] );
+                attr.setValue( *iterNamespacePrefix );
+                propElem.setAttributeNode( attr );
+              }
+            }
+          }
+        }
+
+        propElem.appendChild( mDoc.createTextNode( xpath ) );
+
+        return propElem;
+      }
+    }
+    if ( mLayerProperties.size() == 1 && !mLayerProperties[0].mNamespacePrefix.isEmpty() && !mLayerProperties[0].mNamespaceURI.isEmpty() )
+      propElem.appendChild( mDoc.createTextNode( mLayerProperties[0].mNamespacePrefix + u":"_s + node->name() ) );
+    else
+      propElem.appendChild( mDoc.createTextNode( node->name() ) );
+  }
   else
   {
     QString tableName( mMapTableAliasToNames[node->tableName()] );
@@ -2626,15 +2997,28 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeInOperator *node )
 {
   if ( node->list()->list().size() == 1 )
-    return toOgcFilter( node->list()->list()[0] );
+  {
+    const QDomElement leftNode = toOgcFilter( node->node() );
+    const QDomElement firstListNode = toOgcFilter( node->list()->list().first() );
+    QDomElement eqElem = mDoc.createElement( mFilterPrefix + ":PropertyIsEqualTo" );
+    eqElem.appendChild( leftNode );
+    eqElem.appendChild( firstListNode );
+    if ( node->isNotIn() )
+    {
+      QDomElement notElem = mDoc.createElement( mFilterPrefix + ":Not" );
+      notElem.appendChild( eqElem );
+      return notElem;
+    }
+    return eqElem;
+  }
 
   QDomElement orElem = mDoc.createElement( mFilterPrefix + ":Or" );
-  QDomElement leftNode = toOgcFilter( node->node() );
+  const QDomElement leftNode = toOgcFilter( node->node() );
 
   const auto constList = node->list()->list();
   for ( QgsSQLStatement::Node *n : constList )
   {
-    QDomElement listNode = toOgcFilter( n );
+    const QDomElement listNode = toOgcFilter( n );
     if ( !mErrorMessage.isEmpty() )
       return QDomElement();
 
@@ -2679,11 +3063,10 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 static QString mapBinarySpatialToOgc( const QString &name )
 {
   QString nameCompare( name );
-  if ( name.size() > 3 && name.midRef( 0, 3 ).compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
+  if ( name.size() > 3 && QStringView { name }.mid( 0, 3 ).toString().compare( "ST_"_L1, Qt::CaseInsensitive ) == 0 )
     nameCompare = name.mid( 3 );
   QStringList spatialOps;
-  spatialOps << QStringLiteral( "BBOX" ) << QStringLiteral( "Intersects" ) << QStringLiteral( "Contains" ) << QStringLiteral( "Crosses" ) << QStringLiteral( "Equals" )
-             << QStringLiteral( "Disjoint" ) << QStringLiteral( "Overlaps" ) << QStringLiteral( "Touches" ) << QStringLiteral( "Within" );
+  spatialOps << u"BBOX"_s << u"Intersects"_s << u"Contains"_s << u"Crosses"_s << u"Equals"_s << u"Disjoint"_s << u"Overlaps"_s << u"Touches"_s << u"Within"_s;
   const auto constSpatialOps = spatialOps;
   for ( QString op : constSpatialOps )
   {
@@ -2696,12 +3079,12 @@ static QString mapBinarySpatialToOgc( const QString &name )
 static QString mapTernarySpatialToOgc( const QString &name )
 {
   QString nameCompare( name );
-  if ( name.size() > 3 && name.midRef( 0, 3 ).compare( QLatin1String( "ST_" ), Qt::CaseInsensitive ) == 0 )
+  if ( name.size() > 3 && QStringView { name }.mid( 0, 3 ).compare( "ST_"_L1, Qt::CaseInsensitive ) == 0 )
     nameCompare = name.mid( 3 );
-  if ( nameCompare.compare( QLatin1String( "DWithin" ), Qt::CaseInsensitive ) == 0 )
-    return QStringLiteral( "DWithin" );
-  if ( nameCompare.compare( QLatin1String( "Beyond" ), Qt::CaseInsensitive ) == 0 )
-    return QStringLiteral( "Beyond" );
+  if ( nameCompare.compare( "DWithin"_L1, Qt::CaseInsensitive ) == 0 )
+    return u"DWithin"_s;
+  if ( nameCompare.compare( "Beyond"_L1, Qt::CaseInsensitive ) == 0 )
+    return u"Beyond"_s;
   return QString();
 }
 
@@ -2714,42 +3097,36 @@ QString QgsOgcUtilsSQLStatementToFilter::getGeometryColumnSRSName( const QgsSQLS
   if ( !col->tableName().isEmpty() )
   {
     const auto constMLayerProperties = mLayerProperties;
-    for ( QgsOgcUtils::LayerProperties prop : constMLayerProperties )
+    for ( const QgsOgcUtils::LayerProperties &prop : constMLayerProperties )
     {
-      if ( prop.mName.compare( mMapTableAliasToNames[col->tableName()], Qt::CaseInsensitive ) == 0 &&
-           prop.mGeometryAttribute.compare( col->name(), Qt::CaseInsensitive ) == 0 )
+      if ( prop.mName.compare( mMapTableAliasToNames[col->tableName()], Qt::CaseInsensitive ) == 0 && prop.mGeometryAttribute.compare( col->name(), Qt::CaseInsensitive ) == 0 )
       {
         return prop.mSRSName;
       }
     }
   }
-  if ( !mLayerProperties.empty() &&
-       mLayerProperties.at( 0 ).mGeometryAttribute.compare( col->name(), Qt::CaseInsensitive ) == 0 )
+  if ( !mLayerProperties.empty() && mLayerProperties.at( 0 ).mGeometryAttribute.compare( col->name(), Qt::CaseInsensitive ) == 0 )
   {
-    return  mLayerProperties.at( 0 ).mSRSName;
+    return mLayerProperties.at( 0 ).mSRSName;
   }
   return QString();
 }
 
-bool QgsOgcUtilsSQLStatementToFilter::processSRSName( const QgsSQLStatement::NodeFunction *mainNode,
-    QList<QgsSQLStatement::Node *> args,
-    bool lastArgIsSRSName,
-    QString &srsName,
-    bool &axisInversion )
+bool QgsOgcUtilsSQLStatementToFilter::processSRSName( const QgsSQLStatement::NodeFunction *mainNode, QList<QgsSQLStatement::Node *> args, bool lastArgIsSRSName, QString &srsName, bool &axisInversion )
 {
   srsName = mCurrentSRSName;
   axisInversion = mInvertAxisOrientation;
 
   if ( lastArgIsSRSName )
   {
-    QgsSQLStatement::Node *lastArg = args[ args.size() - 1 ];
+    QgsSQLStatement::Node *lastArg = args[args.size() - 1];
     if ( lastArg->nodeType() != QgsSQLStatement::ntLiteral )
     {
       mErrorMessage = QObject::tr( "%1: Last argument must be string or integer literal" ).arg( mainNode->name() );
       return false;
     }
     const QgsSQLStatement::NodeLiteral *lit = static_cast<const QgsSQLStatement::NodeLiteral *>( lastArg );
-    if ( lit->value().type() == QVariant::Int )
+    if ( lit->value().userType() == QMetaType::Type::Int )
     {
       if ( mFilterVersion == QgsOgcUtils::FILTER_OGC_1_0 )
       {
@@ -2763,7 +3140,7 @@ bool QgsOgcUtilsSQLStatementToFilter::processSRSName( const QgsSQLStatement::Nod
     else
     {
       srsName = lit->value().toString();
-      if ( srsName.startsWith( QLatin1String( "EPSG:" ), Qt::CaseInsensitive ) )
+      if ( srsName.startsWith( "EPSG:"_L1, Qt::CaseInsensitive ) )
         return true;
     }
   }
@@ -2785,7 +3162,7 @@ bool QgsOgcUtilsSQLStatementToFilter::processSRSName( const QgsSQLStatement::Nod
 QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeFunction *node )
 {
   // ST_GeometryFromText
-  if ( node->name().compare( QLatin1String( "ST_GeometryFromText" ), Qt::CaseInsensitive ) == 0 )
+  if ( node->name().compare( "ST_GeometryFromText"_L1, Qt::CaseInsensitive ) == 0 )
   {
     QList<QgsSQLStatement::Node *> args = node->args()->list();
     if ( args.size() != 1 && args.size() != 2 )
@@ -2803,16 +3180,15 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 
     QString srsName;
     bool axisInversion;
-    if ( ! processSRSName( node, args, args.size() == 2, srsName, axisInversion ) )
+    if ( !processSRSName( node, args, args.size() == 2, srsName, axisInversion ) )
     {
       return QDomElement();
     }
 
-    QString wkt = static_cast<const QgsSQLStatement::NodeLiteral *>( firstFnArg )->value().toString();
-    QgsGeometry geom = QgsGeometry::fromWkt( wkt );
-    QDomElement geomElem = QgsOgcUtils::geometryToGML( geom, mDoc, mGMLVersion, srsName, axisInversion,
-                           QStringLiteral( "qgis_id_geom_%1" ).arg( mGeomId ) );
-    mGeomId ++;
+    const QString wkt = static_cast<const QgsSQLStatement::NodeLiteral *>( firstFnArg )->value().toString();
+    const QgsGeometry geom = QgsGeometry::fromWkt( wkt );
+    const QDomElement geomElem = QgsOgcUtils::geometryToGML( geom, mDoc, mGMLVersion, srsName, axisInversion, u"qgis_id_geom_%1"_s.arg( mGeomId ) );
+    mGeomId++;
     if ( geomElem.isNull() )
     {
       mErrorMessage = QObject::tr( "%1: invalid WKT" ).arg( node->name() );
@@ -2823,7 +3199,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
   }
 
   // ST_MakeEnvelope
-  if ( node->name().compare( QLatin1String( "ST_MakeEnvelope" ), Qt::CaseInsensitive ) == 0 )
+  if ( node->name().compare( "ST_MakeEnvelope"_L1, Qt::CaseInsensitive ) == 0 )
   {
     QList<QgsSQLStatement::Node *> args = node->args()->list();
     if ( args.size() != 4 && args.size() != 5 )
@@ -2844,11 +3220,11 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       }
       const QgsSQLStatement::NodeLiteral *lit = static_cast<const QgsSQLStatement::NodeLiteral *>( arg );
       double val = 0.0;
-      if ( lit->value().type() == QVariant::Int )
+      if ( lit->value().userType() == QMetaType::Type::Int )
         val = lit->value().toInt();
-      else if ( lit->value().type() == QVariant::LongLong )
+      else if ( lit->value().userType() == QMetaType::Type::LongLong )
         val = lit->value().toLongLong();
-      else if ( lit->value().type() == QVariant::Double )
+      else if ( lit->value().userType() == QMetaType::Type::Double )
         val = lit->value().toDouble();
       else
       {
@@ -2867,20 +3243,19 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 
     QString srsName;
     bool axisInversion;
-    if ( ! processSRSName( node, args, args.size() == 5, srsName, axisInversion ) )
+    if ( !processSRSName( node, args, args.size() == 5, srsName, axisInversion ) )
     {
       return QDomElement();
     }
 
     mGMLUsed = true;
 
-    return ( mGMLVersion == QgsOgcUtils::GML_2_1_2 ) ?
-           QgsOgcUtils::rectangleToGMLBox( &rect, mDoc, srsName, axisInversion, 15 ) :
-           QgsOgcUtils::rectangleToGMLEnvelope( &rect, mDoc, srsName, axisInversion, 15 );
+    return ( mGMLVersion == QgsOgcUtils::GML_2_1_2 ) ? QgsOgcUtils::rectangleToGMLBox( &rect, mDoc, srsName, axisInversion, 15 )
+                                                     : QgsOgcUtils::rectangleToGMLEnvelope( &rect, mDoc, srsName, axisInversion, 15 );
   }
 
   // ST_GeomFromGML
-  if ( node->name().compare( QLatin1String( "ST_GeomFromGML" ), Qt::CaseInsensitive ) == 0 )
+  if ( node->name().compare( "ST_GeomFromGML"_L1, Qt::CaseInsensitive ) == 0 )
   {
     QList<QgsSQLStatement::Node *> args = node->args()->list();
     if ( args.size() != 1 )
@@ -2897,14 +3272,16 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
     }
 
     QDomDocument geomDoc;
-    QString gml = static_cast<const QgsSQLStatement::NodeLiteral *>( firstFnArg )->value().toString();
-    if ( !geomDoc.setContent( gml, true ) )
+    const QString gml = static_cast<const QgsSQLStatement::NodeLiteral *>( firstFnArg )->value().toString();
+    // wrap the string into a root tag to have "gml" namespace
+    const QString xml = u"<tmp xmlns:gml=\"%1\">%2</tmp>"_s.arg( GML_NAMESPACE, gml );
+    if ( !geomDoc.setContent( xml, true ) )
     {
       mErrorMessage = QObject::tr( "ST_GeomFromGML: unable to parse XML" );
       return QDomElement();
     }
 
-    QDomNode geomNode = mDoc.importNode( geomDoc.documentElement(), true );
+    const QDomNode geomNode = mDoc.importNode( geomDoc.documentElement().firstChildElement(), true );
     mGMLUsed = true;
     return geomNode.toElement();
   }
@@ -2920,11 +3297,11 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       return QDomElement();
     }
 
-    for ( int i = 0; i < 2; i ++ )
+    for ( int i = 0; i < 2; i++ )
     {
       if ( args[i]->nodeType() == QgsSQLStatement::ntFunction &&
-           ( static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( QLatin1String( "ST_GeometryFromText" ), Qt::CaseInsensitive ) == 0 ||
-             static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( QLatin1String( "ST_MakeEnvelope" ), Qt::CaseInsensitive ) == 0 ) )
+           ( static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( "ST_GeometryFromText"_L1, Qt::CaseInsensitive ) == 0 ||
+             static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( "ST_MakeEnvelope"_L1, Qt::CaseInsensitive ) == 0 ) )
       {
         mCurrentSRSName = getGeometryColumnSRSName( args[1 - i] );
         break;
@@ -2937,7 +3314,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
     const auto constArgs = args;
     for ( QgsSQLStatement::Node *n : constArgs )
     {
-      QDomElement childElem = toOgcFilter( n );
+      const QDomElement childElem = toOgcFilter( n );
       if ( !mErrorMessage.isEmpty() )
       {
         mCurrentSRSName.clear();
@@ -2961,11 +3338,11 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       return QDomElement();
     }
 
-    for ( int i = 0; i < 2; i ++ )
+    for ( int i = 0; i < 2; i++ )
     {
       if ( args[i]->nodeType() == QgsSQLStatement::ntFunction &&
-           ( static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( QLatin1String( "ST_GeometryFromText" ), Qt::CaseInsensitive ) == 0 ||
-             static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( QLatin1String( "ST_MakeEnvelope" ), Qt::CaseInsensitive ) == 0 ) )
+           ( static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( "ST_GeometryFromText"_L1, Qt::CaseInsensitive ) == 0 ||
+             static_cast<const QgsSQLStatement::NodeFunction *>( args[i] )->name().compare( "ST_MakeEnvelope"_L1, Qt::CaseInsensitive ) == 0 ) )
       {
         mCurrentSRSName = getGeometryColumnSRSName( args[1 - i] );
         break;
@@ -2975,7 +3352,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
     QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":" + node->name().mid( 3 ) );
     for ( int i = 0; i < 2; i++ )
     {
-      QDomElement childElem = toOgcFilter( args[i] );
+      const QDomElement childElem = toOgcFilter( args[i] );
       if ( !mErrorMessage.isEmpty() )
       {
         mCurrentSRSName.clear();
@@ -2993,25 +3370,25 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       return QDomElement();
     }
     const QgsSQLStatement::NodeLiteral *lit = static_cast<const QgsSQLStatement::NodeLiteral *>( distanceNode );
-    if ( lit->value().isNull() )
+    if ( QgsVariantUtils::isNull( lit->value() ) )
     {
       mErrorMessage = QObject::tr( "Function %1 3rd argument should be a numeric value or a string made of a numeric value followed by a string" ).arg( node->name() );
       return QDomElement();
     }
     QString distance;
-    QString unit( QStringLiteral( "m" ) );
-    switch ( lit->value().type() )
+    QString unit( u"m"_s );
+    switch ( lit->value().userType() )
     {
-      case QVariant::Int:
+      case QMetaType::Type::Int:
         distance = QString::number( lit->value().toInt() );
         break;
-      case QVariant::LongLong:
+      case QMetaType::Type::LongLong:
         distance = QString::number( lit->value().toLongLong() );
         break;
-      case QVariant::Double:
+      case QMetaType::Type::Double:
         distance = qgsDoubleToString( lit->value().toDouble() );
         break;
-      case QVariant::String:
+      case QMetaType::Type::QString:
       {
         distance = lit->value().toString();
         for ( int i = 0; i < distance.size(); i++ )
@@ -3027,15 +3404,15 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
       }
 
       default:
-        mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( lit->value().type() );
+        mErrorMessage = QObject::tr( "Literal type not supported: %1" ).arg( static_cast<QMetaType::Type>( lit->value().userType() ) );
         return QDomElement();
     }
 
     QDomElement distanceElem = mDoc.createElement( mFilterPrefix + ":Distance" );
     if ( mFilterVersion == QgsOgcUtils::FILTER_FES_2_0 )
-      distanceElem.setAttribute( QStringLiteral( "uom" ), unit );
+      distanceElem.setAttribute( u"uom"_s, unit );
     else
-      distanceElem.setAttribute( QStringLiteral( "unit" ), unit );
+      distanceElem.setAttribute( u"unit"_s, unit );
     distanceElem.appendChild( mDoc.createTextNode( distance ) );
     funcElem.appendChild( distanceElem );
     return funcElem;
@@ -3043,11 +3420,11 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 
   // Other function
   QDomElement funcElem = mDoc.createElement( mFilterPrefix + ":Function" );
-  funcElem.setAttribute( QStringLiteral( "name" ), node->name() );
+  funcElem.setAttribute( u"name"_s, node->name() );
   const auto constList = node->args()->list();
   for ( QgsSQLStatement::Node *n : constList )
   {
-    QDomElement childElem = toOgcFilter( n );
+    const QDomElement childElem = toOgcFilter( n );
     if ( !mErrorMessage.isEmpty() )
       return QDomElement();
 
@@ -3056,8 +3433,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
   return funcElem;
 }
 
-QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeJoin *node,
-    const QString &leftTable )
+QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement::NodeJoin *node, const QString &leftTable )
 {
   QgsSQLStatement::Node *onExpr = node->onExpr();
   if ( onExpr )
@@ -3101,11 +3477,11 @@ void QgsOgcUtilsSQLStatementToFilter::visit( const QgsSQLStatement::NodeTableDef
 {
   if ( node->alias().isEmpty() )
   {
-    mMapTableAliasToNames[ node->name()] = node->name();
+    mMapTableAliasToNames[node->name()] = node->name();
   }
   else
   {
-    mMapTableAliasToNames[ node->alias()] = node->name();
+    mMapTableAliasToNames[node->alias()] = node->name();
   }
 }
 
@@ -3113,8 +3489,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 {
   QList<QDomElement> listElem;
 
-  if ( mFilterVersion != QgsOgcUtils::FILTER_FES_2_0 &&
-       ( node->tables().size() != 1 || !node->joins().empty() ) )
+  if ( mFilterVersion != QgsOgcUtils::FILTER_FES_2_0 && ( node->tables().size() != 1 || !node->joins().empty() ) )
   {
     mErrorMessage = QObject::tr( "Joins are only supported with WFS 2.0" );
     return QDomElement();
@@ -3133,11 +3508,11 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
   }
 
   // Process JOIN conditions
-  QList< QgsSQLStatement::NodeTableDef *> nodeTables = node->tables();
+  const QList< QgsSQLStatement::NodeTableDef *> nodeTables = node->tables();
   QString leftTable = nodeTables.at( nodeTables.length() - 1 )->name();
   for ( QgsSQLStatement::NodeJoin *join : constJoins )
   {
-    QDomElement joinElem = toOgcFilter( join, leftTable );
+    const QDomElement joinElem = toOgcFilter( join, leftTable );
     if ( !mErrorMessage.isEmpty() )
       return QDomElement();
     listElem.append( joinElem );
@@ -3147,7 +3522,7 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
   // Process WHERE conditions
   if ( node->where() )
   {
-    QDomElement whereElem = toOgcFilter( node->where() );
+    const QDomElement whereElem = toOgcFilter( node->where() );
     if ( !mErrorMessage.isEmpty() )
       return QDomElement();
     listElem.append( whereElem );
@@ -3175,13 +3550,13 @@ QDomElement QgsOgcUtilsSQLStatementToFilter::toOgcFilter( const QgsSQLStatement:
 QgsOgcUtilsExpressionFromFilter::QgsOgcUtilsExpressionFromFilter( const QgsOgcUtils::FilterVersion version, const QgsVectorLayer *layer )
   : mLayer( layer )
 {
-  mPropertyName = QStringLiteral( "PropertyName" );
-  mPrefix = QStringLiteral( "ogc" );
+  mPropertyName = u"PropertyName"_s;
+  mPrefix = u"ogc"_s;
 
   if ( version == QgsOgcUtils::FILTER_FES_2_0 )
   {
-    mPropertyName = QStringLiteral( "ValueReference" );
-    mPrefix = QStringLiteral( "fes" );
+    mPropertyName = u"ValueReference"_s;
+    mPrefix = u"fes"_s;
   }
 }
 
@@ -3203,19 +3578,19 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeFromOgcFilter( const QDo
   }
 
   // check for other OGC operators, convert them to expressions
-  if ( element.tagName() == QLatin1String( "Not" ) )
+  if ( element.tagName() == "Not"_L1 )
   {
     return nodeNotFromOgcFilter( element );
   }
-  else if ( element.tagName() == QLatin1String( "PropertyIsNull" ) )
+  else if ( element.tagName() == "PropertyIsNull"_L1 )
   {
     return nodePropertyIsNullFromOgcFilter( element );
   }
-  else if ( element.tagName() == QLatin1String( "Literal" ) )
+  else if ( element.tagName() == "Literal"_L1 )
   {
     return nodeLiteralFromOgcFilter( element );
   }
-  else if ( element.tagName() == QLatin1String( "Function" ) )
+  else if ( element.tagName() == "Function"_L1 )
   {
     return nodeFunctionFromOgcFilter( element );
   }
@@ -3223,7 +3598,7 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeFromOgcFilter( const QDo
   {
     return nodeColumnRefFromOgcFilter( element );
   }
-  else if ( element.tagName() == QLatin1String( "PropertyIsBetween" ) )
+  else if ( element.tagName() == "PropertyIsBetween"_L1 )
   {
     return nodeIsBetweenFromOgcFilter( element );
   }
@@ -3244,7 +3619,7 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
     return nullptr;
   }
 
-  if ( op == QgsExpressionNodeBinaryOperator::boLike && element.hasAttribute( QStringLiteral( "matchCase" ) ) && element.attribute( QStringLiteral( "matchCase" ) ) == QLatin1String( "false" ) )
+  if ( op == QgsExpressionNodeBinaryOperator::boLike && element.hasAttribute( u"matchCase"_s ) && element.attribute( u"matchCase"_s ) == "false"_L1 )
   {
     op = QgsExpressionNodeBinaryOperator::boILike;
   }
@@ -3258,7 +3633,7 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
     return nullptr;
   }
 
-  std::unique_ptr<QgsExpressionNode> leftOp( expr->clone() );
+  const std::unique_ptr<QgsExpressionNode> leftOp( expr->clone() );
   for ( operandElem = operandElem.nextSiblingElement(); !operandElem.isNull(); operandElem = operandElem.nextSiblingElement() )
   {
     std::unique_ptr<QgsExpressionNode> opRight( nodeFromOgcFilter( operandElem ) );
@@ -3271,66 +3646,72 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
     if ( op == QgsExpressionNodeBinaryOperator::boLike || op == QgsExpressionNodeBinaryOperator::boILike )
     {
       QString wildCard;
-      if ( element.hasAttribute( QStringLiteral( "wildCard" ) ) )
+      if ( element.hasAttribute( u"wildCard"_s ) )
       {
-        wildCard = element.attribute( QStringLiteral( "wildCard" ) );
+        wildCard = element.attribute( u"wildCard"_s );
       }
       QString singleChar;
-      if ( element.hasAttribute( QStringLiteral( "singleChar" ) ) )
+      if ( element.hasAttribute( u"singleChar"_s ) )
       {
-        singleChar = element.attribute( QStringLiteral( "singleChar" ) );
+        singleChar = element.attribute( u"singleChar"_s );
       }
-      QString escape = QStringLiteral( "\\" );
-      if ( element.hasAttribute( QStringLiteral( "escape" ) ) )
+      QString escape = u"\\"_s;
+      if ( element.hasAttribute( u"escape"_s ) )
       {
-        escape = element.attribute( QStringLiteral( "escape" ) );
+        escape = element.attribute( u"escape"_s );
       }
-      if ( element.hasAttribute( QStringLiteral( "escapeChar" ) ) )
+      if ( element.hasAttribute( u"escapeChar"_s ) )
       {
-        escape = element.attribute( QStringLiteral( "escapeChar" ) );
+        escape = element.attribute( u"escapeChar"_s );
       }
       // replace
       QString oprValue = static_cast<const QgsExpressionNodeLiteral *>( opRight.get() )->value().toString();
-      if ( !wildCard.isEmpty() && wildCard != QLatin1String( "%" ) )
+      if ( !wildCard.isEmpty() && wildCard != "%"_L1 )
       {
-        oprValue.replace( '%', QLatin1String( "\\%" ) );
+        oprValue.replace( '%', "\\%"_L1 );
         if ( oprValue.startsWith( wildCard ) )
         {
-          oprValue.replace( 0, 1, QStringLiteral( "%" ) );
+          oprValue.replace( 0, 1, u"%"_s );
         }
-        QRegExp rx( "[^" + QRegExp::escape( escape ) + "](" + QRegExp::escape( wildCard ) + ")" );
-        int pos = 0;
-        while ( ( pos = rx.indexIn( oprValue, pos ) ) != -1 )
+        const QRegularExpression rx( "[^" + QgsStringUtils::qRegExpEscape( escape ) + "](" + QgsStringUtils::qRegExpEscape( wildCard ) + ")" );
+        QRegularExpressionMatch match = rx.match( oprValue );
+        int pos;
+        while ( match.hasMatch() )
         {
-          oprValue.replace( pos + 1, 1, QStringLiteral( "%" ) );
+          pos = match.capturedStart();
+          oprValue.replace( pos + 1, 1, u"%"_s );
           pos += 1;
+          match = rx.match( oprValue, pos );
         }
         oprValue.replace( escape + wildCard, wildCard );
       }
-      if ( !singleChar.isEmpty() && singleChar != QLatin1String( "_" ) )
+      if ( !singleChar.isEmpty() && singleChar != "_"_L1 )
       {
-        oprValue.replace( '_', QLatin1String( "\\_" ) );
+        oprValue.replace( '_', "\\_"_L1 );
         if ( oprValue.startsWith( singleChar ) )
         {
-          oprValue.replace( 0, 1, QStringLiteral( "_" ) );
+          oprValue.replace( 0, 1, u"_"_s );
         }
-        QRegExp rx( "[^" + QRegExp::escape( escape ) + "](" + QRegExp::escape( singleChar ) + ")" );
-        int pos = 0;
-        while ( ( pos = rx.indexIn( oprValue, pos ) ) != -1 )
+        const QRegularExpression rx( "[^" + QgsStringUtils::qRegExpEscape( escape ) + "](" + QgsStringUtils::qRegExpEscape( singleChar ) + ")" );
+        QRegularExpressionMatch match = rx.match( oprValue );
+        int pos;
+        while ( match.hasMatch() )
         {
-          oprValue.replace( pos + 1, 1, QStringLiteral( "_" ) );
+          pos = match.capturedStart();
+          oprValue.replace( pos + 1, 1, u"_"_s );
           pos += 1;
+          match = rx.match( oprValue, pos );
         }
         oprValue.replace( escape + singleChar, singleChar );
       }
-      if ( !escape.isEmpty() && escape != QLatin1String( "\\" ) )
+      if ( !escape.isEmpty() && escape != "\\"_L1 )
       {
         oprValue.replace( escape + escape, escape );
       }
-      opRight.reset( new QgsExpressionNodeLiteral( oprValue ) );
+      opRight = std::make_unique<QgsExpressionNodeLiteral>( oprValue );
     }
 
-    expr.reset( new QgsExpressionNodeBinaryOperator( static_cast< QgsExpressionNodeBinaryOperator::BinaryOperator >( op ), expr.release(), opRight.release() ) );
+    expr = std::make_unique<QgsExpressionNodeBinaryOperator>( static_cast< QgsExpressionNodeBinaryOperator::BinaryOperator >( op ), expr.release(), opRight.release() );
   }
 
   if ( expr == leftOp )
@@ -3346,9 +3727,11 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodeBinaryOper
 QgsExpressionNodeFunction *QgsOgcUtilsExpressionFromFilter::nodeSpatialOperatorFromOgcFilter( const QDomElement &element )
 {
   // we are exploiting the fact that our function names are the same as the XML tag names
-  const int opIdx = QgsExpression::functionIndex( element.tagName().toLower() );
+  const QgsExpression::FunctionListSnapshot functions = QgsExpression::getFunctionsSnapshot();
 
-  std::unique_ptr<QgsExpressionNode::NodeList> gml2Args( new QgsExpressionNode::NodeList() );
+  const int opIdx = functions->functionIndex( element.tagName().toLower() );
+
+  auto gml2Args = std::make_unique<QgsExpressionNode::NodeList>();
   QDomElement childElem = element.firstChildElement();
   QString gml2Str;
   while ( !childElem.isNull() && gml2Str.isEmpty() )
@@ -3370,9 +3753,9 @@ QgsExpressionNodeFunction *QgsOgcUtilsExpressionFromFilter::nodeSpatialOperatorF
     return nullptr;
   }
 
-  std::unique_ptr<QgsExpressionNode::NodeList> opArgs( new QgsExpressionNode::NodeList() );
-  opArgs->append( new QgsExpressionNodeFunction( QgsExpression::functionIndex( QStringLiteral( "$geometry" ) ), new QgsExpressionNode::NodeList() ) );
-  opArgs->append( new QgsExpressionNodeFunction( QgsExpression::functionIndex( QStringLiteral( "geomFromGML" ) ), gml2Args.release() ) );
+  auto opArgs = std::make_unique<QgsExpressionNode::NodeList>();
+  opArgs->append( new QgsExpressionNodeFunction( functions->functionIndex( u"$geometry"_s ), new QgsExpressionNode::NodeList() ) );
+  opArgs->append( new QgsExpressionNodeFunction( functions->functionIndex( u"geomFromGML"_s ), gml2Args.release() ) );
 
   return new QgsExpressionNodeFunction( opIdx, opArgs.release() );
 }
@@ -3390,13 +3773,18 @@ QgsExpressionNodeColumnRef *QgsOgcUtilsExpressionFromFilter::nodeColumnRefFromOg
 
 QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeLiteralFromOgcFilter( const QDomElement &element )
 {
-  if ( element.isNull() || element.tagName() != QLatin1String( "Literal" ) )
+  if ( element.isNull() || element.tagName() != "Literal"_L1 )
   {
     mErrorMessage = QObject::tr( "%1:Literal expected, got %2" ).arg( mPrefix, element.tagName() );
     return nullptr;
   }
 
   std::unique_ptr<QgsExpressionNode> root;
+  if ( !element.hasChildNodes() )
+  {
+    root = std::make_unique<QgsExpressionNodeLiteral>( QVariant( "" ) );
+    return root.release();
+  }
 
   // the literal content can have more children (e.g. CDATA section, text, ...)
   QDomNode childNode = element.firstChild();
@@ -3435,7 +3823,7 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeLiteralFromOgcFilter( co
           const int fieldIndex = mLayer->fields().indexOf( propertyNameElement.firstChild().nodeValue() );
           if ( fieldIndex != -1 )
           {
-            QgsField field = mLayer->fields().field( propertyNameElement.firstChild().nodeValue() );
+            const QgsField field = mLayer->fields().field( propertyNameElement.firstChild().nodeValue() );
             field.convertCompatible( value );
             converted = true;
           }
@@ -3451,9 +3839,7 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeLiteralFromOgcFilter( co
           value = d;
       }
 
-      operand.reset( new QgsExpressionNodeLiteral( value ) );
-      if ( !operand )
-        continue;
+      operand = std::make_unique<QgsExpressionNodeLiteral>( value );
     }
 
     // use the concat operator to merge the ogc:Literal children
@@ -3463,7 +3849,7 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeLiteralFromOgcFilter( co
     }
     else
     {
-      root.reset( new QgsExpressionNodeBinaryOperator( QgsExpressionNodeBinaryOperator::boConcat, root.release(), operand.release() ) );
+      root = std::make_unique<QgsExpressionNodeBinaryOperator>( QgsExpressionNodeBinaryOperator::boConcat, root.release(), operand.release() );
     }
 
     childNode = childNode.nextSibling();
@@ -3477,7 +3863,7 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeLiteralFromOgcFilter( co
 
 QgsExpressionNodeUnaryOperator *QgsOgcUtilsExpressionFromFilter::nodeNotFromOgcFilter( const QDomElement &element )
 {
-  if ( element.tagName() != QLatin1String( "Not" ) )
+  if ( element.tagName() != "Not"_L1 )
     return nullptr;
 
   const QDomElement operandElem = element.firstChildElement();
@@ -3494,7 +3880,7 @@ QgsExpressionNodeUnaryOperator *QgsOgcUtilsExpressionFromFilter::nodeNotFromOgcF
 QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodePropertyIsNullFromOgcFilter( const QDomElement &element )
 {
   // convert ogc:PropertyIsNull to IS operator with NULL right operand
-  if ( element.tagName() != QLatin1String( "PropertyIsNull" ) )
+  if ( element.tagName() != "PropertyIsNull"_L1 )
   {
     return nullptr;
   }
@@ -3510,20 +3896,21 @@ QgsExpressionNodeBinaryOperator *QgsOgcUtilsExpressionFromFilter::nodePropertyIs
 
 QgsExpressionNodeFunction *QgsOgcUtilsExpressionFromFilter::nodeFunctionFromOgcFilter( const QDomElement &element )
 {
-  if ( element.isNull() || element.tagName() != QLatin1String( "Function" ) )
+  if ( element.isNull() || element.tagName() != "Function"_L1 )
   {
     mErrorMessage = QObject::tr( "%1:Function expected, got %2" ).arg( mPrefix, element.tagName() );
     return nullptr;
   }
 
-  for ( int i = 0; i < QgsExpression::Functions().size(); i++ )
+  const QgsExpression::FunctionListSnapshot functions = QgsExpression::getFunctionsSnapshot();
+  for ( int i = 0; i < functions->size(); i++ )
   {
-    const QgsExpressionFunction *funcDef = QgsExpression::Functions()[i];
+    const QgsExpression::SharedFunctionPtr funcDef = functions->getFunction( i );
 
-    if ( element.attribute( QStringLiteral( "name" ) ) != funcDef->name() )
+    if ( element.attribute( u"name"_s ) != funcDef->name() )
       continue;
 
-    std::unique_ptr<QgsExpressionNode::NodeList> args( new QgsExpressionNode::NodeList() );
+    auto args = std::make_unique<QgsExpressionNode::NodeList>();
 
     QDomElement operandElem = element.firstChildElement();
     while ( !operandElem.isNull() )
@@ -3554,14 +3941,14 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeIsBetweenFromOgcFilter( 
   QDomElement operandElem = element.firstChildElement();
   while ( !operandElem.isNull() )
   {
-    if ( operandElem.tagName() == QLatin1String( "LowerBoundary" ) )
+    if ( operandElem.tagName() == "LowerBoundary"_L1 )
     {
-      QDomElement lowerBoundElem = operandElem.firstChildElement();
+      const QDomElement lowerBoundElem = operandElem.firstChildElement();
       lowerBound.reset( nodeFromOgcFilter( lowerBoundElem ) );
     }
-    else if ( operandElem.tagName() == QLatin1String( "UpperBoundary" ) )
+    else if ( operandElem.tagName() == "UpperBoundary"_L1 )
     {
-      QDomElement upperBoundElem = operandElem.firstChildElement();
+      const QDomElement upperBoundElem = operandElem.firstChildElement();
       upperBound.reset( nodeFromOgcFilter( upperBoundElem ) );
     }
     else
@@ -3590,4 +3977,76 @@ QgsExpressionNode *QgsOgcUtilsExpressionFromFilter::nodeIsBetweenFromOgcFilter( 
 QString QgsOgcUtilsExpressionFromFilter::errorMessage() const
 {
   return mErrorMessage;
+}
+
+QgsOgcCrsUtils::CRSFlavor QgsOgcCrsUtils::parseCrsName( const QString &crsName, QString &authority, QString &code )
+{
+  const thread_local QRegularExpression re_url( QRegularExpression::anchoredPattern( u"http://www\\.opengis\\.net/gml/srs/epsg\\.xml#(.+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_url.match( crsName ); match.hasMatch() )
+  {
+    authority = u"EPSG"_s;
+    code = match.captured( 1 );
+    return CRSFlavor::HTTP_EPSG_DOT_XML;
+  }
+
+  // urn with AUTHORITY:CODE - this skips version and does not even have empty space for it
+  const thread_local QRegularExpression re_ogc_urn_without_version( QRegularExpression::anchoredPattern( u"urn:ogc:def:crs:([^:]+):([^:]+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_ogc_urn_without_version.match( crsName ); match.hasMatch() )
+  {
+    authority = match.captured( 1 );
+    code = match.captured( 2 );
+    return CRSFlavor::OGC_URN;
+  }
+
+  // urn with AUTHORITY:[VERSION]:CODE
+  const thread_local QRegularExpression re_ogc_urn( QRegularExpression::anchoredPattern( u"urn:ogc:def:crs:([^:]+):([^:]*):([^:]+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_ogc_urn.match( crsName ); match.hasMatch() )
+  {
+    authority = match.captured( 1 );
+    const QString version = match.captured( 2 );
+    code = match.captured( 3 );
+    if ( authority.compare( u"IAU"_s, Qt::CaseInsensitive ) == 0 && !version.isEmpty() )
+      authority = u"%1_%2"_s.arg( authority, version );
+    return CRSFlavor::OGC_URN;
+  }
+
+  const thread_local QRegularExpression re_x_ogc_urn( QRegularExpression::anchoredPattern( u"urn:x-ogc:def:crs:([^:]+).+(?<=:)([^:]+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_x_ogc_urn.match( crsName ); match.hasMatch() )
+  {
+    authority = match.captured( 1 );
+    code = match.captured( 2 );
+    return CRSFlavor::X_OGC_URN;
+  }
+
+  const thread_local QRegularExpression re_http_uri( QRegularExpression::anchoredPattern( u"http://www\\.opengis\\.net/def/crs/([^/]+).+/([^/]+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_http_uri.match( crsName ); match.hasMatch() )
+  {
+    authority = match.captured( 1 );
+    code = match.captured( 2 );
+    return CRSFlavor::OGC_HTTP_URI;
+  }
+
+  const thread_local QRegularExpression re_auth_code( QRegularExpression::anchoredPattern( u"([^:]+):(.+)"_s ), QRegularExpression::CaseInsensitiveOption );
+  if ( const QRegularExpressionMatch match = re_auth_code.match( crsName ); match.hasMatch() )
+  {
+    authority = match.captured( 1 );
+    code = match.captured( 2 );
+    return CRSFlavor::AUTH_CODE;
+  }
+
+  return CRSFlavor::UNKNOWN;
+}
+
+QgsGeometry QgsOgcUtils::geometryFromGMLUsingGdal( const QDomElement &geometryElement )
+{
+  QString gml;
+  QTextStream gmlStream( &gml );
+  geometryElement.save( gmlStream, 0 );
+  gdal::ogr_geometry_unique_ptr ogrGeom { OGR_G_CreateFromGML( gml.toUtf8().constData() ) };
+  return QgsOgrUtils::ogrGeometryToQgsGeometry( ogrGeom.get() );
+}
+
+QgsGeometry QgsOgcUtils::geometryFromGMLMultiCurve( const QDomElement &geometryElement )
+{
+  return geometryFromGMLUsingGdal( geometryElement );
 }

@@ -14,13 +14,20 @@
  ***************************************************************************/
 
 #include "qgsuserprofile.h"
+
+#include <sqlite3.h>
+
 #include "qgsapplication.h"
+#include "qgssettingsentry.h"
 #include "qgssqliteutils.h"
 
 #include <QDir>
-#include <QTextStream>
+#include <QFileInfo>
 #include <QSettings>
-#include <sqlite3.h>
+#include <QString>
+#include <QTextStream>
+
+using namespace Qt::StringLiterals;
 
 QgsUserProfile::QgsUserProfile( const QString &folder )
 {
@@ -44,15 +51,15 @@ QgsError QgsUserProfile::validate() const
 
 const QString QgsUserProfile::name() const
 {
-  QDir dir( mProfileFolder );
+  const QDir dir( mProfileFolder );
   return dir.dirName();
 }
 
 void QgsUserProfile::initSettings() const
 {
-  // tell QSettings to use INI format and save the file in custom config path
-  QSettings::setDefaultFormat( QSettings::IniFormat );
-  QSettings::setPath( QSettings::IniFormat, QSettings::UserScope, folder() );
+#ifndef __EMSCRIPTEN__
+  QgsSettingsEntryBase::setupUserSettings( folder() );
+#endif
 }
 
 const QString QgsUserProfile::alias() const
@@ -76,12 +83,12 @@ const QString QgsUserProfile::alias() const
     return profileAlias;
   }
 
-  sqlite3_statement_unique_ptr preparedStatement = database.prepare( QStringLiteral( "SELECT value FROM tbl_config_variables WHERE variable = 'ALIAS'" ), result );
+  sqlite3_statement_unique_ptr preparedStatement = database.prepare( u"SELECT value FROM tbl_config_variables WHERE variable = 'ALIAS'"_s, result );
   if ( result == SQLITE_OK )
   {
     if ( preparedStatement.step() == SQLITE_ROW )
     {
-      QString alias = preparedStatement.columnAsText( 0 );
+      const QString alias = preparedStatement.columnAsText( 0 );
       if ( !alias.isEmpty() )
         profileAlias = alias;
     }
@@ -89,7 +96,7 @@ const QString QgsUserProfile::alias() const
   return profileAlias;
 }
 
-QgsError QgsUserProfile::setAlias( const QString &alias )
+QgsError QgsUserProfile::setAlias( const QString &alias ) const
 {
   QgsError error;
   const QString dbFile = qgisDB();
@@ -112,8 +119,7 @@ QgsError QgsUserProfile::setAlias( const QString &alias )
     return error;
   }
 
-  const QString sql = QStringLiteral( "INSERT OR REPLACE INTO tbl_config_variables VALUES ('ALIAS', %1);" ).arg(
-                        QgsSqliteUtils::quotedString( alias ) );
+  const QString sql = u"INSERT OR REPLACE INTO tbl_config_variables VALUES ('ALIAS', %1);"_s.arg( QgsSqliteUtils::quotedString( alias ) );
 
   sqlite3_statement_unique_ptr preparedStatement = database.prepare( sql, result );
   if ( result != SQLITE_OK || preparedStatement.step() != SQLITE_DONE )
@@ -126,12 +132,16 @@ QgsError QgsUserProfile::setAlias( const QString &alias )
 
 const QIcon QgsUserProfile::icon() const
 {
-  QString path = mProfileFolder + QDir::separator() + "icon.svg";
-  if ( !QDir( path ).exists() )
+  const QStringList extensions = { ".svg", ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
+  const QString basename = mProfileFolder + QDir::separator() + "icon";
+
+  for ( const QString &extension : extensions )
   {
-    return QgsApplication::getThemeIcon( "user.svg" );
+    const QString path = basename + extension;
+    if ( QFileInfo::exists( path ) )
+      return QIcon( path );
   }
-  return QIcon( path );
+  return QgsApplication::getThemeIcon( "user.svg" );
 }
 
 QString QgsUserProfile::qgisDB() const

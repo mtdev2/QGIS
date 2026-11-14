@@ -14,59 +14,70 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsversionmigration.h"
-#include "qgssettings.h"
-#include "qgslogger.h"
-#include "qsettings.h"
-#include "qgsmessagelog.h"
+
 #include "qgsapplication.h"
-#include "qgssymbol.h"
-#include "qgsstyle.h"
-#include "qgssymbollayerutils.h"
+#include "qgsattributetabledialog.h"
+#include "qgsfileutils.h"
+#include "qgslogger.h"
+#include "qgsmessagelog.h"
 #include "qgsreadwritecontext.h"
+#include "qgssettings.h"
+#include "qgsstyle.h"
+#include "qgssymbol.h"
+#include "qgssymbollayerutils.h"
 #include "qgsuserprofilemanager.h"
 
-#include <QFile>
-#include <QTextStream>
 #include <QDir>
-#include <QSqlDatabase>
-#include <QSqlQuery>
-#include <QSqlError>
 #include <QDomDocument>
+#include <QFile>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
+#include <QString>
+#include <QTextStream>
+#include <qsettings.h>
+
+using namespace Qt::StringLiterals;
 
 std::unique_ptr<QgsVersionMigration> QgsVersionMigration::canMigrate( int fromVersion, int toVersion )
 {
-  if ( fromVersion == 20000 && toVersion >= 29900 )
+  if ( fromVersion == 30000 && toVersion >= 39900 )
   {
-    return qgis::make_unique< Qgs2To3Migration >();
+    return std::make_unique<Qgs3To4Migration>();
   }
   return nullptr;
 }
 
+#if 0
+//
+// Qgs2To3Migration
+//
+
 QgsError Qgs2To3Migration::runMigration()
 {
   QgsError errors;
-  QgsError settingsErrors = migrateSettings();
+  const QgsError settingsErrors = migrateSettings();
   if ( !settingsErrors.isEmpty() )
   {
-    const QList<QgsErrorMessage> errorList( settingsErrors.messageList( ) );
+    const QList<QgsErrorMessage> errorList( settingsErrors.messageList() );
     for ( const auto &err : errorList )
     {
       errors.append( err );
     }
   }
-  QgsError stylesErrors = migrateStyles();
+  const QgsError stylesErrors = migrateStyles();
   if ( !stylesErrors.isEmpty() )
   {
-    const QList<QgsErrorMessage> errorList( stylesErrors.messageList( ) );
+    const QList<QgsErrorMessage> errorList( stylesErrors.messageList() );
     for ( const auto &err : errorList )
     {
       errors.append( err );
     }
   }
-  QgsError authDbErrors = migrateAuthDb();
+  const QgsError authDbErrors = migrateAuthDb();
   if ( !authDbErrors.isEmpty() )
   {
-    const QList<QgsErrorMessage> errorList( authDbErrors.messageList( ) );
+    const QList<QgsErrorMessage> errorList( authDbErrors.messageList() );
     for ( const auto &err : errorList )
     {
       errors.append( err );
@@ -77,25 +88,25 @@ QgsError Qgs2To3Migration::runMigration()
 
 bool Qgs2To3Migration::requiresMigration()
 {
-  QgsSettings settings;
-  bool alreadyMigrated = settings.value( QStringLiteral( "migration/settings" ), false ).toBool();
-  int  settingsMigrationVersion = settings.value( QStringLiteral( "migration/fileVersion" ), 0 ).toInt();
+  const QgsSettings settings;
+  const bool alreadyMigrated = settings.value( u"migration/settings"_s, false ).toBool();
+  const int settingsMigrationVersion = settings.value( u"migration/fileVersion"_s, 0 ).toInt();
   QFile migrationFile( migrationFilePath() );
   if ( migrationFile.open( QIODevice::ReadOnly | QIODevice::Text ) )
   {
     QTextStream in( &migrationFile );
-    QString line = in.readLine();
-    if ( line.startsWith( "#" ) && line.contains( QStringLiteral( "version=" ) ) )
+    const QString line = in.readLine();
+    if ( line.startsWith( "#" ) && line.contains( u"version="_s ) )
     {
-      QStringList parts = line.split( '=' );
+      const QStringList parts = line.split( '=' );
       mMigrationFileVersion = parts.at( 1 ).toInt();
-      QgsDebugMsgLevel( QStringLiteral( "File version is=%1" ).arg( mMigrationFileVersion ), 2 );
+      QgsDebugMsgLevel( u"File version is=%1"_s.arg( mMigrationFileVersion ), 2 );
     }
     migrationFile.close();
   }
   else
   {
-    QgsDebugMsg( QStringLiteral( "Can not open %1" ).arg( migrationFile.fileName() ) );
+    QgsDebugError( u"Can not open %1"_s.arg( migrationFile.fileName() ) );
     mMigrationFileVersion = settingsMigrationVersion;
   }
 
@@ -105,35 +116,36 @@ bool Qgs2To3Migration::requiresMigration()
 QgsError Qgs2To3Migration::migrateStyles()
 {
   QgsError error;
-  QString oldHome = QStringLiteral( "%1/.qgis2" ).arg( QDir::homePath() );
-  QString oldStyleFile = QStringLiteral( "%1/symbology-ng-style.db" ).arg( oldHome );
-  QgsDebugMsgLevel( QStringLiteral( "OLD STYLE FILE %1" ).arg( oldStyleFile ), 2 );
+  const QString oldHome = u"%1/.qgis2"_s.arg( QDir::homePath() );
+  const QString oldStyleFile = u"%1/symbology-ng-style.db"_s.arg( oldHome );
+  QgsDebugMsgLevel( u"OLD STYLE FILE %1"_s.arg( oldStyleFile ), 2 );
   QSqlDatabase db = QSqlDatabase::addDatabase( "QSQLITE", "migration" );
   db.setDatabaseName( oldStyleFile );
   if ( !db.open() )
   {
     error.append( db.lastError().text() );
-    QgsDebugMsg( db.lastError().text() );
+    QgsDebugError( db.lastError().text() );
     return error;
   }
 
   QSqlQuery query( db );
   QSqlQuery tagQuery( "SELECT name FROM tag"
                       "JOIN tagmap ON tagmap.tag_id = tag.id"
-                      "WHERE tagmap.symbol_id = :symbol_id", db );
+                      "WHERE tagmap.symbol_id = :symbol_id",
+                      db );
 
   QgsStyle *style = QgsStyle::defaultStyle();
   if ( query.exec( "SELECT id, name, xml FROM symbol" ) )
   {
     while ( query.next() )
     {
-      QString symbol_id = query.value( 0 ).toString();
-      QString name = query.value( 1 ).toString();
-      QString xml = query.value( 2 ).toString();
+      const QString symbol_id = query.value( 0 ).toString();
+      const QString name = query.value( 1 ).toString();
+      const QString xml = query.value( 2 ).toString();
       QDomDocument doc;
       if ( !doc.setContent( xml ) )
       {
-        QgsDebugMsg( "Cannot open symbol " + name );
+        QgsDebugError( "Cannot open symbol " + name );
         continue;
       }
 
@@ -144,18 +156,18 @@ QgsError Qgs2To3Migration::migrateStyles()
       {
         while ( query.next() )
         {
-          QString tagname = query.value( 0 ).toString();
+          const QString tagname = query.value( 0 ).toString();
           tags << tagname;
         }
       }
 
-      QDomElement symElement = doc.documentElement();
-      QgsDebugMsgLevel( QStringLiteral( "MIGRATION: Importing %1" ).arg( name ), 2 );
-      QgsSymbol *symbol = QgsSymbolLayerUtils::loadSymbol( symElement, QgsReadWriteContext() );
+      const QDomElement symElement = doc.documentElement();
+      QgsDebugMsgLevel( u"MIGRATION: Importing %1"_s.arg( name ), 2 );
+      std::unique_ptr< QgsSymbol > symbol = QgsSymbolLayerUtils::loadSymbol( symElement, QgsReadWriteContext() );
       tags << "QGIS 2";
       if ( style->symbolId( name ) == 0 )
       {
-        style->saveSymbol( name, symbol, false, tags );
+        style->saveSymbol( name, symbol.get(), false, tags );
       }
     }
   }
@@ -192,7 +204,7 @@ QgsError Qgs2To3Migration::migrateSettings()
     QTextStream in( &inputFile );
     while ( !in.atEnd() )
     {
-      QString line = in.readLine();
+      const QString line = in.readLine();
 
       if ( line.startsWith( "#" ) )
         continue;
@@ -205,47 +217,46 @@ QgsError Qgs2To3Migration::migrateSettings()
       Q_ASSERT_X( parts.count() == 2, "QgsVersionMigration::migrateSettings()", "Can't split line in 2 parts." );
 
       QString oldKey = parts.at( 0 );
-      QString newKey = parts.at( 1 );
+      const QString newKey = parts.at( 1 );
 
       if ( oldKey.endsWith( "/*" ) )
       {
         oldKey = oldKey.replace( "/*", "" );
-        QList<QPair<QString, QString>> keyList = walk( oldKey, newKey );
+        const QList<QPair<QString, QString>> keyList = walk( oldKey, newKey );
         keys.append( keyList );
       }
       else
       {
-        QPair<QString, QString> key = transformKey( oldKey, newKey );
+        const QPair<QString, QString> key = transformKey( oldKey, newKey );
         keys.append( key );
       }
-
     }
     inputFile.close();
-    newSettings.setValue( QStringLiteral( "migration/settings" ), true );
+    newSettings.setValue( u"migration/settings"_s, true );
     // Set the dev gen so we can force a migration.
-    newSettings.setValue( QStringLiteral( "migration/fileVersion" ), mMigrationFileVersion );
+    newSettings.setValue( u"migration/fileVersion"_s, mMigrationFileVersion );
   }
   else
   {
-    QString msg = QString( "Can not open %1" ).arg( inputFile.fileName() );
-    QgsDebugMsg( msg );
+    const QString msg = QString( "Can not open %1" ).arg( inputFile.fileName() );
+    QgsDebugError( msg );
     error.append( msg );
   }
 
   if ( keys.count() > 0 )
   {
-    QgsDebugMsgLevel( QStringLiteral( "MIGRATION: Translating settings keys" ), 2 );
+    QgsDebugMsgLevel( u"MIGRATION: Translating settings keys"_s, 2 );
     QList<QPair<QString, QString>>::iterator i;
     for ( i = keys.begin(); i != keys.end(); ++i )
     {
-      QPair<QString, QString> pair = *i;
+      const QPair<QString, QString> pair = *i;
 
-      QString oldKey = pair.first;
-      QString newKey = pair.second;
+      const QString oldKey = pair.first;
+      const QString newKey = pair.second;
 
       if ( oldKey.contains( oldKey ) )
       {
-        QgsDebugMsgLevel( QStringLiteral( " -> %1 -> %2" ).arg( oldKey, newKey ), 2 );
+        QgsDebugMsgLevel( u" -> %1 -> %2"_s.arg( oldKey, newKey ), 2 );
         newSettings.setValue( newKey, mOldSettings->value( oldKey ) );
       }
     }
@@ -256,60 +267,60 @@ QgsError Qgs2To3Migration::migrateSettings()
 QgsError Qgs2To3Migration::migrateAuthDb()
 {
   QgsError error;
-  QString oldHome = QStringLiteral( "%1/.qgis2" ).arg( QDir::homePath() );
-  QString oldAuthDbFilePath = QStringLiteral( "%1/qgis-auth.db" ).arg( oldHome );
+  const QString oldHome = u"%1/.qgis2"_s.arg( QDir::homePath() );
+  const QString oldAuthDbFilePath = u"%1/qgis-auth.db"_s.arg( oldHome );
   // Try to retrieve the current profile folder (I didn't find an QgsApplication API for it)
   QDir settingsDir = QFileInfo( QgsSettings().fileName() ).absoluteDir();
   settingsDir.cdUp();
-  QString newAuthDbFilePath = QStringLiteral( "%1/qgis-auth.db" ).arg( settingsDir.absolutePath() );
+  const QString newAuthDbFilePath = u"%1/qgis-auth.db"_s.arg( settingsDir.absolutePath() );
   // Do not overwrite!
-  if ( QFile( newAuthDbFilePath ).exists( ) )
+  if ( QFile( newAuthDbFilePath ).exists() )
   {
-    QString msg = QStringLiteral( "Could not copy old auth DB to %1: file already exists!" ).arg( newAuthDbFilePath );
-    QgsDebugMsg( msg );
+    const QString msg = u"Could not copy old auth DB to %1: file already exists!"_s.arg( newAuthDbFilePath );
+    QgsDebugError( msg );
     error.append( msg );
   }
   else
   {
     QFile oldDbFile( oldAuthDbFilePath );
-    if ( oldDbFile.exists( ) )
+    if ( oldDbFile.exists() )
     {
       if ( oldDbFile.copy( newAuthDbFilePath ) )
       {
-        QgsDebugMsgLevel( QStringLiteral( "Old auth DB successfully copied to %1" ).arg( newAuthDbFilePath ), 2 );
+        QgsDebugMsgLevel( u"Old auth DB successfully copied to %1"_s.arg( newAuthDbFilePath ), 2 );
       }
       else
       {
-        QString msg = QStringLiteral( "Could not copy auth DB %1 to %2" ).arg( oldAuthDbFilePath, newAuthDbFilePath );
-        QgsDebugMsg( msg );
+        const QString msg = u"Could not copy auth DB %1 to %2"_s.arg( oldAuthDbFilePath, newAuthDbFilePath );
+        QgsDebugError( msg );
         error.append( msg );
       }
     }
     else
     {
-      QString msg = QStringLiteral( "Could not copy auth DB %1 to %2: old DB does not exists!" ).arg( oldAuthDbFilePath, newAuthDbFilePath );
-      QgsDebugMsg( msg );
+      const QString msg = u"Could not copy auth DB %1 to %2: old DB does not exists!"_s.arg( oldAuthDbFilePath, newAuthDbFilePath );
+      QgsDebugError( msg );
       error.append( msg );
     }
   }
   return error;
 }
 
-QList<QPair<QString, QString> > Qgs2To3Migration::walk( QString group, QString newkey )
+QList<QPair<QString, QString>> Qgs2To3Migration::walk( QString group, QString newkey )
 {
   mOldSettings->beginGroup( group );
-  QList<QPair<QString, QString> > foundKeys;
+  QList<QPair<QString, QString>> foundKeys;
   const auto constChildGroups = mOldSettings->childGroups();
   for ( const QString &group : constChildGroups )
   {
-    QList<QPair<QString, QString> > data = walk( group, newkey );
+    const QList<QPair<QString, QString>> data = walk( group, newkey );
     foundKeys.append( data );
   }
 
   const auto constChildKeys = mOldSettings->childKeys();
   for ( const QString &key : constChildKeys )
   {
-    QString fullKey = mOldSettings->group() + "/" + key;
+    const QString fullKey = mOldSettings->group() + "/" + key;
     foundKeys.append( transformKey( fullKey, newkey ) );
   }
   mOldSettings->endGroup();
@@ -319,9 +330,9 @@ QList<QPair<QString, QString> > Qgs2To3Migration::walk( QString group, QString n
 QPair<QString, QString> Qgs2To3Migration::transformKey( QString fullOldKey, QString newKeyPart )
 {
   QString newKey = newKeyPart;
-  QString oldKey = fullOldKey;
+  const QString oldKey = fullOldKey;
 
-  if ( newKeyPart == QLatin1String( "*" ) )
+  if ( newKeyPart == "*"_L1 )
   {
     newKey = fullOldKey;
   }
@@ -344,5 +355,59 @@ QPair<QString, QString> Qgs2To3Migration::transformKey( QString fullOldKey, QStr
 
 QString Qgs2To3Migration::migrationFilePath()
 {
-  return QgsApplication::resolvePkgPath() +  "/resources/2to3migration.txt";
+  return QgsApplication::resolvePkgPath() + "/resources/2to3migration.txt";
+}
+
+#endif
+
+
+//
+// Qgs3To4Migration
+//
+
+QgsError Qgs3To4Migration::runMigration( const QString &oldProfilePath, const QString &newProfilePath )
+{
+  QgsDebugMsgLevel( u"Performing migration from 3.x -> 4.x"_s, 2 );
+  QgsDebugMsgLevel( u"Copying 3.x profile from %1 to %2"_s.arg( oldProfilePath, newProfilePath ), 2 );
+
+  // files created by default (by QgsApplication startup), we want to overwrite these
+  QDir newProfileDir( newProfilePath );
+  newProfileDir.remove( u"bookmarks.xml"_s );
+  newProfileDir.remove( u"qgis.db"_s );
+  newProfileDir.remove( u"symbology-style.db"_s );
+
+  QgsError errors;
+
+  // don't copy:
+  // - compiled pycache or pyc files!
+  // - any plugin folders -- require users to reinstall those, so that we don't copy broken, non-updated 3.x plugins
+  QgsFileUtils::copyDirectory( oldProfilePath, newProfilePath, QgsFileUtils::CopyFlag::NoSymLinks, { u".*\\b__pycache__$"_s, u".*\\.[pP][yY][cC]$"_s, u".*[\\/]python[\\/]plugins$"_s } );
+
+  newProfileDir.remove( u"QGIS/QGIS4.ini"_s );
+  newProfileDir.rename( u"QGIS/QGIS3.ini"_s, u"QGIS/QGIS4.ini"_s );
+
+  const QString oldCleanProfilePath = QFileInfo( oldProfilePath ).absoluteFilePath().replace( "/"_L1, "(\\\\|/)"_L1 ).replace( "\\"_L1, "(\\\\|/)"_L1 );
+  const QString newCleanProfilePath = QFileInfo( newProfilePath ).absoluteFilePath();
+
+  // do a one-time search and replace for the old profiles path in the ini file to the new path
+  QgsFileUtils::replaceInFile( newProfileDir.filePath( u"QGIS/QGIS4.ini"_s ), QRegularExpression( oldCleanProfilePath ), newCleanProfilePath );
+
+  QgsSettings newSettings;
+  newSettings.setValue( u"migration/migrated_from_3"_s, true );
+
+  if ( newSettings.value( u"qgis/dockAttributeTable"_s, false ).toBool() )
+  {
+    QgsAttributeTableDialog::settingsAttributeTableDefaultDocked->setValue( true );
+    newSettings.remove( u"qgis/dockAttributeTable"_s );
+  }
+
+  return errors;
+}
+
+bool Qgs3To4Migration::requiresMigration()
+{
+  const QgsSettings settings;
+  const bool alreadyMigrated = settings.value( u"migration/migrated_from_3"_s, false ).toBool();
+  QgsDebugMsgLevel( u"already migrated? %1"_s.arg( alreadyMigrated ? "Y" : "N" ), 2 );
+  return !alreadyMigrated;
 }

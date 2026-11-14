@@ -17,13 +17,10 @@
 #define QGSMESHLAYER3DRENDERER_H
 
 #include "qgis_3d.h"
-
 #include "qgs3drendererregistry.h"
 #include "qgsabstract3drenderer.h"
-#include "qgsmesh3dsymbol.h"
-
-#include "qgsphongmaterialsettings.h"
 #include "qgsmaplayerref.h"
+#include "qgsmesh3dsymbol.h"
 
 #include <QObject>
 
@@ -34,7 +31,7 @@ class QgsMeshLayer;
 
 /**
  * \ingroup core
- * Metadata for mesh layer 3D renderer to allow creation of its instances from XML
+ * \brief Metadata for mesh layer 3D renderer to allow creation of its instances from XML
  *
  * \warning This is not considered stable API, and may change in future QGIS releases
  *
@@ -53,7 +50,7 @@ class _3D_EXPORT QgsMeshLayer3DRendererMetadata : public Qgs3DRendererAbstractMe
 
 /**
  * \ingroup core
- * 3D renderer that renders all mesh triangles of a mesh layer.
+ * \brief 3D renderer that renders all mesh triangles of a mesh layer.
  * \since QGIS 3.6
  */
 class _3D_EXPORT QgsMeshLayer3DRenderer : public QgsAbstract3DRenderer
@@ -74,7 +71,7 @@ class _3D_EXPORT QgsMeshLayer3DRenderer : public QgsAbstract3DRenderer
 
     QString type() const override { return "mesh"; }
     QgsMeshLayer3DRenderer *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( const Qgs3DMapSettings &map ) const override SIP_SKIP;
+    Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;
@@ -82,8 +79,8 @@ class _3D_EXPORT QgsMeshLayer3DRenderer : public QgsAbstract3DRenderer
 
 
   private:
-    QgsMapLayerRef mLayerRef; //!< Layer used to extract mesh data from
-    std::unique_ptr<QgsMesh3DSymbol> mSymbol;  //!< 3D symbol that defines appearance
+    QgsMapLayerRef mLayerRef;                 //!< Layer used to extract mesh data from
+    std::unique_ptr<QgsMesh3DSymbol> mSymbol; //!< 3D symbol that defines appearance
 
   private:
 #ifdef SIP_RUN

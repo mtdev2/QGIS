@@ -16,47 +16,111 @@
  ***************************************************************************/
 #include "qgshanaconnectionstringbuilder.h"
 
+#include "qgis.h"
+
+#include <QRegularExpression>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 QgsHanaConnectionStringBuilder::QgsHanaConnectionStringBuilder( const QgsDataSourceUri &uri )
   : mDriver( uri.driver() )
   , mHost( uri.host() )
   , mPort( uri.port() )
   , mDatabase( uri.database() )
+  , mSchema( uri.schema() )
   , mUserName( uri.username() )
   , mPassword( uri.password() )
 {
-  if ( !uri.hasParam( QStringLiteral( "sslEnabled" ) ) )
-    return;
+  if ( uri.hasParam( u"dsn"_s ) )
+    mDsn = uri.param( u"dsn"_s );
 
-  mSslEnabled = ( uri.param( QStringLiteral( "sslEnabled" ) ) == QLatin1String( "true" ) );
-  mSslCryptoProvider = uri.param( QStringLiteral( "sslCryptoProvider" ) );
-  mSslValidateCertificate = uri.param( QStringLiteral( "sslValidateCertificate" ) ) == QLatin1String( "true" );
-  if ( mSslValidateCertificate )
-    mSslHostNameInCertificate = uri.param( QStringLiteral( "sslHostNameInCertificate" ) );
-  mSslKeyStore = uri.param( QStringLiteral( "sslKeyStore" ) );
-  mSslTrustStore = uri.param( QStringLiteral( "sslTrustStore" ) );
+  // SSL parameters
+  mSslEnabled = ( uri.param( u"sslEnabled"_s ) == "true"_L1 );
+  if ( mSslEnabled )
+  {
+    mSslCryptoProvider = uri.param( u"sslCryptoProvider"_s );
+    mSslValidateCertificate = uri.param( u"sslValidateCertificate"_s ) == "true"_L1;
+    if ( mSslValidateCertificate )
+      mSslHostNameInCertificate = uri.param( u"sslHostNameInCertificate"_s );
+    mSslKeyStore = uri.param( u"sslKeyStore"_s );
+    mSslTrustStore = uri.param( u"sslTrustStore"_s );
+  }
+  // Proxy parameters
+  mProxyEnabled = ( uri.param( u"proxyEnabled"_s ) == "true"_L1 );
+  if ( mProxyEnabled )
+  {
+    mProxyHttp = ( uri.param( u"proxyHttp"_s ) == "true"_L1 );
+    mProxyHost = uri.param( u"proxyHost"_s );
+    mProxyPort = QVariant( uri.param( u"proxyPort"_s ) ).toUInt();
+    mProxyUsername = uri.param( u"proxyUsername"_s );
+    mProxyPassword = uri.param( u"proxyPassword"_s );
+  }
 }
 
 QString QgsHanaConnectionStringBuilder::toString() const
 {
-  // For more details on how to escape special characters in passwords,
-  // see https://stackoverflow.com/questions/55150362/maybe-illegal-character-in-odbc-sql-server-connection-string-pwd
-  QString pwd = QString( mPassword ).replace( '}', QLatin1String( "}}" ) );
-  QString ret = QStringLiteral( "DRIVER={%1};SERVERNODE=%2:%3;DATABASENAME=%4;UID=%5;PWD={%6};CHAR_AS_UTF8=1" ).arg(
-                  mDriver, mHost, mPort, mDatabase, mUserName, pwd );
-  if ( !mSchema.isEmpty() )
-    ret += QStringLiteral( ";CURRENTSCHEMA=" ) + mSchema;
+  QStringList props;
+
+  // See notes for constructing connection string for HANA
+  // https://help.sap.com/docs/SAP_HANA_CLIENT/f1b440ded6144a54ada97ff95dac7adf/7cab593774474f2f8db335710b2f5c50.html
+  QRegularExpression rxSpecialChars( "\\[|\\]|\\{|\\}|\\(|\\)|\\,|\\;|\\?|\\*|\\=|\\!|\\@" );
+  auto addProperty = [&props, &rxSpecialChars]( const QString &name, const QString &value ) {
+    if ( value.isEmpty() )
+      return;
+
+    QRegularExpressionMatch match = rxSpecialChars.match( value );
+    if ( match.hasMatch() )
+    {
+      QString newValue = QString( value ).replace( '}', "}}"_L1 );
+      props.append( name + "={" + newValue + "}" );
+    }
+    else
+    {
+      props.append( name + "=" + value );
+    }
+  };
+
+  if ( !mDsn.isEmpty() )
+  {
+    addProperty( u"DSN"_s, mDsn );
+  }
+  else
+  {
+    addProperty( u"DRIVER"_s, mDriver );
+    addProperty( u"SERVERNODE"_s, u"%1:%2"_s.arg( mHost, mPort ) );
+    addProperty( u"DATABASENAME"_s, mDatabase );
+  }
+
+  addProperty( u"UID"_s, mUserName );
+  addProperty( u"PWD"_s, mPassword );
+  addProperty( u"CURRENTSCHEMA"_s, mSchema );
+
   if ( mSslEnabled )
   {
-    ret += QLatin1String( ";encrypt=true" );
-    if ( !mSslCryptoProvider.isEmpty() )
-      ret += QStringLiteral( ";sslCryptoProvider=" ) + mSslCryptoProvider;
-    ret += QStringLiteral( ";sslValidateCertificate=" ) + QString( mSslValidateCertificate ? QStringLiteral( "true" ) : QStringLiteral( "false" ) );
-    if ( !mSslHostNameInCertificate.isEmpty() )
-      ret += QStringLiteral( ";sslHostNameInCertificate=" ) + mSslHostNameInCertificate;
-    if ( !mSslKeyStore.isEmpty() )
-      ret += QStringLiteral( ";sslKeyStore=" ) + mSslKeyStore;
-    if ( !mSslKeyStore.isEmpty() )
-      ret += QStringLiteral( ";sslTrustStore=" ) + mSslTrustStore;
+    addProperty( u"encrypt"_s, u"true"_s );
+    addProperty( u"sslCryptoProvider"_s, mSslCryptoProvider );
+    addProperty( u"sslValidateCertificate"_s, mSslValidateCertificate ? u"true"_s : u"false"_s );
+    addProperty( u"sslHostNameInCertificate"_s, mSslHostNameInCertificate );
+    addProperty( u"sslKeyStore"_s, mSslKeyStore );
+    addProperty( u"sslTrustStore"_s, mSslTrustStore );
   }
-  return ret;
+
+  if ( mProxyEnabled )
+  {
+    if ( mProxyHttp )
+      addProperty( u"proxyHttp"_s, u"TRUE"_s );
+    addProperty( u"proxyHostname"_s, mProxyHost );
+    addProperty( u"proxyPort"_s, QString::number( mProxyPort ) );
+    if ( !mProxyUsername.isEmpty() )
+    {
+      addProperty( u"proxyUserName"_s, mProxyUsername );
+      addProperty( u"proxyPassword"_s, mProxyPassword );
+    }
+  }
+
+  addProperty( u"CHAR_AS_UTF8"_s, u"1"_s );
+  addProperty( u"sessionVariable:APPLICATION"_s, u"QGIS %1"_s.arg( Qgis::version() ) );
+
+  return props.join( ';'_L1 );
 }

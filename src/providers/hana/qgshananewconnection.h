@@ -17,10 +17,11 @@
 #ifndef QGSHANANEWCONNECTION_H
 #define QGSHANANEWCONNECTION_H
 
+#include "ui_qgshananewconnectionbase.h"
+
 #include "qgsguiutils.h"
 #include "qgshanasettings.h"
 #include "qgshelp.h"
-#include "ui_qgshananewconnectionbase.h"
 
 /**
  * \class QgsHanaNewConnection
@@ -32,10 +33,9 @@ class QgsHanaNewConnection : public QDialog, private Ui::QgsHanaNewConnectionBas
     Q_OBJECT
   public:
     //! Constructor
-    QgsHanaNewConnection(
-      QWidget *parent = nullptr,
-      const QString &connName = QString(),
-      Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags );
+    QgsHanaNewConnection( QWidget *parent = nullptr, const QString &connName = QString(), Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags );
+
+    void resizeEvent( QResizeEvent *ev ) override;
 
     //! Tests the connection using the parameters supplied
     void testConnection();
@@ -44,15 +44,19 @@ class QgsHanaNewConnection : public QDialog, private Ui::QgsHanaNewConnectionBas
     void accept() override;
 
   private:
+    QgsHanaConnectionType getCurrentConnectionType() const;
     QString getDatabaseName() const;
+    void resizeWidgets();
 
     void btnConnect_clicked();
+    void cmbConnectionType_changed( int index );
     void cmbIdentifierType_changed( int index );
     void rbtnSingleContainer_clicked();
     void rbtnMultipleContainers_clicked();
     void rbtnTenantDatabase_clicked();
     void rbtnSystemDatabase_clicked();
     void chkEnableSSL_clicked();
+    void chkEnableProxy_clicked();
     void chkValidateCertificate_clicked();
     void readSettingsFromControls( QgsHanaSettings &settings );
     void updateControlsFromSettings( const QgsHanaSettings &settings );

@@ -19,21 +19,17 @@
 
 #include "qgis_core.h"
 #include "qgsscalebarrenderer.h"
+
 #include <QString>
 
 /**
  * \class QgsDoubleBoxScaleBarRenderer
  * \ingroup core
- * Double box with alternating colors.
- * \since QGIS 3.0
+ * \brief Double box with alternating colors.
  */
-class CORE_EXPORT QgsDoubleBoxScaleBarRenderer: public QgsScaleBarRenderer
+class CORE_EXPORT QgsDoubleBoxScaleBarRenderer : public QgsScaleBarRenderer
 {
   public:
-
-    /**
-     * Constructor for QgsDoubleBoxScaleBarRenderer.
-     */
     QgsDoubleBoxScaleBarRenderer() = default;
 
     QString id() const override;
@@ -42,10 +38,9 @@ class CORE_EXPORT QgsDoubleBoxScaleBarRenderer: public QgsScaleBarRenderer
     int sortKey() const override;
     QgsDoubleBoxScaleBarRenderer *clone() const override SIP_FACTORY;
 
-    void draw( QgsRenderContext &context,
-               const QgsScaleBarSettings &settings,
-               const QgsScaleBarRenderer::ScaleBarContext &scaleContext ) const override;
+    void draw( QgsRenderContext &context, const QgsScaleBarSettings &settings, const QgsScaleBarRenderer::ScaleBarContext &scaleContext ) const override;
 
+    bool applyDefaultSettings( QgsScaleBarSettings &settings ) const override;
 };
 
 #endif // QGSDOUBLEBOXSCALEBARRENDERER_H

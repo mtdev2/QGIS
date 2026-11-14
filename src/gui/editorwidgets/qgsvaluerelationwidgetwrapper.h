@@ -16,21 +16,109 @@
 #ifndef QGSVALUERELATIONWIDGETWRAPPER_H
 #define QGSVALUERELATIONWIDGETWRAPPER_H
 
-#include "qgseditorwidgetwrapper.h"
-#include "qgsvaluerelationfieldformatter.h"
 #include "qgis_gui.h"
+#include "qgseditorwidgetwrapper.h"
+#include "qgstooltipcombobox.h"
+#include "qgsvaluerelationfieldformatter.h"
 
-class QTableWidget;
-class QComboBox;
+#include <QTableWidget>
+
 class QLineEdit;
+class QgsValueRelationWidgetFactory;
+class QgsFilterLineEdit;
 
 SIP_NO_FILE
 
-class QgsValueRelationWidgetFactory;
+///@cond PRIVATE
+
+/**
+ * \brief The QgsFilteredTableWidget class
+ *
+ * This is a helper widget for QgsValueRelationWidgetWrapper
+ * This widget is a QTableWidget showing checkable items, with an optional QgsFilterLineEdit on top that allows filtering the table's items
+ */
+class QgsFilteredTableWidget : public QWidget
+{
+    Q_OBJECT
+
+  public:
+    /**
+     * \brief QgsFilteredTableWidget constructor
+     * \param parent
+     * \param showSearch Whether the search QgsFilterLineEdit should be visible or not
+     * \param displayGroupName Set to TRUE to display the grouping value as name in section header
+     */
+    QgsFilteredTableWidget( QWidget *parent, bool showSearch, bool displayGroupName );
+
+    bool eventFilter( QObject *watched, QEvent *event ) override;
+
+    /**
+     * Returns the list of selected (checked) items
+     */
+    QStringList selection() const;
+
+    /**
+     * Updates the check state of the table's items. Items whose DisplayRole is contained in \a checked are checked, the rest are unchecked
+     */
+    void checkItems( const QStringList &checked );
+
+    /**
+     * Populate the table using \a cache
+     */
+    void populate( QgsValueRelationFieldFormatter::ValueRelationCache cache );
+
+    /**
+     * Sets all items to be partially checked
+     */
+    void setIndeterminateState();
+
+    /**
+     * Set all table items to \a enabled.
+     */
+    void setEnabledTable( const bool enabled );
+
+    /**
+     * Sets the number of columns of the table
+     */
+    void setColumnCount( const int count );
+
+    /**
+     * Returns the number of rows of the table
+     */
+    int rowCount() const { return mTableWidget->rowCount(); }
+
+  signals:
+
+    /**
+     * Emitted when an \a item is changed by the user
+     */
+    void itemChanged( QTableWidgetItem *item );
+
+  private slots:
+    void onTableWidgetCustomContextMenuRequested( const QPoint &pos );
+    void onTableWidgetMenuActionSelectAllTriggered();
+    void onTableWidgetMenuActionDeselectAllTriggered();
+
+  private:
+    void filterStringChanged( const QString &filterString );
+    void itemChanged_p( QTableWidgetItem *item );
+    QTableWidgetItem *item( const int row, const int column ) const { return mTableWidget->item( row, column ); }
+
+    int mColumnCount = 1;
+    QgsFilterLineEdit *mSearchWidget = nullptr;
+    QTableWidget *mTableWidget = nullptr;
+    bool mEnabledTable = true;
+    QVector<QPair<QgsValueRelationFieldFormatter::ValueRelationItem, Qt::CheckState>> mCache;
+    bool mDisplayGroupName = false;
+
+    friend class TestQgsValueRelationWidgetWrapper;
+};
+
+///@endcond
 
 /**
  * \ingroup gui
- * Wraps a value relation widget. This widget will offer a combobox with values from another layer
+ * \brief Wraps a value relation widget. This widget will offer a combobox with values from another layer
  * referenced by a foreign key (a constraint may be set but is not required on data level).
  * This is useful for having value lists on a separate layer containing codes and their
  * translation to human readable names.
@@ -54,7 +142,6 @@ class GUI_EXPORT QgsValueRelationWidgetWrapper : public QgsEditorWidgetWrapper
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsValueRelationWidgetWrapper.
      *
@@ -112,6 +199,17 @@ class GUI_EXPORT QgsValueRelationWidgetWrapper : public QgsEditorWidgetWrapper
   private:
     void updateValues( const QVariant &value, const QVariantList & = QVariantList() ) override;
 
+    /**
+     * Set widget wrapper value, called by updateValues()
+     * \param value new value to update the widget with
+     * \param forceComboInsertion if TRUE \a value would be inserted even if it doesn't exist in
+     * combobox items and would appear as '(value)', else value would not be inserted. This has
+     * no effects for widgets other than combobox because other widgets have different behavior:
+     *
+     * - line edit displays '(no selection)' if value doesn't exist
+     * - table widget would check only items existing in value
+     */
+    void updateValue( const QVariant &value, bool forceComboInsertion );
 
     /**
      * Returns the value configured in `NofColumns` or 1 if not
@@ -120,24 +218,23 @@ class GUI_EXPORT QgsValueRelationWidgetWrapper : public QgsEditorWidgetWrapper
     int columnCount() const;
 
     //! Returns the variant type of the fk
-    QVariant::Type fkType() const;
+    QMetaType::Type fkType() const;
 
     //! Sets the values for the widgets, re-creates the cache when required
-    void populate( );
+    void populate();
 
     QComboBox *mComboBox = nullptr;
-    QTableWidget *mTableWidget = nullptr;
+    QgsFilteredTableWidget *mTableWidget = nullptr;
     QLineEdit *mLineEdit = nullptr;
+    int mSubWidgetSignalBlocking = 0; //! Set to non-zero when a endless loop of notifications could happen.
 
     QgsValueRelationFieldFormatter::ValueRelationCache mCache;
-    QgsVectorLayer *mLayer = nullptr;
 
     bool mEnabled = true;
     QString mExpression;
 
     friend class QgsValueRelationWidgetFactory;
     friend class TestQgsValueRelationWidgetWrapper;
-
 };
 
 #endif // QGSVALUERELATIONWIDGETWRAPPER_H

@@ -18,26 +18,43 @@
  ***************************************************************************/
 
 #include "qgsserverrequest.h"
+
+#include "qgsstringutils.h"
+
+#include <QString>
 #include <QUrlQuery>
+
+#include "moc_qgsserverrequest.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsServerRequest::QgsServerRequest( const QString &url, Method method, const Headers &headers )
   : QgsServerRequest( QUrl( url ), method, headers )
-{
-}
+{}
 
 QgsServerRequest::QgsServerRequest( const QUrl &url, Method method, const Headers &headers )
   : mUrl( url )
   , mOriginalUrl( url )
+  , mBaseUrl( url )
   , mMethod( method )
   , mHeaders( headers )
 {
   mParams.load( QUrlQuery( url ) );
 }
 
+QgsServerRequest::QgsServerRequest( const QgsServerRequest &other )
+  : mUrl( other.mUrl )
+  , mOriginalUrl( other.mOriginalUrl )
+  , mBaseUrl( other.mBaseUrl )
+  , mMethod( other.mMethod )
+  , mHeaders( other.mHeaders )
+  , mParams( other.mParams )
+{}
+
 QString QgsServerRequest::methodToString( const QgsServerRequest::Method &method )
 {
-  static QMetaEnum metaEnum = QMetaEnum::fromType<QgsServerRequest::Method>();
-  return QString( metaEnum.valueToKey( method ) ).remove( QStringLiteral( "Method" ) ).toUpper( );
+  static const QMetaEnum metaEnum = QMetaEnum::fromType<QgsServerRequest::Method>();
+  return QString( metaEnum.valueToKey( method ) ).remove( u"Method"_s ).toUpper();
 }
 
 QString QgsServerRequest::header( const QString &name ) const
@@ -45,6 +62,13 @@ QString QgsServerRequest::header( const QString &name ) const
   return mHeaders.value( name );
 }
 
+
+QString QgsServerRequest::header( const QgsServerRequest::RequestHeader &headerEnum ) const
+{
+  const QString headerKey = QString( qgsEnumValueToKey<QgsServerRequest::RequestHeader>( headerEnum ) );
+  const QString headerName = QgsStringUtils::capitalize( QString( headerKey ).replace( '_'_L1, ' '_L1 ), Qgis::Capitalization::TitleCase ).replace( ' '_L1, '-'_L1 );
+  return header( headerName );
+}
 
 void QgsServerRequest::setHeader( const QString &name, const QString &value )
 {
@@ -55,7 +79,6 @@ QMap<QString, QString> QgsServerRequest::headers() const
 {
   return mHeaders;
 }
-
 
 void QgsServerRequest::removeHeader( const QString &name )
 {
@@ -75,6 +98,16 @@ QUrl QgsServerRequest::originalUrl() const
 void QgsServerRequest::setOriginalUrl( const QUrl &url )
 {
   mOriginalUrl = url;
+}
+
+QUrl QgsServerRequest::baseUrl() const
+{
+  return mBaseUrl;
+}
+
+void QgsServerRequest::setBaseUrl( const QUrl &url )
+{
+  mBaseUrl = url;
 }
 
 QgsServerRequest::Method QgsServerRequest::method() const
@@ -139,4 +172,3 @@ const QString QgsServerRequest::queryParameter( const QString &name, const QStri
   }
   return QUrl::fromPercentEncoding( QUrlQuery( mUrl ).queryItemValue( name ).toUtf8() );
 }
-

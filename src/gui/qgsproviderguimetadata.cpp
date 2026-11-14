@@ -16,14 +16,14 @@
  ***************************************************************************/
 
 #include "qgsproviderguimetadata.h"
+
 #include "qgsdataitemguiprovider.h"
 #include "qgsprojectstorageguiprovider.h"
 #include "qgssourceselectprovider.h"
 
 QgsProviderGuiMetadata::QgsProviderGuiMetadata( const QString &key )
   : mKey( key )
-{
-}
+{}
 
 QgsProviderGuiMetadata::~QgsProviderGuiMetadata() = default;
 
@@ -52,12 +52,15 @@ QList<QgsProviderSourceWidgetProvider *> QgsProviderGuiMetadata::sourceWidgetPro
   return QList<QgsProviderSourceWidgetProvider *>();
 }
 
+QList<const QgsMapLayerConfigWidgetFactory *> QgsProviderGuiMetadata::mapLayerConfigWidgetFactories()
+{
+  return QList<const QgsMapLayerConfigWidgetFactory *>();
+}
+
 QString QgsProviderGuiMetadata::key() const
 {
   return mKey;
 }
 
 void QgsProviderGuiMetadata::registerGui( QMainWindow * )
-{
-}
-
+{}

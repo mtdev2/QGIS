@@ -16,22 +16,30 @@
  ***************************************************************************/
 
 #include "qgsjoindialog.h"
+
+#include "qgsfieldcombobox.h"
+#include "qgshelp.h"
 #include "qgsmaplayer.h"
+#include "qgsmaplayercombobox.h"
 #include "qgsproject.h"
 #include "qgsvectordataprovider.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayerjoininfo.h"
-#include "qgsmaplayercombobox.h"
-#include "qgsfieldcombobox.h"
 
-#include <QStandardItemModel>
 #include <QPushButton>
+#include <QStandardItemModel>
+#include <QString>
+
+#include "moc_qgsjoindialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsJoinDialog::QgsJoinDialog( QgsVectorLayer *layer, QList<QgsMapLayer *> alreadyJoinedLayers, QWidget *parent, Qt::WindowFlags f )
   : QDialog( parent, f )
   , mLayer( layer )
 {
   setupUi( this );
+  connect( buttonBox, &QDialogButtonBox::helpRequested, this, [] { QgsHelp::openHelp( u"working_with_vector/vector_properties.html#joins-properties"_s ); } );
 
   if ( !mLayer )
   {
@@ -48,7 +56,7 @@ QgsJoinDialog::QgsJoinDialog( QgsVectorLayer *layer, QList<QgsMapLayer *> alread
   mUpsertOnEditCheckBox->setToolTip( tr( "Automatically adds a matching row to the joined table, but if one already exists then update that matching row instead" ) );
   mDeleteCascadeCheckBox->setToolTip( tr( "Automatically delete the corresponding feature of the linked layer if one exists" ) );
 
-  mJoinLayerComboBox->setFilters( QgsMapLayerProxyModel::VectorLayer );
+  mJoinLayerComboBox->setFilters( Qgis::LayerFilter::VectorLayer );
   mJoinLayerComboBox->setExceptedLayerList( alreadyJoinedLayers );
   connect( mJoinLayerComboBox, &QgsMapLayerComboBox::layerChanged, mJoinFieldComboBox, &QgsFieldComboBox::setLayer );
   connect( mJoinLayerComboBox, &QgsMapLayerComboBox::layerChanged, this, &QgsJoinDialog::joinedLayerChanged );
@@ -102,7 +110,7 @@ void QgsJoinDialog::setJoinInfo( const QgsVectorLayerJoinInfo &joinInfo )
   {
     for ( int i = 0; i < model->rowCount(); ++i )
     {
-      QModelIndex index = model->index( i, 0 );
+      const QModelIndex index = model->index( i, 0 );
       if ( lst && lst->contains( model->data( index, Qt::DisplayRole ).toString() ) )
       {
         model->setData( index, Qt::Checked, Qt::CheckStateRole );
@@ -146,7 +154,7 @@ QgsVectorLayerJoinInfo QgsJoinDialog::joinInfo() const
     {
       for ( int i = 0; i < model->rowCount(); ++i )
       {
-        QModelIndex index = model->index( i, 0 );
+        const QModelIndex index = model->index( i, 0 );
         if ( model->data( index, Qt::CheckStateRole ).toInt() == Qt::Checked )
           lst << model->data( index ).toString();
       }
@@ -185,7 +193,7 @@ void QgsJoinDialog::joinedLayerChanged( QgsMapLayer *layer )
   mJoinFieldsSubsetView->setModel( subsetModel );
 
   QgsVectorDataProvider *dp = vLayer->dataProvider();
-  bool canCreateAttrIndex = dp && ( dp->capabilities() & QgsVectorDataProvider::CreateAttributeIndex );
+  const bool canCreateAttrIndex = dp && ( dp->capabilities() & Qgis::VectorProviderCapability::CreateAttributeIndex );
   if ( canCreateAttrIndex )
   {
     mCreateIndexCheckBox->setEnabled( true );
@@ -204,9 +212,7 @@ void QgsJoinDialog::joinedLayerChanged( QgsMapLayer *layer )
 
 void QgsJoinDialog::checkDefinitionValid()
 {
-  buttonBox->button( QDialogButtonBox::Ok )->setEnabled( mJoinLayerComboBox->currentIndex() != -1
-      && mJoinFieldComboBox->currentIndex() != -1
-      && mTargetFieldComboBox->currentIndex() != -1 );
+  buttonBox->button( QDialogButtonBox::Ok )->setEnabled( mJoinLayerComboBox->currentIndex() != -1 && mJoinFieldComboBox->currentIndex() != -1 && mTargetFieldComboBox->currentIndex() != -1 );
 }
 
 void QgsJoinDialog::editableJoinLayerChanged()

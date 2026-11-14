@@ -14,8 +14,10 @@
 #define QGSSCALEBARPLUGINGUI_H
 
 #include "ui_qgsdecorationscalebardialog.h"
-#include <QDialog>
+
 #include "qgis_app.h"
+
+#include <QDialog>
 
 class QgsDecorationScaleBar;
 
@@ -24,7 +26,7 @@ class APP_EXPORT QgsDecorationScaleBarDialog : public QDialog, private Ui::QgsDe
     Q_OBJECT
 
   public:
-    QgsDecorationScaleBarDialog( QgsDecorationScaleBar &deco, int units, QWidget *parent = nullptr );
+    QgsDecorationScaleBarDialog( QgsDecorationScaleBar &deco, Qgis::DistanceUnit units, QWidget *parent = nullptr );
 
   private slots:
     void buttonBox_accepted();

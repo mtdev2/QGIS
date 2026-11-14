@@ -16,15 +16,15 @@
  ***************************************************************************/
 
 #include "qgslabelsink.h"
-#include "qgspallabeling.h"
-#include "qgsmapsettings.h"
-#include "qgslogger.h"
 
-QgsLabelSinkProvider::QgsLabelSinkProvider( QgsVectorLayer *layer, const QString &providerId, QgsLabelSink *dxf, const QgsPalLayerSettings *settings )
+#include "qgslogger.h"
+#include "qgsmapsettings.h"
+#include "qgspallabeling.h"
+
+QgsLabelSinkProvider::QgsLabelSinkProvider( QgsVectorLayer *layer, const QString &providerId, QgsLabelSink *sink, const QgsPalLayerSettings *settings )
   : QgsVectorLayerLabelProvider( layer, providerId, false, settings )
-  , mLabelSink( dxf )
-{
-}
+  , mLabelSink( sink )
+{}
 
 void QgsLabelSinkProvider::drawLabel( QgsRenderContext &context, pal::LabelPosition *label ) const
 {
@@ -32,9 +32,15 @@ void QgsLabelSinkProvider::drawLabel( QgsRenderContext &context, pal::LabelPosit
   mLabelSink->drawLabel( layerId(), context, label, mSettings );
 }
 
-QgsRuleBasedLabelSinkProvider::QgsRuleBasedLabelSinkProvider( const QgsRuleBasedLabeling &rules, QgsVectorLayer *layer, QgsLabelSink *dxf )
+void QgsLabelSinkProvider::drawUnplacedLabel( QgsRenderContext &context, pal::LabelPosition *label ) const
+{
+  Q_ASSERT( mLabelSink );
+  mLabelSink->drawUnplacedLabel( layerId(), context, label, mSettings );
+}
+
+QgsRuleBasedLabelSinkProvider::QgsRuleBasedLabelSinkProvider( const QgsRuleBasedLabeling &rules, QgsVectorLayer *layer, QgsLabelSink *sink )
   : QgsRuleBasedLabelProvider( rules, layer, false )
-  , mLabelSink( dxf )
+  , mLabelSink( sink )
 {
   mRules->rootRule()->createSubProviders( layer, mSubProviders, this );
 }
@@ -54,4 +60,10 @@ void QgsRuleBasedLabelSinkProvider::drawLabel( QgsRenderContext &context, pal::L
 {
   Q_ASSERT( mLabelSink );
   mLabelSink->drawLabel( layerId(), context, label, mSettings );
+}
+
+void QgsRuleBasedLabelSinkProvider::drawUnplacedLabel( QgsRenderContext &context, pal::LabelPosition *label ) const
+{
+  Q_ASSERT( mLabelSink );
+  mLabelSink->drawUnplacedLabel( layerId(), context, label, mSettings );
 }

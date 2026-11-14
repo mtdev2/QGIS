@@ -20,7 +20,7 @@
 
 /**
  * \ingroup core
- * Abstract interface for generating an expression context.
+ * \brief Abstract interface for generating an expression context.
  *
  * You need to implement this interface in a class and register this class with
  * QgsFieldExpressionWidget::registerExpressionGenerator().
@@ -30,18 +30,15 @@
  * editor is opened. This way they are able to provide an up-to-date expression
  * editor even when the environment changes.
  *
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsExpressionContextGenerator
 {
   public:
-
     /**
      * This method needs to be reimplemented in all classes which implement this interface
      * and return an expression context.
      *
-     * \since QGIS 3.0
      */
     virtual QgsExpressionContext createExpressionContext() const = 0;
 

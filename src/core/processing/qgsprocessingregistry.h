@@ -18,30 +18,49 @@
 #ifndef QGSPROCESSINGREGISTRY_H
 #define QGSPROCESSINGREGISTRY_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 #include "qgsprocessingprovider.h"
+
 #include <QMap>
 
 class QgsProcessingParameterType;
 class QgsProcessingAlgorithmConfigurationWidgetFactory;
+class QgsProcessingDefaultStyleRegistry;
+class QgsProcessingLayerPostProcessor;
+class QgsProcessingResultsHandler;
+
+/**
+ * \class QgsProcessingAlgorithmInformation
+ * \ingroup core
+ * \brief Contains basic properties for a Processing algorithm.
+ * \since QGIS 3.32
+ */
+class CORE_EXPORT QgsProcessingAlgorithmInformation
+{
+  public:
+    //! Algorithm display name
+    QString displayName;
+
+    //! Algorithm icon
+    QIcon icon;
+};
+
 
 /**
  * \class QgsProcessingRegistry
  * \ingroup core
- * Registry for various processing components, including providers, algorithms
+ * \brief Registry for various processing components, including providers, algorithms
  * and various parameters and outputs.
  *
  * QgsProcessingRegistry is not usually directly created, but rather accessed through
  * QgsApplication::processingRegistry().
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsProcessingRegistry : public QObject
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsProcessingRegistry.
      */
@@ -49,9 +68,7 @@ class CORE_EXPORT QgsProcessingRegistry : public QObject
 
     ~QgsProcessingRegistry() override;
 
-    //! Registry cannot be copied
     QgsProcessingRegistry( const QgsProcessingRegistry &other ) = delete;
-    //! Registry cannot be copied
     QgsProcessingRegistry &operator=( const QgsProcessingRegistry &other ) = delete;
 
     /**
@@ -84,16 +101,75 @@ class CORE_EXPORT QgsProcessingRegistry : public QObject
      */
     bool removeProvider( const QString &providerId );
 
+    // clang-format off
     /**
      * Returns a matching provider by provider ID.
      */
-    QgsProcessingProvider *providerById( const QString &id );
+    QgsProcessingProvider *providerById( const QString &id ) const SIP_HOLDGIL;
+    // clang-format on
 
     /**
      * Returns a list of all available algorithms from registered providers.
      * \see algorithmById()
      */
     QList< const QgsProcessingAlgorithm *> algorithms() const;
+
+    /**
+     *  Returns TRUE if the \a targetDefinition accepts \a candidateDefinition as
+     *  compatible Processing parameter types for parameter type of \a targetDefinition.
+     *
+     * ### Example
+     *
+     * \code{.py}
+     *   vectorLayerParam = QgsProcessingParameterVectorLayer( "dummyname" )
+     *   boolParam = QgsProcessingParameterBoolean( "dummyname" )
+     *
+     *   # Parameter source and parameter target are compatible
+     *   QgsApplication.processingRegistry().isCompatibleDefinition( vectorLayerParam, vectorLayerParam ) # -> return True
+     *   QgsApplication.processingRegistry().isCompatibleDefinition( boolParam, vectorLayerParam ) # -> return True
+     *
+     *   # Parameter source and parameter target are incompatible
+     *   QgsApplication.processingRegistry().isCompatibleDefinition( vectorLayerParam, boolParam ) # -> return False
+     * \endcode
+     *
+     *  \since QGIS 4.4
+     */
+    bool isCompatibleDefinition( const QgsProcessingParameterDefinition* targetDefinition, const QgsProcessingParameterDefinition* candidateDefinition );
+
+    /**
+     *  Returns TRUE if the \a targetDefinition accepts \a candidateOutput as
+     *  compatible Processing output types for parameter type of \a targetDefinition.
+     *
+     * - ### Example
+     *
+     * \code{.py}
+     *   vectorLayerParam = QgsProcessingParameterVectorLayer( "dummyname" )
+     *
+     *   boolOutput = QgsProcessingOutputBoolean( "dummyname" )
+     *   stringOutput = QgsProcessingOutputString( "dummyname" )
+     *   vectorLayerOutput = QgsProcessingOutputVectorLayer( "dummyname" )
+     *
+     *   # Output source and parameter target are compatible
+     *   QgsApplication.processingRegistry().isCompatibleOutput( vectorLayerParam, stringOutput ) # -> return True
+     *   QgsApplication.processingRegistry().isCompatibleOutput( vectorLayerParam, vectorLayerOutput ) # -> return True
+     *
+     *
+     *   # Output source and parameter target are incompatible
+     *   QgsApplication.processingRegistry().isCompatibleOutput( vectorLayerParam, boolOutput ) # -> return False
+     * \endcode
+     *  \since QGIS 4.4
+     */
+    bool isCompatibleOutput(const QgsProcessingParameterDefinition* targetDefinition, const QgsProcessingOutputDefinition* candidateOutput);
+
+    /**
+     * Returns basic algorithm information for the algorithm with matching ID.
+     *
+     * This method uses an internal cache to ensure that information is quickly
+     * returned and is suitable for calling many times.
+     *
+     * \since QGIS 3.32
+     */
+    QgsProcessingAlgorithmInformation algorithmInformation( const QString &id ) const;
 
     /**
      * Finds an algorithm by its ID. If no matching algorithm is found, NULLPTR
@@ -182,6 +258,63 @@ class CORE_EXPORT QgsProcessingRegistry : public QObject
      */
     QList<QgsProcessingParameterType *> parameterTypes() const;
 
+    /**
+     * Returns the default style registry, responsible for styling layers generated
+     * by Processing tools.
+     *
+     * \since QGIS 4.4
+     */
+    QgsProcessingDefaultStyleRegistry* defaultStyleRegistry() const;
+
+    /**
+     * Sets the post-processor to use for all map layers generated by Processing algorithms.
+     *
+     * Ownership of \a processor is transferred to the registry.
+     *
+     * \note A basic post-processor is created by default, which applies default styling to
+     * generated layers.
+     *
+     * \note Not available in Python bindings
+     *
+     * \see layerPostProcessor()
+     * \since QGIS 4.4
+     */
+    void setLayerPostProcessor( std::unique_ptr< QgsProcessingLayerPostProcessor > processor ) SIP_SKIP;
+
+    /**
+     * Returns the post-processor to use for all map layers generated by Processing algorithms.
+     *
+     * \see setLayerPostProcessor()
+     * \since QGIS 4.4
+     */
+    QgsProcessingLayerPostProcessor* layerPostProcessor();
+
+    /**
+     * Sets the results handler to use for results generated by Processing algorithms.
+     *
+     * Ownership of \a handler is transferred to the registry.
+     *
+     * \note A basic handler is created by default, which applies core/headless logic only.
+     *
+     * \note Not available in Python bindings
+     *
+     * \see layerPostProcessor()
+     * \since QGIS 4.4
+     */
+    void setResultsHandler( std::unique_ptr< QgsProcessingResultsHandler > handler ) SIP_SKIP;
+
+    /**
+     * Handles the results from running an algorithm.
+     *
+     * Returns TRUE if all results could be successfully loaded. Internally calls the QgsProcessingResultsHandler
+     * set by setResultsHandler().
+     *
+     * \warning This is not considered stable API, and is exposed to Python for internal use only.
+     *
+     * \since QGIS 4.4
+     */
+    bool handleAlgorithmResults( const QgsProcessingAlgorithm* algorithm, QgsProcessingContext& context, const QVariantMap& parameters, QgsProcessingFeedback* feedback = nullptr );
+
   signals:
 
     //! Emitted when a provider has been added to the registry.
@@ -215,9 +348,18 @@ class CORE_EXPORT QgsProcessingRegistry : public QObject
 
     QMap< QString, QString > mAlgorithmAliases;
 
+    mutable QMap< QString, QgsProcessingAlgorithmInformation > mCachedInformation;
+
+    QgsProcessingDefaultStyleRegistry* mDefaultStyleRegistry = nullptr;
+
+    std::unique_ptr< QgsProcessingLayerPostProcessor > mLayerPostProcessor;
+    std::unique_ptr< QgsProcessingResultsHandler > mResultsHandler;
+
 #ifdef SIP_RUN
     QgsProcessingRegistry( const QgsProcessingRegistry &other );
 #endif
+
+    friend class TestQgsProcessing;
 };
 
 #endif // QGSPROCESSINGREGISTRY_H

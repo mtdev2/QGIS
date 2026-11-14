@@ -16,9 +16,9 @@
 #ifndef QGSSNAPINDICATOR_H
 #define QGSSNAPINDICATOR_H
 
-#include "qgspointlocator.h"
-
 #include "qgis_gui.h"
+#include "qgspointlocator.h"
+#include "qobjectuniqueptr.h"
 
 class QgsMapCanvas;
 class QgsVertexMarker;
@@ -26,8 +26,7 @@ class QgsVertexMarker;
 
 /**
  * \ingroup gui
- * Class that shows snapping marker on map canvas for the current snapping match.
- * \since QGIS 3.0
+ * \brief Shows a snapping marker on map canvas for the current snapping match.
  */
 class GUI_EXPORT QgsSnapIndicator
 {
@@ -54,10 +53,9 @@ class GUI_EXPORT QgsSnapIndicator
     QgsSnapIndicator &operator=( const QgsSnapIndicator & );
 #endif
 
-    QgsMapCanvas *mCanvas;
+    QgsMapCanvas *mCanvas = nullptr;
     QgsPointLocator::Match mMatch;
-    QgsVertexMarker *mSnappingMarker = nullptr;
-    QMetaObject::Connection mCanvasDestroyedConnection;
+    QObjectParentUniquePtr<QgsVertexMarker> mSnappingMarker;
 };
 
 #endif // QGSSNAPINDICATOR_H

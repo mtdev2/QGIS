@@ -29,7 +29,7 @@ class QgsPointCloudLayer;
 /**
  * \ingroup core
  *
- * A model for display of available attributes from a point cloud.
+ * \brief A model for display of available attributes from a point cloud.
  *
  * \since QGIS 3.18
  */
@@ -38,17 +38,25 @@ class CORE_EXPORT QgsPointCloudAttributeModel : public QAbstractItemModel
     Q_OBJECT
 
   public:
+    // *INDENT-OFF*
 
-    //! Roles utilized by the model
-    enum FieldRoles
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsPointCloudAttributeModel::FieldRoles
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsPointCloudAttributeModel, FieldRoles ) : int
     {
-      AttributeNameRole = Qt::UserRole + 1,  //!< Attribute name
-      AttributeIndexRole, //!< Attribute index if index corresponds to an attribute
-      AttributeSizeRole, //!< Attribute size
-      AttributeTypeRole, //!< Attribute type, see QgsPointCloudAttribute::DataType
-      IsEmptyRole, //!< TRUE if the index corresponds to the empty value
-      IsNumericRole, //!< TRUE if the index corresponds to a numeric attributre
+      AttributeName SIP_MONKEYPATCH_COMPAT_NAME( AttributeNameRole ) = Qt::UserRole + 1, //!< Attribute name
+      AttributeIndex SIP_MONKEYPATCH_COMPAT_NAME( AttributeIndexRole ),                  //!< Attribute index if index corresponds to an attribute
+      AttributeSize SIP_MONKEYPATCH_COMPAT_NAME( AttributeSizeRole ),                    //!< Attribute size
+      AttributeType SIP_MONKEYPATCH_COMPAT_NAME( AttributeTypeRole ),                    //!< Attribute type, see QgsPointCloudAttribute::DataType
+      IsEmpty SIP_MONKEYPATCH_COMPAT_NAME( IsEmptyRole ),                                //!< TRUE if the index corresponds to the empty value
+      IsNumeric SIP_MONKEYPATCH_COMPAT_NAME( IsNumericRole ),                            //!< TRUE if the index corresponds to a numeric attributre
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsPointCloudAttributeModel, with the specified \a parent object.
@@ -120,7 +128,6 @@ class CORE_EXPORT QgsPointCloudAttributeModel : public QAbstractItemModel
     static QIcon iconForAttributeType( QgsPointCloudAttribute::DataType type );
 
   private:
-
     QgsPointCloudAttributeCollection mAttributes;
     bool mAllowEmpty = false;
     QPointer< QgsPointCloudLayer > mLayer;
@@ -130,7 +137,7 @@ class CORE_EXPORT QgsPointCloudAttributeModel : public QAbstractItemModel
 /**
  * \ingroup core
  *
- * A proxy model for filtering available attributes from a point cloud attribute model.
+ * \brief A proxy model for filtering available attributes from a point cloud attribute model.
  *
  * \since QGIS 3.18
  */
@@ -138,17 +145,16 @@ class CORE_EXPORT QgsPointCloudAttributeProxyModel : public QSortFilterProxyMode
 {
     Q_OBJECT
   public:
-
     //! Attribute type filters
-    enum Filter
+    enum Filter SIP_ENUM_BASETYPE( IntFlag )
     {
-      Char = 1 << 0, //!< Character attributes
-      Short = 1 << 1, //!< Short attributes
-      Int32 = 1 << 2, //!< Int32 attributes
-      Float = 1 << 3, //!< Float attributes
-      Double = 1 << 4, //!< Double attributes
+      Char = 1 << 0,                            //!< Character attributes
+      Short = 1 << 1,                           //!< Short attributes
+      Int32 = 1 << 2,                           //!< Int32 attributes
+      Float = 1 << 3,                           //!< Float attributes
+      Double = 1 << 4,                          //!< Double attributes
       Numeric = Short | Int32 | Float | Double, //!< All numeric attributes
-      AllTypes = Numeric | Char, //!< All attribute types
+      AllTypes = Numeric | Char,                //!< All attribute types
     };
     Q_DECLARE_FLAGS( Filters, Filter )
     Q_FLAG( Filters )
@@ -177,7 +183,6 @@ class CORE_EXPORT QgsPointCloudAttributeProxyModel : public QSortFilterProxyMode
     Filters filters() const { return mFilters; }
 
   private:
-
     QgsPointCloudAttributeModel *mModel = nullptr;
     Filters mFilters = AllTypes;
 

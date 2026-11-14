@@ -18,12 +18,12 @@
 #ifndef QGSLAYERMETADATA_H
 #define QGSLAYERMETADATA_H
 
-#include "qgis_sip.h"
 #include "qgis_core.h"
-#include "qgscoordinatereferencesystem.h"
-#include "qgsbox3d.h"
-#include "qgsrange.h"
+#include "qgis_sip.h"
 #include "qgsabstractmetadatabase.h"
+#include "qgsbox3d.h"
+#include "qgscoordinatereferencesystem.h"
+#include "qgsrange.h"
 
 class QgsMapLayer;
 
@@ -51,27 +51,29 @@ class QgsMapLayer;
  * subclasses. E.g. validating against the native QGIS metadata schema can be performed
  * using QgsNativeMetadataValidator.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
 {
-  public:
+    Q_GADGET
 
+    Q_PROPERTY( QStringList rights READ rights )
+    Q_PROPERTY( QStringList licenses READ licenses )
+
+  public:
     /**
      * Metadata spatial extent structure.
      */
     struct CORE_EXPORT SpatialExtent
     {
-
-      /**
+        /**
        * Coordinate reference system for spatial extent.
        * The CRS should match the CRS defined in the QgsLayerMetadata CRS property.
        * \see QgsLayerMetadata::crs()
        * \see spatial
        */
-      QgsCoordinateReferenceSystem extentCrs;
+        QgsCoordinateReferenceSystem extentCrs;
 
-      /**
+        /**
        * Geospatial extent of the resource. X and Y coordinates are in the
        * CRS defined by the metadata (see extentCrs).
        *
@@ -79,9 +81,10 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
        * compulsory.
        * \see extentCrs
        */
-      QgsBox3d bounds;
+        QgsBox3D bounds;
 
-      bool operator==( const QgsLayerMetadata::SpatialExtent &other ) const;
+        // TODO c++20 - replace with = default
+        bool operator==( const QgsLayerMetadata::SpatialExtent &other ) const;
     };
 
     /**
@@ -90,7 +93,6 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
     struct CORE_EXPORT Extent
     {
       public:
-
         /**
          * Spatial extents of the resource.
          * \see setSpatialExtents()
@@ -118,16 +120,15 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
          */
         void setTemporalExtents( const QList< QgsDateTimeRange > &extents );
 
+        // TODO c++20 - replace with = default
         bool operator==( const QgsLayerMetadata::Extent &other ) const;
 
 #ifndef SIP_RUN
       private:
-
         QList< QgsLayerMetadata::SpatialExtent > mSpatialExtents;
         QList< QgsDateTimeRange > mTemporalExtents;
 
 #endif
-
     };
 
     /**
@@ -135,28 +136,27 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
      */
     struct CORE_EXPORT Constraint
     {
-
-      /**
+        /**
        * Constructor for Constraint.
        */
-      Constraint( const QString &constraint = QString(), const QString &type = QString() )
-        : type( type )
-        , constraint( constraint )
-      {}
+        Constraint( const QString &constraint = QString(), const QString &type = QString() )
+          : type( type )
+          , constraint( constraint )
+        {}
 
-      /**
+        /**
        * Constraint type. Standard values include 'access' and 'other', however any
        * string can be used for the type.
        */
-      QString type;
+        QString type;
 
-      /**
+        /**
        * Free-form constraint string.
        */
-      QString constraint;
+        QString constraint;
 
-      bool operator==( const QgsLayerMetadata::Constraint &other ) const;
-
+        // TODO c++20 - replace with = default
+        bool operator==( const QgsLayerMetadata::Constraint &other ) const;
     };
 
     /**
@@ -164,10 +164,8 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
      */
     typedef QList< QgsLayerMetadata::Constraint > ConstraintList;
 
-    /**
-     * Constructor for QgsLayerMetadata.
-     */
     QgsLayerMetadata() = default;
+
 
     QgsLayerMetadata *clone() const override SIP_FACTORY;
 
@@ -313,13 +311,32 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
      */
     void readFromLayer( const QgsMapLayer *layer );
 
-    bool readMetadataXml( const QDomElement &metadataElement ) override;
-    bool writeMetadataXml( QDomElement &metadataElement, QDomDocument &document ) const override;
+    bool readMetadataXml( const QDomElement &metadataElement, const QgsReadWriteContext &context = QgsReadWriteContext() ) override;
+    bool writeMetadataXml( QDomElement &metadataElement, QDomDocument &document, const QgsReadWriteContext &context = QgsReadWriteContext() ) const override;
+    void combine( const QgsAbstractMetadataBase *other ) override;
+    void registerTranslations( QgsTranslationContext *translationContext ) const override;
 
     bool operator==( const QgsLayerMetadata &metadataOther ) const;
 
-  private:
+    /**
+     * Returns TRUE if the metadata identifier, title, abstract, keywords or categories
+     * contain \a searchString using case-insensitive search.
+     *
+     * If \a searchString is empty this method returns FALSE.
+     *
+     * \since QGIS 3.28
+     */
+    bool contains( const QString &searchString ) const;
 
+    /**
+     * Returns TRUE if the metadata identifier, title, abstract, keywords or categories
+     * matches any regular expression from \a searchReList.
+     *
+     * \since QGIS 3.28
+     */
+    bool matches( const QVector<QRegularExpression> &searchReList ) const;
+
+  private:
     /*
      * IMPORTANT!!!!!!
      *
@@ -347,10 +364,10 @@ class CORE_EXPORT QgsLayerMetadata : public QgsAbstractMetadataBase
      * definition located at resources/qgis-resource-metadata.xsd
      *
      */
-
 };
 
 Q_DECLARE_METATYPE( QgsLayerMetadata::ConstraintList )
 Q_DECLARE_METATYPE( QgsLayerMetadata::Extent )
+Q_DECLARE_METATYPE( QgsLayerMetadata )
 
 #endif // QGSLAYERMETADATA_H

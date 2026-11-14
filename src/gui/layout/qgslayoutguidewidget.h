@@ -18,13 +18,15 @@
 #define QGSLAYOUTGUIDEWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslayoutguidewidgetbase.h"
 
 #include "qgis_gui.h"
-#include "ui_qgslayoutguidewidgetbase.h"
 #include "qgspanelwidget.h"
+
 #include <QStyledItemDelegate>
 
+#define SIP_NO_FILE
 
 class QgsLayoutView;
 class QgsLayout;
@@ -32,12 +34,12 @@ class QgsLayoutGuideProxyModel;
 
 /**
  * \ingroup gui
- * Widget for managing the layout guides
+ * \brief Widget for managing the layout guides
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
  */
-class GUI_EXPORT QgsLayoutGuideWidget: public QgsPanelWidget, private Ui::QgsLayoutGuideWidgetBase
+class GUI_EXPORT QgsLayoutGuideWidget : public QgsPanelWidget, private Ui::QgsLayoutGuideWidgetBase
 {
     Q_OBJECT
   public:
@@ -66,17 +68,15 @@ class GUI_EXPORT QgsLayoutGuideWidget: public QgsPanelWidget, private Ui::QgsLay
     void updatePageCount();
 
   private:
-
     QgsLayout *mLayout = nullptr;
     QgsLayoutGuideProxyModel *mHozProxyModel = nullptr;
     QgsLayoutGuideProxyModel *mVertProxyModel = nullptr;
     int mPage = 0;
-
 };
 
 /**
  * \ingroup gui
- * View delegate displaying a QgsDoubleSpinBox for the layout guide position
+ * \brief View delegate displaying a QgsDoubleSpinBox for the layout guide position
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
@@ -86,19 +86,17 @@ class GUI_EXPORT QgsLayoutGuidePositionDelegate : public QStyledItemDelegate
     Q_OBJECT
 
   public:
-
     //! constructor
     QgsLayoutGuidePositionDelegate( QObject *parent );
 
   protected:
     QWidget *createEditor( QWidget *parent, const QStyleOptionViewItem & /*option*/, const QModelIndex &index ) const override;
     void setModelData( QWidget *editor, QAbstractItemModel *model, const QModelIndex &index ) const override;
-
 };
 
 /**
  * \ingroup gui
- * View delegate displaying a QgsLayoutUnitsComboBox for the layout guide unit
+ * \brief View delegate displaying a QgsLayoutUnitsComboBox for the layout guide unit
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
@@ -108,14 +106,12 @@ class GUI_EXPORT QgsLayoutGuideUnitDelegate : public QStyledItemDelegate
     Q_OBJECT
 
   public:
-
     //! constructor
     QgsLayoutGuideUnitDelegate( QObject *parent );
 
   protected:
     QWidget *createEditor( QWidget *parent, const QStyleOptionViewItem & /*option*/, const QModelIndex &index ) const override;
     void setModelData( QWidget *editor, QAbstractItemModel *model, const QModelIndex &index ) const override;
-
 };
 
 #endif // QGSLAYOUTGUIDEWIDGET_H

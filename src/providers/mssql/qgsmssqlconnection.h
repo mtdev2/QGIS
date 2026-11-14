@@ -18,35 +18,24 @@
 #ifndef QGSMSSQLCONNECTION_H
 #define QGSMSSQLCONNECTION_H
 
-#include <QStringList>
-#include <QMutex>
-
 #include "qgsdatasourceuri.h"
 #include "qgsvectordataprovider.h"
+
+#include <QStringList>
 
 class QString;
 class QSqlDatabase;
 
+class QgsMssqlDatabase;
+
 /**
- * \class QgsMssqlProvider
+ * \class QgsMssqlConnection
  * Connection handler for SQL Server provider
  *
 */
 class QgsMssqlConnection
 {
-
   public:
-
-    /**
-     * Returns a QSqlDatabase object for queries to SQL Server.
-     *
-     * The database may not be open -- openDatabase() should be called to
-     * ensure that it is ready for use.
-     */
-    static QSqlDatabase getDatabase( const QString &service, const QString &host, const QString &database, const QString &username, const QString &password );
-
-    static bool openDatabase( QSqlDatabase &db );
-
     /**
      * Returns true if the connection with matching \a name should
      * only look in the geometry_columns metadata table when scanning for tables.
@@ -64,7 +53,7 @@ class QgsMssqlConnection
     static void setGeometryColumnsOnly( const QString &name, bool enabled );
 
     /**
-     * Returns whether the connection with matching \a name should,
+     * Returns whether the connection with matching \a name should
      * use the extent manually specified in the geometry_columns table using additional
      * QGIS-specific columns: qgis_xmin, qgis_xmax, qgis_ymin, qgis_ymax.
      *
@@ -79,6 +68,13 @@ class QgsMssqlConnection
 
     /**
      * Sets whether the connection with matching \a name should
+     * use the extent manually specified in the geometry_columns table using additional
+     * QGIS-specific columns: qgis_xmin, qgis_xmax, qgis_ymin, qgis_ymax.
+     *
+     * This is an optional optimization that allows QGIS to skip extent calculation when loading
+     * layers and thus lowering the amount of time needed to load them. The disadvantage
+     * is that the extent needs to be manually set and updated by database admins and it requires
+     * adding custom columns to the geometry_columns table.
      *
      * \see extentInGeometryColumns()
      */
@@ -103,6 +99,16 @@ class QgsMssqlConnection
 
     /**
      * Sets whether the connection with matching \a name should
+     * determine primary key's column name from a manually specified value in the geometry_columns table using
+     * an additional QGIS-specific column called "qgis_pkey". If more than one column is used for the primary key,
+     * value of "qgis_pkey" can contain multiple column names separated by comma.
+     *
+     * Note: this option only applies to views: for tables the primary key is automatically fetched from table definition.
+     *
+     * This is an optional optimization that allows QGIS to skip primary key calculation for views when loading
+     * layers and thus lowering the amount of time needed to load them. The disadvantage
+     * is that the primary key column name needs to be manually set and updated by database admins
+     * and it requires adding a custom column to the geometry_columns table.
      *
      * \see primaryKeyInGeometryColumns()
      */
@@ -197,7 +203,7 @@ class QgsMssqlConnection
      * Returns a list of all schemas on the \a dataBase.
      * \since QGIS 3.18
      */
-    static QStringList schemas( QSqlDatabase &dataBase, QString *errorMessage );
+    static QStringList schemas( std::shared_ptr<QgsMssqlDatabase> db, QString *errorMessage );
 
     /**
      * Returns true if the given \a schema is a system schema.
@@ -263,16 +269,13 @@ class QgsMssqlConnection
      */
     static QString buildQueryForTables( const QString &connName );
 
-  private:
-
     /**
-     * Returns a thread-safe connection name for use with QSqlDatabase
+     * Duplicates \a src connection settings to new \a dst connection.
+     * \since QGIS 3.40
      */
-    static QString dbConnectionName( const QString &name );
+    static void duplicateConnection( const QString &src, const QString &dst );
 
-    static int sConnectionId;
-
-    static QMutex sMutex;
+  private:
 };
 
 #endif // QGSMSSQLCONNECTION_H

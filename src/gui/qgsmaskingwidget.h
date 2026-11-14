@@ -16,25 +16,30 @@
 #define QGSMASKINGWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+/// @cond PRIVATE
+
+#include "ui_qgsmaskingwidgetbase.h"
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgspanelwidget.h"
+#include "qgsstyleentityvisitor.h"
 
 #include <QPointer>
 
-#include "qgspanelwidget.h"
-#include "ui_qgsmaskingwidgetbase.h"
-#include "qgis_sip.h"
-#include "qgis_gui.h"
+#define SIP_NO_FILE
 
 class QgsMessageBarItem;
 
 /**
  * \ingroup gui
- * Main widget for the configuration of mask sources and targets.
+ * \brief Main widget for the configuration of mask sources and targets.
  *
  * \note This class is not a part of public API
  * \since QGIS 3.14
  */
-class GUI_EXPORT QgsMaskingWidget: public QgsPanelWidget, private Ui::QgsMaskingWidgetBase
+class GUI_EXPORT QgsMaskingWidget : public QgsPanelWidget, private Ui::QgsMaskingWidgetBase
 {
     Q_OBJECT
   public:
@@ -47,17 +52,6 @@ class GUI_EXPORT QgsMaskingWidget: public QgsPanelWidget, private Ui::QgsMasking
     //! Applies the changes
     void apply();
 
-    //! Widget has been populated or not
-    bool hasBeenPopulated();
-
-  signals:
-    //! Emitted when a change is performed
-    void widgetChanged();
-
-  protected:
-
-    void showEvent( QShowEvent * ) override;
-
   private slots:
 
     /**
@@ -66,12 +60,42 @@ class GUI_EXPORT QgsMaskingWidget: public QgsPanelWidget, private Ui::QgsMasking
     void onSelectionChanged();
 
   private:
-    QgsVectorLayer *mLayer = nullptr;
+    QPointer< QgsVectorLayer > mLayer;
     //! Populate the mask source and target widgets
     void populate();
 
     QPointer<QgsMessageBarItem> mMessageBarItem;
-    bool mMustPopulate = false;
+
+    friend class TestQgsMaskingWidget;
 };
+
+
+/**
+ * \ingroup gui
+ * \brief Generic visitor that collects symbol layers of a vector layer's renderer and call a callback function on them with their corresponding QgsSymbolLayerId.
+ *
+ * \note This class is not a part of public API
+ * \since QGIS 3.14
+ */
+class SymbolLayerVisitor : public QgsStyleEntityVisitorInterface
+{
+  public:
+    typedef std::function<void( const QgsSymbolLayer * )> SymbolLayerCallback;
+
+    //! constructor
+    SymbolLayerVisitor( SymbolLayerCallback callback );
+
+    bool visitEnter( const QgsStyleEntityVisitorInterface::Node &node ) override;
+
+    //! Process a symbol
+    void visitSymbol( const QgsSymbol *symbol, const QString &leafIdentifier );
+
+    bool visit( const QgsStyleEntityVisitorInterface::StyleLeaf &leaf ) override;
+
+  private:
+    SymbolLayerCallback mCallback;
+};
+
+/// @endcond private
 
 #endif

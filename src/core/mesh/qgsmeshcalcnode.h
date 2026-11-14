@@ -18,24 +18,25 @@
 #ifndef QGSMESHCALCNODE_H
 #define QGSMESHCALCNODE_H
 
-#define SIP_NO_FILE
 
 ///@cond PRIVATE
+
+#include <limits>
+#include <memory>
+
+#include "qgis_core.h"
+#include "qgsmeshcalcutils.h"
 
 #include <QMap>
 #include <QString>
 #include <QStringList>
-#include <memory>
-#include <limits>
 
-#include "qgis_core.h"
-
-#include "qgsmeshcalcutils.h"
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
  * \class QgsMeshCalcNode
- * Represents a single calculation node
+ * \brief Represents a single calculation node
  *
  * \since QGIS 3.6
  */
@@ -45,9 +46,9 @@ class CORE_EXPORT QgsMeshCalcNode
     //! types of mesh node
     enum Type
     {
-      tOperator = 1, //!< Operator (e.g. +, -)
-      tNumber, //!< Number (e.g. 1)
-      tNoData, //!< Nodata (NaN)
+      tOperator = 1,   //!< Operator (e.g. +, -)
+      tNumber,         //!< Number (e.g. 1)
+      tNoData,         //!< Nodata (NaN)
       tDatasetGroupRef //!< Dataset group
     };
 
@@ -104,17 +105,14 @@ class CORE_EXPORT QgsMeshCalcNode
      * \param left Left node. This node takes ownership of the node
      * \param right Right node. This node takes ownership of the node
      */
-    QgsMeshCalcNode( QgsMeshCalcNode *condition /* bool condition */,
-                     QgsMeshCalcNode *left /*if true */,
-                     QgsMeshCalcNode *right /* if false */ );
+    QgsMeshCalcNode( QgsMeshCalcNode *condition /* bool condition */, QgsMeshCalcNode *left /*if true */, QgsMeshCalcNode *right /* if false */ );
 
     /**
      * Constructs a Type::tDatasetGroupRef node with values from dataset group
-     * \param datasetName dataset group to fetch data and populate node data
+     * \param datasetGroupName dataset group to fetch data and populate node data
      */
     QgsMeshCalcNode( const QString &datasetGroupName );
 
-    //! Destructor
     ~QgsMeshCalcNode();
 
     //! Returns type of node
@@ -132,10 +130,16 @@ class CORE_EXPORT QgsMeshCalcNode
      * \param result destination dataset group for calculation results
      * \returns TRUE on success, FALSE on failure
      */
-    bool calculate( const QgsMeshCalcUtils &dsu, QgsMeshMemoryDatasetGroup &result ) const;
+    bool calculate( const QgsMeshCalcUtils &dsu, QgsMeshMemoryDatasetGroup &result, bool isAggregate = false ) const;
 
     //! Returns all dataset group names used in formula
     QStringList usedDatasetGroupNames() const;
+
+    //! Returns dataset group names used in formula involved in aggregate function
+    QStringList aggregatedUsedDatasetGroupNames() const;
+
+    //! Returns dataset group names used in formula not involved in aggregate function
+    QStringList notAggregatedUsedDatasetGroupNames() const;
 
     /**
      * Parses string to calculation node. Caller takes responsibility to delete the node

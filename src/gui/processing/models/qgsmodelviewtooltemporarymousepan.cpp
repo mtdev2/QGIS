@@ -14,9 +14,13 @@
  ***************************************************************************/
 
 #include "qgsmodelviewtooltemporarymousepan.h"
-#include "qgsmodelviewmouseevent.h"
+
 #include "qgsmodelgraphicsview.h"
+#include "qgsmodelviewmouseevent.h"
+
 #include <QScrollBar>
+
+#include "moc_qgsmodelviewtooltemporarymousepan.cpp"
 
 QgsModelViewToolTemporaryMousePan::QgsModelViewToolTemporaryMousePan( QgsModelGraphicsView *view )
   : QgsModelViewTool( view, tr( "Pan" ) )
@@ -33,7 +37,7 @@ void QgsModelViewToolTemporaryMousePan::modelMoveEvent( QgsModelViewMouseEvent *
 
 void QgsModelViewToolTemporaryMousePan::modelReleaseEvent( QgsModelViewMouseEvent *event )
 {
-  if ( event->button() == Qt::MidButton )
+  if ( event->button() == Qt::MiddleButton )
   {
     view()->setTool( mPreviousViewTool );
   }

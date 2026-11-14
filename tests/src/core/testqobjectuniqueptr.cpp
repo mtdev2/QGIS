@@ -16,7 +16,9 @@
 #include "qgstest.h"
 #include "qobjectuniqueptr.h"
 
-#include "qgstest.h"
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQObjectUniquePtr : public QObject
 {
@@ -30,12 +32,13 @@ class TestQObjectUniquePtr : public QObject
     void testSwap();
     void testOperatorArrow();
     void testDeleteLater();
+    void testVector();
 };
 
 void TestQObjectUniquePtr::testMemLeak()
 {
   QObject *myobj = new QObject();
-  QObjectUniquePtr<QObject> obj( myobj );
+  const QObjectUniquePtr<QObject> obj( myobj );
 }
 
 void TestQObjectUniquePtr::testParentDeletedFirst()
@@ -43,7 +46,7 @@ void TestQObjectUniquePtr::testParentDeletedFirst()
   QObject *parent = new QObject();
   QObject *child = new QObject( parent );
 
-  QObjectUniquePtr<QObject> obj( child );
+  const QObjectUniquePtr<QObject> obj( child );
   QVERIFY( !obj.isNull() );
   QVERIFY( obj );
   QCOMPARE( child, obj.get() );
@@ -58,10 +61,10 @@ void TestQObjectUniquePtr::testParentDeletedAfter()
 {
   QObject *parent = new QObject();
   QObject *child = new QObject( parent );
-  QPointer<QObject> observer( child );
+  const QPointer<QObject> observer( child );
 
   {
-    QObjectUniquePtr<QObject> obj( child );
+    const QObjectUniquePtr<QObject> obj( child );
     QVERIFY( !observer.isNull() );
   }
   QVERIFY( observer.isNull() );
@@ -74,9 +77,9 @@ void TestQObjectUniquePtr::testParentDeletedAfter()
 
 void TestQObjectUniquePtr::testOperatorBool()
 {
-  QObjectUniquePtr<QObject> obj;
+  const QObjectUniquePtr<QObject> obj;
   QVERIFY( !obj );
-  QObjectUniquePtr<QObject> obj2( new QObject() );
+  const QObjectUniquePtr<QObject> obj2( new QObject() );
   QVERIFY( obj2 );
 }
 
@@ -100,8 +103,8 @@ void TestQObjectUniquePtr::testOperatorArrow()
 {
   QObject *o = new QObject();
   o->setObjectName( "Teddy" );
-  QObjectUniquePtr<QObject> obj( o );
-  QCOMPARE( obj->objectName(), QStringLiteral( "Teddy" ) );
+  const QObjectUniquePtr<QObject> obj( o );
+  QCOMPARE( obj->objectName(), u"Teddy"_s );
 }
 
 void TestQObjectUniquePtr::testDeleteLater()
@@ -109,7 +112,7 @@ void TestQObjectUniquePtr::testDeleteLater()
   QObject *o = new QObject();
   QObject *o2 = new QObject();
 
-  QObjectUniquePtr<QObject> obj( o );
+  const QObjectUniquePtr<QObject> obj( o );
   QObjectUniquePtr<QObject> obj2( o2 );
 
   obj2->deleteLater();
@@ -118,10 +121,37 @@ void TestQObjectUniquePtr::testDeleteLater()
   obj2.reset();
 
   connect( o, &QObject::destroyed, QgsApplication::instance(), &QgsApplication::quit );
-  QgsApplication::instance()->exec();
+  QgsApplication::exec();
   QVERIFY( obj.isNull() );
   QVERIFY( obj2.isNull() );
 }
+
+void TestQObjectUniquePtr::testVector()
+{
+  std::vector<QObjectUniquePtr<QObject>> objects;
+
+  objects.emplace_back( new QObject )->setObjectName( "TESTA" );
+  objects.emplace_back( new QObject )->setObjectName( "TESTB" );
+
+  QVERIFY( !objects.at( 0 ).isNull() );
+  QVERIFY( !objects.at( 1 ).isNull() );
+
+  QCOMPARE( objects.at( 0 )->objectName(), "TESTA" );
+  QCOMPARE( objects.at( 1 )->objectName(), "TESTB" );
+
+  int nbObjectDestroyed = 0;
+  auto onDestroyed = [&nbObjectDestroyed]() { nbObjectDestroyed++; };
+
+  connect( objects.at( 0 ), &QObject::destroyed, this, onDestroyed );
+  connect( objects.at( 1 ), &QObject::destroyed, this, onDestroyed );
+
+  objects.erase( objects.cbegin() );
+
+  QCOMPARE( objects.size(), 1 );
+  QCOMPARE( nbObjectDestroyed, 1 );
+  QCOMPARE( objects.at( 0 )->objectName(), "TESTB" );
+}
+
 
 QGSTEST_MAIN( TestQObjectUniquePtr )
 #include "testqobjectuniqueptr.moc"

@@ -22,7 +22,8 @@
 #define QGSRUNPROCESS_H
 
 #include <QObject>
-#if QT_CONFIG(process)
+
+#if QT_CONFIG( process )
 #include <QProcess>
 #endif
 
@@ -36,14 +37,15 @@ class QgsMessageOutput;
 
 /**
  * \ingroup core
- * A class that executes an external program/script.
+ * \brief Executes an external program/script.
+ *
  * It can optionally capture the standard output and error from the
  * process and displays them in a dialog box.
  *
  * On some platforms (e.g. iOS) , the process execution is skipped
  * https://lists.qt-project.org/pipermail/development/2015-July/022205.html
  */
-class CORE_EXPORT QgsRunProcess: public QObject SIP_NODEFAULTCTORS
+class CORE_EXPORT QgsRunProcess : public QObject SIP_NODEFAULTCTORS
 {
     Q_OBJECT
 
@@ -55,8 +57,7 @@ class CORE_EXPORT QgsRunProcess: public QObject SIP_NODEFAULTCTORS
     // The action argument contains string with the command.
     // If capture is true, the standard output and error from the process
     // will be sent to QgsMessageOutput - usually a dialog box.
-    static QgsRunProcess *create( const QString &action, bool capture ) SIP_FACTORY
-    { return new QgsRunProcess( action, capture ); }
+    static QgsRunProcess *create( const QString &action, bool capture ) SIP_FACTORY { return new QgsRunProcess( action, capture ); }
 
     /**
      * Splits the string \a command into a list of tokens, and returns
@@ -73,11 +74,11 @@ class CORE_EXPORT QgsRunProcess: public QObject SIP_NODEFAULTCTORS
     QgsRunProcess( const QString &action, bool capture ) SIP_FORCE;
     ~QgsRunProcess() override SIP_FORCE;
 
-#if QT_CONFIG(process)
+#if QT_CONFIG( process )
     // Deletes the instance of the class
     void die();
 
-    QProcess *mProcess = nullptr;
+    std::unique_ptr<QProcess> mProcess;
     QgsMessageOutput *mOutput = nullptr;
     QString mCommand;
 
@@ -90,10 +91,10 @@ class CORE_EXPORT QgsRunProcess: public QObject SIP_NODEFAULTCTORS
 #endif // !(QT_CONFIG(process)
 };
 
-#if QT_CONFIG(process)
+#if QT_CONFIG( process )
 
 /**
- * A thread safe class for performing blocking (sync) execution of external processes.
+ * \brief A thread safe class for performing blocking (sync) execution of external processes.
  *
  * This class should be used whenever a blocking process run is required. Unlike implementations
  * which rely on QApplication::processEvents() or creation of a QEventLoop, this class is completely
@@ -110,7 +111,6 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for the given \a program, with the specified list of \a arguments.
      *
@@ -125,6 +125,7 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
      */
     void setStdOutHandler( const std::function< void( const QByteArray & ) > &handler ) { mStdoutHandler = handler; }
 #else
+    // clang-format off
 
     /**
      * Sets a handler function to call whenever content is written by the process to stdout.
@@ -142,6 +143,7 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
 
     Py_END_ALLOW_THREADS
     % End
+// clang-format on
 #endif
 
 #ifndef SIP_RUN
@@ -151,6 +153,7 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
      */
     void setStdErrHandler( const std::function< void( const QByteArray & ) > &handler ) { mStderrHandler = handler; }
 #else
+      // clang-format off
 
     /**
      * Sets a \a handler function to call whenever content is written by the process to stderr.
@@ -168,6 +171,7 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
 
     Py_END_ALLOW_THREADS
     % End
+// clang-format on
 #endif
 
     /**
@@ -184,14 +188,38 @@ class CORE_EXPORT QgsBlockingProcess : public QObject
      */
     QProcess::ExitStatus exitStatus() const;
 
-  private:
+    /**
+     * After a call to run(), returns the process' reported error.
+     *
+     * Returns QProcess::UnknownError if no error occurred.
+     */
+    QProcess::ProcessError processError() const;
 
+    /**
+     * Returns the process working directory.
+     *
+     * \see setWorkingDirectory()
+     * \since QGIS 4.2
+     */
+    QString workingDirectory() const;
+
+    /**
+     * Sets the process working \a directory.
+     *
+     * \see workingDirectory()
+     * \since QGIS 4.2
+     */
+    void setWorkingDirectory( const QString &directory );
+
+  private:
     QString mProcess;
     QStringList mArguments;
+    QString mWorkingDir;
     std::function< void( const QByteArray & ) > mStdoutHandler;
     std::function< void( const QByteArray & ) > mStderrHandler;
 
     QProcess::ExitStatus mExitStatus = QProcess::NormalExit;
+    QProcess::ProcessError mProcessError = QProcess::UnknownError;
 };
 
 #endif // QT_CONFIG(process)
@@ -207,13 +235,9 @@ class ProcessThread : public QThread
     ProcessThread( const std::function<void()> &function, QObject *parent = nullptr )
       : QThread( parent )
       , mFunction( function )
-    {
-    }
+    {}
 
-    void run() override
-    {
-      mFunction();
-    }
+    void run() override { mFunction(); }
 
   private:
     std::function<void()> mFunction;

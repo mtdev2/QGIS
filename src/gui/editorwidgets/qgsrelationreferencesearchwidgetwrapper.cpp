@@ -15,23 +15,27 @@
 
 #include "qgsrelationreferencesearchwidgetwrapper.h"
 
+#include "qgsapplication.h"
+#include "qgsfeaturefiltermodel.h"
 #include "qgsfields.h"
+#include "qgsproject.h"
+#include "qgsrelationmanager.h"
+#include "qgsrelationreferencewidget.h"
+#include "qgssettingsentryimpl.h"
 #include "qgsvaluerelationwidgetfactory.h"
 #include "qgsvectorlayer.h"
-#include "qgsproject.h"
-#include "qgsrelationreferencewidget.h"
-#include "qgsrelationmanager.h"
-#include "qgssettings.h"
-#include "qgsapplication.h"
 
+#include <QString>
 #include <QStringListModel>
+
+#include "moc_qgsrelationreferencesearchwidgetwrapper.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsRelationReferenceSearchWidgetWrapper::QgsRelationReferenceSearchWidgetWrapper( QgsVectorLayer *vl, int fieldIdx, QgsMapCanvas *canvas, QWidget *parent )
   : QgsSearchWidgetWrapper( vl, fieldIdx, parent )
   , mCanvas( canvas )
-{
-
-}
+{}
 
 bool QgsRelationReferenceSearchWidgetWrapper::applyDirectly()
 {
@@ -46,13 +50,13 @@ QString QgsRelationReferenceSearchWidgetWrapper::expression() const
 QVariant QgsRelationReferenceSearchWidgetWrapper::value() const
 {
   if ( !mWidget )
-    return QVariant( );
+    return QVariant();
 
   const QVariantList fkeys = mWidget->foreignKeys();
 
   if ( fkeys.isEmpty() )
   {
-    return QVariant( );
+    return QVariant();
   }
   else
   {
@@ -79,7 +83,7 @@ QgsSearchWidgetWrapper::FilterFlags QgsRelationReferenceSearchWidgetWrapper::def
 
 QString QgsRelationReferenceSearchWidgetWrapper::createExpression( QgsSearchWidgetWrapper::FilterFlags flags ) const
 {
-  QString fieldName = createFieldIdentifier();
+  const QString fieldName = createFieldIdentifier();
 
   //clear any unsupported flags
   flags &= supportedFlags();
@@ -88,27 +92,27 @@ QString QgsRelationReferenceSearchWidgetWrapper::createExpression( QgsSearchWidg
   if ( flags & IsNotNull )
     return fieldName + " IS NOT NULL";
 
-  QVariant v = value();
+  const QVariant v = value();
   if ( !v.isValid() )
     return QString();
 
-  switch ( v.type() )
+  switch ( v.userType() )
   {
-    case QVariant::Int:
-    case QVariant::UInt:
-    case QVariant::Double:
-    case QVariant::LongLong:
-    case QVariant::ULongLong:
+    case QMetaType::Type::Int:
+    case QMetaType::Type::UInt:
+    case QMetaType::Type::Double:
+    case QMetaType::Type::LongLong:
+    case QMetaType::Type::ULongLong:
     {
       if ( flags & EqualTo )
       {
-        if ( v.isNull() )
+        if ( QgsVariantUtils::isNull( v ) )
           return fieldName + " IS NULL";
         return fieldName + '=' + v.toString();
       }
       else if ( flags & NotEqualTo )
       {
-        if ( v.isNull() )
+        if ( QgsVariantUtils::isNull( v ) )
           return fieldName + " IS NOT NULL";
         return fieldName + "<>" + v.toString();
       }
@@ -163,10 +167,10 @@ void QgsRelationReferenceSearchWidgetWrapper::onValuesChanged( const QVariantLis
   }
   else
   {
-    QgsSettings settings;
+    const QgsSettings settings;
     // TODO: adapt for composite keys
-    QVariant value = values.at( 0 );
-    setExpression( value.isNull() ? QgsApplication::nullRepresentation() : value.toString() );
+    const QVariant value = values.at( 0 );
+    setExpression( QgsVariantUtils::isNull( value ) ? QgsApplication::nullRepresentation() : value.toString() );
     emit valueChanged();
   }
   emit expressionChanged( mExpression );
@@ -175,20 +179,17 @@ void QgsRelationReferenceSearchWidgetWrapper::onValuesChanged( const QVariantLis
 void QgsRelationReferenceSearchWidgetWrapper::setExpression( const QString &expression )
 {
   QString exp = expression;
-  QString nullValue = QgsApplication::nullRepresentation();
-  QString fieldName = layer()->fields().at( mFieldIdx ).name();
+  const QString nullValue = QgsApplication::nullRepresentation();
+  const QString fieldName = layer()->fields().at( mFieldIdx ).name();
 
   QString str;
   if ( exp == nullValue )
   {
-    str = QStringLiteral( "%1 IS NULL" ).arg( QgsExpression::quotedColumnRef( fieldName ) );
+    str = u"%1 IS NULL"_s.arg( QgsExpression::quotedColumnRef( fieldName ) );
   }
   else
   {
-    str = QStringLiteral( "%1 = '%3'" )
-          .arg( QgsExpression::quotedColumnRef( fieldName ),
-                exp.replace( '\'', QLatin1String( "''" ) )
-              );
+    str = u"%1 = '%3'"_s.arg( QgsExpression::quotedColumnRef( fieldName ), exp.replace( '\'', "''"_L1 ) );
   }
   mExpression = str;
 }
@@ -208,26 +209,31 @@ void QgsRelationReferenceSearchWidgetWrapper::initWidget( QWidget *editor )
 
   mWidget->setEmbedForm( false );
   mWidget->setReadOnlySelector( false );
-  mWidget->setAllowMapIdentification( config( QStringLiteral( "MapIdentification" ), false ).toBool() );
-  mWidget->setOrderByValue( config( QStringLiteral( "OrderByValue" ), false ).toBool() );
+  mWidget->setAllowMapIdentification( config( u"MapIdentification"_s, false ).toBool() );
   mWidget->setAllowAddFeatures( false );
   mWidget->setOpenFormButtonVisible( false );
 
-  if ( config( QStringLiteral( "FilterFields" ), QVariant() ).isValid() )
+  const bool fetchLimitActive = config( u"FetchLimitActive"_s, QgsFeatureFilterModel::settingsMaxEntriesRelationWidget->value() > 0 ).toBool();
+  if ( fetchLimitActive )
   {
-    mWidget->setFilterFields( config( QStringLiteral( "FilterFields" ) ).toStringList() );
-    mWidget->setChainFilters( config( QStringLiteral( "ChainFilters" ) ).toBool() );
-    mWidget->setFilterExpression( config( QStringLiteral( "FilterExpression" ) ).toString() );
+    mWidget->setFetchLimit( config( u"FetchLimitNumber"_s, QgsFeatureFilterModel::settingsMaxEntriesRelationWidget->value() ).toInt() );
   }
 
-  QgsRelation relation = QgsProject::instance()->relationManager()->relation( config( QStringLiteral( "Relation" ) ).toString() );
+  if ( config( u"FilterFields"_s, QVariant() ).isValid() )
+  {
+    mWidget->setFilterFields( config( u"FilterFields"_s ).toStringList() );
+    mWidget->setChainFilters( config( u"ChainFilters"_s ).toBool() );
+    mWidget->setFilterExpression( config( u"FilterExpression"_s ).toString() );
+  }
+  mWidget->setOrderExpression( config( u"OrderExpression"_s ).toString() );
+  mWidget->setSortOrder( config( u"OrderDescending"_s, false ).toBool() ? Qt::DescendingOrder : Qt::AscendingOrder );
+
+  QgsRelation relation = QgsProject::instance()->relationManager()->relation( config( u"Relation"_s ).toString() );
   // if no relation is given from the config, fetch one if there is only one available
   if ( !relation.isValid() && !layer()->referencingRelations( mFieldIdx ).isEmpty() && layer()->referencingRelations( mFieldIdx ).count() == 1 )
     relation = layer()->referencingRelations( mFieldIdx )[0];
-  mWidget->setRelation( relation, config( QStringLiteral( "AllowNULL" ) ).toBool() );
+  mWidget->setRelation( relation, config( u"AllowNULL"_s ).toBool() );
 
   mWidget->showIndeterminateState();
   connect( mWidget, &QgsRelationReferenceWidget::foreignKeysChanged, this, &QgsRelationReferenceSearchWidgetWrapper::onValuesChanged );
 }
-
-

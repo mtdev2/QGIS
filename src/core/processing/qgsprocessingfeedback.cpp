@@ -16,113 +16,201 @@
  ***************************************************************************/
 
 #include "qgsprocessingfeedback.h"
-#include "qgsgeos.h"
-#include "qgsprocessingprovider.h"
-#include <ogr_api.h>
+
 #include <gdal_version.h>
-#if PROJ_VERSION_MAJOR > 4
+#include <ogr_api.h>
 #include <proj.h>
-#else
-#include <proj_api.h>
+
+#include "qgsgeos.h"
+#include "qgsmessagelog.h"
+#include "qgsprocessingprovider.h"
+
+#include <QString>
+
+#include "moc_qgsprocessingfeedback.cpp"
+
+using namespace Qt::StringLiterals;
+
+#ifdef HAVE_PDAL_QGIS
+#include <pdal/pdal.hpp>
 #endif
 
-#ifdef HAVE_PDAL
-#include <pdal/pdal.hpp>
+#ifdef WITH_SFCGAL
+#include <SFCGAL/capi/sfcgal_c.h>
+#endif
+
+#ifdef WITH_GEOGRAPHICLIB
+#include <GeographicLib/Constants.hpp>
 #endif
 
 QgsProcessingFeedback::QgsProcessingFeedback( bool logFeedback )
   : mLogFeedback( logFeedback )
-{
+{}
 
+void QgsProcessingFeedback::setProgressText( const QString &text )
+{
+  mHtmlLog.append( text.toHtmlEscaped().replace( '\n', "<br>"_L1 ) + u"<br/>"_s );
+  mTextLog.append( text + '\n' );
+
+  emit progressTextChanged( text );
 }
 
-void QgsProcessingFeedback::setProgressText( const QString & )
+void QgsProcessingFeedback::log( const QString &htmlMessage, const QString &textMessage )
 {
+  constexpr int MESSAGE_COUNT_LIMIT = 10000;
+  // Avoid logging too many messages, which might blow memory.
+  if ( mMessageLoggedCount == MESSAGE_COUNT_LIMIT )
+    return;
+  ++mMessageLoggedCount;
+  if ( mMessageLoggedCount == MESSAGE_COUNT_LIMIT )
+  {
+    mHtmlLog.append( u"<span style=\"color:red\">%1</span><br/>"_s.arg( tr( "Message log truncated" ) ) );
+    mTextLog.append( tr( "Message log truncated" ) + '\n' );
+  }
+  else
+  {
+    mHtmlLog.append( htmlMessage );
+    mTextLog.append( textMessage );
+  }
 }
 
-void QgsProcessingFeedback::reportError( const QString &error, bool )
+void QgsProcessingFeedback::reportError( const QString &error, bool fatalError )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( error, tr( "Processing" ), Qgis::Critical );
+    QgsMessageLog::logMessage( error, tr( "Processing" ), Qgis::MessageLevel::Critical );
 
-  mHtmlLog.append( QStringLiteral( "<span style=\"color:red\">%1</span><br/>" ).arg( error.toHtmlEscaped() ).replace( '\n', QLatin1String( "<br>" ) ) );
-  mTextLog.append( error + '\n' );
+  log( u"<span style=\"color:red\">%1</span><br/>"_s.arg( error.toHtmlEscaped() ).replace( '\n', "<br>"_L1 ), error + '\n' );
+
+  emit errorReported( error, fatalError );
 }
 
 void QgsProcessingFeedback::pushWarning( const QString &warning )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( warning, tr( "Processing" ), Qgis::Warning );
+    QgsMessageLog::logMessage( warning, tr( "Processing" ), Qgis::MessageLevel::Warning );
 
-  mHtmlLog.append( QStringLiteral( "<span style=\"color:#b85a20;\">%1</span><br/>" ).arg( warning.toHtmlEscaped() ).replace( '\n', QLatin1String( "<br>" ) ) + QStringLiteral( "<br/>" ) );
-  mTextLog.append( warning + '\n' );
+  log( u"<span style=\"color:#b85a20;\">%1</span><br/>"_s.arg( warning.toHtmlEscaped() ).replace( '\n', "<br>"_L1 ) + u"<br/>"_s, warning + '\n' );
+
+  emit warningPushed( warning );
 }
 
 void QgsProcessingFeedback::pushInfo( const QString &info )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::Info );
+    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::MessageLevel::Info );
 
-  mHtmlLog.append( info.toHtmlEscaped().replace( '\n', QLatin1String( "<br>" ) ) + QStringLiteral( "<br/>" ) );
+  mHtmlLog.append( info.toHtmlEscaped().replace( '\n', "<br>"_L1 ) + u"<br/>"_s );
   mTextLog.append( info + '\n' );
+
+  emit infoPushed( info );
+}
+
+void QgsProcessingFeedback::pushFormattedMessage( const QString &html, const QString &text )
+{
+  if ( mLogFeedback )
+    QgsMessageLog::logMessage( text, tr( "Processing" ), Qgis::MessageLevel::Info );
+
+  mHtmlLog.append( html + u"<br/>"_s );
+  mTextLog.append( text + '\n' );
+
+  emit formattedMessagePushed( html );
 }
 
 void QgsProcessingFeedback::pushCommandInfo( const QString &info )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::Info );
+    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::MessageLevel::Info );
 
-  mHtmlLog.append( QStringLiteral( "<code>%1</code><br/>" ).arg( info.toHtmlEscaped().replace( '\n', QLatin1String( "<br>" ) ) ) );
-  mTextLog.append( info + '\n' );
+  log( u"<code>%1</code><br/>"_s.arg( info.toHtmlEscaped().replace( '\n', "<br>"_L1 ) ), info + '\n' );
+
+  emit commandInfoPushed( info );
 }
 
 void QgsProcessingFeedback::pushDebugInfo( const QString &info )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::Info );
+    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::MessageLevel::Info );
 
-  mHtmlLog.append( QStringLiteral( "<span style=\"color:#777\">%1</span><br/>" ).arg( info.toHtmlEscaped().replace( '\n', QLatin1String( "<br>" ) ) ) );
-  mTextLog.append( info + '\n' );
+  log( u"<span style=\"color:#777\">%1</span><br/>"_s.arg( info.toHtmlEscaped().replace( '\n', "<br>"_L1 ) ), info + '\n' );
+
+  emit debugInfoPushed( info );
 }
 
 void QgsProcessingFeedback::pushConsoleInfo( const QString &info )
 {
   if ( mLogFeedback )
-    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::Info );
+    QgsMessageLog::logMessage( info, tr( "Processing" ), Qgis::MessageLevel::Info );
 
-  mHtmlLog.append( QStringLiteral( "<code style=\"color:#777\">%1</code><br/>" ).arg( info.toHtmlEscaped().replace( '\n', QLatin1String( "<br>" ) ) ) );
-  mTextLog.append( info + '\n' );
+  log( u"<code style=\"color:#777\">%1</code><br/>"_s.arg( info.toHtmlEscaped().replace( '\n', "<br>"_L1 ) ), info + '\n' );
+
+  emit consoleInfoPushed( info );
 }
 
 void QgsProcessingFeedback::pushVersionInfo( const QgsProcessingProvider *provider )
 {
   pushDebugInfo( tr( "QGIS version: %1" ).arg( Qgis::version() ) );
-  if ( QString( Qgis::devVersion() ) != QLatin1String( "exported" ) )
+  if ( QString( Qgis::devVersion() ) != "exported"_L1 )
   {
     pushDebugInfo( tr( "QGIS code revision: %1" ).arg( Qgis::devVersion() ) );
   }
   pushDebugInfo( tr( "Qt version: %1" ).arg( qVersion() ) );
+  pushDebugInfo( tr( "Python version: %1" ).arg( PYTHON_VERSION ) );
   pushDebugInfo( tr( "GDAL version: %1" ).arg( GDALVersionInfo( "RELEASE_NAME" ) ) );
   pushDebugInfo( tr( "GEOS version: %1" ).arg( GEOSversion() ) );
 
-#if PROJ_VERSION_MAJOR > 4
-  PJ_INFO info = proj_info();
+  const PJ_INFO info = proj_info();
   pushDebugInfo( tr( "PROJ version: %1" ).arg( info.release ) );
-#else
-  pushDebugInfo( tr( "PROJ version: %1" ).arg( PJ_VERSION ) );
-#endif
 
-#ifdef HAVE_PDAL
-#if PDAL_VERSION_MAJOR_INT > 1 || (PDAL_VERSION_MAJOR_INT == 1 && PDAL_VERSION_MINOR_INT >= 7)
+#ifdef HAVE_PDAL_QGIS
+#if PDAL_VERSION_MAJOR_INT > 1 || ( PDAL_VERSION_MAJOR_INT == 1 && PDAL_VERSION_MINOR_INT >= 7 )
   pushDebugInfo( tr( "PDAL version: %1" ).arg( QString::fromStdString( pdal::Config::fullVersionString() ) ) );
 #else
   pushDebugInfo( tr( "PDAL version: %1" ).arg( QString::fromStdString( pdal::GetFullVersionString() ) ) );
 #endif
 #endif
 
+#ifdef WITH_SFCGAL
+  pushDebugInfo( tr( "SFCGAL version: %1" ).arg( sfcgal_version() ) );
+#else
+  pushDebugInfo( tr( "No support for SFCGAL" ) );
+#endif
+
+#ifdef WITH_GEOGRAPHICLIB
+  pushDebugInfo( tr( "GeographicLib version: %1.%2.%3" ).arg( GEOGRAPHICLIB_VERSION_MAJOR ).arg( GEOGRAPHICLIB_VERSION_MINOR ).arg( GEOGRAPHICLIB_VERSION_PATCH ) );
+#else
+  pushDebugInfo( tr( "No support for GeographicLib" ) );
+#endif
+
   if ( provider && !provider->versionInfo().isEmpty() )
   {
     pushDebugInfo( tr( "%1 version: %2" ).arg( provider->name(), provider->versionInfo() ) );
+  }
+}
+
+void QgsProcessingFeedback::pushFormattedResults( const QgsProcessingAlgorithm *algorithm, QgsProcessingContext &context, const QVariantMap &results )
+{
+  if ( results.empty() )
+    return;
+
+  pushInfo( tr( "Results:" ) );
+
+  const QList< const QgsProcessingOutputDefinition * > outputs = algorithm->outputDefinitions();
+  for ( const QgsProcessingOutputDefinition *output : outputs )
+  {
+    const QString outputName = output->name();
+    if ( outputName == "CHILD_RESULTS"_L1 || outputName == "CHILD_INPUTS"_L1 )
+      continue;
+
+    if ( !results.contains( outputName ) )
+      continue;
+
+    bool ok = false;
+    const QString textValue = output->valueAsString( results.value( output->name() ), context, ok );
+    const QString formattedValue = output->valueAsFormattedString( results.value( output->name() ), context, ok );
+    if ( ok )
+    {
+      pushFormattedMessage( u"<code>&nbsp;&nbsp;%1: %2</code>"_s.arg( output->name(), formattedValue ), u"  %1: %2"_s.arg( output->name(), textValue ) );
+    }
   }
 }
 
@@ -136,70 +224,187 @@ QString QgsProcessingFeedback::textLog() const
   return mTextLog;
 }
 
+void QgsProcessingFeedback::reportSourceLoaded( const QString &parameterName, long long featureCount )
+{
+  emit sourceLoaded( parameterName, featureCount );
+}
+
+void QgsProcessingFeedback::featureAddedToSink( const QString &output )
+{
+  long long countAtLastSignal = 0;
+  long long previousCount = 0;
+  auto it = mSinkFeatureCounts.find( output );
+  if ( it == mSinkFeatureCounts.end() )
+  {
+    it = mSinkFeatureCounts.insert( output, SinkStats() );
+  }
+  else
+  {
+    countAtLastSignal = it.value().countAtLastSignal;
+    previousCount = it.value().featureCount;
+  }
+
+  const long long newCount = previousCount + 1;
+  it.value().featureCount = newCount;
+  if ( newCount - countAtLastSignal >= 100 )
+  {
+    emit sinkFeatureCountChanged( output, newCount );
+    it.value().countAtLastSignal = newCount;
+  }
+}
+
+void QgsProcessingFeedback::featureSinkFinalized( const QString &output )
+{
+  long long previousCount = 0;
+  auto it = mSinkFeatureCounts.find( output );
+  if ( it == mSinkFeatureCounts.end() )
+  {
+    it = mSinkFeatureCounts.insert( output, SinkStats() );
+  }
+  else
+  {
+    previousCount = it.value().featureCount;
+  }
+
+  emit sinkFeatureCountChanged( output, previousCount );
+  it.value().countAtLastSignal = previousCount;
+}
+
+void QgsProcessingFeedback::resetFeatureSinkCounts()
+{
+  mSinkFeatureCounts.clear();
+}
 
 QgsProcessingMultiStepFeedback::QgsProcessingMultiStepFeedback( int childAlgorithmCount, QgsProcessingFeedback *feedback )
   : mChildSteps( childAlgorithmCount )
   , mFeedback( feedback )
 {
-  connect( mFeedback, &QgsFeedback::canceled, this, &QgsFeedback::cancel, Qt::DirectConnection );
-  connect( this, &QgsFeedback::progressChanged, this, &QgsProcessingMultiStepFeedback::updateOverallProgress );
+  if ( mFeedback )
+  {
+    connect( mFeedback, &QgsFeedback::canceled, this, &QgsFeedback::cancel, Qt::DirectConnection );
+    connect( this, &QgsFeedback::progressChanged, this, &QgsProcessingMultiStepFeedback::updateOverallProgress );
+  }
+
+  // initialize with equal weights
+  const double equalWeight = mChildSteps > 0 ? 1.0 / mChildSteps : 0.0;
+  for ( int i = 0; i < mChildSteps; ++i )
+  {
+    mStepWeights << equalWeight;
+  }
 }
 
 void QgsProcessingMultiStepFeedback::setCurrentStep( int step )
 {
   mCurrentStep = step;
-  mFeedback->setProgress( 100.0 * static_cast< double >( mCurrentStep ) / mChildSteps );
+
+  // calculate the base progress (sum of all previous steps)
+  mCurrentStepBaseProgress = 0.0;
+  for ( int i = 0; i < mCurrentStep && i < mStepWeights.count(); ++i )
+  {
+    mCurrentStepBaseProgress += mStepWeights.at( i ) * 100.0;
+  }
+
+  emit progressChanged( 0 );
+  if ( mFeedback )
+    mFeedback->setProgress( mCurrentStepBaseProgress );
+}
+
+void QgsProcessingMultiStepFeedback::setStepWeights( const QList<double> &weights )
+{
+  if ( weights.size() != mChildSteps )
+  {
+    return;
+  }
+
+  const double totalWeight = std::reduce( weights.begin(), weights.end() );
+
+  mStepWeights.clear();
+  if ( totalWeight > 0.0 )
+  {
+    for ( double w : weights )
+    {
+      mStepWeights << ( w / totalWeight );
+    }
+  }
+  else
+  {
+    // fallback to equal weights if total weight is 0
+    const double equalWeight = mChildSteps > 0 ? 1.0 / mChildSteps : 0.0;
+    for ( int i = 0; i < mChildSteps; ++i )
+    {
+      mStepWeights << equalWeight;
+    }
+  }
 }
 
 void QgsProcessingMultiStepFeedback::setProgressText( const QString &text )
 {
-  mFeedback->setProgressText( text );
+  if ( mFeedback )
+    mFeedback->setProgressText( text );
 }
 
 void QgsProcessingMultiStepFeedback::reportError( const QString &error, bool fatalError )
 {
-  mFeedback->reportError( error, fatalError );
+  if ( mFeedback )
+    mFeedback->reportError( error, fatalError );
 }
 
 void QgsProcessingMultiStepFeedback::pushWarning( const QString &warning )
 {
-  mFeedback->pushWarning( warning );
+  if ( mFeedback )
+    mFeedback->pushWarning( warning );
 }
 
 void QgsProcessingMultiStepFeedback::pushInfo( const QString &info )
 {
-  mFeedback->pushInfo( info );
+  if ( mFeedback )
+    mFeedback->pushInfo( info );
 }
 
 void QgsProcessingMultiStepFeedback::pushCommandInfo( const QString &info )
 {
-  mFeedback->pushCommandInfo( info );
+  if ( mFeedback )
+    mFeedback->pushCommandInfo( info );
 }
 
 void QgsProcessingMultiStepFeedback::pushDebugInfo( const QString &info )
 {
-  mFeedback->pushDebugInfo( info );
+  if ( mFeedback )
+    mFeedback->pushDebugInfo( info );
 }
 
 void QgsProcessingMultiStepFeedback::pushConsoleInfo( const QString &info )
 {
-  mFeedback->pushConsoleInfo( info );
+  if ( mFeedback )
+    mFeedback->pushConsoleInfo( info );
+}
+
+void QgsProcessingMultiStepFeedback::pushFormattedMessage( const QString &html, const QString &text )
+{
+  if ( mFeedback )
+    mFeedback->pushFormattedMessage( html, text );
 }
 
 QString QgsProcessingMultiStepFeedback::htmlLog() const
 {
-  return mFeedback->htmlLog();
+  if ( mFeedback )
+    return mFeedback->htmlLog();
+  return QString();
 }
 
 QString QgsProcessingMultiStepFeedback::textLog() const
 {
-  return mFeedback->textLog();
+  if ( mFeedback )
+    return mFeedback->textLog();
+  return QString();
 }
 
 void QgsProcessingMultiStepFeedback::updateOverallProgress( double progress )
 {
-  double baseProgress = 100.0 * static_cast< double >( mCurrentStep ) / mChildSteps;
-  double currentAlgorithmProgress = progress / mChildSteps;
-  mFeedback->setProgress( baseProgress + currentAlgorithmProgress );
-}
+  if ( !mFeedback )
+    return;
 
+  const double currentStepWeight = mStepWeights.value( mCurrentStep, 0 );
+
+  mFeedback->setProgress( mCurrentStepBaseProgress + progress * currentStepWeight );
+}

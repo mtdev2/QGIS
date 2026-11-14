@@ -16,8 +16,8 @@
 #ifndef QGSKEYVALUEWIDGETWRAPPER_H
 #define QGSKEYVALUEWIDGETWRAPPER_H
 
-#include "qgseditorwidgetwrapper.h"
 #include "qgis_gui.h"
+#include "qgseditorwidgetwrapper.h"
 
 SIP_NO_FILE
 
@@ -25,15 +25,13 @@ class QgsKeyValueWidget;
 
 /**
  * \ingroup gui
- * Wraps a key/value widget.
+ * \brief Wraps a key/value widget.
  * \note not available in Python bindings
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsKeyValueWidgetWrapper : public QgsEditorWidgetWrapper
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsKeyValueWidgetWrapper.
      *
@@ -50,6 +48,8 @@ class GUI_EXPORT QgsKeyValueWidgetWrapper : public QgsEditorWidgetWrapper
   public:
     QVariant value() const override;
     void showIndeterminateState() override;
+  public slots:
+    void setEnabled( bool enabled ) override;
 
   protected:
     QWidget *createWidget( QWidget *parent ) override;

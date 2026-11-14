@@ -17,18 +17,35 @@
 #ifndef QGSHANACONNECTION_H
 #define QGSHANACONNECTION_H
 
+#include <odbc/Forwards.h>
+
 #include "qgscoordinatereferencesystem.h"
 #include "qgsdatasourceuri.h"
-#include "qgshanatablemodel.h"
+#include "qgshanadatatypes.h"
 #include "qgshanaresultset.h"
-#include "qgslogger.h"
+#include "qgshanatablemodel.h"
 #include "qgsvectordataprovider.h"
 
-#include <QMap>
+struct AttributeField
+{
+    QString schemaName;
+    QString tableName;
+    QString name;
+    QgsHanaDataType type = QgsHanaDataType::Unknown;
+    int srid = -1;
+    QString typeName;
+    int size = 0;
+    int precision = 0;
+    bool isAutoIncrement = false;
+    bool isNullable = false;
+    bool isSigned = false;
+    bool isUnique = false;
+    QString comment;
 
-#include "odbc/Forwards.h"
+    QgsField toQgsField() const;
+};
 
-class QgsField;
+using AttributeFields = QVector<AttributeField>;
 
 class QgsHanaConnection : public QObject
 {
@@ -47,29 +64,32 @@ class QgsHanaConnection : public QObject
     QVariant executeScalar( const QString &sql );
     QVariant executeScalar( const QString &sql, const QVariantList &args );
 
-    odbc::PreparedStatementRef prepareStatement( const QString &sql );
+    NS_ODBC::PreparedStatementRef prepareStatement( const QString &sql );
 
     void commit();
     void rollback();
 
     QList<QgsVectorDataProvider::NativeType> getNativeTypes();
     const QString &getDatabaseVersion();
+    const QString &getDatabaseCloudVersion();
     const QString &getUserName();
     QgsCoordinateReferenceSystem getCrs( int srid );
     QVector<QgsHanaLayerProperty> getLayers(
-      const QString &schemaName,
-      bool allowGeometrylessTables,
-      bool userTablesOnly = true );
+      const QString &schemaName, bool allowGeometrylessTables, bool userTablesOnly = true, const std::function<bool( const QgsHanaLayerProperty &layer )> &layerFilter = nullptr
+    );
     QVector<QgsHanaLayerProperty> getLayersFull(
-      const QString &schemaName,
-      bool allowGeometrylessTables,
-      bool userTablesOnly = true );
+      const QString &schemaName, bool allowGeometrylessTables, bool userTablesOnly = true, const std::function<bool( const QgsHanaLayerProperty &layer )> &layerFilter = nullptr
+    );
     void readLayerInfo( QgsHanaLayerProperty &layerProperty );
+    void readQueryFields( const QString &schemaName, const QString &sql, const std::function<void( const AttributeField &field )> &callback );
+    void readTableFields( const QString &schemaName, const QString &tableName, const std::function<void( const AttributeField &field )> &callback );
     QVector<QgsHanaSchemaProperty> getSchemas( const QString &ownerName );
     QStringList getLayerPrimaryKey( const QString &schemaName, const QString &tableName );
-    QgsWkbTypes::Type getColumnGeometryType( const QString &schemaName, const QString &tableName, const QString &columnName );
+    Qgis::WkbType getColumnGeometryType( const QString &querySource, const QString &columnName );
+    Qgis::WkbType getColumnGeometryType( const QString &schemaName, const QString &tableName, const QString &columnName );
     QString getColumnDataType( const QString &schemaName, const QString &tableName, const QString &columnName );
     int getColumnSrid( const QString &schemaName, const QString &tableName, const QString &columnName );
+    int getColumnSrid( const QString &sql, const QString &columnName );
     QgsHanaResultSetRef getColumns( const QString &schemaName, const QString &tableName, const QString &fieldName );
     bool isTable( const QString &schemaName, const QString &tableName );
 
@@ -80,17 +100,18 @@ class QgsHanaConnection : public QObject
     static QStringList connectionList();
 
   private:
-    QgsHanaConnection( odbc::ConnectionRef connection, const QgsDataSourceUri &uri );
+    QgsHanaConnection( NS_ODBC::ConnectionRef connection, const QgsDataSourceUri &uri );
 
     QStringList getPrimaryKeyCandidates( const QgsHanaLayerProperty &layerProperty );
 
-    odbc::PreparedStatementRef createPreparedStatement( const QString &sql, const QVariantList &args );
+    NS_ODBC::PreparedStatementRef createPreparedStatement( const QString &sql, const QVariantList &args );
 
   private:
-    odbc::ConnectionRef mConnection;
+    NS_ODBC::ConnectionRef mConnection;
     const QgsDataSourceUri mUri;
     QString mDatabaseVersion;
+    QString mDatabaseCloudVersion;
     QString mUserName;
 };
 
-#endif  // QGSHANACONNECTION_H
+#endif // QGSHANACONNECTION_H

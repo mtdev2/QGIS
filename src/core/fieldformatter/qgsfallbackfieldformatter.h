@@ -21,18 +21,14 @@
 
 /**
  * \ingroup core
- * A default fallback field formatter in case no specialized field formatter is defined.
+ * \brief A default fallback field formatter in case no specialized field formatter is defined.
+ *
  * The values will be returned unmodified.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsFallbackFieldFormatter : public QgsFieldFormatter
 {
   public:
-
-    /**
-      * Default constructor of field formatter as a fallback when no specialized formatter is defined.
-      */
     QgsFallbackFieldFormatter() = default;
     QString id() const override;
 };

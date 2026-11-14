@@ -16,12 +16,24 @@
  ***************************************************************************/
 
 #include "qgslayoututils.h"
-#include "qgslayout.h"
-#include "qgsrendercontext.h"
-#include "qgslayoutitemmap.h"
-#include <QStyleOptionGraphicsItem>
-#include <QPainter>
+
 #include <cmath>
+
+#include "qgsdatadefinedutils.h"
+#include "qgslayout.h"
+#include "qgslayoutitemmap.h"
+#include "qgslayoutitempicture.h"
+#include "qgslayoutrendercontext.h"
+#include "qgspainting.h"
+#include "qgsprojectviewsettings.h"
+#include "qgsrendercontext.h"
+#include "qgssettingsregistrycore.h"
+
+#include <QPainter>
+#include <QString>
+#include <QStyleOptionGraphicsItem>
+
+using namespace Qt::StringLiterals;
 
 #ifndef M_DEG2RAD
 #define M_DEG2RAD 0.0174532925
@@ -123,7 +135,7 @@ QgsRenderContext QgsLayoutUtils::createRenderContextForMap( QgsLayoutItemMap *ma
     // get map settings from reference map
     QgsRectangle extent = map->extent();
     QSizeF mapSizeLayoutUnits = map->rect().size();
-    QSizeF mapSizeMM = map->layout()->convertFromLayoutUnits( mapSizeLayoutUnits, QgsUnitTypes::LayoutMillimeters ).toQSizeF();
+    QSizeF mapSizeMM = map->layout()->convertFromLayoutUnits( mapSizeLayoutUnits, Qgis::LayoutUnit::Millimeters ).toQSizeF();
     QgsMapSettings ms = map->mapSettings( extent, mapSizeMM * dotsPerMM, dpi, false );
     QgsRenderContext context = QgsRenderContext::fromMapSettings( ms );
     if ( painter )
@@ -141,6 +153,7 @@ QgsRenderContext QgsLayoutUtils::createRenderContextForLayout( QgsLayout *layout
   QgsRenderContext context = createRenderContextForMap( referenceMap, painter, dpi );
   if ( layout )
   {
+    // TODO -- handle RasterizedRenderingPolicy here!!!!
     context.setFlags( layout->renderContext().renderContextFlags() );
     context.setTextRenderFormat( layout->renderContext().textRenderFormat() );
   }
@@ -151,10 +164,18 @@ QgsRenderContext QgsLayoutUtils::createRenderContextForLayout( QgsLayout *layout
 void QgsLayoutUtils::relativeResizeRect( QRectF &rectToResize, const QRectF &boundsBefore, const QRectF &boundsAfter )
 {
   //linearly scale rectToResize relative to the scaling from boundsBefore to boundsAfter
-  double left = relativePosition( rectToResize.left(), boundsBefore.left(), boundsBefore.right(), boundsAfter.left(), boundsAfter.right() );
-  double right = relativePosition( rectToResize.right(), boundsBefore.left(), boundsBefore.right(), boundsAfter.left(), boundsAfter.right() );
-  double top = relativePosition( rectToResize.top(), boundsBefore.top(), boundsBefore.bottom(), boundsAfter.top(), boundsAfter.bottom() );
-  double bottom = relativePosition( rectToResize.bottom(), boundsBefore.top(), boundsBefore.bottom(), boundsAfter.top(), boundsAfter.bottom() );
+  const double left = !qgsDoubleNear( boundsBefore.left(), boundsBefore.right() )
+                        ? relativePosition( rectToResize.left(), boundsBefore.left(), boundsBefore.right(), boundsAfter.left(), boundsAfter.right() )
+                        : boundsAfter.left();
+  const double right = !qgsDoubleNear( boundsBefore.left(), boundsBefore.right() )
+                         ? relativePosition( rectToResize.right(), boundsBefore.left(), boundsBefore.right(), boundsAfter.left(), boundsAfter.right() )
+                         : boundsAfter.right();
+  const double top = !qgsDoubleNear( boundsBefore.top(), boundsBefore.bottom() )
+                       ? relativePosition( rectToResize.top(), boundsBefore.top(), boundsBefore.bottom(), boundsAfter.top(), boundsAfter.bottom() )
+                       : boundsAfter.top();
+  const double bottom = !qgsDoubleNear( boundsBefore.top(), boundsBefore.bottom() )
+                          ? relativePosition( rectToResize.bottom(), boundsBefore.top(), boundsBefore.bottom(), boundsAfter.top(), boundsAfter.bottom() )
+                          : boundsAfter.bottom();
 
   rectToResize.setRect( left, top, right - left, bottom - top );
 }
@@ -194,7 +215,6 @@ double QgsLayoutUtils::fontDescentMM( const QFont &font )
   QFont metricsFont = scaledFontPixelSize( font );
   QFontMetricsF fontMetrics( metricsFont );
   return ( fontMetrics.descent() / FONT_WORKAROUND_SCALE );
-
 }
 
 double QgsLayoutUtils::fontHeightMM( const QFont &font )
@@ -204,7 +224,6 @@ double QgsLayoutUtils::fontHeightMM( const QFont &font )
   QFont metricsFont = scaledFontPixelSize( font );
   QFontMetricsF fontMetrics( metricsFont );
   return ( fontMetrics.height() / FONT_WORKAROUND_SCALE );
-
 }
 
 double QgsLayoutUtils::fontHeightCharacterMM( const QFont &font, QChar character )
@@ -228,11 +247,7 @@ double QgsLayoutUtils::textWidthMM( const QFont &font, const QString &text )
   double maxWidth = 0;
   for ( const QString &line : multiLineSplit )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-    maxWidth = std::max( maxWidth, ( fontMetrics.width( line ) / FONT_WORKAROUND_SCALE ) );
-#else
     maxWidth = std::max( maxWidth, ( fontMetrics.horizontalAdvance( line ) / FONT_WORKAROUND_SCALE ) );
-#endif
   }
   return maxWidth;
 }
@@ -275,7 +290,9 @@ void QgsLayoutUtils::drawText( QPainter *painter, QPointF position, const QStrin
   painter->drawText( position * FONT_WORKAROUND_SCALE, text );
 }
 
-void QgsLayoutUtils::drawText( QPainter *painter, const QRectF &rect, const QString &text, const QFont &font, const QColor &color, const Qt::AlignmentFlag halignment, const Qt::AlignmentFlag valignment, const int flags )
+void QgsLayoutUtils::drawText(
+  QPainter *painter, const QRectF &rect, const QString &text, const QFont &font, const QColor &color, const Qt::AlignmentFlag halignment, const Qt::AlignmentFlag valignment, const int flags
+)
 {
   if ( !painter )
   {
@@ -286,8 +303,7 @@ void QgsLayoutUtils::drawText( QPainter *painter, const QRectF &rect, const QStr
   //ref: http://osgeo-org.1560.x6.nabble.com/Multi-line-labels-and-font-bug-td4157152.html
   QFont textFont = scaledFontPixelSize( font );
 
-  QRectF scaledRect( rect.x() * FONT_WORKAROUND_SCALE, rect.y() * FONT_WORKAROUND_SCALE,
-                     rect.width() * FONT_WORKAROUND_SCALE, rect.height() * FONT_WORKAROUND_SCALE );
+  QRectF scaledRect( rect.x() * FONT_WORKAROUND_SCALE, rect.y() * FONT_WORKAROUND_SCALE, rect.width() * FONT_WORKAROUND_SCALE, rect.height() * FONT_WORKAROUND_SCALE );
 
   QgsScopedQPainterState painterState( painter );
   painter->setFont( textFont );
@@ -382,32 +398,34 @@ QRectF QgsLayoutUtils::largestRotatedRectWithinBounds( const QRectF &originalRec
 
 QgsLayoutItemPage::Orientation QgsLayoutUtils::decodePaperOrientation( const QString &string, bool &ok )
 {
-  QString s = string.trimmed();
-  if ( s.compare( QLatin1String( "Portrait" ), Qt::CaseInsensitive ) == 0 )
+  static constexpr auto ORIENTATION_MAP = makeDataDefinedStringDecoder<QgsLayoutItemPage::Orientation>( {
+    { u"portrait", QgsLayoutItemPage::Orientation::Portrait },
+    { u"landscape", QgsLayoutItemPage::Orientation::Landscape },
+  } );
+
+  auto evaluatedAnchor = ORIENTATION_MAP.lookup( string );
+  if ( evaluatedAnchor )
   {
     ok = true;
-    return QgsLayoutItemPage::Portrait;
+    return *evaluatedAnchor;
   }
-  else if ( s.compare( QLatin1String( "Landscape" ), Qt::CaseInsensitive ) == 0 )
+  else
   {
-    ok = true;
-    return QgsLayoutItemPage::Landscape;
+    ok = false;
+    return QgsLayoutItemPage::Landscape; // default to landscape
   }
-  ok = false;
-  return QgsLayoutItemPage::Landscape; // default to landscape
 }
 
 double QgsLayoutUtils::scaleFactorFromItemStyle( const QStyleOptionGraphicsItem *style )
 {
-  // workaround Qt bug 66185
+  Q_UNUSED( style )
+  return 1;
+}
 
-  // Refs #18027 - if a QGraphicsItem is rotated by 90 or 270 degrees, then the item
-  // style given to QGraphicsItem::paint incorrectly uses the shear parameter of the matrix (m12)
-  // to store the current view scale, instead of the horizontal scale parameter (m11) which
-  // is used in all other cases
-
-  // TODO - ifdef this out if Qt fixes upstream
-  return !qgsDoubleNear( style->matrix.m11(), 0.0 ) ? style->matrix.m11() : style->matrix.m12();
+double QgsLayoutUtils::scaleFactorFromItemStyle( const QStyleOptionGraphicsItem *style, QPainter *painter )
+{
+  Q_UNUSED( style );
+  return QStyleOptionGraphicsItem::levelOfDetailFromTransform( painter->worldTransform() );
 }
 
 QgsMapLayer *QgsLayoutUtils::mapLayerFromString( const QString &string, QgsProject *project )
@@ -478,25 +496,62 @@ bool QgsLayoutUtils::itemIsAClippingSource( const QgsLayoutItem *item )
   if ( !( item->itemFlags() & QgsLayoutItem::FlagProvidesClipPath ) )
     return false; // not a clipping provider, so shortcut out
 
-  // current only maps can be clipped
+  // maps
   QList< QgsLayoutItemMap * > maps;
   item->layout()->layoutItems( maps );
-  for ( QgsLayoutItemMap *map : qgis::as_const( maps ) )
+  for ( QgsLayoutItemMap *map : std::as_const( maps ) )
   {
     if ( map->itemClippingSettings()->isActive() && map->itemClippingSettings()->sourceItem() == item )
       return true;
   }
+
+  // pictures
+  QList< QgsLayoutItemPicture * > pictures;
+  item->layout()->layoutItems( pictures );
+  for ( QgsLayoutItemPicture *picture : std::as_const( pictures ) )
+  {
+    if ( picture->clipToItem() && picture->clippingItem() == item )
+      return true;
+  }
+
   return false;
 }
+
+constexpr double pointToMM = 25.4 / 72.0;
 
 double QgsLayoutUtils::pointsToMM( const double pointSize )
 {
   //conversion to mm based on 1 point = 1/72 inch
-  return ( pointSize * 0.3527 );
+  return ( pointSize * pointToMM );
 }
 
 double QgsLayoutUtils::mmToPoints( const double mmSize )
 {
   //conversion to points based on 1 point = 1/72 inch
-  return ( mmSize / 0.3527 );
+  return ( mmSize / pointToMM );
+}
+
+QVector< double > QgsLayoutUtils::predefinedScales( const QgsLayout *layout )
+{
+  QgsProject *lProject = layout ? layout->project() : nullptr;
+  QVector< double > mapScales;
+  if ( lProject )
+    mapScales = lProject->viewSettings()->mapScales();
+
+  bool hasProjectScales( lProject ? lProject->viewSettings()->useProjectScales() : false );
+  if ( !hasProjectScales || mapScales.isEmpty() )
+  {
+    // default to global map tool scales
+    const QStringList scales = QgsSettingsRegistryCore::settingsMapScales->value();
+    for ( const QString &scale : scales )
+    {
+      QStringList parts( scale.split( ':' ) );
+      if ( parts.size() == 2 )
+      {
+        mapScales.push_back( parts[1].toDouble() );
+      }
+    }
+  }
+
+  return mapScales;
 }

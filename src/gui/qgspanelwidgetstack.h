@@ -15,20 +15,23 @@
 #ifndef QGSPANELWIDGETSTACK_H
 #define QGSPANELWIDGETSTACK_H
 
-#include <QWidget>
-#include <QKeyEvent>
-#include <QStackedWidget>
-#include <QStack>
-
 #include "ui_qgsrenderercontainerbase.h"
+
 #include "qgis_gui.h"
+
+#include <QKeyEvent>
+#include <QStack>
+#include <QStackedWidget>
+#include <QWidget>
 
 class QgsPanelWidget;
 
 /**
  * \ingroup gui
- * A stack widget to manage panels in the interface. Handles the open and close events
- * for added panels.
+ * \brief A stack widget to manage multiple overlapping stacked panels.
+ *
+ * Handles the open and close events for added panels.
+ *
  * Any widgets that want to have a non blocking panel based interface should use this
  * class to manage the panels.
  */
@@ -36,7 +39,6 @@ class GUI_EXPORT QgsPanelWidgetStack : public QWidget, private Ui::QgsRendererWi
 {
     Q_OBJECT
   public:
-
     /**
       * A stack widget to manage panels in the interface. Handles the open and close events
       * for added panels.
@@ -87,9 +89,11 @@ class GUI_EXPORT QgsPanelWidgetStack : public QWidget, private Ui::QgsRendererWi
 
     /**
      * Returns the panel currently shown in the stack.
-     * \since QGIS 3.0
      */
     QgsPanelWidget *currentPanel();
+
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 
   public slots:
 
@@ -102,10 +106,9 @@ class GUI_EXPORT QgsPanelWidgetStack : public QWidget, private Ui::QgsRendererWi
     void acceptCurrentPanel();
 
     /**
-     * Accepts all panel widgets open in the stack in turn until until only the mainPanel()
+     * Accepts all panel widgets open in the stack in turn until only the mainPanel()
      * remains.
-     * \see acceptCurrentPanel();
-     * \since QGIS 3.0
+     * \see acceptCurrentPanel()
      */
     void acceptAllPanels();
 
@@ -124,7 +127,6 @@ class GUI_EXPORT QgsPanelWidgetStack : public QWidget, private Ui::QgsRendererWi
     void closePanel( QgsPanelWidget *panel );
 
   protected:
-
     void mouseReleaseEvent( QMouseEvent *e ) override;
     void keyPressEvent( QKeyEvent *e ) override;
 

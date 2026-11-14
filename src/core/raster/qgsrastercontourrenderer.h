@@ -23,7 +23,7 @@ class QgsLineSymbol;
 
 /**
  * \ingroup core
- * Raster renderer that generates contours on the fly for a source raster band.
+ * \brief Raster renderer that generates contours on the fly for a source raster band.
  *
  * \since QGIS 3.14
  */
@@ -40,9 +40,10 @@ class CORE_EXPORT QgsRasterContourRenderer : public QgsRasterRenderer
     const QgsRasterContourRenderer &operator=( const QgsRasterContourRenderer & ) = delete;
 
     QgsRasterContourRenderer *clone() const override SIP_FACTORY;
+    Qgis::RasterRendererFlags flags() const override;
 
     //! Creates an instance of the renderer based on definition from XML (used by renderer registry)
-    static QgsRasterRenderer *create( const QDomElement &elem, QgsRasterInterface *input ) SIP_FACTORY;
+    static std::unique_ptr<QgsRasterRenderer> create( const QDomElement &elem, QgsRasterInterface *input );
 
     void writeXml( QDomDocument &doc, QDomElement &parentElem ) const override;
 
@@ -50,13 +51,8 @@ class CORE_EXPORT QgsRasterContourRenderer : public QgsRasterRenderer
 
     QList<int> usesBands() const override;
     QList<QgsLayerTreeModelLegendNode *> createLegendNodes( QgsLayerTreeLayer *nodeLayer ) SIP_FACTORY override;
-
-    //
-
-    //! Returns the number of the input raster band
-    int inputBand() const { return mInputBand; }
-    //! Sets the number of the input raster band
-    void setInputBand( int band ) { mInputBand = band; }
+    int inputBand() const override;
+    bool setInputBand( int band ) override;
 
     //! Returns the interval of contour lines generation
     double contourInterval() const { return mContourInterval; }
@@ -93,14 +89,13 @@ class CORE_EXPORT QgsRasterContourRenderer : public QgsRasterRenderer
     void setDownscale( double scale ) { mDownscale = scale; }
 
   private:
-
 #ifdef SIP_RUN
     QgsRasterContourRenderer( const QgsRasterContourRenderer & );
     const QgsRasterContourRenderer &operator=( const QgsRasterContourRenderer & );
 #endif
 
-    std::unique_ptr<QgsLineSymbol> mContourSymbol;   // should not be null
-    std::unique_ptr<QgsLineSymbol> mContourIndexSymbol;  // may be null
+    std::unique_ptr<QgsLineSymbol> mContourSymbol;      // should not be null
+    std::unique_ptr<QgsLineSymbol> mContourIndexSymbol; // may be null
     double mDownscale = 8.;
     double mContourInterval = 100.;
     double mContourIndexInterval = 0.;

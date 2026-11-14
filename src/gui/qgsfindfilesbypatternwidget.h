@@ -17,6 +17,7 @@
 #define QGSFINDFILESBYPATTERNWIDGET_H
 
 #include "ui_qgsfindfilesbypatternwidget.h"
+
 #include "qgis_gui.h"
 
 #include <QDialog>
@@ -26,7 +27,7 @@ class QDialogButtonBox;
 /**
  * \class QgsFindFilesByPatternWidget
  * \ingroup gui
- * A reusable widget for finding files (recursively) by file pattern.
+ * \brief A reusable widget for finding files (recursively) by file pattern.
  * \since QGIS 3.8
  */
 class GUI_EXPORT QgsFindFilesByPatternWidget : public QWidget, private Ui::QgsFindFilesByPatternWidgetBase
@@ -34,7 +35,6 @@ class GUI_EXPORT QgsFindFilesByPatternWidget : public QWidget, private Ui::QgsFi
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsFindFilesByPatternWidget, with the specified \a parent widget.
      */
@@ -65,7 +65,6 @@ class GUI_EXPORT QgsFindFilesByPatternWidget : public QWidget, private Ui::QgsFi
     void cancel();
 
   private:
-
     bool mCanceled = false;
     QStringList mFiles;
 };
@@ -73,7 +72,7 @@ class GUI_EXPORT QgsFindFilesByPatternWidget : public QWidget, private Ui::QgsFi
 /**
  * \class QgsFindFilesByPatternDialog
  * \ingroup gui
- * A dialog for finding files (recursively) by file pattern.
+ * \brief A dialog for finding files (recursively) by file pattern.
  * \since QGIS 3.8
  */
 class GUI_EXPORT QgsFindFilesByPatternDialog : public QDialog
@@ -81,7 +80,6 @@ class GUI_EXPORT QgsFindFilesByPatternDialog : public QDialog
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsFindFilesByPatternDialog, with the specified \a parent widget.
      */
@@ -94,10 +92,8 @@ class GUI_EXPORT QgsFindFilesByPatternDialog : public QDialog
     QStringList files() const;
 
   private:
-
     QgsFindFilesByPatternWidget *mWidget = nullptr;
     QDialogButtonBox *mButtonBox = nullptr;
-
 };
 
 #endif // QGSFINDFILESBYPATTERNWIDGET_H

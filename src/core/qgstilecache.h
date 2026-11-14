@@ -17,13 +17,15 @@
 #define QGSTILECACHE_H
 
 #include "qgis_core.h"
+
 #include <QCache>
 #include <QMutex>
+
+#define SIP_NO_FILE
 
 class QImage;
 class QUrl;
 
-#define SIP_NO_FILE
 
 /**
  * A simple tile cache implementation. Tiles are cached according to their URL.
@@ -40,7 +42,6 @@ class QUrl;
 class CORE_EXPORT QgsTileCache
 {
   public:
-
     //! Add a tile image with given URL to the cache
     static void insertTile( const QUrl &url, const QImage &image );
 
@@ -51,9 +52,9 @@ class CORE_EXPORT QgsTileCache
     static bool tile( const QUrl &url, QImage &image );
 
     //! how many tiles are stored in the in-memory cache
-    static int totalCost() { QMutexLocker locker( &sTileCacheMutex ); return sTileCache.totalCost(); }
+    static int totalCost();
     //! how many tiles can be stored in the in-memory cache
-    static int maxCost() { QMutexLocker locker( &sTileCacheMutex ); return sTileCache.maxCost(); }
+    static int maxCost();
 
   private:
     //! in-memory cache

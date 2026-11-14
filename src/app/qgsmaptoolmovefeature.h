@@ -16,23 +16,24 @@
 #ifndef QGSMAPTOOLMOVEFEATURE_H
 #define QGSMAPTOOLMOVEFEATURE_H
 
-#include "qgsmaptooladvanceddigitizing.h"
 #include "qgis_app.h"
-#include "qgspointxy.h"
 #include "qgsfeatureid.h"
+#include "qgsgeometry.h"
+#include "qgsmaptooladvanceddigitizing.h"
+#include "qgspointxy.h"
 
 class QgsSnapIndicator;
 
 //! Map tool for translating feature position by mouse drag
-class APP_EXPORT QgsMapToolMoveFeature: public QgsMapToolAdvancedDigitizing
+class APP_EXPORT QgsMapToolMoveFeature : public QgsMapToolAdvancedDigitizing
 {
     Q_OBJECT
   public:
     //! Mode for moving features
     enum MoveMode
     {
-      Move, //!< Move feature
-      CopyMove  //!< Copy and move feature
+      Move,    //!< Move feature
+      CopyMove //!< Copy and move feature
     };
 
     QgsMapToolMoveFeature( QgsMapCanvas *canvas, MoveMode mode = Move );
@@ -48,6 +49,8 @@ class APP_EXPORT QgsMapToolMoveFeature: public QgsMapToolAdvancedDigitizing
     void keyReleaseEvent( QKeyEvent *e ) override;
 
   private:
+    void deleteRubberband();
+
     //! Start point of the move in map coordinates
     QgsPointXY mStartPointMapCoords;
 
@@ -57,13 +60,15 @@ class APP_EXPORT QgsMapToolMoveFeature: public QgsMapToolAdvancedDigitizing
     //! Snapping indicators
     std::unique_ptr<QgsSnapIndicator> mSnapIndicator;
 
-    //! Id of moved feature
+    //! Id of moved features
     QgsFeatureIds mMovedFeatures;
 
     QPoint mPressPos;
 
     MoveMode mMode;
 
+    // MultiGeometry of the moved features
+    QgsGeometry mGeom;
 };
 
 #endif

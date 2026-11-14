@@ -20,16 +20,16 @@
 
 #include "qgis.h"
 #include "qgis_core.h"
+#include "qgspointcloudattribute.h"
+
+#include <QByteArray>
 #include <QPair>
 #include <QString>
 #include <QVector>
-#include <QByteArray>
-
-#include "qgspointcloudattribute.h"
 
 /**
  * \ingroup core
- * Base class for storing raw data from point cloud nodes
+ * \brief Base class for storing raw data from point cloud nodes.
  *
  * \note The API is considered EXPERIMENTAL and can be changed without a notice
  *
@@ -39,11 +39,16 @@ class CORE_EXPORT QgsPointCloudBlock
 {
   public:
     //! Ctor
-    QgsPointCloudBlock( int count,
-                        const QgsPointCloudAttributeCollection &attributes,
-                        const QByteArray &data );
-    //! Dtor
-    ~QgsPointCloudBlock();
+    QgsPointCloudBlock( int count, const QgsPointCloudAttributeCollection &attributes, const QByteArray &data, const QgsVector3D &scale, const QgsVector3D &offset );
+
+    virtual ~QgsPointCloudBlock() = default;
+
+    /**
+     * Clones the QgsPointCloudBlock returning a new copy.
+     * Caller takes ownership of the returned object.
+     * \since QGIS 3.36
+     */
+    std::unique_ptr<QgsPointCloudBlock> clone() const;
 
     //! Returns raw pointer to data
     const char *data() const;
@@ -51,13 +56,40 @@ class CORE_EXPORT QgsPointCloudBlock
     //! Returns number of points that are stored in the block
     int pointCount() const;
 
+    /**
+     * Returns the total size of each individual point record.
+     *
+     * \since QGIS 3.26
+     */
+    int pointRecordSize() const { return mRecordSize; }
+
     //! Returns the attributes that are stored in the data block, along with their size
     QgsPointCloudAttributeCollection attributes() const;
 
+    //! Returns the custom scale of the block.
+    QgsVector3D scale() const;
+
+    //! Returns the custom offset of the block.
+    QgsVector3D offset() const;
+
+    /**
+     * Changes the number of points in the block.
+     *
+     * This is used in order to remove all points after point \a size.
+     *
+     * If a \a size larger than pointCount() is used, data for the new points will be uninitialized.
+     *
+     * \since QGIS 3.26
+     */
+    void setPointCount( int size );
+
   private:
-    int mPointCount;
+    int mPointCount = 0;
     QgsPointCloudAttributeCollection mAttributes;
+    int mRecordSize = 0;
     QByteArray mStorage;
+    QgsVector3D mScale, mOffset;
 };
+
 
 #endif // QGSPOINTCLOUDBLOCK_H

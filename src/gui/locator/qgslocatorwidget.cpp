@@ -15,21 +15,32 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgslocatorwidget.h"
+
+#include "qgsapplication.h"
+#include "qgsfilterlineedit.h"
+#include "qgsguiutils.h"
 #include "qgslocator.h"
 #include "qgslocatormodel.h"
-#include "qgslocatorwidget.h"
 #include "qgslocatormodelbridge.h"
-#include "qgsfilterlineedit.h"
-#include "qgsmapcanvas.h"
-#include "qgsapplication.h"
 #include "qgslogger.h"
-#include "qgsguiutils.h"
+#include "qgsmapcanvas.h"
 
-#include <QLayout>
 #include <QCompleter>
+#include <QLayout>
 #include <QMenu>
+#include <QString>
 #include <QTextLayout>
 #include <QTextLine>
+
+#include "moc_qgslocatorwidget.cpp"
+
+using namespace Qt::StringLiterals;
+
+///@cond PRIVATE
+const QgsSettingsEntryInteger *QgsLocatorWidget::settingLocatorTreeHeight
+  = new QgsSettingsEntryInteger( u"tree-height"_s, sTreeGuiLocator, 20, u"Number of rows to show in the locator tree (requires a restart)"_s, Qgis::SettingsOptions(), 5 /*min*/, 100 /*max*/ );
+///@endcond PRIVATE
 
 QgsLocatorWidget::QgsLocatorWidget( QWidget *parent )
   : QWidget( parent )
@@ -37,15 +48,16 @@ QgsLocatorWidget::QgsLocatorWidget( QWidget *parent )
   , mLineEdit( new QgsLocatorLineEdit( this ) )
   , mResultsView( new QgsLocatorResultsView() )
 {
+  setObjectName( u"LocatorWidget"_s );
   mLineEdit->setShowClearButton( true );
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
   mLineEdit->setPlaceholderText( tr( "Type to locate (⌘K)" ) );
 #else
   mLineEdit->setPlaceholderText( tr( "Type to locate (Ctrl+K)" ) );
 #endif
 
   int placeholderMinWidth = mLineEdit->fontMetrics().boundingRect( mLineEdit->placeholderText() ).width();
-  int minWidth = std::max( 200, static_cast< int >( placeholderMinWidth * 1.8 ) );
+  int minWidth = std::max( 200, static_cast<int>( placeholderMinWidth * 1.8 ) );
   resize( minWidth, 30 );
   QSizePolicy sizePolicy( QSizePolicy::MinimumExpanding, QSizePolicy::Preferred );
   sizePolicy.setHorizontalStretch( 0 );
@@ -82,11 +94,12 @@ QgsLocatorWidget::QgsLocatorWidget( QWidget *parent )
 
   connect( mLineEdit, &QLineEdit::textChanged, this, &QgsLocatorWidget::scheduleDelayedPopup );
   connect( mResultsView, &QAbstractItemView::activated, this, &QgsLocatorWidget::acceptCurrentEntry );
+  connect( mResultsView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsLocatorWidget::selectionChanged );
   connect( mResultsView, &QAbstractItemView::customContextMenuRequested, this, &QgsLocatorWidget::showContextMenu );
 
   connect( mModelBridge, &QgsLocatorModelBridge::resultAdded, this, &QgsLocatorWidget::resultAdded );
-  connect( mModelBridge, &QgsLocatorModelBridge::isRunningChanged, this, [ = ]() {mLineEdit->setShowSpinner( mModelBridge->isRunning() );} );
-  connect( mModelBridge, &QgsLocatorModelBridge::resultsCleared, this, [ = ]() {mHasSelectedResult = false;} );
+  connect( mModelBridge, &QgsLocatorModelBridge::isRunningChanged, this, [this]() { mLineEdit->setShowSpinner( mModelBridge->isRunning() ); } );
+  connect( mModelBridge, &QgsLocatorModelBridge::resultsCleared, this, [this]() { mHasSelectedResult = false; } );
 
   // have a tiny delay between typing text in line edit and showing the window
   mPopupTimer.setInterval( 100 );
@@ -105,9 +118,8 @@ QgsLocatorWidget::QgsLocatorWidget( QWidget *parent )
   mModelBridge->locator()->registerFilter( new QgsLocatorFilterFilter( this, this ) );
 
   mMenu = new QMenu( this );
-  QAction *menuAction = mLineEdit->addAction( QgsApplication::getThemeIcon( QStringLiteral( "/search.svg" ) ), QLineEdit::LeadingPosition );
-  connect( menuAction, &QAction::triggered, this, [ = ]
-  {
+  QAction *menuAction = mLineEdit->addAction( QgsApplication::getThemeIcon( u"/search.svg"_s ), QLineEdit::LeadingPosition );
+  connect( menuAction, &QAction::triggered, this, [this] {
     mFocusTimer.stop();
     mResultsContainer->hide();
     mMenu->exec( QCursor::pos() );
@@ -115,11 +127,7 @@ QgsLocatorWidget::QgsLocatorWidget( QWidget *parent )
   connect( mMenu, &QMenu::aboutToShow, this, &QgsLocatorWidget::configMenuAboutToShow );
 
   mModelBridge->setTransformContext( QgsProject::instance()->transformContext() );
-  connect( QgsProject::instance(), &QgsProject::transformContextChanged,
-           this, [ = ]
-  {
-    mModelBridge->setTransformContext( QgsProject::instance()->transformContext() );
-  } );
+  connect( QgsProject::instance(), &QgsProject::transformContextChanged, this, [this] { mModelBridge->setTransformContext( QgsProject::instance()->transformContext() ); } );
 }
 
 QgsLocator *QgsLocatorWidget::locator()
@@ -132,7 +140,7 @@ void QgsLocatorWidget::setMapCanvas( QgsMapCanvas *canvas )
   if ( mMapCanvas == canvas )
     return;
 
-  for ( const QMetaObject::Connection &conn : qgis::as_const( mCanvasConnections ) )
+  for ( const QMetaObject::Connection &conn : std::as_const( mCanvasConnections ) )
   {
     disconnect( conn );
   }
@@ -143,10 +151,21 @@ void QgsLocatorWidget::setMapCanvas( QgsMapCanvas *canvas )
   {
     mModelBridge->updateCanvasExtent( mMapCanvas->mapSettings().visibleExtent() );
     mModelBridge->updateCanvasCrs( mMapCanvas->mapSettings().destinationCrs() );
-    mCanvasConnections
-    << connect( mMapCanvas, &QgsMapCanvas::extentsChanged, this, [ = ]() {mModelBridge->updateCanvasExtent( mMapCanvas->mapSettings().visibleExtent() );} )
-    << connect( mMapCanvas, &QgsMapCanvas::destinationCrsChanged, this, [ = ]() {mModelBridge->updateCanvasCrs( mMapCanvas->mapSettings().destinationCrs() );} ) ;
+    mCanvasConnections << connect( mMapCanvas, &QgsMapCanvas::extentsChanged, this, [this]() {
+      mModelBridge->updateCanvasExtent( mMapCanvas->mapSettings().visibleExtent() );
+    } ) << connect( mMapCanvas, &QgsMapCanvas::destinationCrsChanged, this, [this]() { mModelBridge->updateCanvasCrs( mMapCanvas->mapSettings().destinationCrs() ); } );
   }
+}
+
+void QgsLocatorWidget::setPlaceholderText( const QString &text )
+{
+  mLineEdit->setPlaceholderText( text );
+}
+
+void QgsLocatorWidget::setResultContainerAnchors( QgsFloatingWidget::AnchorPoint anchorPoint, QgsFloatingWidget::AnchorPoint anchorWidgetPoint )
+{
+  mResultsContainer->setAnchorPoint( anchorPoint );
+  mResultsContainer->setAnchorWidgetPoint( anchorWidgetPoint );
 }
 
 void QgsLocatorWidget::search( const QString &string )
@@ -200,14 +219,14 @@ void QgsLocatorWidget::showContextMenu( const QPoint &point )
   if ( !index.isValid() )
     return;
 
-  const QList<QgsLocatorResult::ResultAction> actions = mResultsView->model()->data( index, QgsLocatorModel::ResultActionsRole ).value<QList<QgsLocatorResult::ResultAction>>();
+  const QList<QgsLocatorResult::ResultAction> actions = mResultsView->model()->data( index, static_cast<int>( QgsLocatorModel::CustomRole::ResultActions ) ).value<QList<QgsLocatorResult::ResultAction>>();
   QMenu *contextMenu = new QMenu( mResultsView );
   for ( auto resultAction : actions )
   {
     QAction *menuAction = new QAction( resultAction.text, contextMenu );
     if ( !resultAction.iconPath.isEmpty() )
       menuAction->setIcon( QIcon( resultAction.iconPath ) );
-    connect( menuAction, &QAction::triggered, this, [ = ]() {mModelBridge->triggerResult( index, resultAction.id );} );
+    connect( menuAction, &QAction::triggered, this, [this, index, resultAction]() { mModelBridge->triggerResult( index, resultAction.id ); } );
     contextMenu->addAction( menuAction );
   }
   contextMenu->exec( mResultsView->viewport()->mapToGlobal( point ) );
@@ -313,8 +332,7 @@ void QgsLocatorWidget::configMenuAboutToShow()
       continue;
 
     QAction *action = new QAction( filter->displayName(), mMenu );
-    connect( action, &QAction::triggered, this, [ = ]
-    {
+    connect( action, &QAction::triggered, this, [this, filter] {
       QString currentText = mLineEdit->text();
       if ( currentText.isEmpty() )
         currentText = tr( "<type here>" );
@@ -361,6 +379,14 @@ void QgsLocatorWidget::acceptCurrentEntry()
   }
 }
 
+void QgsLocatorWidget::selectionChanged( const QItemSelection &selected, const QItemSelection &deselected )
+{
+  if ( !mResultsView->isVisible() )
+    return;
+
+  mModelBridge->selectionChanged( selected, deselected );
+}
+
 ///@cond PRIVATE
 
 //
@@ -378,8 +404,11 @@ QgsLocatorResultsView::QgsLocatorResultsView( QWidget *parent )
 
 void QgsLocatorResultsView::recalculateSize()
 {
+  QStyleOptionViewItem optView;
+  optView.initFrom( this );
+
   // try to show about 20 rows
-  int rowSize = 20 * itemDelegate()->sizeHint( viewOptions(), model()->index( 0, 0 ) ).height();
+  int rowSize = QgsLocatorWidget::settingLocatorTreeHeight->value() * itemDelegate()->sizeHint( optView, model()->index( 0, 0 ) ).height();
 
   // try to take up a sensible portion of window width (about half)
   int width = std::max( 300, window()->size().width() / 2 );
@@ -394,16 +423,24 @@ void QgsLocatorResultsView::recalculateSize()
 
 void QgsLocatorResultsView::selectNextResult()
 {
+  const int rowCount = model()->rowCount( QModelIndex() );
+  if ( rowCount == 0 )
+    return;
+
   int nextRow = currentIndex().row() + 1;
-  nextRow = nextRow % model()->rowCount( QModelIndex() );
+  nextRow = nextRow % rowCount;
   setCurrentIndex( model()->index( nextRow, 0 ) );
 }
 
 void QgsLocatorResultsView::selectPreviousResult()
 {
+  const int rowCount = model()->rowCount( QModelIndex() );
+  if ( rowCount == 0 )
+    return;
+
   int previousRow = currentIndex().row() - 1;
   if ( previousRow < 0 )
-    previousRow = model()->rowCount( QModelIndex() ) - 1;
+    previousRow = rowCount - 1;
   setCurrentIndex( model()->index( previousRow, 0 ) );
 }
 
@@ -445,15 +482,15 @@ void QgsLocatorFilterFilter::fetchResults( const QString &string, const QgsLocat
     QgsLocatorResult result;
     result.displayString = filter->activePrefix();
     result.description = filter->displayName();
-    result.userData = QString( filter->activePrefix() + ' ' );
-    result.icon = QgsApplication::getThemeIcon( QStringLiteral( "/search.svg" ) );
+    result.setUserData( QString( filter->activePrefix() + ' ' ) );
+    result.icon = QgsApplication::getThemeIcon( u"/search.svg"_s );
     emit resultFetched( result );
   }
 }
 
 void QgsLocatorFilterFilter::triggerResult( const QgsLocatorResult &result )
 {
-  mLocator->search( result.userData.toString() );
+  mLocator->search( result.userData().toString() );
 }
 
 QgsLocatorLineEdit::QgsLocatorLineEdit( QgsLocatorWidget *locator, QWidget *parent )

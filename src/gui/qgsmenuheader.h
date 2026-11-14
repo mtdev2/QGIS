@@ -17,24 +17,23 @@
 #ifndef QGSMENUHEADER_H
 #define QGSMENUHEADER_H
 
-#include <QWidget>
-#include <QWidgetAction>
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+
+#include <QWidget>
+#include <QWidgetAction>
 
 /**
  * \ingroup gui
  * \class QgsMenuHeader
- * Custom widget for displaying subheaders within a QMenu in a standard style.
+ * \brief Custom widget for displaying subheaders within a QMenu in a standard style.
  * \see QgsMenuHeaderWidgetAction()
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsMenuHeader : public QWidget
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsMenuHeader, showing the specified \a text.
      */
@@ -44,7 +43,6 @@ class GUI_EXPORT QgsMenuHeader : public QWidget
     QSize sizeHint() const override;
 
   protected:
-
     void paintEvent( QPaintEvent *event ) override;
 
   private:
@@ -52,27 +50,23 @@ class GUI_EXPORT QgsMenuHeader : public QWidget
     QString mText;
     int mTextHeight = 0;
     int mLabelMargin = 0;
-
 };
 
 /**
  * \ingroup gui
  * \class QgsMenuHeaderWidgetAction
- * Custom QWidgetAction for displaying subheaders within a QMenu in a standard style.
+ * \brief Custom QWidgetAction for displaying subheaders within a QMenu in a standard style.
  * \see QgsMenuHeader()
- * \since QGIS 3.0
  */
-class GUI_EXPORT QgsMenuHeaderWidgetAction: public QWidgetAction
+class GUI_EXPORT QgsMenuHeaderWidgetAction : public QWidgetAction
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsMenuHeaderWidgetAction, showing the specified \a text.
      */
     QgsMenuHeaderWidgetAction( const QString &text, QObject *parent = nullptr );
-
 };
 
 #endif //QGSMENUHEADER_H

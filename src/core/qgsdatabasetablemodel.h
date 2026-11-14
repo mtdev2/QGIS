@@ -16,13 +16,14 @@
 #ifndef QGSDATABASETABLEMODEL_H
 #define QGSDATABASETABLEMODEL_H
 
-#include <QAbstractItemModel>
-#include <QSortFilterProxyModel>
-#include "qgsabstractdatabaseproviderconnection.h"
 #include <memory>
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgsabstractdatabaseproviderconnection.h"
+
+#include <QAbstractItemModel>
+#include <QSortFilterProxyModel>
 
 /**
  * \ingroup core
@@ -41,19 +42,27 @@ class CORE_EXPORT QgsDatabaseTableModel : public QAbstractItemModel
     Q_OBJECT
 
   public:
+    // *INDENT-OFF*
 
-    //! Model roles
-    enum Role
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsDatabaseTableModel::Role
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsDatabaseTableModel, Role ) : int
     {
-      RoleTableName = Qt::UserRole, //!< Table name
-      RoleSchema, //!< Table schema
-      RoleTableFlags, //!< Table flags role
-      RoleComment, //!< Comment role
-      RoleCustomInfo, //!< Custom info variant map role
-      RoleWkbType, //!< WKB type for primary (first) geometry column in table
-      RoleCrs, //!< CRS for primary (first) geometry column in table
-      RoleEmpty, //!< Entry is an empty entry
+      TableName SIP_MONKEYPATCH_COMPAT_NAME( RoleTableName ) = Qt::UserRole, //!< Table name
+      Schema SIP_MONKEYPATCH_COMPAT_NAME( RoleSchema ),                      //!< Table schema
+      TableFlags SIP_MONKEYPATCH_COMPAT_NAME( RoleTableFlags ),              //!< Table flags role
+      Comment SIP_MONKEYPATCH_COMPAT_NAME( RoleComment ),                    //!< Comment role
+      CustomInfo SIP_MONKEYPATCH_COMPAT_NAME( RoleCustomInfo ),              //!< Custom info variant map role
+      WkbType SIP_MONKEYPATCH_COMPAT_NAME( RoleWkbType ),                    //!< WKB type for primary (first) geometry column in table
+      Crs SIP_MONKEYPATCH_COMPAT_NAME( RoleCrs ),                            //!< CRS for primary (first) geometry column in table
+      Empty SIP_MONKEYPATCH_COMPAT_NAME( RoleEmpty ),                        //!< Entry is an empty entry
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsDatabaseTableModel, for the specified \a provider and \a connection name.

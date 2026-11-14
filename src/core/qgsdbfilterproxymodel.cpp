@@ -17,10 +17,11 @@
 
 #include "qgsdbfilterproxymodel.h"
 
-QgsDatabaseFilterProxyModel::QgsDatabaseFilterProxyModel( QObject *parent ): QSortFilterProxyModel( parent )
-{
+#include "moc_qgsdbfilterproxymodel.cpp"
 
-}
+QgsDatabaseFilterProxyModel::QgsDatabaseFilterProxyModel( QObject *parent )
+  : QSortFilterProxyModel( parent )
+{}
 
 bool QgsDatabaseFilterProxyModel::filterAcceptsRow( int row, const QModelIndex &source_parent ) const
 {
@@ -43,6 +44,6 @@ void QgsDatabaseFilterProxyModel::_setFilterWildcard( const QString &pattern )
 
 void QgsDatabaseFilterProxyModel::_setFilterRegExp( const QString &pattern )
 {
-  QSortFilterProxyModel::setFilterRegExp( pattern );
+  QSortFilterProxyModel::setFilterRegularExpression( pattern );
   emit layoutChanged();
 }

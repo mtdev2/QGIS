@@ -16,60 +16,40 @@
  ***************************************************************************/
 
 #include "qgslayoutobject.h"
-#include "qgslayout.h"
-#include "qgstest.h"
+#include "qgsprintlayout.h"
 #include "qgsproject.h"
 #include "qgsreadwritecontext.h"
-#include "qgsprintlayout.h"
+#include "qgstest.h"
 
-class TestQgsLayoutObject: public QObject
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+class TestQgsLayoutObject : public QgsTest
 {
     Q_OBJECT
 
+  public:
+    TestQgsLayoutObject()
+      : QgsTest( u"Layout Object Tests"_s )
+    {}
+
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void cleanupTestCase();
+
     void creation(); //test creation of QgsLayoutObject
-    void layout(); //test fetching layout from QgsLayoutObject
+    void layout();   //test fetching layout from QgsLayoutObject
     void customProperties();
     void context();
     void writeReadXml();
-    void writeRetrieveDDProperty(); //test writing and retrieving dd properties from xml
+    void writeRetrieveDDProperty();       //test writing and retrieving dd properties from xml
     void writeRetrieveCustomProperties(); //test writing/retrieving custom properties from xml
-
-
-  private:
-    QString mReport;
-
 };
 
-void TestQgsLayoutObject::initTestCase()
-{
-  mReport = QStringLiteral( "<h1>Layout Object Tests</h1>\n" );
-}
 
 void TestQgsLayoutObject::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + QDir::separator() + "qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
-}
-
-void TestQgsLayoutObject::init()
-{
-
-}
-
-void TestQgsLayoutObject::cleanup()
-{
-
+  QgsApplication::exitQgis();
 }
 
 void TestQgsLayoutObject::creation()
@@ -100,21 +80,21 @@ void TestQgsLayoutObject::customProperties()
 
   QCOMPARE( object->customProperty( "noprop", "defaultval" ).toString(), QString( "defaultval" ) );
   QVERIFY( object->customProperties().isEmpty() );
-  object->setCustomProperty( QStringLiteral( "testprop" ), "testval" );
+  object->setCustomProperty( u"testprop"_s, "testval" );
   QCOMPARE( object->customProperty( "testprop", "defaultval" ).toString(), QString( "testval" ) );
   QCOMPARE( object->customProperties().length(), 1 );
   QCOMPARE( object->customProperties().at( 0 ), QString( "testprop" ) );
 
   //test no crash
-  object->removeCustomProperty( QStringLiteral( "badprop" ) );
+  object->removeCustomProperty( u"badprop"_s );
 
-  object->removeCustomProperty( QStringLiteral( "testprop" ) );
+  object->removeCustomProperty( u"testprop"_s );
   QVERIFY( object->customProperties().isEmpty() );
   QCOMPARE( object->customProperty( "noprop", "defaultval" ).toString(), QString( "defaultval" ) );
 
-  object->setCustomProperty( QStringLiteral( "testprop1" ), "testval1" );
-  object->setCustomProperty( QStringLiteral( "testprop2" ), "testval2" );
-  QStringList keys = object->customProperties();
+  object->setCustomProperty( u"testprop1"_s, "testval1" );
+  object->setCustomProperty( u"testprop2"_s, "testval2" );
+  const QStringList keys = object->customProperties();
   QCOMPARE( keys.length(), 2 );
   QVERIFY( keys.contains( "testprop1" ) );
   QVERIFY( keys.contains( "testprop2" ) );
@@ -126,9 +106,9 @@ void TestQgsLayoutObject::customProperties()
 void TestQgsLayoutObject::context()
 {
   QgsProject p;
-  p.setTitle( QStringLiteral( "my title" ) );
+  p.setTitle( u"my title"_s );
   QgsPrintLayout l( &p );
-  l.setName( QStringLiteral( "my layout" ) );
+  l.setName( u"my layout"_s );
 
   QgsLayoutObject *object = new QgsLayoutObject( nullptr );
   // no crash
@@ -138,9 +118,9 @@ void TestQgsLayoutObject::context()
   object = new QgsLayoutObject( &l );
   c = object->createExpressionContext();
   // should contain project variables
-  QCOMPARE( c.variable( "project_title" ).toString(), QStringLiteral( "my title" ) );
+  QCOMPARE( c.variable( "project_title" ).toString(), u"my title"_s );
   // and layout variables
-  QCOMPARE( c.variable( "layout_name" ).toString(), QStringLiteral( "my layout" ) );
+  QCOMPARE( c.variable( "layout_name" ).toString(), u"my layout"_s );
   delete object;
 }
 
@@ -151,23 +131,21 @@ void TestQgsLayoutObject::writeReadXml()
 
   QgsLayoutObject *object = new QgsLayoutObject( &l );
   QDomImplementation DomImplementation;
-  QDomDocumentType documentType =
-    DomImplementation.createDocumentType(
-      QStringLiteral( "qgis" ), QStringLiteral( "http://mrcc.com/qgis.dtd" ), QStringLiteral( "SYSTEM" ) );
+  const QDomDocumentType documentType = DomImplementation.createDocumentType( u"qgis"_s, u"http://mrcc.com/qgis.dtd"_s, u"SYSTEM"_s );
   QDomDocument doc( documentType );
 
   //test writing with no parent node
-  QDomElement rootNode = doc.createElement( QStringLiteral( "qgis" ) );
+  QDomElement rootNode = doc.createElement( u"qgis"_s );
   QDomElement noNode;
   QCOMPARE( object->writeObjectPropertiesToElement( noNode, doc, QgsReadWriteContext() ), false );
 
   //test writing with node
-  QDomElement layoutObjectElem = doc.createElement( QStringLiteral( "item" ) );
+  QDomElement layoutObjectElem = doc.createElement( u"item"_s );
   rootNode.appendChild( layoutObjectElem );
   QVERIFY( object->writeObjectPropertiesToElement( layoutObjectElem, doc, QgsReadWriteContext() ) );
 
   //check if object node was written
-  QDomNodeList evalNodeList = rootNode.elementsByTagName( QStringLiteral( "LayoutObject" ) );
+  const QDomNodeList evalNodeList = rootNode.elementsByTagName( u"LayoutObject"_s );
   QCOMPARE( evalNodeList.count(), 1 );
 
   //test reading node
@@ -177,7 +155,7 @@ void TestQgsLayoutObject::writeReadXml()
   QCOMPARE( readObject->readObjectPropertiesFromElement( noNode, doc, QgsReadWriteContext() ), false );
 
   //test node with no layout object child
-  QDomElement badLayoutObjectElem = doc.createElement( QStringLiteral( "item" ) );
+  const QDomElement badLayoutObjectElem = doc.createElement( u"item"_s );
   rootNode.appendChild( badLayoutObjectElem );
   QCOMPARE( readObject->readObjectPropertiesFromElement( badLayoutObjectElem, doc, QgsReadWriteContext() ), false );
 
@@ -194,19 +172,17 @@ void TestQgsLayoutObject::writeRetrieveDDProperty()
   QgsLayout l( &p );
 
   QgsLayoutObject *object = new QgsLayoutObject( &l );
-  object->dataDefinedProperties().setProperty( QgsLayoutObject::TestProperty, QgsProperty::fromExpression( QStringLiteral( "10 + 40" ) ) );
+  object->dataDefinedProperties().setProperty( QgsLayoutObject::DataDefinedProperty::TestProperty, QgsProperty::fromExpression( u"10 + 40"_s ) );
 
   //test writing object with dd settings
   QDomImplementation DomImplementation;
-  QDomDocumentType documentType =
-    DomImplementation.createDocumentType(
-      QStringLiteral( "qgis" ), QStringLiteral( "http://mrcc.com/qgis.dtd" ), QStringLiteral( "SYSTEM" ) );
+  const QDomDocumentType documentType = DomImplementation.createDocumentType( u"qgis"_s, u"http://mrcc.com/qgis.dtd"_s, u"SYSTEM"_s );
   QDomDocument doc( documentType );
-  QDomElement rootNode = doc.createElement( QStringLiteral( "qgis" ) );
+  QDomElement rootNode = doc.createElement( u"qgis"_s );
   QVERIFY( object->writeObjectPropertiesToElement( rootNode, doc, QgsReadWriteContext() ) );
 
   //check if object node was written
-  QDomNodeList evalNodeList = rootNode.elementsByTagName( QStringLiteral( "LayoutObject" ) );
+  const QDomNodeList evalNodeList = rootNode.elementsByTagName( u"LayoutObject"_s );
   QCOMPARE( evalNodeList.count(), 1 );
 
   //test reading node containing dd settings
@@ -214,14 +190,14 @@ void TestQgsLayoutObject::writeRetrieveDDProperty()
   QVERIFY( readObject->readObjectPropertiesFromElement( rootNode, doc, QgsReadWriteContext() ) );
 
   //test getting not set dd from restored object
-  QgsProperty dd = readObject->dataDefinedProperties().property( QgsLayoutObject::BlendMode );
+  QgsProperty dd = readObject->dataDefinedProperties().property( QgsLayoutObject::DataDefinedProperty::BlendMode );
   QVERIFY( !dd );
 
   //test getting good property
-  dd = readObject->dataDefinedProperties().property( QgsLayoutObject::TestProperty );
+  dd = readObject->dataDefinedProperties().property( QgsLayoutObject::DataDefinedProperty::TestProperty );
   QVERIFY( dd );
   QVERIFY( dd.isActive() );
-  QCOMPARE( dd.propertyType(), QgsProperty::ExpressionBasedProperty );
+  QCOMPARE( dd.propertyType(), Qgis::PropertyType::Expression );
 
   delete object;
   delete readObject;
@@ -234,20 +210,18 @@ void TestQgsLayoutObject::writeRetrieveCustomProperties()
 
   QgsLayoutObject *object = new QgsLayoutObject( &l );
 
-  object->setCustomProperty( QStringLiteral( "testprop" ), "testval" );
-  object->setCustomProperty( QStringLiteral( "testprop2" ), 5 );
+  object->setCustomProperty( u"testprop"_s, "testval" );
+  object->setCustomProperty( u"testprop2"_s, 5 );
 
   //test writing object with custom properties
   QDomImplementation DomImplementation;
-  QDomDocumentType documentType =
-    DomImplementation.createDocumentType(
-      QStringLiteral( "qgis" ), QStringLiteral( "http://mrcc.com/qgis.dtd" ), QStringLiteral( "SYSTEM" ) );
+  const QDomDocumentType documentType = DomImplementation.createDocumentType( u"qgis"_s, u"http://mrcc.com/qgis.dtd"_s, u"SYSTEM"_s );
   QDomDocument doc( documentType );
-  QDomElement rootNode = doc.createElement( QStringLiteral( "qgis" ) );
+  QDomElement rootNode = doc.createElement( u"qgis"_s );
   QVERIFY( object->writeObjectPropertiesToElement( rootNode, doc, QgsReadWriteContext() ) );
 
   //check if object node was written
-  QDomNodeList evalNodeList = rootNode.elementsByTagName( QStringLiteral( "LayoutObject" ) );
+  const QDomNodeList evalNodeList = rootNode.elementsByTagName( u"LayoutObject"_s );
   QCOMPARE( evalNodeList.count(), 1 );
 
   //test reading node containing custom properties

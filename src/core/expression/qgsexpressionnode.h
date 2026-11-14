@@ -17,11 +17,11 @@
 #ifndef QGSEXPRESSIONNODE_H
 #define QGSEXPRESSIONNODE_H
 
+#include "qgis.h"
+
+#include <QCoreApplication>
 #include <QSet>
 #include <QVariant>
-#include <QCoreApplication>
-
-#include "qgis.h"
 
 class QgsExpression;
 class QgsExpressionContext;
@@ -29,11 +29,11 @@ class QgsExpressionContext;
 /**
  * \ingroup core
  *
- * Abstract base class for all nodes that can appear in an expression.
+ * \brief Abstract base class for all nodes that can appear in an expression.
  */
 class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
 {
-
+    // clang-format off
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     switch ( sipCpp->nodeType() )
@@ -59,40 +59,42 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
       case QgsExpressionNode::ntCondition:
         sipType = sipType_QgsExpressionNodeCondition;
         break;
+      case QgsExpressionNode::ntBetweenOperator:
+        sipType = sipType_QgsExpressionNodeBetweenOperator;
+        break;
       default:
         sipType = 0;
         break;
     }
-    SIP_END
+  SIP_END
 #endif
 
-    Q_DECLARE_TR_FUNCTIONS( QgsExpressionNode )
+  Q_DECLARE_TR_FUNCTIONS( QgsExpressionNode )
 
   public:
-
     //! Known node types.
     enum NodeType
     {
-      ntUnaryOperator, //!< \see QgsExpression::Node::NodeUnaryOperator
-      ntBinaryOperator, //!< \see QgsExpression::Node::NodeBinaryOperator
-      ntInOperator, //!< \see QgsExpression::Node::NodeInOperator
-      ntFunction,  //!< \see QgsExpression::Node::NodeFunction
-      ntLiteral, //!< \see QgsExpression::Node::NodeLiteral
-      ntColumnRef, //!< \see QgsExpression::Node::NodeColumnRef
-      ntCondition, //!< \see QgsExpression::Node::NodeCondition
-      ntIndexOperator, //!< Index operator
+      ntUnaryOperator,   //!< \see QgsExpression::Node::NodeUnaryOperator
+      ntBinaryOperator,  //!< \see QgsExpression::Node::NodeBinaryOperator
+      ntInOperator,      //!< \see QgsExpression::Node::NodeInOperator
+      ntFunction,        //!< \see QgsExpression::Node::NodeFunction
+      ntLiteral,         //!< \see QgsExpression::Node::NodeLiteral
+      ntColumnRef,       //!< \see QgsExpression::Node::NodeColumnRef
+      ntCondition,       //!< \see QgsExpression::Node::NodeCondition
+      ntIndexOperator,   //!< Index operator
+      ntBetweenOperator, //!< Between operator \since QGIS 3.26
     };
+    // clang-format on
 
 
     /**
-     * Named node
+     * \brief Named node
      * \ingroup core
-     * \since QGIS 2.16
      */
     struct NamedNode
     {
       public:
-
         /**
          * Constructor for NamedNode
          * \param name node name
@@ -111,7 +113,7 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
     };
 
     /**
-     * A list of expression nodes.
+     * \brief A list of expression nodes.
      * \ingroup core
      */
     class CORE_EXPORT NodeList
@@ -119,11 +121,14 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
       public:
         virtual ~NodeList();
         //! Takes ownership of the provided node
-        void append( QgsExpressionNode *node SIP_TRANSFER ) { mList.append( node ); mNameList.append( QString() ); }
+        void append( QgsExpressionNode *node SIP_TRANSFER )
+        {
+          mList.append( node );
+          mNameList.append( QString() );
+        }
 
         /**
          * Adds a named node. Takes ownership of the provided node.
-         * \since QGIS 2.16
         */
         void append( QgsExpressionNode::NamedNode *node SIP_TRANSFER );
 
@@ -133,8 +138,14 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
         int count() const { return mList.count(); }
 
         /**
+         * Reserves size for the node list.
+         *
+         * \since QGIS 3.34
+         */
+        void reserve( int size ) { mList.reserve( size ); }
+
+        /**
          * Returns TRUE if list contains any named nodes
-         * \since QGIS 2.16
          */
         bool hasNamedNodes() const { return mHasNamedNodes; }
 
@@ -146,18 +157,16 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
         /**
          * Gets the node at position i in the list.
          *
-         * \since QGIS 3.0
          */
         QgsExpressionNode *at( int i ) { return mList.at( i ); }
 
         /**
          * Returns a list of names for nodes. Unnamed nodes will be indicated by an empty string in the list.
-         * \since QGIS 2.16
          */
         QStringList names() const { return mNameList; }
 
         //! Creates a deep copy of this list. Ownership is transferred to the caller
-        QgsExpressionNode::NodeList *clone() const SIP_FACTORY;
+        std::unique_ptr<QgsExpressionNode::NodeList> clone() const;
 
         /**
          * Returns a string dump of the expression node.
@@ -199,7 +208,6 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      * This will return a cached value if it has been determined to be static
      * during the prepare() execution.
      *
-     * \since QGIS 2.12
      */
     QVariant eval( QgsExpression *parent, const QgsExpressionContext *context );
 
@@ -253,7 +261,7 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      * \note not available in Python bindings
      * \since QGIS 3.2
      */
-    virtual QList<const QgsExpressionNode *> nodes( ) const = 0; SIP_SKIP
+    virtual QList<const QgsExpressionNode *> nodes() const SIP_SKIP = 0;
 
     /**
      * Abstract virtual method which returns if the geometry is required to evaluate
@@ -271,7 +279,6 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      * be evaluated and the result cached (and therefore not re-evaluated in subsequent calls
      * to eval()). In case this returns TRUE, prepareNode() will never be called.
      *
-     * \since QGIS 3.0
      */
     virtual bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const = 0;
 
@@ -281,7 +288,6 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      * If it's not static it will call prepareNode() to allow the node to do initialization
      * work like for example resolving a column name to an attribute index.
      *
-     * \since QGIS 2.12
      */
     bool prepare( QgsExpression *parent, const QgsExpressionContext *context );
 
@@ -329,7 +335,47 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      */
     QVariant cachedStaticValue() const { return mCachedStaticValue; }
 
+    /**
+     * Sets the cached static \a value for the node.
+     *
+     * \note Not available from Python bindings.
+     *
+     * \since QGIS 3.30
+     */
+    void setCachedStaticValue( const QVariant &value ) const SIP_SKIP;
+
+    /**
+     * Returns a reference to the simplest node which represents this node,
+     * after any compilation optimizations have been applied.
+     *
+     * Eg. a node like "CASE WHEN true THEN "some_field" WHEN other condition THEN ... END" can effectively
+     * be replaced entirely by a QgsExpressionNodeColumnRef referencing the "some_field" field, as the
+     * CASE WHEN ... will ALWAYS evaluate to "some_field".
+     *
+     * Returns a reference to the current object if no optimizations were applied.
+     *
+     * \see simplifiedNode()
+     * \since QGIS 3.20
+     */
+    const QgsExpressionNode *effectiveNode() const { return mCompiledSimplifiedNode ? mCompiledSimplifiedNode.get() : this; }
+
+    /**
+     * Returns a new node, which is the simplest node which represents this node
+     * before any compilation optimizations have been applied.
+     *
+     * Eg. a node like ``1 + 2`` can be effectively replaced by a literal ``3`` node, or a nested function node like
+     * ``coalesce(coalesce("field_a", "field_b"), "field_c")`` could be replaced by a single ``coalesce("field_a", "field_b", "field_c")``
+     * function node.
+     *
+     * \see effectiveNode()
+     * \since QGIS 4.4
+     */
+    virtual QgsExpressionNode *simplifiedNode() const SIP_FACTORY;
+
   protected:
+    QgsExpressionNode() = default;
+    QgsExpressionNode( const QgsExpressionNode &other );
+    QgsExpressionNode &operator=( const QgsExpressionNode &other );
 
     /**
      * Copies the members of this node to the node provided in \a target.
@@ -338,28 +384,50 @@ class CORE_EXPORT QgsExpressionNode SIP_ABSTRACT
      * \note Not available in python bindings, QgsExpression::Node is not
      * going to be subclassed from python. If that's what you are looking
      * for, look into writing a custom python expression function.
-     * \since QGIS 3.0
      */
     void cloneTo( QgsExpressionNode *target ) const SIP_SKIP;
 
-  private:
+#ifndef SIP_RUN
 
+    /**
+     * TRUE if the node has a static, precalculated value.
+     *
+     * \since QGIS 3.20
+     */
+    mutable bool mHasCachedValue = false;
+
+    /**
+     * Contains the static, precalculated value for the node if mHasCachedValue is TRUE.
+     *
+     * \since QGIS 3.20
+     */
+    mutable QVariant mCachedStaticValue;
+
+    /**
+     * Contains a compiled node which represents a simplified version of this node
+     * as a result of compilation optimizations.
+     *
+     * Eg. a node like "CASE WHEN true THEN "some_field" WHEN other condition THEN ... END" can effectively
+     * be replaced entirely by a QgsExpressionNodeColumnRef referencing the "some_field" field, as the
+     * CASE WHEN ... will ALWAYS evaluate to "some_field".
+     *
+     * \since QGIS 3.20
+     */
+    mutable std::unique_ptr< QgsExpressionNode > mCompiledSimplifiedNode;
+#endif
+
+  private:
     /**
      * Abstract virtual preparation method
      * Errors are reported to the parent
-     * \since QGIS 3.0
      */
     virtual bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) = 0;
 
     /**
      * Abstract virtual eval method
      * Errors are reported to the parent
-     * \since QGIS 3.0
      */
     virtual QVariant evalNode( QgsExpression *parent, const QgsExpressionContext *context ) = 0;
-
-    bool mHasCachedValue = false;
-    QVariant mCachedStaticValue;
 };
 
 Q_DECLARE_METATYPE( QgsExpressionNode * )

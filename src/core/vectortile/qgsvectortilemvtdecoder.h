@@ -16,31 +16,37 @@
 #ifndef QGSVECTORTILEMVTDECODER_H
 #define QGSVECTORTILEMVTDECODER_H
 
-#define SIP_NO_FILE
 
 class QgsFeature;
 
-#include <QStringList>
-#include <QMap>
-
+#include "qgsvectortilematrixset.h"
+#include "qgsvectortilerenderer.h"
 #include "vector_tile.pb.h"
 
-#include "qgsvectortilerenderer.h"
+#include <QMap>
+#include <QStringList>
+
+#define SIP_NO_FILE
+
+class QgsVectorTileRawData;
 
 /**
  * \ingroup core
- * This class is responsible for decoding raw tile data written with Mapbox Vector Tiles encoding.
+ * \brief Responsible for decoding raw tile data written with Mapbox Vector Tiles encoding.
  *
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsVectorTileMVTDecoder
 {
   public:
-    QgsVectorTileMVTDecoder();
+    /**
+     * Constructor for QgsVectorTileMVTDecoder, using the specified tile \a structure.
+     */
+    QgsVectorTileMVTDecoder( const QgsVectorTileMatrixSet &structure );
     ~QgsVectorTileMVTDecoder();
 
     //! Tries to decode raw tile data, returns true on success
-    bool decode( QgsTileXYZ tileID, const QByteArray &rawTileData );
+    bool decode( const QgsVectorTileRawData &rawTileData );
 
     //! Returns a list of sub-layer names in a tile. It can only be called after a successful decode()
     QStringList layers() const;
@@ -53,13 +59,14 @@ class CORE_EXPORT QgsVectorTileMVTDecoder
      *
      * If \a layerSubset is specified then only features from the specified layers will be returned.
      */
-    QgsVectorTileFeatures layerFeatures( const QMap<QString, QgsFields> &perLayerFields, const QgsCoordinateTransform &ct,
-                                         const QSet< QString > *layerSubset = nullptr ) const;
+    QgsVectorTileFeatures layerFeatures( const QMap<QString, QgsFields> &perLayerFields, const QgsCoordinateTransform &ct, const QSet< QString > *layerSubset = nullptr ) const;
 
   private:
-    vector_tile::Tile tile;
+    //! map of tiles for each source
+    QMap<QString, vector_tile::Tile> tiles;
     QgsTileXYZ mTileID;
-    QMap<QString, int> mLayerNameToIndex;
+    QgsVectorTileMatrixSet mStructure;
+    QMap<QString, QMap<QString, int>> mLayerNameToIndex;
 };
 
 #endif // QGSVECTORTILEMVTDECODER_H

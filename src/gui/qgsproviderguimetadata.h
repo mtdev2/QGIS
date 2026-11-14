@@ -18,28 +18,28 @@
 #ifndef QGSPROVIDERGUIMETADATA_H
 #define QGSPROVIDERGUIMETADATA_H
 
-#include <QList>
-#include <QMainWindow>
-
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+
+#include <QList>
+#include <QMainWindow>
 
 class QgsDataItemGuiProvider;
 class QgsSourceSelectProvider;
 class QgsProjectStorageGuiProvider;
 class QgsSubsetStringEditorProvider;
 class QgsProviderSourceWidgetProvider;
+class QgsMapLayerConfigWidgetFactory;
 
 /**
  * \ingroup gui
- * Holds data for GUI part of the data providers
+ * \brief Holds data for the GUI part of the data providers.
  *
  * \since QGIS 3.10
  */
 class GUI_EXPORT QgsProviderGuiMetadata
 {
   public:
-
     /**
      * Constructor for provider gui metadata
      */
@@ -85,6 +85,14 @@ class GUI_EXPORT QgsProviderGuiMetadata
      */
     virtual QList<QgsProviderSourceWidgetProvider *> sourceWidgetProviders() SIP_FACTORY;
 
+    /**
+     * Returns map layer config widget factories associated with the provider.
+     *
+     * \note Ownership of factories remains with the provider.
+     * \since QGIS 3.20
+     */
+    virtual QList<const QgsMapLayerConfigWidgetFactory *> mapLayerConfigWidgetFactories();
+
     //! Returns unique provider key
     QString key() const;
 
@@ -94,4 +102,3 @@ class GUI_EXPORT QgsProviderGuiMetadata
 };
 
 #endif //QGSPROVIDERGUIMETADATA_H
-

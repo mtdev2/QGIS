@@ -16,82 +16,90 @@
  ***************************************************************************/
 
 #include "qgsapplication.h"
-#include "qgslayout.h"
-#include "qgslayoutitemmap.h"
-#include "qgslayoutitemattributetable.h"
-#include "qgslayouttablecolumn.h"
-#include "qgslayoutframe.h"
-#include "qgsmapsettings.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
-#include "qgsfeature.h"
-#include "qgsmultirenderchecker.h"
-#include "qgsfontutils.h"
-#include "qgsproject.h"
-#include "qgsrelationmanager.h"
-#include "qgsreadwritecontext.h"
 #include "qgsexpressioncontextutils.h"
-#include "qgslayoutmanager.h"
-#include "qgsprintlayout.h"
+#include "qgsexpressionutils.h"
+#include "qgsfeature.h"
+#include "qgsfontutils.h"
+#include "qgslayout.h"
 #include "qgslayoutatlas.h"
+#include "qgslayoutframe.h"
+#include "qgslayoutitemattributetable.h"
+#include "qgslayoutitemmap.h"
+#include "qgslayoutmanager.h"
+#include "qgslayoutreportcontext.h"
+#include "qgslayouttablecolumn.h"
 #include "qgslayoututils.h"
 #include "qgspallabeling.h"
+#include "qgsprintlayout.h"
+#include "qgsproject.h"
+#include "qgsreadwritecontext.h"
+#include "qgsrelationmanager.h"
+#include "qgstest.h"
+#include "qgstextrenderer.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
 
 #include <QObject>
-#include "qgstest.h"
+#include <QString>
 
-class TestQgsLayoutTable : public QObject
+using namespace Qt::StringLiterals;
+
+class TestQgsLayoutTable : public QgsTest
 {
     Q_OBJECT
 
   public:
-    TestQgsLayoutTable() = default;
+    TestQgsLayoutTable()
+      : QgsTest( u"Layout Table Tests"_s, u"composer_table"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
+    void init();            // will be called before each testfunction is executed.
 
-    void attributeTableHeadings(); //test retrieving attribute table headers
-    void attributeTableRows(); //test retrieving attribute table rows
+    void attributeTableHeadings();       //test retrieving attribute table headers
+    void attributeTableRows();           //test retrieving attribute table rows
+    void attributeTableFormattedRows();  //test retrieving attribute formatted table rows
+    void attributeTableRowsLocalized();  //test retrieving attribute table rows with locale
     void attributeTableFilterFeatures(); //test filtering attribute table rows
-    void attributeTableSetAttributes(); //test subset of attributes in table
-    void attributeTableVisibleOnly(); //test displaying only visible attributes
+    void attributeTableSetAttributes();  //test subset of attributes in table
+    void attributeTableVisibleOnly();    //test displaying only visible attributes
     void attributeTableInsideAtlasOnly();
     void attributeTableRender(); //test rendering attribute table
-    void manualColumnWidth(); //test setting manual column widths
-    void attributeTableEmpty(); //test empty modes for attribute table
-    void showEmptyRows(); //test showing empty rows
+    void manualColumnWidth();    //test setting manual column widths
+    void attributeTableEmpty();  //test empty modes for attribute table
+    void showEmptyRows();        //test showing empty rows
     void attributeTableExtend();
     void attributeTableRepeat();
     void attributeTableAtlasSource(); //test attribute table in atlas feature mode
     void attributeTableRestoreAtlasSource();
-    void attributeTableRelationSource(); //test attribute table in relation mode
-    void contentsContainsRow(); //test the contentsContainsRow function
-    void removeDuplicates(); //test removing duplicate rows
-    void multiLineText(); //test rendering a table with multiline text
-    void horizontalGrid(); //test rendering a table with horizontal-only grid
-    void verticalGrid(); //test rendering a table with vertical-only grid
-    void align(); //test alignment of table cells
-    void wrapChar(); //test setting wrap character
-    void autoWrap(); //test auto word wrap
-    void cellStyles(); //test cell styles
-    void cellStylesRender(); //test rendering cell styles
-    void conditionalFormatting(); //test rendering with conditional formatting
+    void attributeTableRelationSource();            //test attribute table in relation mode
+    void contentsContainsRow();                     //test the contentsContainsRow function
+    void removeDuplicates();                        //test removing duplicate rows
+    void multiLineText();                           //test rendering a table with multiline text
+    void horizontalGrid();                          //test rendering a table with horizontal-only grid
+    void verticalGrid();                            //test rendering a table with vertical-only grid
+    void align();                                   //test alignment of table cells
+    void wrapChar();                                //test setting wrap character
+    void autoWrap();                                //test auto word wrap
+    void cellStyles();                              //test cell styles
+    void cellStylesRender();                        //test rendering cell styles
+    void conditionalFormatting();                   //test rendering with conditional formatting
+    void conditionalFormattingWithTextFormatting(); //test rendering with conditional formatting with text formatting
     void dataDefinedSource();
     void wrappedText();
     void testBaseSort();
     void testExpressionSort();
     void testScopeForCell();
     void testDataDefinedTextFormatForCell();
+    void testIntegerNullCell();
 
   private:
     QgsVectorLayer *mVectorLayer = nullptr;
-    QString mReport;
 
     //compares rows in table to expected rows
-    void compareTable( QgsLayoutItemAttributeTable *table, const QVector<QStringList> &expectedRows );
+    void compareTable( QgsLayoutItemAttributeTable *table, const QVector<QStringList> &expectedRows, bool expectedResult = true );
 };
 
 void TestQgsLayoutTable::initTestCase()
@@ -100,27 +108,15 @@ void TestQgsLayoutTable::initTestCase()
   QgsApplication::initQgis();
 
   //create maplayers from testdata and add to layer registry
-  QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
-  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(),
-                                     vectorFileInfo.completeBaseName(),
-                                     QStringLiteral( "ogr" ) );
+  const QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
+  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
   QgsProject::instance()->addMapLayer( mVectorLayer );
 
-  mReport = QStringLiteral( "<h1>Layout Table Tests</h1>\n" );
-
-  QgsFontUtils::loadStandardTestFonts( QStringList() << QStringLiteral( "Bold" ) );
+  QgsFontUtils::loadStandardTestFonts( QStringList() << u"Bold"_s );
 }
 
 void TestQgsLayoutTable::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
   QgsApplication::exitQgis();
 }
 
@@ -140,13 +136,9 @@ void TestQgsLayoutTable::init()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
-}
-
-void TestQgsLayoutTable::cleanup()
-{
 }
 
 void TestQgsLayoutTable::attributeTableHeadings()
@@ -158,10 +150,10 @@ void TestQgsLayoutTable::attributeTableHeadings()
 
   //test retrieving attribute table headers
   QStringList expectedHeaders;
-  expectedHeaders << QStringLiteral( "Class" ) << QStringLiteral( "Heading" ) << QStringLiteral( "Importance" ) << QStringLiteral( "Pilots" ) << QStringLiteral( "Cabin Crew" ) << QStringLiteral( "Staff" );
+  expectedHeaders << u"Class"_s << u"Heading"_s << u"Importance"_s << u"Pilots"_s << u"Cabin Crew"_s << u"Staff"_s;
 
   //get header labels and compare
-  QMap<int, QString> headerMap = table->headerLabels();
+  const QMap<int, QString> headerMap = table->headerLabels();
   QMap<int, QString>::const_iterator headerIt = headerMap.constBegin();
   QString expected;
   QString evaluated;
@@ -173,12 +165,12 @@ void TestQgsLayoutTable::attributeTableHeadings()
   }
 }
 
-void TestQgsLayoutTable::compareTable( QgsLayoutItemAttributeTable *table, const QVector<QStringList> &expectedRows )
+void TestQgsLayoutTable::compareTable( QgsLayoutItemAttributeTable *table, const QVector<QStringList> &expectedRows, bool expectedResult )
 {
   //retrieve rows and check
   QgsLayoutTableContents tableContents;
-  bool result = table->getTableContents( tableContents );
-  QCOMPARE( result, true );
+  const bool result = table->getTableContents( tableContents );
+  QCOMPARE( result, expectedResult );
 
   QgsLayoutTableContents::const_iterator resultIt = tableContents.constBegin();
   int rowNumber = 0;
@@ -193,7 +185,7 @@ void TestQgsLayoutTable::compareTable( QgsLayoutItemAttributeTable *table, const
     QgsLayoutTableRow::const_iterator cellIt = ( *resultIt ).constBegin();
     for ( ; cellIt != ( *resultIt ).constEnd(); ++cellIt )
     {
-      QCOMPARE( ( *cellIt ).toString(), expectedRows.at( rowNumber ).at( colNumber ) );
+      QCOMPARE( QgsExpressionUtils::toLocalizedString( *cellIt ), expectedRows.at( rowNumber ).at( colNumber ) );
       colNumber++;
     }
     //also check that number of columns matches expected
@@ -209,13 +201,13 @@ void TestQgsLayoutTable::attributeTableRows()
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "90" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "0" ) << QStringLiteral( "2" );
+  row << u"Jet"_s << u"90"_s << u"3"_s << u"2"_s << u"0"_s << u"2"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "0" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"0"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "85" ) << QStringLiteral( "3" ) << QStringLiteral( "1" ) << QStringLiteral( "1" ) << QStringLiteral( "2" );
+  row << u"Jet"_s << u"85"_s << u"3"_s << u"1"_s << u"1"_s << u"2"_s;
   expectedRows.append( row );
 
   QgsLayout l( QgsProject::instance() );
@@ -228,6 +220,78 @@ void TestQgsLayoutTable::attributeTableRows()
   compareTable( table, expectedRows );
 }
 
+void TestQgsLayoutTable::attributeTableFormattedRows()
+{
+  QgsVectorLayer vl { u"Point?field=int:int"_s, u"test"_s, u"memory"_s };
+  QVariantList valueConfig;
+  QVariantMap config;
+  config[u"one"_s] = u"1"_s;
+  config[u"two"_s] = u"2"_s;
+  valueConfig.append( config );
+  QVariantMap editorConfig;
+  editorConfig.insert( u"map"_s, valueConfig );
+  vl.setEditorWidgetSetup( 0, QgsEditorWidgetSetup( u"ValueMap"_s, editorConfig ) );
+  QgsFeature f { vl.fields() };
+  f.setGeometry( QgsGeometry::fromWkt( u"point(9 45)"_s ) );
+  f.setAttribute( u"int"_s, 2 );
+  QgsFeature f2 { vl.fields() };
+  f2.setGeometry( QgsGeometry::fromWkt( u"point(10 46)"_s ) );
+  f2.setAttribute( u"int"_s, 1 );
+  vl.dataProvider()->addFeatures( QgsFeatureList() << f << f2 );
+
+  QVector<QStringList> expectedRows;
+  QStringList row;
+  row << u"two"_s;
+  expectedRows.append( row );
+  QStringList row2;
+  row2 << u"one"_s;
+  expectedRows.append( row2 );
+
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+  QgsLayoutItemAttributeTable *table = new QgsLayoutItemAttributeTable( &l );
+  table->setVectorLayer( &vl );
+
+  //retrieve rows and check
+  compareTable( table, expectedRows );
+}
+
+void TestQgsLayoutTable::attributeTableRowsLocalized()
+{
+  //test retrieving attribute table rows
+
+  QgsVectorLayer vl { u"Point?field=int:int&field=double:double&"_s, u"test"_s, u"memory"_s };
+  QgsFeature f { vl.fields() };
+  f.setGeometry( QgsGeometry::fromWkt( u"point(9 45)"_s ) );
+  f.setAttribute( u"int"_s, 12346 );
+  f.setAttribute( u"double"_s, 123456.801 );
+  vl.dataProvider()->addFeatures( QgsFeatureList() << f );
+
+  QVector<QStringList> expectedRows;
+  QStringList row;
+  row << u"12,346"_s << u"123,456.801"_s;
+  expectedRows.append( row );
+
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+  QgsLayoutItemAttributeTable *table = new QgsLayoutItemAttributeTable( &l );
+  table->setVectorLayer( &vl );
+
+  //retrieve rows and check
+  QLocale::setDefault( QLocale::English );
+  compareTable( table, expectedRows );
+
+  expectedRows.clear();
+  row.clear();
+  row << u"12.346"_s << u"123.456,801"_s;
+  expectedRows.append( row );
+  QLocale::setDefault( QLocale::Italian );
+  compareTable( table, expectedRows );
+
+  QLocale::setDefault( QLocale::English );
+}
+
+
 void TestQgsLayoutTable::attributeTableFilterFeatures()
 {
   //test filtering attribute table rows
@@ -237,47 +301,47 @@ void TestQgsLayoutTable::attributeTableFilterFeatures()
   table->setVectorLayer( mVectorLayer );
 
   table->setMaximumNumberOfFeatures( 10 );
-  table->setFeatureFilter( QStringLiteral( "\"Class\"='B52'" ) );
+  table->setFeatureFilter( u"\"Class\"='B52'"_s );
   table->setFilterFeatures( true );
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "B52" ) << QStringLiteral( "0" ) << QStringLiteral( "10" ) << QStringLiteral( "2" ) << QStringLiteral( "1" ) << QStringLiteral( "3" );
+  row << u"B52"_s << u"0"_s << u"10"_s << u"2"_s << u"1"_s << u"3"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "B52" ) << QStringLiteral( "12" ) << QStringLiteral( "10" ) << QStringLiteral( "1" ) << QStringLiteral( "1" ) << QStringLiteral( "2" );
+  row << u"B52"_s << u"12"_s << u"10"_s << u"1"_s << u"1"_s << u"2"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "B52" ) << QStringLiteral( "34" ) << QStringLiteral( "10" ) << QStringLiteral( "2" ) << QStringLiteral( "1" ) << QStringLiteral( "3" );
+  row << u"B52"_s << u"34"_s << u"10"_s << u"2"_s << u"1"_s << u"3"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "B52" ) << QStringLiteral( "80" ) << QStringLiteral( "10" ) << QStringLiteral( "2" ) << QStringLiteral( "1" ) << QStringLiteral( "3" );
+  row << u"B52"_s << u"80"_s << u"10"_s << u"2"_s << u"1"_s << u"3"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
   compareTable( table, expectedRows );
 
-  table->setFeatureFilter( QStringLiteral( "\"Class\"=@airplane_class" ) );
+  table->setFeatureFilter( u"\"Class\"=@airplane_class"_s );
   table->setFilterFeatures( true );
   expectedRows.clear();
   compareTable( table, expectedRows );
 
-  QgsExpressionContextUtils::setLayoutVariable( &l, QStringLiteral( "airplane_class" ), QStringLiteral( "Biplane" ) );
+  QgsExpressionContextUtils::setLayoutVariable( &l, u"airplane_class"_s, u"Biplane"_s );
 
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "0" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"0"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "340" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"340"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "300" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "5" );
+  row << u"Biplane"_s << u"300"_s << u"1"_s << u"3"_s << u"2"_s << u"5"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "270" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "4" ) << QStringLiteral( "7" );
+  row << u"Biplane"_s << u"270"_s << u"1"_s << u"3"_s << u"4"_s << u"7"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "240" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "5" );
+  row << u"Biplane"_s << u"240"_s << u"1"_s << u"3"_s << u"2"_s << u"5"_s;
   expectedRows.append( row );
   compareTable( table, expectedRows );
 }
@@ -291,16 +355,16 @@ void TestQgsLayoutTable::attributeTableSetAttributes()
 
   //test subset of attributes in table
   QStringList attributes;
-  attributes << QStringLiteral( "Class" ) << QStringLiteral( "Pilots" ) << QStringLiteral( "Cabin Crew" );
+  attributes << u"Class"_s << u"Pilots"_s << u"Cabin Crew"_s;
   table->setDisplayedFields( attributes );
   table->setMaximumNumberOfFeatures( 3 );
 
   //check headers
   QStringList expectedHeaders;
-  expectedHeaders << QStringLiteral( "Class" ) << QStringLiteral( "Pilots" ) << QStringLiteral( "Cabin Crew" );
+  expectedHeaders << u"Class"_s << u"Pilots"_s << u"Cabin Crew"_s;
 
   //get header labels and compare
-  QMap<int, QString> headerMap = table->headerLabels();
+  const QMap<int, QString> headerMap = table->headerLabels();
   QMap<int, QString>::const_iterator headerIt = headerMap.constBegin();
   QString expected;
   QString evaluated;
@@ -313,13 +377,13 @@ void TestQgsLayoutTable::attributeTableSetAttributes()
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "2" ) << QStringLiteral( "0" );
+  row << u"Jet"_s << u"2"_s << u"0"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "3" ) << QStringLiteral( "3" );
+  row << u"Biplane"_s << u"3"_s << u"3"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "1" ) << QStringLiteral( "1" );
+  row << u"Jet"_s << u"1"_s << u"1"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
@@ -345,13 +409,13 @@ void TestQgsLayoutTable::attributeTableVisibleOnly()
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "90" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "0" ) << QStringLiteral( "2" );
+  row << u"Jet"_s << u"90"_s << u"3"_s << u"2"_s << u"0"_s << u"2"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "240" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "5" );
+  row << u"Biplane"_s << u"240"_s << u"1"_s << u"3"_s << u"2"_s << u"5"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "180" ) << QStringLiteral( "3" ) << QStringLiteral( "1" ) << QStringLiteral( "0" ) << QStringLiteral( "1" );
+  row << u"Jet"_s << u"180"_s << u"3"_s << u"1"_s << u"0"_s << u"1"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
@@ -361,7 +425,7 @@ void TestQgsLayoutTable::attributeTableVisibleOnly()
   map->setMapRotation( 90 );
   expectedRows.clear();
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "90" ) << QStringLiteral( "3" ) << QStringLiteral( "2" ) << QStringLiteral( "0" ) << QStringLiteral( "2" );
+  row << u"Jet"_s << u"90"_s << u"3"_s << u"2"_s << u"0"_s << u"2"_s;
   expectedRows.append( row );
   compareTable( table, expectedRows );
 }
@@ -385,12 +449,16 @@ void TestQgsLayoutTable::attributeTableInsideAtlasOnly()
 
   // no atlas feature
   QVector<QStringList> expectedRows;
-  compareTable( table, expectedRows );
+  compareTable( table, expectedRows, false );
 
   //setup atlas
-  std::unique_ptr< QgsVectorLayer > atlasLayer = qgis::make_unique< QgsVectorLayer >( QStringLiteral( "Polygon?crs=EPSG:3857" ), QStringLiteral( "atlas" ), QStringLiteral( "memory" ) );
+  auto atlasLayer = std::make_unique<QgsVectorLayer>( u"Polygon?crs=EPSG:3857"_s, u"atlas"_s, u"memory"_s );
   QVERIFY( atlasLayer->isValid() );
-  QgsGeometry atlasGeom( QgsGeometry::fromWkt( QStringLiteral( "Polygon ((-8863916.31126776337623596 4621257.48816855065524578, -9664269.45078738406300545 5097056.938785120844841, -10049249.44194872118532658 3765399.75924854446202517, -8985488.94005555473268032 3458599.17133777122944593, -8863916.31126776337623596 4621257.48816855065524578))" ) ) );
+  const QgsGeometry atlasGeom(
+    QgsGeometry::fromWkt(
+      u"Polygon ((-8863916.31126776337623596 4621257.48816855065524578, -9664269.45078738406300545 5097056.938785120844841, -10049249.44194872118532658 3765399.75924854446202517, -8985488.94005555473268032 3458599.17133777122944593, -8863916.31126776337623596 4621257.48816855065524578))"_s
+    )
+  );
   QgsFeature f;
   f.setGeometry( atlasGeom );
   atlasLayer->dataProvider()->addFeature( f );
@@ -401,13 +469,13 @@ void TestQgsLayoutTable::attributeTableInsideAtlasOnly()
   l.reportContext().setFeature( f );
 
   QStringList row;
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "0" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"0"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "90" ) << QStringLiteral( "3" ) << QStringLiteral( "1" ) << QStringLiteral( "0" ) << QStringLiteral( "1" );
+  row << u"Jet"_s << u"90"_s << u"3"_s << u"1"_s << u"0"_s << u"1"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "340" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"340"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
@@ -417,10 +485,10 @@ void TestQgsLayoutTable::attributeTableInsideAtlasOnly()
   table->setDisplayOnlyVisibleFeatures( true );
   expectedRows.clear();
   row.clear();
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "90" ) << QStringLiteral( "3" ) << QStringLiteral( "1" ) << QStringLiteral( "0" ) << QStringLiteral( "1" );
+  row << u"Jet"_s << u"90"_s << u"3"_s << u"1"_s << u"0"_s << u"1"_s;
   expectedRows.append( row );
   row.clear();
-  row << QStringLiteral( "Biplane" ) << QStringLiteral( "340" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"Biplane"_s << u"340"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
@@ -443,15 +511,12 @@ void TestQgsLayoutTable::attributeTableRender()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 20 );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_render" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_render"_s, &l );
 }
 
 void TestQgsLayoutTable::manualColumnWidth()
@@ -470,16 +535,13 @@ void TestQgsLayoutTable::manualColumnWidth()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 20 );
   table->columns()[0].setWidth( 5 );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_columnwidth" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport, 0 );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_columnwidth"_s, &l );
 }
 
 void TestQgsLayoutTable::attributeTableEmpty()
@@ -498,30 +560,24 @@ void TestQgsLayoutTable::attributeTableEmpty()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 20 );
   //hide all features from table
-  table->setFeatureFilter( QStringLiteral( "1=2" ) );
+  table->setFeatureFilter( u"1=2"_s );
   table->setFilterFeatures( true );
 
   table->setEmptyTableBehavior( QgsLayoutTable::HeadersOnly );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_headersonly" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker.testLayout( mReport, 0 ) );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_headersonly"_s, &l );
 
   table->setEmptyTableBehavior( QgsLayoutTable::HideTable );
-  QgsLayoutChecker checker2( QStringLiteral( "composerattributetable_hidetable" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker2.testLayout( mReport, 0 ) );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_hidetable"_s, &l );
 
   table->setEmptyTableBehavior( QgsLayoutTable::ShowMessage );
-  table->setEmptyTableMessage( QStringLiteral( "no rows" ) );
-  QgsLayoutChecker checker3( QStringLiteral( "composerattributetable_showmessage" ), &l );
-  checker3.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker3.testLayout( mReport, 0 ) );
+  table->setEmptyTableMessage( u"no rows"_s );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_showmessage"_s, &l );
 }
 
 void TestQgsLayoutTable::showEmptyRows()
@@ -540,15 +596,13 @@ void TestQgsLayoutTable::showEmptyRows()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 3 );
   table->setShowEmptyRows( true );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_drawempty" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker.testLayout( mReport, 0 ) );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_drawempty"_s, &l );
 }
 
 void TestQgsLayoutTable::attributeTableExtend()
@@ -567,8 +621,8 @@ void TestQgsLayoutTable::attributeTableExtend()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   //test that adding and removing frames automatically does not result in a crash
@@ -599,8 +653,8 @@ void TestQgsLayoutTable::attributeTableRepeat()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   //test that creating and removing new frames in repeat mode does not crash
@@ -638,10 +692,8 @@ void TestQgsLayoutTable::attributeTableAtlasSource()
 
   //setup atlas
   QgsVectorLayer *vectorLayer = nullptr;
-  QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
-  vectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(),
-                                    vectorFileInfo.completeBaseName(),
-                                    QStringLiteral( "ogr" ) );
+  const QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points.shp" );
+  vectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
   QgsProject::instance()->addMapLayer( vectorLayer );
   l.reportContext().setLayer( vectorLayer );
 
@@ -690,7 +742,6 @@ void TestQgsLayoutTable::attributeTableAtlasSource()
   //try for a crash when removing current atlas layer
   QgsProject::instance()->removeMapLayer( vectorLayer->id() );
   table->refreshAttributes();
-
 }
 
 void TestQgsLayoutTable::attributeTableRestoreAtlasSource()
@@ -699,15 +750,15 @@ void TestQgsLayoutTable::attributeTableRestoreAtlasSource()
   QgsProject p;
   p.read( projectPath );
 
-  QgsPrintLayout *l = dynamic_cast< QgsPrintLayout *>( p.layoutManager()->layouts().at( 0 ) );
-  QgsLayoutItemAttributeTable *table = qobject_cast< QgsLayoutItemAttributeTable * >( l->multiFrames().at( 0 ) );
+  QgsPrintLayout *l = dynamic_cast<QgsPrintLayout *>( p.layoutManager()->layouts().at( 0 ) );
+  QgsLayoutItemAttributeTable *table = qobject_cast<QgsLayoutItemAttributeTable *>( l->multiFrames().at( 0 ) );
   QCOMPARE( table->source(), QgsLayoutItemAttributeTable::AtlasFeature );
   QVERIFY( l->atlas()->coverageLayer() );
   QVERIFY( l->atlas()->coverageLayer()->isValid() );
   QCOMPARE( table->sourceLayer(), l->atlas()->coverageLayer() );
   QCOMPARE( table->columns().count(), 2 );
-  QCOMPARE( table->columns()[0].attribute(), QStringLiteral( "Heading" ) );
-  QCOMPARE( table->columns()[1].attribute(), QStringLiteral( "Staff" ) );
+  QCOMPARE( table->columns()[0].attribute(), u"Heading"_s );
+  QCOMPARE( table->columns()[1].attribute(), u"Staff"_s );
 }
 
 
@@ -727,14 +778,12 @@ void TestQgsLayoutTable::attributeTableRelationSource()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points_relations.shp" );
-  QgsVectorLayer *atlasLayer = new QgsVectorLayer( vectorFileInfo.filePath(),
-      vectorFileInfo.completeBaseName(),
-      QStringLiteral( "ogr" ) );
+  const QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/points_relations.shp" );
+  QgsVectorLayer *atlasLayer = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
 
   QgsProject::instance()->addMapLayer( atlasLayer );
 
@@ -748,10 +797,10 @@ void TestQgsLayoutTable::attributeTableRelationSource()
 
   //create a relation
   QgsRelation relation;
-  relation.setId( QStringLiteral( "testrelation" ) );
+  relation.setId( u"testrelation"_s );
   relation.setReferencedLayer( atlasLayer->id() );
   relation.setReferencingLayer( mVectorLayer->id() );
-  relation.addFieldPair( QStringLiteral( "Class" ), QStringLiteral( "Class" ) );
+  relation.addFieldPair( u"Class"_s, u"Class"_s );
   QgsProject::instance()->relationManager()->addRelation( relation );
 
   table = new QgsLayoutItemAttributeTable( &l );
@@ -823,14 +872,14 @@ void TestQgsLayoutTable::contentsContainsRow()
 
   QgsLayoutTableContents testContents;
   QgsLayoutTableRow row1;
-  row1 << QVariant( QStringLiteral( "string 1" ) ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( QStringLiteral( "string 2" ) );
+  row1 << QVariant( u"string 1"_s ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( u"string 2"_s );
   QgsLayoutTableRow row2;
-  row2 << QVariant( QStringLiteral( "string 2" ) ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( QStringLiteral( "string 2" ) );
+  row2 << QVariant( u"string 2"_s ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( u"string 2"_s );
   //same as row1
   QgsLayoutTableRow row3;
-  row3 << QVariant( QStringLiteral( "string 1" ) ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( QStringLiteral( "string 2" ) );
+  row3 << QVariant( u"string 1"_s ) << QVariant( 2 ) << QVariant( 1.5 ) << QVariant( u"string 2"_s );
   QgsLayoutTableRow row4;
-  row4 << QVariant( QStringLiteral( "string 1" ) ) << QVariant( 2 ) << QVariant( 1.7 ) << QVariant( QStringLiteral( "string 2" ) );
+  row4 << QVariant( u"string 1"_s ) << QVariant( 2 ) << QVariant( 1.7 ) << QVariant( u"string 2"_s );
 
   testContents << row1;
   testContents << row2;
@@ -843,24 +892,24 @@ void TestQgsLayoutTable::contentsContainsRow()
 
 void TestQgsLayoutTable::removeDuplicates()
 {
-  QgsVectorLayer *dupesLayer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:integer&field=col2:integer&field=col3:integer" ), QStringLiteral( "dupes" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *dupesLayer = new QgsVectorLayer( u"Point?field=col1:integer&field=col2:integer&field=col3:integer"_s, u"dupes"_s, u"memory"_s );
   QVERIFY( dupesLayer->isValid() );
   QgsFeature f1( dupesLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), 1 );
-  f1.setAttribute( QStringLiteral( "col2" ), 1 );
-  f1.setAttribute( QStringLiteral( "col3" ), 1 );
+  f1.setAttribute( u"col1"_s, 1 );
+  f1.setAttribute( u"col2"_s, 1 );
+  f1.setAttribute( u"col3"_s, 1 );
   QgsFeature f2( dupesLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), 1 );
-  f2.setAttribute( QStringLiteral( "col2" ), 2 );
-  f2.setAttribute( QStringLiteral( "col3" ), 2 );
+  f2.setAttribute( u"col1"_s, 1 );
+  f2.setAttribute( u"col2"_s, 2 );
+  f2.setAttribute( u"col3"_s, 2 );
   QgsFeature f3( dupesLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), 1 );
-  f3.setAttribute( QStringLiteral( "col2" ), 2 );
-  f3.setAttribute( QStringLiteral( "col3" ), 3 );
+  f3.setAttribute( u"col1"_s, 1 );
+  f3.setAttribute( u"col2"_s, 2 );
+  f3.setAttribute( u"col3"_s, 3 );
   QgsFeature f4( dupesLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), 1 );
-  f4.setAttribute( QStringLiteral( "col2" ), 1 );
-  f4.setAttribute( QStringLiteral( "col3" ), 1 );
+  f4.setAttribute( u"col1"_s, 1 );
+  f4.setAttribute( u"col2"_s, 1 );
+  f4.setAttribute( u"col3"_s, 1 );
   dupesLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   QgsLayout l( QgsProject::instance() );
@@ -904,38 +953,35 @@ void TestQgsLayoutTable::multiLineText()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f2( multiLineLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), "singleline string" );
-  f2.setAttribute( QStringLiteral( "col2" ), "multiline\nstring" );
-  f2.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f2.setAttribute( u"col1"_s, "singleline string" );
+  f2.setAttribute( u"col2"_s, "multiline\nstring" );
+  f2.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f3( multiLineLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col2" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col3" ), "multiline\nstring" );
+  f3.setAttribute( u"col1"_s, "singleline" );
+  f3.setAttribute( u"col2"_s, "singleline" );
+  f3.setAttribute( u"col3"_s, "multiline\nstring" );
   QgsFeature f4( multiLineLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), "long triple\nline\nstring" );
-  f4.setAttribute( QStringLiteral( "col2" ), "double\nlinestring" );
-  f4.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f4.setAttribute( u"col1"_s, "long triple\nline\nstring" );
+  f4.setAttribute( u"col2"_s, "double\nlinestring" );
+  f4.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   frame2->attemptSetSceneRect( QRectF( 5, 40, 100, 90 ) );
 
   table->setMaximumNumberOfFeatures( 20 );
   table->setVectorLayer( multiLineLayer );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_multiline" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_multiline"_s, &l );
 
   delete multiLineLayer;
 }
@@ -956,28 +1002,28 @@ void TestQgsLayoutTable::horizontalGrid()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f2( multiLineLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), "singleline string" );
-  f2.setAttribute( QStringLiteral( "col2" ), "multiline\nstring" );
-  f2.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f2.setAttribute( u"col1"_s, "singleline string" );
+  f2.setAttribute( u"col2"_s, "multiline\nstring" );
+  f2.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f3( multiLineLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col2" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col3" ), "multiline\nstring" );
+  f3.setAttribute( u"col1"_s, "singleline" );
+  f3.setAttribute( u"col2"_s, "singleline" );
+  f3.setAttribute( u"col3"_s, "multiline\nstring" );
   QgsFeature f4( multiLineLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), "long triple\nline\nstring" );
-  f4.setAttribute( QStringLiteral( "col2" ), "double\nlinestring" );
-  f4.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f4.setAttribute( u"col1"_s, "long triple\nline\nstring" );
+  f4.setAttribute( u"col2"_s, "double\nlinestring" );
+  f4.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   frame1->setFrameEnabled( false );
@@ -989,10 +1035,7 @@ void TestQgsLayoutTable::horizontalGrid()
   table->setHorizontalGrid( true );
   table->setVerticalGrid( false );
   table->setVectorLayer( multiLineLayer );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_horizontalgrid" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_horizontalgrid"_s, &l );
 
   delete multiLineLayer;
 }
@@ -1013,28 +1056,28 @@ void TestQgsLayoutTable::verticalGrid()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f2( multiLineLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), "singleline string" );
-  f2.setAttribute( QStringLiteral( "col2" ), "multiline\nstring" );
-  f2.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f2.setAttribute( u"col1"_s, "singleline string" );
+  f2.setAttribute( u"col2"_s, "multiline\nstring" );
+  f2.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f3( multiLineLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col2" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col3" ), "multiline\nstring" );
+  f3.setAttribute( u"col1"_s, "singleline" );
+  f3.setAttribute( u"col2"_s, "singleline" );
+  f3.setAttribute( u"col3"_s, "multiline\nstring" );
   QgsFeature f4( multiLineLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), "long triple\nline\nstring" );
-  f4.setAttribute( QStringLiteral( "col2" ), "double\nlinestring" );
-  f4.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f4.setAttribute( u"col1"_s, "long triple\nline\nstring" );
+  f4.setAttribute( u"col2"_s, "double\nlinestring" );
+  f4.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   frame1->setFrameEnabled( false );
@@ -1046,10 +1089,7 @@ void TestQgsLayoutTable::verticalGrid()
   table->setHorizontalGrid( false );
   table->setVerticalGrid( true );
   table->setVectorLayer( multiLineLayer );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_verticalgrid" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_verticalgrid"_s, &l );
 
   delete multiLineLayer;
 }
@@ -1068,16 +1108,43 @@ void TestQgsLayoutTable::testDataDefinedTextFormatForCell()
   l.addLayoutItem( frame );
   table->addFrame( frame );
 
-  QgsTextFormat textFormat = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat textFormat = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   table->setHeaderTextFormat( textFormat );
 
-  textFormat.dataDefinedProperties().setProperty( QgsPalLayerSettings::Size, QgsProperty::fromExpression( QStringLiteral( "if(@column_number = 1,35,15)" ) ) );
+  textFormat.dataDefinedProperties().setProperty( QgsPalLayerSettings::Property::Size, QgsProperty::fromExpression( u"if(@column_number = 1,35,15)"_s ) );
   table->setContentTextFormat( textFormat );
 
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_datadefinedtextformat" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_datadefinedtextformat"_s, &l );
+}
+
+void TestQgsLayoutTable::testIntegerNullCell()
+{
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+  QgsLayoutItemAttributeTable *table = new QgsLayoutItemAttributeTable( &l );
+
+  l.addMultiFrame( table );
+  QgsLayoutFrame *frame = new QgsLayoutFrame( &l, table );
+  frame->attemptSetSceneRect( QRectF( 5, 5, 150, 30 ) );
+  frame->setFrameEnabled( true );
+  l.addLayoutItem( frame );
+  table->addFrame( frame );
+
+  auto layer = std::make_unique<QgsVectorLayer>( u"Point?field=intf:integer"_s, u"point"_s, u"memory"_s );
+  QVERIFY( layer->isValid() );
+  QgsFeature f1( layer->dataProvider()->fields(), 1 );
+  f1.setAttribute( u"intf"_s, 1 );
+  QgsFeature f2( layer->dataProvider()->fields(), 2 );
+  f2.setAttribute( u"intf"_s, 2 );
+  QgsFeature f3( layer->dataProvider()->fields(), 3 );
+  f3.setAttribute( u"intf"_s, QgsVariantUtils::createNullVariant( QMetaType::Type::Int ) );
+  layer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 );
+
+  table->setVectorLayer( layer.get() );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_integernullcell"_s, &l );
 }
 
 void TestQgsLayoutTable::align()
@@ -1096,28 +1163,28 @@ void TestQgsLayoutTable::align()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *multiLineLayer = new QgsVectorLayer( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f2( multiLineLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), "singleline string" );
-  f2.setAttribute( QStringLiteral( "col2" ), "multiline\nstring" );
-  f2.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f2.setAttribute( u"col1"_s, "singleline string" );
+  f2.setAttribute( u"col2"_s, "multiline\nstring" );
+  f2.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f3( multiLineLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col2" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col3" ), "multiline\nstring" );
+  f3.setAttribute( u"col1"_s, "singleline" );
+  f3.setAttribute( u"col2"_s, "singleline" );
+  f3.setAttribute( u"col3"_s, "multiline\nstring" );
   QgsFeature f4( multiLineLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), "long triple\nline\nstring" );
-  f4.setAttribute( QStringLiteral( "col2" ), "double\nlinestring" );
-  f4.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f4.setAttribute( u"col1"_s, "long triple\nline\nstring" );
+  f4.setAttribute( u"col2"_s, "double\nlinestring" );
+  f4.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   frame2->attemptSetSceneRect( QRectF( 5, 40, 100, 90 ) );
@@ -1131,10 +1198,7 @@ void TestQgsLayoutTable::align()
   table->columns()[1].setVAlignment( Qt::AlignVCenter );
   table->columns()[2].setHAlignment( Qt::AlignRight );
   table->columns()[2].setVAlignment( Qt::AlignBottom );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_align" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_align"_s, &l );
 
   delete multiLineLayer;
 }
@@ -1147,25 +1211,25 @@ void TestQgsLayoutTable::wrapChar()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  std::unique_ptr< QgsVectorLayer > multiLineLayer = qgis::make_unique< QgsVectorLayer >( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  auto multiLineLayer = std::make_unique<QgsVectorLayer>( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 );
 
   table->setMaximumNumberOfFeatures( 1 );
   table->setVectorLayer( multiLineLayer.get() );
-  table->setWrapString( QStringLiteral( "in" ) );
+  table->setWrapString( u"in"_s );
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "multil\ne\nstr\ng" ) << QStringLiteral( "s\nglel\ne str\ng" ) << QStringLiteral( "s\nglel\ne" );
+  row << u"multil\ne\nstr\ng"_s << u"s\nglel\ne str\ng"_s << u"s\nglel\ne"_s;
   expectedRows.append( row );
 
   //retrieve rows and check
@@ -1188,28 +1252,28 @@ void TestQgsLayoutTable::autoWrap()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
-  std::unique_ptr< QgsVectorLayer > multiLineLayer = qgis::make_unique< QgsVectorLayer >( QStringLiteral( "Point?field=col1:string&field=col2:string&field=col3:string" ), QStringLiteral( "multiline" ), QStringLiteral( "memory" ) );
+  auto multiLineLayer = std::make_unique<QgsVectorLayer>( u"Point?field=col1:string&field=col2:string&field=col3:string"_s, u"multiline"_s, u"memory"_s );
   QVERIFY( multiLineLayer->isValid() );
   QgsFeature f1( multiLineLayer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), "long multiline\nstring" );
-  f1.setAttribute( QStringLiteral( "col2" ), "singleline string" );
-  f1.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f1.setAttribute( u"col1"_s, "long multiline\nstring" );
+  f1.setAttribute( u"col2"_s, "singleline string" );
+  f1.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f2( multiLineLayer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), "singleline string" );
-  f2.setAttribute( QStringLiteral( "col2" ), "multiline\nstring" );
-  f2.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f2.setAttribute( u"col1"_s, "singleline string" );
+  f2.setAttribute( u"col2"_s, "multiline\nstring" );
+  f2.setAttribute( u"col3"_s, "singleline" );
   QgsFeature f3( multiLineLayer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col2" ), "singleline" );
-  f3.setAttribute( QStringLiteral( "col3" ), "multiline\nstring" );
+  f3.setAttribute( u"col1"_s, "singleline" );
+  f3.setAttribute( u"col2"_s, "singleline" );
+  f3.setAttribute( u"col3"_s, "multiline\nstring" );
   QgsFeature f4( multiLineLayer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), "a bit long triple line string" );
-  f4.setAttribute( QStringLiteral( "col2" ), "double toolongtofitononeline string with some more lines on the end andanotherreallylongline" );
-  f4.setAttribute( QStringLiteral( "col3" ), "singleline" );
+  f4.setAttribute( u"col1"_s, "a bit long triple line string" );
+  f4.setAttribute( u"col2"_s, "double toolongtofitononeline string with some more lines on the end andanotherreallylongline" );
+  f4.setAttribute( u"col3"_s, "singleline" );
   multiLineLayer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
   frame2->attemptSetSceneRect( QRectF( 5, 40, 100, 90 ) );
@@ -1220,10 +1284,7 @@ void TestQgsLayoutTable::autoWrap()
 
   table->columns()[0].setWidth( 25 );
   table->columns()[1].setWidth( 25 );
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_autowrap" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  bool result = checker.testLayout( mReport, 0 );
-  QVERIFY( result );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_autowrap"_s, &l );
 }
 
 void TestQgsLayoutTable::cellStyles()
@@ -1242,8 +1303,8 @@ void TestQgsLayoutTable::cellStyles()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   QgsLayoutTableStyle original;
@@ -1252,13 +1313,11 @@ void TestQgsLayoutTable::cellStyles()
 
   //write to xml
   QDomImplementation DomImplementation;
-  QDomDocumentType documentType =
-    DomImplementation.createDocumentType(
-      QStringLiteral( "qgis" ), QStringLiteral( "http://mrcc.com/qgis.dtd" ), QStringLiteral( "SYSTEM" ) );
+  const QDomDocumentType documentType = DomImplementation.createDocumentType( u"qgis"_s, u"http://mrcc.com/qgis.dtd"_s, u"SYSTEM"_s );
   QDomDocument doc( documentType );
 
   //test writing with no node
-  QDomElement node = doc.createElement( QStringLiteral( "style" ) );
+  QDomElement node = doc.createElement( u"style"_s );
   QVERIFY( original.writeXml( node, doc ) );
 
   //read from xml
@@ -1277,13 +1336,13 @@ void TestQgsLayoutTable::cellStyles()
   style1.enabled = true;
   style1.cellBackgroundColor = QColor( 25, 50, 75, 100 );
   originalTable->setCellStyle( QgsLayoutTable::FirstRow, style1 );
-  QgsLayoutTableStyle style2;
+  const QgsLayoutTableStyle style2;
   style1.enabled = false;
   style1.cellBackgroundColor = QColor( 60, 62, 64, 68 );
   originalTable->setCellStyle( QgsLayoutTable::LastColumn, style2 );
 
   //write to XML
-  QDomElement tableElement = doc.createElement( QStringLiteral( "table" ) );
+  QDomElement tableElement = doc.createElement( u"table"_s );
   QVERIFY( originalTable->writeXml( tableElement, doc, QgsReadWriteContext(), true ) );
 
   //read from XML
@@ -1446,8 +1505,8 @@ void TestQgsLayoutTable::cellStylesRender()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 3 );
@@ -1470,10 +1529,7 @@ void TestQgsLayoutTable::cellStylesRender()
   style.cellBackgroundColor = QColor( 50, 200, 200, 200 );
   table->setCellStyle( QgsLayoutTable::LastRow, style );
 
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_cellstyle" ), &l );
-  checker.setColorTolerance( 10 );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker.testLayout( mReport, 0 ) );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_cellstyle"_s, &l, 0, 0, QSize(), 10 );
 }
 
 void TestQgsLayoutTable::conditionalFormatting()
@@ -1492,8 +1548,8 @@ void TestQgsLayoutTable::conditionalFormatting()
   table->setVectorLayer( mVectorLayer );
   table->setDisplayOnlyVisibleFeatures( false );
   table->setMaximumNumberOfFeatures( 10 );
-  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
-  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   table->setBackgroundColor( Qt::yellow );
 
   table->setMaximumNumberOfFeatures( 7 );
@@ -1502,16 +1558,16 @@ void TestQgsLayoutTable::conditionalFormatting()
 
   QgsConditionalStyles rowStyles;
   QgsConditionalStyle style1;
-  style1.setRule( QStringLiteral( "\"Heading\" >= 300" ) );
+  style1.setRule( u"\"Heading\" >= 300"_s );
   style1.setTextColor( QColor( 255, 255, 255 ) );
   style1.setBackgroundColor( QColor( 0, 0, 0 ) );
   rowStyles.append( style1 );
   mVectorLayer->conditionalStyles()->setRowStyles( rowStyles );
   QgsConditionalStyle style2;
-  style2.setRule( QStringLiteral( "@value > 5" ) );
+  style2.setRule( u"@value > 5"_s );
   style2.setTextColor( QColor( 255, 0, 0 ) );
   style2.setBackgroundColor( QColor( 0, 0, 255 ) );
-  mVectorLayer->conditionalStyles()->setFieldStyles( QStringLiteral( "Staff" ), QList< QgsConditionalStyle >() << style2 );
+  mVectorLayer->conditionalStyles()->setFieldStyles( u"Staff"_s, QList<QgsConditionalStyle>() << style2 );
 
   table->setUseConditionalStyling( true );
 
@@ -1532,30 +1588,94 @@ void TestQgsLayoutTable::conditionalFormatting()
   style.cellBackgroundColor = QColor( 50, 200, 200, 200 );
   table->setCellStyle( QgsLayoutTable::LastRow, style );
 
-  QgsLayoutChecker checker( QStringLiteral( "composerattributetable_conditionalstyles" ), &l );
-  checker.setColorTolerance( 10 );
-  checker.setControlPathPrefix( QStringLiteral( "composer_table" ) );
-  QVERIFY( checker.testLayout( mReport, 0 ) );
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_conditionalstyles"_s, &l, 0, 0, QSize(), 10 );
+}
+
+void TestQgsLayoutTable::conditionalFormattingWithTextFormatting()
+{
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+  QgsLayoutItemAttributeTable *table = new QgsLayoutItemAttributeTable( &l );
+  QgsLayoutFrame *frame1 = new QgsLayoutFrame( &l, table );
+  frame1->attemptSetSceneRect( QRectF( 5, 5, 100, 30 ) );
+  QgsLayoutFrame *frame2 = new QgsLayoutFrame( &l, table );
+  frame2->attemptSetSceneRect( QRectF( 5, 40, 100, 30 ) );
+  frame1->setFrameEnabled( true );
+  frame2->setFrameEnabled( true );
+  table->addFrame( frame1 );
+  table->addFrame( frame2 );
+  table->setVectorLayer( mVectorLayer );
+  table->setDisplayOnlyVisibleFeatures( false );
+  table->setMaximumNumberOfFeatures( 10 );
+  table->setContentTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setHeaderTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  table->setBackgroundColor( Qt::yellow );
+
+  table->setMaximumNumberOfFeatures( 7 );
+  table->setShowEmptyRows( true );
+
+
+  QgsConditionalStyles rowStyles;
+  QgsConditionalStyle style1;
+  style1.setRule( u"\"Heading\" >= 300"_s );
+  style1.setTextColor( QColor( 255, 255, 255 ) );
+  style1.setBackgroundColor( QColor( 0, 0, 0 ) );
+
+  QFont conditionalFont1 = QgsFontUtils::getStandardTestFont( u"Bold Oblique"_s );
+  conditionalFont1.setStrikeOut( true );
+  conditionalFont1.setUnderline( true );
+  style1.setFont( conditionalFont1 );
+  rowStyles.append( style1 );
+  mVectorLayer->conditionalStyles()->setRowStyles( rowStyles );
+  QgsConditionalStyle style2;
+  style2.setRule( u"@value > 5"_s );
+  style2.setTextColor( QColor( 255, 0, 0 ) );
+  style2.setBackgroundColor( QColor( 0, 0, 255 ) );
+  QFont conditionalFont2 = QgsFontUtils::getStandardTestFont( u"Bold"_s );
+  conditionalFont2.setUnderline( true );
+  style2.setFont( conditionalFont2 );
+  mVectorLayer->conditionalStyles()->setFieldStyles( u"Staff"_s, QList<QgsConditionalStyle>() << style2 );
+
+  table->setUseConditionalStyling( true );
+
+  QgsLayoutTableStyle style;
+  style.enabled = true;
+  style.cellBackgroundColor = QColor( 25, 50, 75, 100 );
+  table->setCellStyle( QgsLayoutTable::OddColumns, style );
+  style.cellBackgroundColor = QColor( 90, 110, 150, 200 );
+  table->setCellStyle( QgsLayoutTable::EvenRows, style );
+  style.cellBackgroundColor = QColor( 150, 160, 210, 200 );
+  table->setCellStyle( QgsLayoutTable::HeaderRow, style );
+  style.cellBackgroundColor = QColor( 0, 200, 50, 200 );
+  table->setCellStyle( QgsLayoutTable::FirstColumn, style );
+  style.cellBackgroundColor = QColor( 200, 50, 0, 200 );
+  table->setCellStyle( QgsLayoutTable::LastColumn, style );
+  style.cellBackgroundColor = QColor( 200, 50, 200, 200 );
+  table->setCellStyle( QgsLayoutTable::FirstRow, style );
+  style.cellBackgroundColor = QColor( 50, 200, 200, 200 );
+  table->setCellStyle( QgsLayoutTable::LastRow, style );
+
+  QGSVERIFYLAYOUTCHECK( u"composerattributetable_conditionalstyles_text"_s, &l, 0, 0, QSize(), 10 );
 }
 
 void TestQgsLayoutTable::dataDefinedSource()
 {
   // add a couple of layers
-  QgsVectorLayer *layer1 = new QgsVectorLayer( QStringLiteral( "Point?field=col1:integer&field=col2:integer&field=col3:integer" ), QStringLiteral( "l1" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *layer1 = new QgsVectorLayer( u"Point?field=col1:integer&field=col2:integer&field=col3:integer"_s, u"l1"_s, u"memory"_s );
   QVERIFY( layer1->isValid() );
   QgsFeature f( layer1->fields() );
   f.setAttributes( QgsAttributes() << 1 << 2 << 3 );
   layer1->dataProvider()->addFeature( f );
 
   // different field order
-  QgsVectorLayer *layer2 = new QgsVectorLayer( QStringLiteral( "Point?field=col1:integer&field=col3:integer&field=col2:integer" ), QStringLiteral( "l2" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *layer2 = new QgsVectorLayer( u"Point?field=col1:integer&field=col3:integer&field=col2:integer"_s, u"l2"_s, u"memory"_s );
   QVERIFY( layer2->isValid() );
   QgsFeature f2( layer2->fields() );
   f2.setAttributes( QgsAttributes() << 11 << 13 << 12 );
   layer2->dataProvider()->addFeature( f2 );
 
   // missing fields
-  QgsVectorLayer *layer3 = new QgsVectorLayer( QStringLiteral( "Point?field=col1:integer&field=col3:integer" ), QStringLiteral( "l3" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *layer3 = new QgsVectorLayer( u"Point?field=col1:integer&field=col3:integer"_s, u"l3"_s, u"memory"_s );
   QVERIFY( layer3->isValid() );
   QgsFeature f3( layer3->fields() );
   f3.setAttributes( QgsAttributes() << 21 << 23 );
@@ -1573,25 +1693,25 @@ void TestQgsLayoutTable::dataDefinedSource()
   table->setVectorLayer( layer1 );
   table->setMaximumNumberOfFeatures( 50 );
   QCOMPARE( table->contents().length(), 1 );
-  QCOMPARE( table->contents().at( 0 ), QVector< QVariant >() << 1 << 2 << 3 );
+  QCOMPARE( table->contents().at( 0 ), QVector<QVariant>() << 1 << 2 << 3 );
 
   // data defined table name, by layer id
-  table->dataDefinedProperties().setProperty( QgsLayoutObject::AttributeTableSourceLayer, layer1->id() );
+  table->dataDefinedProperties().setProperty( QgsLayoutObject::DataDefinedProperty::AttributeTableSourceLayer, layer1->id() );
   table->refresh();
   QCOMPARE( table->contents().length(), 1 );
-  QCOMPARE( table->contents().at( 0 ), QVector< QVariant >() << 1 << 2 << 3 );
+  QCOMPARE( table->contents().at( 0 ), QVector<QVariant>() << 1 << 2 << 3 );
 
   // by layer name
-  table->dataDefinedProperties().setProperty( QgsLayoutObject::AttributeTableSourceLayer, QStringLiteral( "l2" ) );
+  table->dataDefinedProperties().setProperty( QgsLayoutObject::DataDefinedProperty::AttributeTableSourceLayer, u"l2"_s );
   table->refresh();
   QCOMPARE( table->contents().length(), 1 );
-  QCOMPARE( table->contents().at( 0 ), QVector< QVariant >() << 11 << 12 << 13 );
+  QCOMPARE( table->contents().at( 0 ), QVector<QVariant>() << 11 << 12 << 13 );
 
   // by layer name (case insensitive)
-  table->dataDefinedProperties().setProperty( QgsLayoutObject::AttributeTableSourceLayer, QStringLiteral( "L3" ) );
+  table->dataDefinedProperties().setProperty( QgsLayoutObject::DataDefinedProperty::AttributeTableSourceLayer, u"L3"_s );
   table->refresh();
   QCOMPARE( table->contents().length(), 1 );
-  QCOMPARE( table->contents().at( 0 ), QVector< QVariant >() << 21 << QVariant() << 23 );
+  QCOMPARE( table->contents().at( 0 ), QVector<QVariant>() << 21 << QVariant() << 23 );
 
   // delete current data defined layer match
   p.removeMapLayer( layer3->id() );
@@ -1599,24 +1719,22 @@ void TestQgsLayoutTable::dataDefinedSource()
   // expect table to return to preset layer
   table->refreshAttributes();
   QCOMPARE( table->contents().length(), 1 );
-  QCOMPARE( table->contents().at( 0 ), QVector< QVariant >() << 1 << 2 << 3 );
+  QCOMPARE( table->contents().at( 0 ), QVector<QVariant>() << 1 << 2 << 3 );
 }
 
 void TestQgsLayoutTable::wrappedText()
 {
   QgsProject p;
   QgsLayout l( &p );
-  QgsLayoutItemAttributeTable *t = new QgsLayoutItemAttributeTable( &l );
-  t->setWrapBehavior( QgsLayoutTable::WrapText );
 
-  QFont f;
-  QString sourceText( "Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua" );
+  const QFont f;
+  const QString sourceText( "Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua" );
   QgsRenderContext context = QgsLayoutUtils::createRenderContextForLayout( &l, nullptr );
-  QString wrapText = t->wrappedText( context, sourceText, 101 /*columnWidth*/, QgsTextFormat::fromQFont( f ) ).join( '\n' );
+  const QString wrapText
+    = QgsTextRenderer::wrappedText( context, sourceText, context.convertToPainterUnits( 101, Qgis::RenderUnit::Millimeters ) /*columnWidth*/, QgsTextFormat::fromQFont( f ) ).join( '\n' );
   //there should be no line break before the last word (bug #20546)
   QVERIFY( !wrapText.endsWith( "\naliqua" ) );
 }
-
 
 void TestQgsLayoutTable::testBaseSort()
 {
@@ -1629,12 +1747,12 @@ void TestQgsLayoutTable::testBaseSort()
   QgsLayoutTableColumn col;
   col.setAttribute( table->columns()[2].attribute() );
   col.setSortOrder( Qt::DescendingOrder );
-  table->sortColumns() = {col};
+  table->sortColumns() = { col };
   table->refresh();
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "Jet" ) << QStringLiteral( "100" ) << QStringLiteral( "20" ) << QStringLiteral( "3" ) << QStringLiteral( "0" ) << QStringLiteral( "3" );
+  row << u"Jet"_s << u"100"_s << u"20"_s << u"3"_s << u"0"_s << u"3"_s;
   expectedRows.append( row );
   row.clear();
 
@@ -1654,13 +1772,13 @@ void TestQgsLayoutTable::testExpressionSort()
   col.setAttribute( "Heading * -1" );
   col.setHeading( "exp" );
   col.setSortOrder( Qt::AscendingOrder );
-  table->sortColumns() = {col};
+  table->sortColumns() = { col };
   table->columns()[0] = col;
   table->refresh();
 
   QVector<QStringList> expectedRows;
   QStringList row;
-  row << QStringLiteral( "-340" ) << QStringLiteral( "340" ) << QStringLiteral( "1" ) << QStringLiteral( "3" ) << QStringLiteral( "3" ) << QStringLiteral( "6" );
+  row << u"-340"_s << u"340"_s << u"1"_s << u"3"_s << u"3"_s << u"6"_s;
   expectedRows.append( row );
   row.clear();
 
@@ -1676,26 +1794,26 @@ void TestQgsLayoutTable::testScopeForCell()
   table->setVectorLayer( mVectorLayer );
   table->refresh();
 
-  std::unique_ptr< QgsExpressionContextScope > scope( table->scopeForCell( 0, 0 ) );
+  std::unique_ptr<QgsExpressionContextScope> scope( table->scopeForCell( 0, 0 ) );
 
   // variable values for row/col should start at 1, not 0!
-  QCOMPARE( scope->variable( QStringLiteral( "row_number" ) ).toInt(), 1 );
-  QCOMPARE( scope->variable( QStringLiteral( "column_number" ) ).toInt(), 1 );
-  QCOMPARE( scope->feature().attribute( 0 ).toString(), QStringLiteral( "Jet" ) );
+  QCOMPARE( scope->variable( u"row_number"_s ).toInt(), 1 );
+  QCOMPARE( scope->variable( u"column_number"_s ).toInt(), 1 );
+  QCOMPARE( scope->feature().attribute( 0 ).toString(), u"Jet"_s );
   scope.reset( table->scopeForCell( 0, 1 ) );
-  QCOMPARE( scope->variable( QStringLiteral( "row_number" ) ).toInt(), 1 );
-  QCOMPARE( scope->variable( QStringLiteral( "column_number" ) ).toInt(), 2 );
-  QCOMPARE( scope->feature().attribute( 0 ).toString(), QStringLiteral( "Jet" ) );
+  QCOMPARE( scope->variable( u"row_number"_s ).toInt(), 1 );
+  QCOMPARE( scope->variable( u"column_number"_s ).toInt(), 2 );
+  QCOMPARE( scope->feature().attribute( 0 ).toString(), u"Jet"_s );
   scope.reset( table->scopeForCell( 1, 2 ) );
-  QCOMPARE( scope->variable( QStringLiteral( "row_number" ) ).toInt(), 2 );
-  QCOMPARE( scope->variable( QStringLiteral( "column_number" ) ).toInt(), 3 );
-  QCOMPARE( scope->feature().attribute( 0 ).toString(), QStringLiteral( "Biplane" ) );
+  QCOMPARE( scope->variable( u"row_number"_s ).toInt(), 2 );
+  QCOMPARE( scope->variable( u"column_number"_s ).toInt(), 3 );
+  QCOMPARE( scope->feature().attribute( 0 ).toString(), u"Biplane"_s );
 
   // make sure fields are set
   QgsExpressionContext context;
   context.appendScope( scope.release() );
   QCOMPARE( context.fields().size(), 6 );
-  QCOMPARE( context.fields().at( 0 ).name(), QStringLiteral( "Class" ) );
+  QCOMPARE( context.fields().at( 0 ).name(), u"Class"_s );
 }
 
 QGSTEST_MAIN( TestQgsLayoutTable )

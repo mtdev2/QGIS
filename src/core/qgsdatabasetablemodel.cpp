@@ -13,10 +13,18 @@
 *                                                                         *
 ***************************************************************************/
 #include "qgsdatabasetablemodel.h"
-#include "qgsproviderregistry.h"
-#include "qgsprovidermetadata.h"
+
 #include "qgsabstractdatabaseproviderconnection.h"
-#include "qgsdataitem.h"
+#include "qgsiconutils.h"
+#include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
+
+#include <QIcon>
+#include <QString>
+
+#include "moc_qgsdatabasetablemodel.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsDatabaseTableModel::QgsDatabaseTableModel( const QString &provider, const QString &connection, const QString &schema, QObject *parent )
   : QAbstractItemModel( parent )
@@ -74,7 +82,7 @@ QVariant QgsDatabaseTableModel::data( const QModelIndex &index, int role ) const
 
   if ( index.row() == 0 && mAllowEmpty )
   {
-    if ( role == RoleEmpty )
+    if ( role == static_cast< int >( CustomRole::Empty ) )
       return true;
 
     return QVariant();
@@ -83,79 +91,82 @@ QVariant QgsDatabaseTableModel::data( const QModelIndex &index, int role ) const
   if ( index.row() - ( mAllowEmpty ? 1 : 0 ) >= mTables.count() )
     return QVariant();
 
-  const QgsAbstractDatabaseProviderConnection::TableProperty &table = mTables[ index.row() - ( mAllowEmpty ? 1 : 0 ) ];
+  const QgsAbstractDatabaseProviderConnection::TableProperty &table = mTables[index.row() - ( mAllowEmpty ? 1 : 0 )];
   switch ( role )
   {
-    case RoleEmpty:
+    case static_cast< int >( CustomRole::Empty ):
       return false;
 
     case Qt::DisplayRole:
     case Qt::ToolTipRole:
     case Qt::EditRole:
     {
-      return mSchema.isEmpty() && !table.schema().isEmpty() ? QStringLiteral( "%1.%2" ).arg( table.schema(), table.tableName() ) : table.tableName();
+      return mSchema.isEmpty() && !table.schema().isEmpty() ? u"%1.%2"_s.arg( table.schema(), table.tableName() ) : table.tableName();
     }
 
-    case RoleTableName:
+    case static_cast< int >( CustomRole::TableName ):
     {
       return table.tableName();
     }
 
     case Qt::DecorationRole:
-    case RoleWkbType:
-    case RoleCrs:
+    case static_cast< int >( CustomRole::WkbType ):
+    case static_cast< int >( CustomRole::Crs ):
     {
       if ( table.geometryColumnTypes().empty() )
       {
         if ( role == Qt::DecorationRole )
-          return QgsLayerItem::iconTable();
+          return QgsIconUtils::iconTable();
         else
           return QVariant();
       }
 
       if ( role == Qt::DecorationRole )
       {
-        const QgsWkbTypes::GeometryType geomType = QgsWkbTypes::geometryType( table.geometryColumnTypes().at( 0 ).wkbType );
+        const Qgis::GeometryType geomType = QgsWkbTypes::geometryType( table.geometryColumnTypes().at( 0 ).wkbType );
         switch ( geomType )
         {
-          case QgsWkbTypes::PointGeometry:
+          case Qgis::GeometryType::Point:
           {
-            return QgsLayerItem::iconPoint();
+            return QgsIconUtils::iconPoint();
           }
-          case QgsWkbTypes::PolygonGeometry:
+          case Qgis::GeometryType::Polygon:
           {
-            return QgsLayerItem::iconPolygon();
+            return QgsIconUtils::iconPolygon();
           }
-          case QgsWkbTypes::LineGeometry:
+          case Qgis::GeometryType::Line:
           {
-            return QgsLayerItem::iconLine();
+            return QgsIconUtils::iconLine();
           }
-          default:
-            break;
+          case Qgis::GeometryType::Unknown:
+          {
+            return QgsIconUtils::iconGeometryCollection();
+          }
+          case Qgis::GeometryType::Null:
+            return QgsIconUtils::iconTable();
         }
 
-        return QgsLayerItem::iconTable();
+        return QgsIconUtils::iconTable();
       }
-      else if ( role == RoleWkbType )
-        return table.geometryColumnTypes().at( 0 ).wkbType;
-      else if ( role == RoleCrs )
+      else if ( role == static_cast< int >( CustomRole::WkbType ) )
+        return static_cast< quint32>( table.geometryColumnTypes().at( 0 ).wkbType );
+      else if ( role == static_cast< int >( CustomRole::Crs ) )
         return table.geometryColumnTypes().at( 0 ).crs;
 
       return QVariant();
     }
 
-    case RoleSchema:
+    case static_cast< int >( CustomRole::Schema ):
       return table.schema();
 
-    case RoleTableFlags:
+    case static_cast< int >( CustomRole::TableFlags ):
       return static_cast< int >( table.flags() );
 
-    case RoleComment:
+    case static_cast< int >( CustomRole::Comment ):
       return table.comment();
 
-    case RoleCustomInfo:
+    case static_cast< int >( CustomRole::CustomInfo ):
       return table.info();
-
   }
 
   return QVariant();
@@ -199,14 +210,14 @@ void QgsDatabaseTableModel::refresh()
   {
     if ( !newTables.contains( oldTable ) )
     {
-      int r = mTables.indexOf( oldTable );
+      const int r = mTables.indexOf( oldTable );
       beginRemoveRows( QModelIndex(), r + ( mAllowEmpty ? 1 : 0 ), r + ( mAllowEmpty ? 1 : 0 ) );
       mTables.removeAt( r );
       endRemoveRows();
     }
   }
 
-  for ( const  QgsAbstractDatabaseProviderConnection::TableProperty &newTable : newTables )
+  for ( const QgsAbstractDatabaseProviderConnection::TableProperty &newTable : newTables )
   {
     if ( !mTables.contains( newTable ) )
     {

@@ -17,21 +17,23 @@
 
 #include "qgsexpressioncontextutils.h"
 #include "qgslogger.h"
+#include "qgsrendercontext.h"
 #include "qgsvectortilelayer.h"
 #include "qgsvectortilerenderer.h"
-#include "qgsvectortileutils.h"
 
+#include <QString>
 
+using namespace Qt::StringLiterals;
 
 void QgsVectorTileBasicLabelingStyle::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
 {
-  elem.setAttribute( QStringLiteral( "name" ), mStyleName );
-  elem.setAttribute( QStringLiteral( "layer" ), mLayerName );
-  elem.setAttribute( QStringLiteral( "geometry" ), mGeometryType );
-  elem.setAttribute( QStringLiteral( "enabled" ), mEnabled ? QStringLiteral( "1" ) : QStringLiteral( "0" ) );
-  elem.setAttribute( QStringLiteral( "expression" ), mExpression );
-  elem.setAttribute( QStringLiteral( "min-zoom" ), mMinZoomLevel );
-  elem.setAttribute( QStringLiteral( "max-zoom" ), mMaxZoomLevel );
+  elem.setAttribute( u"name"_s, mStyleName );
+  elem.setAttribute( u"layer"_s, mLayerName );
+  elem.setAttribute( u"geometry"_s, static_cast<int>( mGeometryType ) );
+  elem.setAttribute( u"enabled"_s, mEnabled ? u"1"_s : u"0"_s );
+  elem.setAttribute( u"expression"_s, mExpression );
+  elem.setAttribute( u"min-zoom"_s, mMinZoomLevel );
+  elem.setAttribute( u"max-zoom"_s, mMaxZoomLevel );
 
   QDomDocument doc = elem.ownerDocument();
   QDomElement elemLabelSettings = mLabelSettings.writeXml( doc, context );
@@ -40,15 +42,15 @@ void QgsVectorTileBasicLabelingStyle::writeXml( QDomElement &elem, const QgsRead
 
 void QgsVectorTileBasicLabelingStyle::readXml( const QDomElement &elem, const QgsReadWriteContext &context )
 {
-  mStyleName = elem.attribute( QStringLiteral( "name" ) );
-  mLayerName = elem.attribute( QStringLiteral( "layer" ) );
-  mGeometryType = static_cast<QgsWkbTypes::GeometryType>( elem.attribute( QStringLiteral( "geometry" ) ).toInt() );
-  mEnabled = elem.attribute( QStringLiteral( "enabled" ) ).toInt();
-  mExpression = elem.attribute( QStringLiteral( "expression" ) );
-  mMinZoomLevel = elem.attribute( QStringLiteral( "min-zoom" ) ).toInt();
-  mMaxZoomLevel = elem.attribute( QStringLiteral( "max-zoom" ) ).toInt();
+  mStyleName = elem.attribute( u"name"_s );
+  mLayerName = elem.attribute( u"layer"_s );
+  mGeometryType = static_cast<Qgis::GeometryType>( elem.attribute( u"geometry"_s ).toInt() );
+  mEnabled = elem.attribute( u"enabled"_s ).toInt();
+  mExpression = elem.attribute( u"expression"_s );
+  mMinZoomLevel = elem.attribute( u"min-zoom"_s ).toInt();
+  mMaxZoomLevel = elem.attribute( u"max-zoom"_s ).toInt();
 
-  QDomElement elemLabelSettings = elem.firstChildElement( QStringLiteral( "settings" ) );
+  QDomElement elemLabelSettings = elem.firstChildElement( u"settings"_s );
   mLabelSettings.readXml( elemLabelSettings, context );
 }
 
@@ -57,12 +59,11 @@ void QgsVectorTileBasicLabelingStyle::readXml( const QDomElement &elem, const Qg
 
 
 QgsVectorTileBasicLabeling::QgsVectorTileBasicLabeling()
-{
-}
+{}
 
 QString QgsVectorTileBasicLabeling::type() const
 {
-  return QStringLiteral( "basic" );
+  return u"basic"_s;
 }
 
 QgsVectorTileLabeling *QgsVectorTileBasicLabeling::clone() const
@@ -80,10 +81,10 @@ QgsVectorTileLabelProvider *QgsVectorTileBasicLabeling::provider( QgsVectorTileL
 void QgsVectorTileBasicLabeling::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
 {
   QDomDocument doc = elem.ownerDocument();
-  QDomElement elemStyles = doc.createElement( QStringLiteral( "styles" ) );
+  QDomElement elemStyles = doc.createElement( u"styles"_s );
   for ( const QgsVectorTileBasicLabelingStyle &layerStyle : mStyles )
   {
-    QDomElement elemStyle = doc.createElement( QStringLiteral( "style" ) );
+    QDomElement elemStyle = doc.createElement( u"style"_s );
     layerStyle.writeXml( elemStyle, context );
     elemStyles.appendChild( elemStyle );
   }
@@ -94,14 +95,14 @@ void QgsVectorTileBasicLabeling::readXml( const QDomElement &elem, const QgsRead
 {
   mStyles.clear();
 
-  QDomElement elemStyles = elem.firstChildElement( QStringLiteral( "styles" ) );
-  QDomElement elemStyle = elemStyles.firstChildElement( QStringLiteral( "style" ) );
+  QDomElement elemStyles = elem.firstChildElement( u"styles"_s );
+  QDomElement elemStyle = elemStyles.firstChildElement( u"style"_s );
   while ( !elemStyle.isNull() )
   {
     QgsVectorTileBasicLabelingStyle layerStyle;
     layerStyle.readXml( elemStyle, context );
     mStyles.append( layerStyle );
-    elemStyle = elemStyle.nextSiblingElement( QStringLiteral( "style" ) );
+    elemStyle = elemStyle.nextSiblingElement( u"style"_s );
   }
 }
 
@@ -113,7 +114,6 @@ QgsVectorTileBasicLabelProvider::QgsVectorTileBasicLabelProvider( QgsVectorTileL
   : QgsVectorTileLabelProvider( layer )
   , mStyles( styles )
 {
-
   for ( int i = 0; i < mStyles.count(); ++i )
   {
     const QgsVectorTileBasicLabelingStyle &style = mStyles[i];
@@ -127,7 +127,7 @@ QgsVectorTileBasicLabelProvider::QgsVectorTileBasicLabelProvider( QgsVectorTileL
 QMap<QString, QSet<QString> > QgsVectorTileBasicLabelProvider::usedAttributes( const QgsRenderContext &context, int tileZoom ) const
 {
   QMap<QString, QSet<QString> > requiredFields;
-  for ( const QgsVectorTileBasicLabelingStyle &layerStyle : qgis::as_const( mStyles ) )
+  for ( const QgsVectorTileBasicLabelingStyle &layerStyle : std::as_const( mStyles ) )
   {
     if ( !layerStyle.isActive( tileZoom ) )
       continue;
@@ -146,7 +146,7 @@ QMap<QString, QSet<QString> > QgsVectorTileBasicLabelProvider::usedAttributes( c
 QSet<QString> QgsVectorTileBasicLabelProvider::requiredLayers( QgsRenderContext &, int tileZoom ) const
 {
   QSet< QString > res;
-  for ( const QgsVectorTileBasicLabelingStyle &layerStyle : qgis::as_const( mStyles ) )
+  for ( const QgsVectorTileBasicLabelingStyle &layerStyle : std::as_const( mStyles ) )
   {
     if ( layerStyle.isActive( tileZoom ) )
     {
@@ -164,9 +164,9 @@ void QgsVectorTileBasicLabelProvider::setFields( const QMap<QString, QgsFields> 
 QList<QgsAbstractLabelProvider *> QgsVectorTileBasicLabelProvider::subProviders()
 {
   QList<QgsAbstractLabelProvider *> lst;
-  for ( QgsVectorLayerLabelProvider *subprovider : qgis::as_const( mSubProviders ) )
+  for ( QgsVectorLayerLabelProvider *subprovider : std::as_const( mSubProviders ) )
   {
-    if ( subprovider )  // sub-providers that failed to initialize are set to null
+    if ( subprovider ) // sub-providers that failed to initialize are set to null
       lst << subprovider;
   }
   return lst;
@@ -174,7 +174,7 @@ QList<QgsAbstractLabelProvider *> QgsVectorTileBasicLabelProvider::subProviders(
 
 bool QgsVectorTileBasicLabelProvider::prepare( QgsRenderContext &context, QSet<QString> &attributeNames )
 {
-  for ( QgsVectorLayerLabelProvider *provider : qgis::as_const( mSubProviders ) )
+  for ( QgsVectorLayerLabelProvider *provider : std::as_const( mSubProviders ) )
     provider->setEngine( mEngine );
 
   // populate sub-providers
@@ -187,9 +187,11 @@ bool QgsVectorTileBasicLabelProvider::prepare( QgsRenderContext &context, QSet<Q
     QgsExpressionContextScopePopper popper( context.expressionContext(), scope );
 
     mSubProviders[i]->setFields( fields );
+    // check is required as fields are not available through the GUI, which can lead to isExpression wrongly set to true
+    mSubProviders[i]->mSettings.isExpression = !fields.names().contains( mSubProviders[i]->mSettings.fieldName );
     if ( !mSubProviders[i]->prepare( context, attributeNames ) )
     {
-      QgsDebugMsg( QStringLiteral( "Failed to prepare labeling for style index" ) + QString::number( i ) );
+      QgsDebugError( u"Failed to prepare labeling for style index"_s + QString::number( i ) );
       mSubProviders[i] = nullptr;
     }
   }
@@ -199,7 +201,7 @@ bool QgsVectorTileBasicLabelProvider::prepare( QgsRenderContext &context, QSet<Q
 void QgsVectorTileBasicLabelProvider::registerTileFeatures( const QgsVectorTileRendererData &tile, QgsRenderContext &context )
 {
   const QgsVectorTileFeatures tileData = tile.features();
-  int zoomLevel = tile.id().zoomLevel();
+  const int zoomLevel = tile.renderZoomLevel();
 
   for ( int i = 0; i < mStyles.count(); ++i )
   {
@@ -218,21 +220,33 @@ void QgsVectorTileBasicLabelProvider::registerTileFeatures( const QgsVectorTileR
 
     QgsVectorLayerLabelProvider *subProvider = mSubProviders[i];
     if ( !subProvider )
-      continue;  // sub-providers that failed to initialize are set to null
+      continue; // sub-providers that failed to initialize are set to null
 
     if ( layerStyle.layerName().isEmpty() )
     {
       // matching all layers
-      for ( QString layerName : tileData.keys() )
+      for ( const auto &features : tileData )
       {
-        for ( const QgsFeature &f : tileData[layerName] )
+        for ( const QgsFeature &f : features )
         {
           scope->setFeature( f );
           if ( filterExpression.isValid() && !filterExpression.evaluate( &context.expressionContext() ).toBool() )
             continue;
 
-          if ( QgsWkbTypes::geometryType( f.geometry().wkbType() ) == layerStyle.geometryType() )
-            subProvider->registerFeature( f, context );
+          const Qgis::GeometryType featureType = QgsWkbTypes::geometryType( f.geometry().wkbType() );
+          if ( featureType == layerStyle.geometryType() )
+          {
+            subProvider->registerFeature( f, context, QgsLabelFeatureDetails() );
+          }
+          else if ( featureType == Qgis::GeometryType::Polygon && layerStyle.geometryType() == Qgis::GeometryType::Point )
+          {
+            // be tolerant and permit labeling polygons with a point layer style, as some style definitions use this approach
+            // to label the polygon center
+            QgsFeature centroid = f;
+            const QgsRectangle boundingBox = f.geometry().boundingBox();
+            centroid.setGeometry( f.geometry().poleOfInaccessibility( std::min( boundingBox.width(), boundingBox.height() ) / 20 ) );
+            subProvider->registerFeature( centroid, context, QgsLabelFeatureDetails() );
+          }
         }
       }
     }
@@ -245,8 +259,20 @@ void QgsVectorTileBasicLabelProvider::registerTileFeatures( const QgsVectorTileR
         if ( filterExpression.isValid() && !filterExpression.evaluate( &context.expressionContext() ).toBool() )
           continue;
 
-        if ( QgsWkbTypes::geometryType( f.geometry().wkbType() ) == layerStyle.geometryType() )
-          subProvider->registerFeature( f, context );
+        const Qgis::GeometryType featureType = QgsWkbTypes::geometryType( f.geometry().wkbType() );
+        if ( featureType == layerStyle.geometryType() )
+        {
+          subProvider->registerFeature( f, context, QgsLabelFeatureDetails() );
+        }
+        else if ( featureType == Qgis::GeometryType::Polygon && layerStyle.geometryType() == Qgis::GeometryType::Point )
+        {
+          // be tolerant and permit labeling polygons with a point layer style, as some style definitions use this approach
+          // to label the polygon center
+          QgsFeature centroid = f;
+          const QgsRectangle boundingBox = f.geometry().boundingBox();
+          centroid.setGeometry( f.geometry().poleOfInaccessibility( std::min( boundingBox.width(), boundingBox.height() ) / 20 ) );
+          subProvider->registerFeature( centroid, context, QgsLabelFeatureDetails() );
+        }
       }
     }
   }

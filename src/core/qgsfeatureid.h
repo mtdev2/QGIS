@@ -16,22 +16,26 @@ email                : matthias@opengis.ch
 #ifndef QGSFEATUREID_H
 #define QGSFEATUREID_H
 
-#include <QSet>
 #include "qgis_sip.h"
+
+#include <QSet>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 // feature id (currently 64 bit)
 
 /**
  * 64 bit feature ids
  * negative numbers are used for uncommitted/newly added features
- **/
+ */
 typedef qint64 QgsFeatureId SIP_SKIP;
-#define FID_NULL            std::numeric_limits<QgsFeatureId>::min()
-#define FID_IS_NULL(fid)    ( fid == std::numeric_limits<QgsFeatureId>::min() )
-#define FID_IS_NEW(fid)     ( fid < 0 && fid != std::numeric_limits<QgsFeatureId>::min() )
-#define FID_TO_NUMBER(fid)  static_cast<qint64>( fid )
-#define FID_TO_STRING(fid)  ( fid != std::numeric_limits<QgsFeatureId>::min() ? QString::number( fid ) : QStringLiteral( "NULL" ) )
-#define STRING_TO_FID(str)  ( (str).toLongLong() )
+#define FID_NULL std::numeric_limits<QgsFeatureId>::min()
+#define FID_IS_NULL( fid ) ( fid == std::numeric_limits<QgsFeatureId>::min() )
+#define FID_IS_NEW( fid ) ( fid < 0 && fid != std::numeric_limits<QgsFeatureId>::min() )
+#define FID_TO_NUMBER( fid ) static_cast<qint64>( fid )
+#define FID_TO_STRING( fid ) ( fid != std::numeric_limits<QgsFeatureId>::min() ? QString::number( fid ) : u"NULL"_s )
+#define STRING_TO_FID( str ) ( ( str ).toLongLong() )
 
 #ifndef SIP_RUN
 typedef QSet<QgsFeatureId> QgsFeatureIds;

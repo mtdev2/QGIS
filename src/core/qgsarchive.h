@@ -19,38 +19,28 @@
 #ifndef QGSARCHIVE_H
 #define QGSARCHIVE_H
 
+#include <memory>
+
 #include "qgis_core.h"
 
 #include <QStringList>
-#include <QTemporaryFile>
 #include <QTemporaryDir>
-#include <memory>
+#include <QTemporaryFile>
 
 /**
  * \class QgsArchive
  * \ingroup core
- * \brief Class allowing to manage the zip/unzip actions
- * \since QGIS 3.0
+ * \brief Manages zip/unzip operations for an archive.
  */
 class CORE_EXPORT QgsArchive
 {
   public:
-
-    /**
-     * Constructor
-     */
     QgsArchive();
 
-    /**
-     * Copy constructor
-     */
     QgsArchive( const QgsArchive &other );
 
     QgsArchive &operator=( const QgsArchive &other );
 
-    /**
-     * Destructor
-     */
     virtual ~QgsArchive() = default;
 
     /**
@@ -98,6 +88,12 @@ class CORE_EXPORT QgsArchive
      */
     QString dir() const;
 
+    /**
+     * Returns TRUE if the archive exists on the filesystem, FALSE otherwise.
+     * \since QGIS 3.20
+     */
+    bool exists() const;
+
   private:
     // content of the archive
     QStringList mFiles;
@@ -109,13 +105,11 @@ class CORE_EXPORT QgsArchive
 /**
  * \class QgsProjectArchive
  * \ingroup core
- * \brief Class allowing to manage the zip/unzip actions on project file
- * \since QGIS 3.0
+ * \brief Allows managing the zip/unzip actions on project files.
  */
-class  CORE_EXPORT QgsProjectArchive : public QgsArchive
+class CORE_EXPORT QgsProjectArchive : public QgsArchive
 {
   public:
-
     /**
      * Clear the current content of this archive and unzip. If a project file
      * is found in the content, then this archive may be considered as a valid

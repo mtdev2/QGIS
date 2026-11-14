@@ -17,9 +17,13 @@
 #ifndef QGGXYZSOURCEWIDGET_H
 #define QGGXYZSOURCEWIDGET_H
 
-#include "qgsprovidersourcewidget.h"
 #include "ui_qgsxyzsourcewidgetbase.h"
+
+#include "qgsprovidersourcewidget.h"
+
 #include <QVariantMap>
+
+class QgsWmsInterpretationComboBox;
 
 class QgsXyzSourceWidget : public QgsProviderSourceWidget, private Ui::QgsXyzSourceWidgetBase
 {
@@ -54,14 +58,18 @@ class QgsXyzSourceWidget : public QgsProviderSourceWidget, private Ui::QgsXyzSou
     void setTilePixelRatio( int ratio );
     int tilePixelRatio() const;
 
+    void setInterpretation( const QString &interpretation );
+    QString interpretation() const;
+
   private slots:
 
     void validate();
 
   private:
-
     QVariantMap mSourceParts;
     bool mIsValid = false;
+
+    QgsWmsInterpretationComboBox *mInterpretationCombo = nullptr;
 };
 
 #endif // QGGXYZSOURCEWIDGET_H

@@ -22,28 +22,34 @@ class QgsRenderContext;
 class QgsRectangle;
 class QgsVectorLayerFeatureSource;
 
+#include <memory>
+
 #include "qgis_core.h"
-#include "qgspointxy.h"
 #include "qgscoordinatereferencesystem.h"
 #include "qgscoordinatetransform.h"
 #include "qgsfeatureid.h"
 #include "qgsgeometry.h"
 #include "qgsgeometryutils.h"
-#include "qgsvectorlayer.h"
 #include "qgslinestring.h"
 #include "qgspointlocatorinittask.h"
-#include <memory>
+#include "qgspointxy.h"
+#include "qgsvectorlayer.h"
+
+#include <QPointer>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index looking for vertices - builds a list of matches.
+ * \brief Helper class used when traversing the index looking for vertices - builds a list of matches.
  * \note not available in Python bindings
 */
 class QgsPointLocator_VisitorNearestVertex;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index looking for centroid - builds a list of matches.
+ * \brief Helper class used when traversing the index looking for centroid - builds a list of matches.
  * \note not available in Python bindings
  * \since QGIS 3.12
 */
@@ -51,7 +57,7 @@ class QgsPointLocator_VisitorNearestCentroid;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index looking for middle segment - builds a list of matches.
+ * \brief Helper class used when traversing the index looking for the middle segment - builds a list of matches.
  * \note not available in Python bindings
  * \since QGIS 3.12
 */
@@ -59,21 +65,21 @@ class QgsPointLocator_VisitorNearestMiddleOfSegment;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index looking for edges - builds a list of matches.
+ * \brief Helper class used when traversing the index looking for edges - builds a list of matches.
  * \note not available in Python bindings
 */
 class QgsPointLocator_VisitorNearestEdge;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index with areas - builds a list of matches.
+ * \brief Helper class used when traversing the index with areas - builds a list of matches.
  * \note not available in Python bindings
 */
 class QgsPointLocator_VisitorArea;
 
 /**
  * \ingroup core
- * Helper class used when traversing the index looking for edges - builds a list of matches.
+ * \brief Helper class used when traversing the index looking for edges - builds a list of matches.
  * \note not available in Python bindings
 */
 class QgsPointLocator_VisitorEdgesInRect;
@@ -82,11 +88,13 @@ namespace SpatialIndex SIP_SKIP
 {
   class IStorageManager;
   class ISpatialIndex;
-}
+} //namespace SpatialIndex
 
 /**
  * \ingroup core
- * \brief The class defines interface for querying point location:
+ * \brief Defines the interface for querying point locations.
+ *
+ * This class offers:
  *
  * - query nearest vertices / edges to a point
  * - query vertices / edges in rectangle
@@ -94,13 +102,11 @@ namespace SpatialIndex SIP_SKIP
  *
  * Works with one layer.
  *
- * \since QGIS 2.8
  */
 class CORE_EXPORT QgsPointLocator : public QObject
 {
     Q_OBJECT
   public:
-
     /**
      * Construct point locator for a \a layer.
      *
@@ -111,33 +117,32 @@ class CORE_EXPORT QgsPointLocator : public QObject
      *
      * If \a extent is not NULLPTR, the locator will index only a subset of the layer which falls within that extent.
      */
-    explicit QgsPointLocator( QgsVectorLayer *layer, const QgsCoordinateReferenceSystem &destinationCrs = QgsCoordinateReferenceSystem(),
-                              const QgsCoordinateTransformContext &transformContext = QgsCoordinateTransformContext(),
-                              const QgsRectangle *extent = nullptr );
+    explicit QgsPointLocator(
+      QgsVectorLayer *layer,
+      const QgsCoordinateReferenceSystem &destinationCrs = QgsCoordinateReferenceSystem(),
+      const QgsCoordinateTransformContext &transformContext = QgsCoordinateTransformContext(),
+      const QgsRectangle *extent = nullptr
+    );
 
     ~QgsPointLocator() override;
 
     /**
      * Gets associated layer
-     * \since QGIS 2.14
      */
     QgsVectorLayer *layer() const { return mLayer; }
 
     /**
      * Gets destination CRS - may be an invalid QgsCoordinateReferenceSystem if not doing OTF reprojection
-     * \since QGIS 2.14
      */
     QgsCoordinateReferenceSystem destinationCrs() const;
 
     /**
      * Gets extent of the area point locator covers - if NULLPTR then it caches the whole layer
-     * \since QGIS 2.14
      */
     const QgsRectangle *extent() const { return mExtent.get(); }
 
     /**
      * Configure extent - if not NULLPTR, it will index only that area
-     * \since QGIS 2.14
      */
     void setExtent( const QgsRectangle *extent );
 
@@ -150,15 +155,16 @@ class CORE_EXPORT QgsPointLocator : public QObject
     /**
      * The type of a snap result or the filter type for a snap request.
      */
-    enum Type
+    enum Type SIP_ENUM_BASETYPE( IntFlag )
     {
-      Invalid = 0, //!< Invalid
-      Vertex  = 1, //!< Snapped to a vertex. Can be a vertex of the geometry or an intersection.
-      Edge    = 2, //!< Snapped to an edge
-      Area    = 4, //!< Snapped to an area
-      Centroid = 8, //!< Snapped to a centroid
-      MiddleOfSegment = 16, //!< Snapped to the middle of a segment
-      All = Vertex | Edge | Area | Centroid | MiddleOfSegment //!< Combination of all types
+      Invalid = 0,                                            //!< Invalid
+      Vertex = 1 << 0,                                        //!< Snapped to a vertex. Can be a vertex of the geometry or an intersection.
+      Edge = 1 << 1,                                          //!< Snapped to an edge
+      Area = 1 << 2,                                          //!< Snapped to an area
+      Centroid = 1 << 3,                                      //!< Snapped to a centroid
+      MiddleOfSegment = 1 << 4,                               //!< Snapped to the middle of a segment
+      LineEndpoint = 1 << 5,                                  //!< Start or end points of lines only \since QGIS 3.20
+      All = Vertex | Edge | Area | Centroid | MiddleOfSegment //!< Combination of all types. Note LineEndpoint is not included as endpoints made redundant by the presence of the Vertex flag.
     };
 
     Q_DECLARE_FLAGS( Types, Type )
@@ -204,16 +210,23 @@ class CORE_EXPORT QgsPointLocator : public QObject
         QgsPointLocator::Type type() const { return mType; }
 
         bool isValid() const { return mType != Invalid; }
-        //! Returns true if the Match is a vertex
+        //! Returns TRUE if the Match is a vertex
         bool hasVertex() const { return mType == Vertex; }
-        //! Returns true if the Match is an edge
+        //! Returns TRUE if the Match is an edge
         bool hasEdge() const { return mType == Edge; }
-        //! Returns true if the Match is a centroid
+        //! Returns TRUE if the Match is a centroid
         bool hasCentroid() const { return mType == Centroid; }
-        //! Returns true if the Match is an area
+        //! Returns TRUE if the Match is an area
         bool hasArea() const { return mType == Area; }
-        //! Returns true if the Match is the middle of a segment
+        //! Returns TRUE if the Match is the middle of a segment
         bool hasMiddleSegment() const { return mType == MiddleOfSegment; }
+
+        /**
+         * Returns TRUE if the Match is a line endpoint (start or end vertex).
+         *
+         * \since QGIS 3.20
+         */
+        bool hasLineEndpoint() const { return mType == LineEndpoint; }
 
         /**
          * for vertex / edge match
@@ -251,32 +264,75 @@ class CORE_EXPORT QgsPointLocator : public QObject
         /**
          * Convenient method to return a point on an edge with linear
          * interpolation of the Z value.
-         * \since 3.10
+         * The parameter \a destinationCrs depends of where the instance of this Match is created (geom.cache: layer CRS, map canvas snapper: dest CRS)
+         * \since QGIS 3.10
          */
-        QgsPoint interpolatedPoint() const
+        QgsPoint interpolatedPoint( const QgsCoordinateReferenceSystem &destinationCrs = QgsCoordinateReferenceSystem() ) const
         {
           QgsPoint point;
-          const QgsGeometry geom = mLayer->getGeometry( mFid );
-          if ( !( geom.isNull() || geom.isEmpty() ) )
-          {
-            QgsLineString line( geom.vertexAt( mVertexIndex ), geom.vertexAt( mVertexIndex + 1 ) );
 
-            point = QgsGeometryUtils::closestPoint( line, QgsPoint( mPoint ) );
+          if ( mLayer )
+          {
+            QgsPointXY snappedPoint( mPoint );
+            const QgsGeometry geom = mLayer->getGeometry( mFid );
+            QgsCoordinateTransform transform( destinationCrs, mLayer->crs(), mLayer->transformContext() );
+            if ( transform.isValid() )
+            {
+              try
+              {
+                snappedPoint = transform.transform( snappedPoint );
+              }
+              catch ( QgsCsException & )
+              {
+                QgsDebugError( u"transformation to layer coordinate failed"_s );
+              }
+            }
+
+            if ( !( geom.isNull() || geom.isEmpty() ) )
+            {
+              // when snapping to a curve we need to use real geometry in order to have correct location
+              // of the snapped point, see https://github.com/qgis/QGIS/issues/53197.
+              // In other cases it is ok to use only a segment to speedup calculations.
+              if ( QgsWkbTypes::isCurvedType( geom.wkbType() ) )
+              {
+                point = QgsGeometryUtils::closestPoint( *geom.constGet(), QgsPoint( snappedPoint ) );
+              }
+              else
+              {
+                const QgsLineString line( geom.vertexAt( mVertexIndex ), geom.vertexAt( mVertexIndex + 1 ) );
+                point = QgsGeometryUtils::closestPoint( line, QgsPoint( snappedPoint ) );
+              }
+            }
+
+            if ( transform.isValid() )
+            {
+              try
+              {
+                point.transform( transform, Qgis::TransformDirection::Reverse );
+              }
+              catch ( QgsCsException & )
+              {
+                QgsDebugError( u"transformation to destination coordinate failed"_s );
+              }
+            }
           }
+
           return point;
         }
 
+        // TODO c++20 - replace with = default
         bool operator==( const QgsPointLocator::Match &other ) const
         {
-          return mType == other.mType &&
-                 mDist == other.mDist &&
-                 mPoint == other.mPoint &&
-                 mLayer == other.mLayer &&
-                 mFid == other.mFid &&
-                 mVertexIndex == other.mVertexIndex &&
-                 mEdgePoints == other.mEdgePoints &&
-                 mCentroid == other.mCentroid &&
-                 mMiddleOfSegment == other.mMiddleOfSegment;
+          return mType == other.mType
+                 && mDist == other.mDist
+                 && mPoint == other.mPoint
+                 && mLayer == other.mLayer
+                 && mFid == other.mFid
+                 && mVertexIndex == other.mVertexIndex
+                 && mEdgePoints[0] == other.mEdgePoints[0]
+                 && mEdgePoints[1] == other.mEdgePoints[1]
+                 && mCentroid == other.mCentroid
+                 && mMiddleOfSegment == other.mMiddleOfSegment;
         }
 
       protected:
@@ -304,8 +360,8 @@ class CORE_EXPORT QgsPointLocator : public QObject
      */
     struct MatchFilter
     {
-      virtual ~MatchFilter() = default;
-      virtual bool acceptMatch( const QgsPointLocator::Match &match ) = 0;
+        virtual ~MatchFilter() = default;
+        virtual bool acceptMatch( const QgsPointLocator::Match &match ) = 0;
     };
 
     // intersection queries
@@ -321,7 +377,7 @@ class CORE_EXPORT QgsPointLocator : public QObject
      * Find nearest centroid to the specified point - up to distance specified by tolerance
      * Optional filter may discard unwanted matches.
      * This method is either blocking or non blocking according to \a relaxed parameter passed
-     * \since 3.12
+     * \since QGIS 3.12
      */
     Match nearestCentroid( const QgsPointXY &point, double tolerance, QgsPointLocator::MatchFilter *filter = nullptr, bool relaxed = false );
 
@@ -329,9 +385,17 @@ class CORE_EXPORT QgsPointLocator : public QObject
      * Find nearest middle of segment to the specified point - up to distance specified by tolerance
      * Optional filter may discard unwanted matches.
      * This method is either blocking or non blocking according to \a relaxed parameter passed
-     * \since 3.12
+     * \since QGIS 3.12
      */
     Match nearestMiddleOfSegment( const QgsPointXY &point, double tolerance, QgsPointLocator::MatchFilter *filter = nullptr, bool relaxed = false );
+
+    /**
+     * Find nearest line endpoint (start or end vertex) to the specified point - up to distance specified by tolerance
+     * Optional filter may discard unwanted matches.
+     * This method is either blocking or non blocking according to \a relaxed parameter passed
+     * \since QGIS 3.20
+     */
+    Match nearestLineEndpoints( const QgsPointXY &point, double tolerance, QgsPointLocator::MatchFilter *filter = nullptr, bool relaxed = false );
 
     /**
      * Find nearest edge to the specified point - up to distance specified by tolerance
@@ -346,7 +410,6 @@ class CORE_EXPORT QgsPointLocator : public QObject
      * This will first perform a pointInPolygon and return first result.
      * If no match is found and tolerance is not 0, it will return nearestEdge.
      * This method is either blocking or non blocking according to \a relaxed parameter passed
-     * \since QGIS 3.0
      */
     Match nearestArea( const QgsPointXY &point, double tolerance, QgsPointLocator::MatchFilter *filter = nullptr, bool relaxed = false );
 
@@ -383,15 +446,16 @@ class CORE_EXPORT QgsPointLocator : public QObject
     // TODO: function to return just the first match?
 
     /**
-     * find out if the \a point is in any polygons
-     * This method is either blocking or non blocking according to \a relaxed parameter passed
+     * Find out if the \a point is in any polygons
+     * \param point The point to check polygons against, in map coordinates
+     * \param relaxed TRUE if index build has to be non blocking
+     * \param filter since QGIS 3.36, Optional filter may discard unwanted matches.
+     * \note Parameters \a filter and \a relaxed are in reversed order compared to the rest of MatchList returning methods.
      */
-    //!
-    MatchList pointInPolygon( const QgsPointXY &point, bool relaxed = false );
+    MatchList pointInPolygon( const QgsPointXY &point, bool relaxed = false, QgsPointLocator::MatchFilter *filter = nullptr );
 
     /**
      * Returns how many geometries are cached in the index
-     * \since QGIS 2.14
      */
     int cachedGeometryCount() const { return mGeoms.count(); }
 
@@ -419,7 +483,12 @@ class CORE_EXPORT QgsPointLocator : public QObject
     void initFinished( bool ok );
 
   protected:
-    bool rebuildIndex( int maxFeaturesToIndex = -1 );
+    /**
+     * Rebuilds the index.
+     *
+     * The optional \a feedback argument allows for early cancellation of the rebuild.
+     */
+    bool rebuildIndex( int maxFeaturesToIndex = -1, QgsFeedback *feedback = nullptr );
 
   protected slots:
     void destroyIndex();
@@ -431,7 +500,6 @@ class CORE_EXPORT QgsPointLocator : public QObject
     void onAttributeValueChanged( QgsFeatureId fid, int idx, const QVariant &value );
 
   private:
-
     /**
      * prepare index if need and returns TRUE if the index is ready to be used
      * \param relaxed TRUE if index build has to be non blocking
@@ -474,6 +542,7 @@ class CORE_EXPORT QgsPointLocator : public QObject
     friend class TestQgsPointLocator;
     friend class QgsPointLocator_VisitorCentroidsInRect;
     friend class QgsPointLocator_VisitorMiddlesInRect;
+    friend class QgsPointLocator_VisitorNearestLineEndpoint;
 };
 
 

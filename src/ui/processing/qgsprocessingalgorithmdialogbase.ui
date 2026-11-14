@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>QgsProcessingDialogBase</class>
- <widget class="QDialog" name="QgsProcessingDialogBase">
+ <widget class="QWidget" name="QgsProcessingDialogBase">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -84,7 +84,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QTextEdit" name="txtLog">
+         <widget class="QTextBrowser" name="txtLog">
           <property name="readOnly">
            <bool>true</bool>
           </property>
@@ -170,9 +170,6 @@
         <horstretch>0</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
-      </property>
-      <property name="accessibleName">
-       <string/>
       </property>
       <property name="openLinks">
        <bool>false</bool>

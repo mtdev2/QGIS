@@ -18,31 +18,31 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgslayoutmultiframe.h"
-#include "qgsfeature.h"
 #include "qgsdistancearea.h"
+#include "qgsfeature.h"
+#include "qgslayoutmultiframe.h"
+
 #include <QUrl>
 
 class QgsWebPage;
 class QImage;
+class QgsLayoutItemLabel;
 class QgsVectorLayer;
 class QgsNetworkContentFetcher;
 
 /**
  * \ingroup core
- * A layout multiframe subclass for HTML content.
- * \since QGIS 3.0
+ * \brief A layout multiframe subclass for HTML content.
  */
-class CORE_EXPORT QgsLayoutItemHtml: public QgsLayoutMultiFrame
+class CORE_EXPORT QgsLayoutItemHtml : public QgsLayoutMultiFrame
 {
     Q_OBJECT
 
   public:
-
     //! Source modes for the HTML content to render in the item
     enum ContentMode
     {
-      Url, //!< Using this mode item fetches its content via a url
+      Url,       //!< Using this mode item fetches its content via a url
       ManualHtml //!< HTML content is manually set for the item
     };
 
@@ -62,6 +62,13 @@ class CORE_EXPORT QgsLayoutItemHtml: public QgsLayoutMultiFrame
      * Returns a new QgsLayoutItemHtml for the specified parent \a layout.
      */
     static QgsLayoutItemHtml *create( QgsLayout *layout ) SIP_FACTORY;
+
+    /**
+     * Returns a new QgsLayoutItemHtml matching the content and rendering of a given \a label.
+     *
+     * \since QGIS 3.32
+     */
+    static QgsLayoutItemHtml *createFromLabel( QgsLayoutItemLabel *label ) SIP_FACTORY;
 
     /**
      * Sets the source \a mode for item's HTML content.
@@ -224,10 +231,9 @@ class CORE_EXPORT QgsLayoutItemHtml: public QgsLayoutMultiFrame
     //! Recalculates the frame sizes for the current viewport dimensions
     void recalculateFrameSizes() override;
 
-    void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::AllProperties ) override;
+    void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::DataDefinedProperty::AllProperties ) override;
 
   protected:
-
     bool writePropertiesToElement( QDomElement &elem, QDomDocument &doc, const QgsReadWriteContext &context ) const override;
     bool readPropertiesFromElement( const QDomElement &itemElem, const QDomDocument &doc, const QgsReadWriteContext &context ) override;
 
@@ -239,7 +245,7 @@ class CORE_EXPORT QgsLayoutItemHtml: public QgsLayoutMultiFrame
     QString mFetchedHtml;
     QString mLastFetchedUrl;
     QString mActualFetchedUrl; //may be different if page was redirected
-    QSizeF mSize; //total size in mm
+    QSizeF mSize;              //total size in mm
     double mHtmlUnitsToLayoutUnits = 1.0;
     QImage mRenderedPage;
     bool mEvaluateExpressions = true;
@@ -290,9 +296,7 @@ class JavascriptExecutorLoop : public QEventLoop
     void reportError( const QString &error );
 
   private:
-
     bool mDone = false;
-
 };
 #endif
 ///@endcond

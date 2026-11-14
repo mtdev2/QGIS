@@ -14,22 +14,29 @@
  ***************************************************************************/
 
 #include "qgspointcloudlayerstylewidget.h"
-#include "qgspointcloudrendererpropertieswidget.h"
-#include "qgsstyle.h"
+
 #include "qgsapplication.h"
 #include "qgsmaplayer.h"
 #include "qgspointcloudlayer.h"
+#include "qgspointcloudrendererpropertieswidget.h"
+#include "qgsstyle.h"
+
+#include <QString>
+
+#include "moc_qgspointcloudlayerstylewidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsPointCloudRendererWidgetFactory::QgsPointCloudRendererWidgetFactory( QObject *parent )
   : QObject( parent )
 {
-  setIcon( QgsApplication::getThemeIcon( QStringLiteral( "propertyicons/symbology.svg" ) ) );
+  setIcon( QgsApplication::getThemeIcon( u"propertyicons/symbology.svg"_s ) );
   setTitle( tr( "Symbology" ) );
 }
 
 QgsMapLayerConfigWidget *QgsPointCloudRendererWidgetFactory::createWidget( QgsMapLayer *layer, QgsMapCanvas *, bool, QWidget *parent ) const
 {
-  return new QgsPointCloudRendererPropertiesWidget( qobject_cast< QgsPointCloudLayer * >( layer ), QgsStyle::defaultStyle(), parent );
+  return new QgsPointCloudRendererPropertiesWidget( qobject_cast<QgsPointCloudLayer *>( layer ), QgsStyle::defaultStyle(), parent );
 }
 
 bool QgsPointCloudRendererWidgetFactory::supportLayerPropertiesDialog() const
@@ -44,10 +51,10 @@ bool QgsPointCloudRendererWidgetFactory::supportsStyleDock() const
 
 bool QgsPointCloudRendererWidgetFactory::supportsLayer( QgsMapLayer *layer ) const
 {
-  return layer->type() == QgsMapLayerType::PointCloudLayer;
+  return layer->type() == Qgis::LayerType::PointCloud;
 }
 
 QString QgsPointCloudRendererWidgetFactory::layerPropertiesPagePositionHint() const
 {
-  return QStringLiteral( "mOptsPage_Metadata" );
+  return u"mOptsPage_Rendering"_s;
 }

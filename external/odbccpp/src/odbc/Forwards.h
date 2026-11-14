@@ -1,9 +1,10 @@
 #ifndef ODBC_FORWARDS_H_INCLUDED
 #define ODBC_FORWARDS_H_INCLUDED
 //------------------------------------------------------------------------------
+#include <odbc/Config.h>
 #include <odbc/RefCounted.h>
 //------------------------------------------------------------------------------
-namespace odbc {
+NS_ODBC_START
 //------------------------------------------------------------------------------
 class Connection;
 class DatabaseMetaData;
@@ -19,6 +20,7 @@ class ResultSetMetaDataBase;
 class ResultSetMetaDataUnicode;
 class StatementBase;
 class Statement;
+class StringConverter;
 class ValueBuffer;
 //------------------------------------------------------------------------------
 typedef Reference<Connection> ConnectionRef;
@@ -34,6 +36,6 @@ typedef Reference<StatementBase> StatementBaseRef;
 typedef Reference<Statement> StatementRef;
 typedef Reference<ValueBuffer> ValueBufferRef;
 //------------------------------------------------------------------------------
-} // namespace odbc
+NS_ODBC_END
 //------------------------------------------------------------------------------
 #endif

@@ -16,6 +16,7 @@
  ***************************************************************************/
 
 #include "qgsgpsconnectionregistry.h"
+
 #include "qgsgpsconnection.h"
 
 QgsGpsConnectionRegistry::~QgsGpsConnectionRegistry()
@@ -35,5 +36,5 @@ void QgsGpsConnectionRegistry::unregisterConnection( QgsGpsConnection *c )
 
 QList< QgsGpsConnection * > QgsGpsConnectionRegistry::connectionList() const
 {
-  return qgis::setToList( mConnections );
+  return QList< QgsGpsConnection * >( mConnections.begin(), mConnections.end() );
 }

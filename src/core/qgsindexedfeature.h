@@ -16,14 +16,16 @@
 #ifndef QGSINDEXEDFEATURE_H
 #define QGSINDEXEDFEATURE_H
 
-#define SIP_NO_FILE
+
+#include "qgsfeature.h"
 
 #include <QVector>
-#include "qgsfeature.h"
+
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
- * Temporarily used structure to cache order by information
+ * \brief Temporarily used structure to cache order by information
  * \note not available in Python bindings
  */
 class QgsIndexedFeature

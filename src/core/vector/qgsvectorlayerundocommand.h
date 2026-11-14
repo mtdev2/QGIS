@@ -18,14 +18,13 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include <QUndoCommand>
-
-#include <QVariant>
-#include <QSet>
-#include <QList>
-
-#include "qgsfields.h"
 #include "qgsfeature.h"
+#include "qgsfields.h"
+
+#include <QList>
+#include <QSet>
+#include <QUndoCommand>
+#include <QVariant>
 
 class QgsGeometry;
 
@@ -40,7 +39,6 @@ class QgsGeometry;
 class CORE_EXPORT QgsVectorLayerUndoCommand : public QUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommand
      * \param buffer associated edit buffer
@@ -70,7 +68,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommand : public QUndoCommand
 class CORE_EXPORT QgsVectorLayerUndoCommandAddFeature : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandAddFeature
      * \param buffer associated edit buffer
@@ -95,7 +92,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommandAddFeature : public QgsVectorLayerUnd
 class CORE_EXPORT QgsVectorLayerUndoCommandDeleteFeature : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandDeleteFeature
      * \param buffer associated edit buffer
@@ -120,7 +116,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommandDeleteFeature : public QgsVectorLayer
 class CORE_EXPORT QgsVectorLayerUndoCommandChangeGeometry : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandChangeGeometry
      * \param buffer associated edit buffer
@@ -131,8 +126,8 @@ class CORE_EXPORT QgsVectorLayerUndoCommandChangeGeometry : public QgsVectorLaye
 
     void undo() override;
     void redo() override;
-    int id() const override;
-    bool mergeWith( const QUndoCommand * ) override;
+    int id() const override { return 1; }
+    bool mergeWith( const QUndoCommand *other ) override;
 
   private:
     QgsFeatureId mFid;
@@ -150,7 +145,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommandChangeGeometry : public QgsVectorLaye
 class CORE_EXPORT QgsVectorLayerUndoCommandChangeAttribute : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandChangeAttribute
      * \param buffer associated edit buffer
@@ -168,7 +162,7 @@ class CORE_EXPORT QgsVectorLayerUndoCommandChangeAttribute : public QgsVectorLay
     int mFieldIndex;
     QVariant mOldValue;
     QVariant mNewValue;
-    bool mFirstChange;
+    bool mFirstChange = true;
 };
 
 /**
@@ -180,7 +174,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommandChangeAttribute : public QgsVectorLay
 class CORE_EXPORT QgsVectorLayerUndoCommandAddAttribute : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandAddAttribute
      * \param buffer associated edit buffer
@@ -205,7 +198,6 @@ class CORE_EXPORT QgsVectorLayerUndoCommandAddAttribute : public QgsVectorLayerU
 class CORE_EXPORT QgsVectorLayerUndoCommandDeleteAttribute : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandDeleteAttribute
      * \param buffer associated edit buffer
@@ -233,13 +225,11 @@ class CORE_EXPORT QgsVectorLayerUndoCommandDeleteAttribute : public QgsVectorLay
  * \ingroup core
  * \class QgsVectorLayerUndoCommandRenameAttribute
  * \brief Undo command for renaming an existing attribute of a vector layer.
- * \since QGIS 2.16
  */
 
 class CORE_EXPORT QgsVectorLayerUndoCommandRenameAttribute : public QgsVectorLayerUndoCommand
 {
   public:
-
     /**
      * Constructor for QgsVectorLayerUndoCommandRenameAttribute
      * \param buffer associated edit buffer

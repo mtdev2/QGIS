@@ -16,17 +16,24 @@
  ***************************************************************************/
 
 #include "qgsconnectionregistry.h"
-#include "qgsproviderregistry.h"
+
 #include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
+
+#include <QRegularExpression>
+#include <QString>
+
+#include "moc_qgsconnectionregistry.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsConnectionRegistry::QgsConnectionRegistry( QObject *parent SIP_TRANSFERTHIS )
   : QObject( parent )
-{
-}
+{}
 
-QgsAbstractProviderConnection *QgsConnectionRegistry::createConnection( const QString &id )
+std::unique_ptr<QgsAbstractProviderConnection> QgsConnectionRegistry::createConnection( const QString &id )
 {
-  QRegularExpressionMatch m = QRegularExpression( QStringLiteral( "(.*?)\\://(.*)" ) ).match( id );
+  const QRegularExpressionMatch m = QRegularExpression( u"(.*?)\\://(.*)"_s ).match( id );
   if ( !m.hasMatch() )
     throw QgsProviderConnectionException( QObject::tr( "Invalid connection id" ) );
 
@@ -38,5 +45,5 @@ QgsAbstractProviderConnection *QgsConnectionRegistry::createConnection( const QS
   if ( !md )
     throw QgsProviderConnectionException( QObject::tr( "Invalid provider key: %1" ).arg( providerKey ) );
 
-  return md->createConnection( name );
+  return std::unique_ptr<QgsAbstractProviderConnection>( md->createConnection( name ) );
 }

@@ -18,23 +18,40 @@
 #ifndef QGSPROCESSINGMODELCOMPONENT_H
 #define QGSPROCESSINGMODELCOMPONENT_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
+
+#include <QColor>
 #include <QPointF>
 #include <QSizeF>
-#include <QColor>
 
 class QgsProcessingModelComment;
 
 ///@cond NOT_STABLE
 
 /**
- * Represents a component of a model algorithm.
+ * \brief Represents a component of a model algorithm.
  * \ingroup core
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsProcessingModelComponent
 {
+#ifdef SIP_RUN
+    SIP_CONVERT_TO_SUBCLASS_CODE
+    if ( dynamic_cast<QgsProcessingModelChildAlgorithm *>( sipCpp ) != NULL )
+      sipType = sipType_QgsProcessingModelChildAlgorithm;
+    else if ( dynamic_cast<QgsProcessingModelComment *>( sipCpp ) != NULL )
+      sipType = sipType_QgsProcessingModelComment;
+    else if ( dynamic_cast<QgsProcessingModelGroupBox *>( sipCpp ) != NULL )
+      sipType = sipType_QgsProcessingModelGroupBox;
+    else if ( dynamic_cast<QgsProcessingModelOutput *>( sipCpp ) != NULL )
+      sipType = sipType_QgsProcessingModelOutput;
+    else if ( dynamic_cast<QgsProcessingModelParameter *>( sipCpp ) != NULL )
+      sipType = sipType_QgsProcessingModelParameter;
+    else
+      sipType = NULL;
+  SIP_END
+#endif
+
   public:
 
     virtual ~QgsProcessingModelComponent() = default;
@@ -52,33 +69,33 @@ class CORE_EXPORT QgsProcessingModelComponent
     void setDescription( const QString &description );
 
     /**
-     * Returns the position of the model component within the graphical modeler.
+     * Returns the position of the model component within the model designer.
      * \see setPosition()
      */
     QPointF position() const;
 
     /**
-     * Sets the \a position of the model component within the graphical modeler.
+     * Sets the \a position of the model component within the model designer.
      * \see position()
      */
     void setPosition( QPointF position );
 
     /**
-     * Returns the size of the model component within the graphical modeler.
+     * Returns the size of the model component within the model designer.
      * \see setSize()
      * \since QGIS 3.14
      */
     QSizeF size() const;
 
     /**
-     * Sets the \a size of the model component within the graphical modeler.
+     * Sets the \a size of the model component within the model designer.
      * \see size()
      * \since QGIS 3.14
      */
     void setSize( QSizeF size );
 
     /**
-     * Returns the color of the model component within the graphical modeler.
+     * Returns the color of the model component within the model designer.
      *
      * An invalid color indicates that the default color for the component should be used.
      *
@@ -88,7 +105,7 @@ class CORE_EXPORT QgsProcessingModelComponent
     QColor color() const;
 
     /**
-     * Sets the \a color of the model component within the graphical modeler. An invalid \a color
+     * Sets the \a color of the model component within the model designer. An invalid \a color
      * indicates that the default color for the component should be used.
      *
      * \see color()
@@ -104,7 +121,7 @@ class CORE_EXPORT QgsProcessingModelComponent
 
     /**
      * Sets whether the link points for the specified \a edge for this component should be shown collapsed
-     * in the graphical modeler.
+     * in the model designer.
      * \see linksCollapsed()
      */
     void setLinksCollapsed( Qt::Edge edge, bool collapsed );
@@ -135,7 +152,6 @@ class CORE_EXPORT QgsProcessingModelComponent
     virtual QgsProcessingModelComponent *clone() const = 0 SIP_FACTORY;
 
   protected:
-
     //! Only subclasses can be created
     QgsProcessingModelComponent( const QString &description = QString() );
 
@@ -168,7 +184,6 @@ class CORE_EXPORT QgsProcessingModelComponent
     void copyNonDefinitionProperties( const QgsProcessingModelComponent &other );
 
   private:
-
     static constexpr double DEFAULT_COMPONENT_WIDTH = 200;
     static constexpr double DEFAULT_COMPONENT_HEIGHT = 30;
 
@@ -180,9 +195,8 @@ class CORE_EXPORT QgsProcessingModelComponent
     QSizeF mSize = QSizeF( DEFAULT_COMPONENT_WIDTH, DEFAULT_COMPONENT_HEIGHT );
     QColor mColor;
 
-    bool mTopEdgeLinksCollapsed = true;
-    bool mBottomEdgeLinksCollapsed = true;
-
+    bool mTopEdgeLinksCollapsed = false;
+    bool mBottomEdgeLinksCollapsed = false;
 };
 
 ///@endcond

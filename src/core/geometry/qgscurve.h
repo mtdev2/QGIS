@@ -21,7 +21,8 @@
 #include "qgis_core.h"
 #include "qgis_sip.h"
 #include "qgsabstractgeometry.h"
-#include "qgsrectangle.h"
+#include "qgsbox3d.h"
+
 #include <QPainterPath>
 
 class QgsLineString;
@@ -29,21 +30,15 @@ class QgsLineString;
 /**
  * \ingroup core
  * \class QgsCurve
- * \brief Abstract base class for curved geometry type
- * \since QGIS 2.10
+ * \brief Abstract base class for curved geometry type.
  */
-class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
+class CORE_EXPORT QgsCurve : public QgsAbstractGeometry SIP_ABSTRACT
 {
   public:
-
-    /**
-     * Constructor for QgsCurve.
-     */
     QgsCurve() = default;
 
     /**
      * Checks whether this curve exactly equals another curve.
-     * \since QGIS 3.0
      */
     virtual bool equals( const QgsCurve &other ) const = 0;
 
@@ -65,9 +60,31 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
     virtual QgsPoint endPoint() const = 0;
 
     /**
+     * This method returns TRUE for classes that can be cast to the QgsSimpleCurve class.
+     *
+     * \since QGIS 4.4
+     */
+    virtual bool isSimpleCurve() const = 0;
+
+    // clang-format off
+    /**
      * Returns TRUE if the curve is closed.
+     *
+     * \see isClosed2D()
      */
     virtual bool isClosed() const SIP_HOLDGIL;
+    // clang-format on
+
+    /**
+     * Returns true if the curve is closed.
+     *
+     * Unlike isClosed. It looks only for XY coordinates.
+     *
+     * \see isClosed()
+     *
+     * \since QGIS 3.20
+     */
+    virtual bool isClosed2D() const SIP_HOLDGIL;
 
     /**
      * Returns TRUE if the curve is a ring.
@@ -108,6 +125,7 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
     virtual int numPoints() const = 0;
 
 #ifdef SIP_RUN
+// clang-format off
     int __len__() const;
     % Docstring
     Returns the number of points in the curve.
@@ -121,6 +139,7 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
     % MethodCode
     sipRes = true;
     % End
+// clang-format on
 #endif
 
     /**
@@ -128,23 +147,41 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      */
     virtual void sumUpArea( double &sum SIP_OUT ) const = 0;
 
+    /**
+     * Sums up the 3d area of the curve by iterating over the vertices (shoelace formula).
+     *
+     * \since QGIS 4.0
+     */
+    virtual void sumUpArea3D( double &sum SIP_OUT ) const = 0;
+
     QgsCoordinateSequence coordinateSequence() const override;
     bool nextVertex( QgsVertexId &id, QgsPoint &vertex SIP_OUT ) const override;
     void adjacentVertices( QgsVertexId vertex, QgsVertexId &previousVertex SIP_OUT, QgsVertexId &nextVertex SIP_OUT ) const override;
     int vertexNumberFromVertexId( QgsVertexId id ) const override;
 
     /**
-     * Returns the point and vertex id of a point within the curve.
+     * Returns the point and vertex type of a point within the curve.
      * \param node node number, where the first node is 0
      * \param point will be set to point at corresponding node in the curve
      * \param type will be set to the vertex type of the node
      * \returns TRUE if node exists within the curve
      */
-    virtual bool pointAt( int node, QgsPoint &point SIP_OUT, QgsVertexId::VertexType &type SIP_OUT ) const = 0;
+    virtual bool pointAt( int node, QgsPoint &point SIP_OUT, Qgis::VertexType &type SIP_OUT ) const = 0;
+
+    /**
+     * Returns the index of the first vertex matching the given \a point, or -1 if a matching
+     * vertex is not found.
+     *
+     * \note If the curve has m or z values then the search \a point must have exactly matching
+     * m and z values in order to be matched against the curve's vertices.
+     * \note This method only matches against segment vertices, not curve vertices.
+     *
+     * \since QGIS 3.20
+     */
+    virtual int indexOf( const QgsPoint &point ) const = 0;
 
     /**
      * Returns a reversed copy of the curve, where the direction of the curve has been flipped.
-     * \since QGIS 2.14
      */
     virtual QgsCurve *reversed() const = 0 SIP_FACTORY;
 
@@ -163,10 +200,12 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
     int ringCount( int part = 0 ) const override;
     int partCount() const override;
     QgsPoint vertexAt( QgsVertexId id ) const override;
+    bool hasVertex( QgsVertexId position ) const override;
     QgsCurve *toCurveType() const override SIP_FACTORY;
+    void normalize() final SIP_HOLDGIL;
 
-    QgsRectangle boundingBox() const override;
-    bool isValid( QString &error SIP_OUT, int flags = 0 ) const override;
+    QgsBox3D boundingBox3D() const override;
+    bool isValid( QString &error SIP_OUT, Qgis::GeometryValidityFlags flags = Qgis::GeometryValidityFlags() ) const override;
 
     /**
      * Returns the x-coordinate of the specified node in the line string.
@@ -181,6 +220,22 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      * \returns y-coordinate of node, or 0.0 if index is out of bounds
      */
     virtual double yAt( int index ) const = 0;
+
+    /**
+     * Returns the z-coordinate of the specified node in the line string.
+    * \param index index of node, where the first node in the line is 0
+    * \returns z-coordinate of node, or 0.0 if index is out of bounds
+    * \since QGIS 3.28
+    */
+    virtual double zAt( int index ) const = 0;
+
+    /**
+     * Returns the m-coordinate of the specified node in the line string.
+     * \param index index of node, where the first node in the line is 0
+     * \returns m-coordinate of node, or 0.0 if index is out of bounds
+     * \since QGIS 3.28
+     */
+    virtual double mAt( int index ) const = 0;
 
     /**
      * Returns a QPolygonF representing the points.
@@ -234,13 +289,6 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      */
     double sinuosity() const;
 
-    //! Curve orientation
-    enum Orientation
-    {
-      Clockwise, //!< Clockwise orientation
-      CounterClockwise, //!< Counter-clockwise orientation
-    };
-
     /**
      * Returns the curve's orientation, e.g. clockwise or counter-clockwise.
      *
@@ -248,7 +296,36 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      *
      * \since QGIS 3.6
      */
-    Orientation orientation() const;
+    Qgis::AngularDirection orientation() const;
+
+    /**
+     * Scrolls the curve vertices so that they start with the vertex at the given index.
+     *
+     * \warning This should only be called on closed curves, or the shape of the curve will be altered and
+     * the result is undefined.
+     *
+     * \warning The \a firstVertexIndex must correspond to a segment vertex and not a curve point or the result
+     * is undefined.
+     *
+     * \since QGIS 3.20
+     */
+    virtual void scroll( int firstVertexIndex ) = 0;
+
+    /**
+     * Returns the distance along the curve between two vertices.
+     *
+     * This method calculates the accumulated distance along the curve from one vertex to another.
+     * For circular strings, this includes following the arc path precisely.
+     *
+     * \note For 3D geometries, the distance calculation includes the Z coordinate component.
+     *
+     * \param fromVertex the starting vertex ID
+     * \param toVertex the ending vertex ID
+     * \returns distance along the curve between the vertices, or -1 if either vertex is invalid
+     *
+     * \since QGIS 4.00
+     */
+    virtual double distanceBetweenVertices( QgsVertexId fromVertex, QgsVertexId toVertex ) const = 0;
 
 #ifndef SIP_RUN
 
@@ -256,21 +333,56 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      * Cast the \a geom to a QgsCurve.
      * Should be used by qgsgeometry_cast<QgsCurve *>( geometry ).
      *
-     * \note Not available in Python. Objects will be automatically be converted to the appropriate target type.
-     * \since QGIS 3.0
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
      */
     inline static const QgsCurve *cast( const QgsAbstractGeometry *geom )
     {
       if ( !geom )
         return nullptr;
 
-      QgsWkbTypes::Type type = geom->wkbType();
-      if ( QgsWkbTypes::geometryType( type ) == QgsWkbTypes::LineGeometry && QgsWkbTypes::isSingleType( type ) )
+      const Qgis::WkbType type = geom->wkbType();
+      if ( QgsWkbTypes::geometryType( type ) == Qgis::GeometryType::Line && QgsWkbTypes::isSingleType( type ) )
       {
         return static_cast<const QgsCurve *>( geom );
       }
       return nullptr;
     }
+
+    /**
+     * Cast the \a geom to a QgsCurve.
+     * Should be used by qgsgeometry_cast<QgsCurve *>( geometry ).
+     *
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
+     */
+    inline static QgsCurve *cast( QgsAbstractGeometry *geom )
+    {
+      if ( !geom )
+        return nullptr;
+
+      const Qgis::WkbType type = geom->wkbType();
+      if ( QgsWkbTypes::geometryType( type ) == Qgis::GeometryType::Line && QgsWkbTypes::isSingleType( type ) )
+      {
+        return static_cast<QgsCurve *>( geom );
+      }
+      return nullptr;
+    }
+
+    /**
+     * Splits the curve at the specified vertex \a index, returning two curves which represent the portion of the
+     * curve up to including the vertex at \a index, and the portion of the curve from the vertex at \a index (inclusive)
+     * to the end of the curve.
+     *
+     * \note The vertex \a index must correspond to a segment vertex, not a curve vertex.
+     *
+     * \note Not available in Python bindings.
+     * \since QGIS 3.20
+     */
+    virtual std::tuple< std::unique_ptr< QgsCurve >, std::unique_ptr< QgsCurve > > splitCurveAtVertex( int index ) const = 0;
+
 #endif
 
 
@@ -280,7 +392,6 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
 
     int childCount() const override;
     QgsPoint childPoint( int index ) const override;
-
 #ifndef SIP_RUN
 
     /**
@@ -289,15 +400,26 @@ class CORE_EXPORT QgsCurve: public QgsAbstractGeometry
      */
     bool snapToGridPrivate( double hSpacing, double vSpacing, double dSpacing, double mSpacing,
                             const QVector<double> &srcX, const QVector<double> &srcY, const QVector<double> &srcZ, const QVector<double> &srcM,
-                            QVector<double> &outX, QVector<double> &outY, QVector<double> &outZ, QVector<double> &outM ) const;
+                            QVector<double> &outX, QVector<double> &outY, QVector<double> &outZ, QVector<double> &outM,
+                            bool removeRedundantPoints ) const;
 #endif
+
+    /**
+     * Cached bounding box.
+     */
+    mutable QgsBox3D mBoundingBox;
+
+    mutable bool mHasCachedSummedUpArea = false;
+    mutable double mSummedUpArea = 0;
+    mutable bool mHasCachedSummedUpArea3D = false;
+    mutable double mSummedUpArea3D = 0;
 
   private:
 
-    mutable QgsRectangle mBoundingBox;
-
     mutable bool mHasCachedValidity = false;
     mutable QString mValidityFailureReason;
+
+    friend class TestQgsGeometry;
 };
 
 #endif // QGSCURVE_H

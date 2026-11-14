@@ -20,12 +20,6 @@ set (WMTS_HDRS
 
 add_library (wmts MODULE ${WMTS_SRCS} ${WMTS_HDRS})
 
-
-include_directories(SYSTEM
-  ${GDAL_INCLUDE_DIR}
-  ${POSTGRES_INCLUDE_DIR}
-)
-
 include_directories(
 
   ${CMAKE_SOURCE_DIR}/src/server/

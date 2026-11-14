@@ -17,10 +17,13 @@
 
 
 #include "qgshillshaderendererwidget.h"
-#include "qgsrasterlayer.h"
+
 #include "qgsbilinearrasterresampler.h"
 #include "qgshillshaderenderer.h"
 #include "qgsrasterdataprovider.h"
+#include "qgsrasterlayer.h"
+
+#include "moc_qgshillshaderendererwidget.cpp"
 
 QgsHillshadeRendererWidget::QgsHillshadeRendererWidget( QgsRasterLayer *layer, const QgsRectangle &extent )
   : QgsRasterRendererWidget( layer, extent )
@@ -45,10 +48,10 @@ QgsHillshadeRendererWidget::QgsHillshadeRendererWidget( QgsRasterLayer *layer, c
 
   setFromRenderer( layer->renderer() );
 
-  connect( mLightAngle, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsRasterRendererWidget::widgetChanged );
-  connect( mLightAzimuth, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsHillshadeRendererWidget::mLightAzimuth_updated );
+  connect( mLightAngle, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsRasterRendererWidget::widgetChanged );
+  connect( mLightAzimuth, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsHillshadeRendererWidget::mLightAzimuth_updated );
   connect( mLightAzimuthDial, &QAbstractSlider::valueChanged, this, &QgsHillshadeRendererWidget::mLightAzimuthDial_updated );
-  connect( mZFactor, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsRasterRendererWidget::widgetChanged );
+  connect( mZFactor, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsRasterRendererWidget::widgetChanged );
   connect( mMultiDirection, &QAbstractButton::toggled, this, &QgsRasterRendererWidget::widgetChanged );
   connect( mBandsCombo, &QgsRasterBandComboBox::bandChanged, this, &QgsHillshadeRendererWidget::widgetChanged );
 }
@@ -66,9 +69,9 @@ QgsRasterRenderer *QgsHillshadeRendererWidget::renderer()
     return nullptr;
   }
 
-  int band = mBandsCombo->currentBand();
+  const int band = mBandsCombo->currentBand();
   QgsHillshadeRenderer *renderer = new QgsHillshadeRenderer( provider, band, mLightAzimuth->value(), mLightAngle->value() );
-  double value = mZFactor->value();
+  const double value = mZFactor->value();
   renderer->setZFactor( value );
   renderer->setMultiDirectional( mMultiDirection->checkState() );
   return renderer;
@@ -79,7 +82,7 @@ void QgsHillshadeRendererWidget::setFromRenderer( const QgsRasterRenderer *rende
   const QgsHillshadeRenderer *r = dynamic_cast<const QgsHillshadeRenderer *>( renderer );
   if ( r )
   {
-    mBandsCombo->setBand( r->band() );
+    mBandsCombo->setBand( r->inputBand() );
     mLightAngle->setValue( r->altitude() );
     mLightAzimuth->setValue( r->azimuth() );
     mZFactor->setValue( r->zFactor() );

@@ -16,28 +16,27 @@
 #ifndef QGSSEARCHWIDGETTOOLBUTTON_H
 #define QGSSEARCHWIDGETTOOLBUTTON_H
 
-#include "editorwidgets/core/qgssearchwidgetwrapper.h"
-#include "qgis_sip.h"
-#include <QToolButton>
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgssearchwidgetwrapper.h"
+
+#include <QToolButton>
 
 #ifdef SIP_RUN
-% ModuleHeaderCode
+//%ModuleHeaderCode
 #include "qgssearchwidgettoolbutton.h"
-% End
+//%End
 #endif
 
 /**
  * \ingroup gui
  * \class QgsSearchWidgetToolButton
- * A tool button widget which is displayed next to search widgets in forms, and
+ * \brief A tool button widget which is displayed next to search widgets in forms, and
  * allows for controlling how the widget behaves and how the filtering/searching
  * operates.
- * \since QGIS 2.16
  */
 class GUI_EXPORT QgsSearchWidgetToolButton : public QToolButton
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( qobject_cast<QgsSearchWidgetToolButton *>( sipCpp ) )
@@ -50,7 +49,6 @@ class GUI_EXPORT QgsSearchWidgetToolButton : public QToolButton
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsSearchWidgetToolButton.
      * \param parent parent object
@@ -153,14 +151,12 @@ class GUI_EXPORT QgsSearchWidgetToolButton : public QToolButton
     void searchWidgetValueChanged();
 
   private:
-
     QgsSearchWidgetWrapper::FilterFlags mAvailableFilterFlags;
     QgsSearchWidgetWrapper::FilterFlags mDefaultFilterFlags;
     QgsSearchWidgetWrapper::FilterFlags mFilterFlags;
     QMenu *mMenu = nullptr;
 
     void updateState();
-
 };
 
 #endif // QGSSEARCHWIDGETTOOLBUTTON_H

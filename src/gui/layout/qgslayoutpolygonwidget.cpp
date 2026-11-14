@@ -15,13 +15,15 @@
  ***************************************************************************/
 
 #include "qgslayoutpolygonwidget.h"
-#include "qgssymbolselectordialog.h"
-#include "qgsstyle.h"
+
+#include "qgsfillsymbol.h"
 #include "qgslayout.h"
-#include "qgssymbollayerutils.h"
 #include "qgslayoutitemregistry.h"
+#include "qgslayoutreportcontext.h"
 #include "qgslayoutundostack.h"
 #include "qgsvectorlayer.h"
+
+#include "moc_qgslayoutpolygonwidget.cpp"
 
 QgsLayoutPolygonWidget::QgsLayoutPolygonWidget( QgsLayoutItemPolygon *polygon )
   : QgsLayoutItemBaseWidget( nullptr, polygon )
@@ -37,7 +39,7 @@ QgsLayoutPolygonWidget::QgsLayoutPolygonWidget( QgsLayoutItemPolygon *polygon )
   mItemPropertiesWidget->showFrameGroup( false );
   mainLayout->addWidget( mItemPropertiesWidget );
 
-  mPolygonStyleButton->setSymbolType( QgsSymbol::Fill );
+  mPolygonStyleButton->setSymbolType( Qgis::SymbolType::Fill );
   connect( mPolygonStyleButton, &QgsSymbolButton::changed, this, &QgsLayoutPolygonWidget::symbolChanged );
 
   if ( mPolygon )
@@ -72,7 +74,7 @@ bool QgsLayoutPolygonWidget::setNewItem( QgsLayoutItem *item )
     disconnect( mPolygon, &QgsLayoutObject::changed, this, &QgsLayoutPolygonWidget::setGuiElementValues );
   }
 
-  mPolygon = qobject_cast< QgsLayoutItemPolygon * >( item );
+  mPolygon = qobject_cast<QgsLayoutItemPolygon *>( item );
   mItemPropertiesWidget->setItem( mPolygon );
 
   if ( mPolygon )

@@ -13,14 +13,16 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsquerybuilder.h"
-#include "qgslogger.h"
-#include "qgsproject.h"
-#include "qgssettings.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
+
 #include "qgsapplication.h"
-#include "qgshelp.h"
+#include "qgsfieldmodel.h"
+#include "qgsfieldproxymodel.h"
 #include "qgsgui.h"
+#include "qgshelp.h"
+#include "qgslogger.h"
+#include "qgssettings.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
 
 #include <QDomDocument>
 #include <QDomElement>
@@ -28,21 +30,22 @@
 #include <QInputDialog>
 #include <QListView>
 #include <QMessageBox>
-#include <QRegExp>
 #include <QPushButton>
+#include <QString>
 #include <QTextStream>
 
+#include "moc_qgsquerybuilder.cpp"
+
+using namespace Qt::StringLiterals;
 
 // constructor used when the query builder must make its own
 // connection to the database
-QgsQueryBuilder::QgsQueryBuilder( QgsVectorLayer *layer,
-                                  QWidget *parent, Qt::WindowFlags fl )
+QgsQueryBuilder::QgsQueryBuilder( QgsVectorLayer *layer, QWidget *parent, Qt::WindowFlags fl )
   : QgsSubsetStringEditorInterface( parent, fl )
-  , mPreviousFieldRow( -1 )
   , mLayer( layer )
 {
   setupUi( this );
-  QgsGui::instance()->enableAutoGeometryRestore( this );
+  QgsGui::enableAutoGeometryRestore( this );
   connect( btnEqual, &QPushButton::clicked, this, &QgsQueryBuilder::btnEqual_clicked );
   connect( btnLessThan, &QPushButton::clicked, this, &QgsQueryBuilder::btnLessThan_clicked );
   connect( btnGreaterThan, &QPushButton::clicked, this, &QgsQueryBuilder::btnGreaterThan_clicked );
@@ -84,18 +87,48 @@ QgsQueryBuilder::QgsQueryBuilder( QgsVectorLayer *layer,
 
   setupGuiViews();
 
+  mModelFields = new QgsFieldProxyModel();
+  mModelFields->setFilters( QgsFieldProxyModel::Filter::AllTypes | QgsFieldProxyModel::Filter::OriginProvider );
+  mModelFields->sourceFieldModel()->setLayer( layer );
+  lstFields->setModel( mModelFields );
+
   mOrigSubsetString = layer->subsetString();
   connect( layer, &QgsVectorLayer::subsetStringChanged, this, &QgsQueryBuilder::layerSubsetStringChanged );
   layerSubsetStringChanged();
 
-  lblDataUri->setText( tr( "Set provider filter on %1" ).arg( layer->name() ) );
+  QString subsetStringDialect;
+  QString subsetStringHelpUrl;
+
+  if ( QgsDataProvider *provider = layer->dataProvider() )
+  {
+    lblDataUri->setText( tr( "Set provider filter on %1 (provider: %2)" ).arg( layer->name(), provider->name() ) );
+    subsetStringDialect = provider->subsetStringDialect();
+    subsetStringHelpUrl = provider->subsetStringHelpUrl();
+  }
+  else
+  {
+    lblDataUri->setText( tr( "Set provider filter on %1 (provider: %2)" ).arg( layer->name(), layer->providerType() ) );
+  }
+
+  if ( !subsetStringDialect.isEmpty() && !subsetStringHelpUrl.isEmpty() )
+  {
+    lblProviderFilterInfo->setOpenExternalLinks( true );
+    lblProviderFilterInfo->setText( tr( "Enter a <a href=\"%1\">%2</a> to filter the layer" ).arg( subsetStringHelpUrl ).arg( subsetStringDialect ) );
+  }
+  else if ( !subsetStringDialect.isEmpty() )
+  {
+    lblProviderFilterInfo->setText( tr( "Enter a %1 to filter the layer" ).arg( subsetStringDialect ) );
+  }
+  else
+  {
+    lblProviderFilterInfo->hide();
+  }
+
   mTxtSql->setText( mOrigSubsetString );
 
   mFilterLineEdit->setShowSearchIcon( true );
   mFilterLineEdit->setPlaceholderText( tr( "Search…" ) );
   connect( mFilterLineEdit, &QgsFilterLineEdit::textChanged, this, &QgsQueryBuilder::onTextChanged );
-
-  populateFields();
 }
 
 void QgsQueryBuilder::showEvent( QShowEvent *event )
@@ -104,36 +137,9 @@ void QgsQueryBuilder::showEvent( QShowEvent *event )
   QDialog::showEvent( event );
 }
 
-void QgsQueryBuilder::populateFields()
-{
-  const QgsFields &fields = mLayer->fields();
-  mTxtSql->setFields( fields );
-  for ( int idx = 0; idx < fields.count(); ++idx )
-  {
-    if ( fields.fieldOrigin( idx ) != QgsFields::OriginProvider )
-    {
-      // only consider native fields
-      continue;
-    }
-    QStandardItem *myItem = new QStandardItem( fields.at( idx ).displayNameWithAlias() );
-    myItem->setData( idx );
-    myItem->setEditable( false );
-    mModelFields->insertRow( mModelFields->rowCount(), myItem );
-  }
-
-  // All fields get ... setup
-  setupLstFieldsModel();
-}
-
-void QgsQueryBuilder::setupLstFieldsModel()
-{
-  lstFields->setModel( mModelFields );
-}
-
 void QgsQueryBuilder::setupGuiViews()
 {
   //Initialize the models
-  mModelFields = new QStandardItemModel();
   mModelValues = new QStandardItemModel();
   mProxyValues = new QSortFilterProxyModel();
   mProxyValues->setSourceModel( mModelValues );
@@ -151,27 +157,39 @@ void QgsQueryBuilder::setupGuiViews()
   lstValues->setModel( mProxyValues );
 }
 
-void QgsQueryBuilder::fillValues( int idx, int limit )
+void QgsQueryBuilder::fillValues( const QString &field, int limit )
 {
   // clear the model
   mModelValues->clear();
 
+  const int fieldIndex = mLayer->fields().lookupField( field );
+
   // determine the field type
-  QList<QVariant> values = qgis::setToList( mLayer->uniqueValues( idx, limit ) );
+  QList<QVariant> values = qgis::setToList( mLayer->uniqueValues( fieldIndex, limit ) );
   std::sort( values.begin(), values.end() );
 
-  QString nullValue = QgsApplication::nullRepresentation();
+  const QString nullValue = QgsApplication::nullRepresentation();
 
-  QgsDebugMsg( QStringLiteral( "nullValue: %1" ).arg( nullValue ) );
+  QgsDebugMsgLevel( u"nullValue: %1"_s.arg( nullValue ), 2 );
 
   const auto constValues = values;
   for ( const QVariant &var : constValues )
   {
     QString value;
-    if ( var.isNull() )
+    if ( QgsVariantUtils::isNull( var ) )
       value = nullValue;
-    else if ( var.type() == QVariant::Date && mLayer->providerType() == QLatin1String( "ogr" ) && mLayer->storageType() == QLatin1String( "ESRI Shapefile" ) )
-      value = var.toDate().toString( QStringLiteral( "yyyy/MM/dd" ) );
+    else if ( var.userType() == QMetaType::Type::QDate && mLayer->providerType() == "ogr"_L1 && mLayer->storageType() == "ESRI Shapefile"_L1 )
+      value = var.toDate().toString( u"yyyy/MM/dd"_s );
+    else if ( var.userType() == QMetaType::Type::QVariantList || var.userType() == QMetaType::Type::QStringList )
+    {
+      const QVariantList list = var.toList();
+      for ( const QVariant &val : list )
+      {
+        if ( !value.isEmpty() )
+          value.append( ", " );
+        value.append( QgsVariantUtils::isNull( val ) ? nullValue : val.toString() );
+      }
+    }
     else
       value = var.toString();
 
@@ -179,7 +197,7 @@ void QgsQueryBuilder::fillValues( int idx, int limit )
     myItem->setEditable( false );
     myItem->setData( var, Qt::UserRole + 1 );
     mModelValues->insertRow( mModelValues->rowCount(), myItem );
-    QgsDebugMsg( QStringLiteral( "Value is null: %1\nvalue: %2" ).arg( var.isNull() ).arg( var.isNull() ? nullValue : var.toString() ) );
+    QgsDebugMsgLevel( u"Value is null: %1\nvalue: %2"_s.arg( QgsVariantUtils::isNull( var ) ).arg( QgsVariantUtils::isNull( var ) ? nullValue : var.toString() ), 2 );
   }
 }
 
@@ -187,7 +205,7 @@ void QgsQueryBuilder::btnSampleValues_clicked()
 {
   lstValues->setCursor( Qt::WaitCursor );
 
-  QString prevSubsetString = mLayer->subsetString();
+  const QString prevSubsetString = mLayer->subsetString();
   if ( mUseUnfilteredLayer->isChecked() && !prevSubsetString.isEmpty() )
   {
     mIgnoreLayerSubsetStringChangedSignal = true;
@@ -195,7 +213,7 @@ void QgsQueryBuilder::btnSampleValues_clicked()
   }
 
   //Clear and fill the mModelValues
-  fillValues( mModelFields->data( lstFields->currentIndex(), Qt::UserRole + 1 ).toInt(), 25 );
+  fillValues( mModelFields->data( lstFields->currentIndex(), static_cast<int>( QgsFieldModel::CustomRole::FieldName ) ).toString(), 25 );
 
   if ( prevSubsetString != mLayer->subsetString() )
   {
@@ -210,7 +228,7 @@ void QgsQueryBuilder::btnGetAllValues_clicked()
 {
   lstValues->setCursor( Qt::WaitCursor );
 
-  QString prevSubsetString = mLayer->subsetString();
+  const QString prevSubsetString = mLayer->subsetString();
   if ( mUseUnfilteredLayer->isChecked() && !prevSubsetString.isEmpty() )
   {
     mIgnoreLayerSubsetStringChangedSignal = true;
@@ -218,7 +236,7 @@ void QgsQueryBuilder::btnGetAllValues_clicked()
   }
 
   //Clear and fill the mModelValues
-  fillValues( mModelFields->data( lstFields->currentIndex(), Qt::UserRole + 1 ).toInt(), -1 );
+  fillValues( mModelFields->data( lstFields->currentIndex(), static_cast<int>( QgsFieldModel::CustomRole::FieldName ) ).toString(), -1 );
 
   if ( prevSubsetString != mLayer->subsetString() )
   {
@@ -237,34 +255,26 @@ void QgsQueryBuilder::test()
 
   if ( mLayer->setSubsetString( mTxtSql->text() ) )
   {
-    const long featureCount { mLayer->featureCount() };
+    const long long featureCount { mLayer->featureCount() };
     // Check for errors
     if ( featureCount < 0 )
     {
-      QMessageBox::warning( this,
-                            tr( "Query Result" ),
-                            tr( "An error occurred when executing the query, please check the expression syntax." ) );
+      QMessageBox::warning( this, tr( "Query Result" ), tr( "An error occurred when executing the query, please check the expression syntax." ) );
     }
     else
     {
-      QMessageBox::information( this,
-                                tr( "Query Result" ),
-                                tr( "The where clause returned %n row(s).", "returned test rows", featureCount ) );
+      QMessageBox::information( this, tr( "Query Result" ), tr( "The where clause returned %n row(s).", "returned test rows", featureCount ) );
     }
   }
   else if ( mLayer->dataProvider()->hasErrors() )
   {
-    QMessageBox::warning( this,
-                          tr( "Query Result" ),
-                          tr( "An error occurred when executing the query." )
-                          + tr( "\nThe data provider said:\n%1" ).arg( mLayer->dataProvider()->errors().join( QLatin1Char( '\n' ) ) ) );
+    QMessageBox::
+      warning( this, tr( "Query Result" ), tr( "An error occurred when executing the query." ) + tr( "\nThe data provider said:\n%1" ).arg( mLayer->dataProvider()->errors().join( QLatin1Char( '\n' ) ) ) );
     mLayer->dataProvider()->clearErrors();
   }
   else
   {
-    QMessageBox::warning( this,
-                          tr( "Query Result" ),
-                          tr( "An error occurred when executing the query." ) );
+    QMessageBox::warning( this, tr( "Query Result" ), tr( "An error occurred when executing the query." ) );
   }
 }
 
@@ -277,10 +287,8 @@ void QgsQueryBuilder::accept()
       //error in query - show the problem
       if ( mLayer->dataProvider()->hasErrors() )
       {
-        QMessageBox::warning( this,
-                              tr( "Query Result" ),
-                              tr( "An error occurred when executing the query." )
-                              + tr( "\nThe data provider said:\n%1" ).arg( mLayer->dataProvider()->errors().join( QLatin1Char( '\n' ) ) ) );
+        QMessageBox::
+          warning( this, tr( "Query Result" ), tr( "An error occurred when executing the query." ) + tr( "\nThe data provider said:\n%1" ).arg( mLayer->dataProvider()->errors().join( QLatin1Char( '\n' ) ) ) );
         mLayer->dataProvider()->clearErrors();
       }
       else
@@ -305,43 +313,43 @@ void QgsQueryBuilder::reject()
 
 void QgsQueryBuilder::btnEqual_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " = " ) );
+  mTxtSql->insertText( u" = "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnLessThan_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " < " ) );
+  mTxtSql->insertText( u" < "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnGreaterThan_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " > " ) );
+  mTxtSql->insertText( u" > "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnPct_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( "%" ) );
+  mTxtSql->insertText( u"%"_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnIn_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " IN " ) );
+  mTxtSql->insertText( u" IN "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnNotIn_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " NOT IN " ) );
+  mTxtSql->insertText( u" NOT IN "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnLike_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " LIKE " ) );
+  mTxtSql->insertText( u" LIKE "_s );
   mTxtSql->setFocus();
 }
 
@@ -371,58 +379,58 @@ void QgsQueryBuilder::lstFields_clicked( const QModelIndex &index )
 
 void QgsQueryBuilder::lstFields_doubleClicked( const QModelIndex &index )
 {
-  mTxtSql->insertText( '\"' + mLayer->fields().at( mModelFields->data( index, Qt::UserRole + 1 ).toInt() ).name() + '\"' );
+  mTxtSql->insertText( '\"' + mModelFields->data( index, static_cast<int>( QgsFieldModel::CustomRole::FieldName ) ).toString() + '\"' );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::lstValues_doubleClicked( const QModelIndex &index )
 {
-  QVariant value = index.data( Qt::UserRole + 1 );
-  if ( value.isNull() )
-    mTxtSql->insertText( QStringLiteral( "NULL" ) );
-  else if ( value.type() == QVariant::Date && mLayer->providerType() == QLatin1String( "ogr" ) && mLayer->storageType() == QLatin1String( "ESRI Shapefile" ) )
-    mTxtSql->insertText( '\'' + value.toDate().toString( QStringLiteral( "yyyy/MM/dd" ) ) + '\'' );
-  else if ( value.type() == QVariant::Int || value.type() == QVariant::Double || value.type() == QVariant::LongLong || value.type() == QVariant::Bool )
+  const QVariant value = index.data( Qt::UserRole + 1 );
+  if ( QgsVariantUtils::isNull( value ) )
+    mTxtSql->insertText( u"NULL"_s );
+  else if ( value.userType() == QMetaType::Type::QDate && mLayer->providerType() == "ogr"_L1 && mLayer->storageType() == "ESRI Shapefile"_L1 )
+    mTxtSql->insertText( '\'' + value.toDate().toString( u"yyyy/MM/dd"_s ) + '\'' );
+  else if ( value.userType() == QMetaType::Type::Int || value.userType() == QMetaType::Type::Double || value.userType() == QMetaType::Type::LongLong || value.userType() == QMetaType::Type::Bool )
     mTxtSql->insertText( value.toString() );
   else
-    mTxtSql->insertText( '\'' + value.toString().replace( '\'', QLatin1String( "''" ) ) + '\'' );
+    mTxtSql->insertText( '\'' + value.toString().replace( '\'', "''"_L1 ) + '\'' );
 
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnLessEqual_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " <= " ) );
+  mTxtSql->insertText( u" <= "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnGreaterEqual_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " >= " ) );
+  mTxtSql->insertText( u" >= "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnNotEqual_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " != " ) );
+  mTxtSql->insertText( u" != "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnAnd_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " AND " ) );
+  mTxtSql->insertText( u" AND "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnNot_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " NOT " ) );
+  mTxtSql->insertText( u" NOT "_s );
   mTxtSql->setFocus();
 }
 
 void QgsQueryBuilder::btnOr_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " OR " ) );
+  mTxtSql->insertText( u" OR "_s );
   mTxtSql->setFocus();
 }
 
@@ -440,7 +448,7 @@ void QgsQueryBuilder::clear()
 
 void QgsQueryBuilder::btnILike_clicked()
 {
-  mTxtSql->insertText( QStringLiteral( " ILIKE " ) );
+  mTxtSql->insertText( u" ILIKE "_s );
   mTxtSql->setFocus();
 }
 
@@ -451,93 +459,100 @@ void QgsQueryBuilder::setDatasourceDescription( const QString &uri )
 
 void QgsQueryBuilder::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "working_with_vector/vector_properties.html#query-builder" ) );
+  QgsHelp::openHelp( u"working_with_vector/vector_properties.html#query-builder"_s );
 }
 
 void QgsQueryBuilder::saveQuery()
 {
+  const bool ok = saveQueryToFile( mTxtSql->text() );
+  Q_UNUSED( ok )
+}
+
+bool QgsQueryBuilder::saveQueryToFile( const QString &subset )
+{
   QgsSettings s;
-  QString lastQueryFileDir = s.value( QStringLiteral( "/UI/lastQueryFileDir" ), QDir::homePath() ).toString();
+  const QString lastQueryFileDir = s.value( u"/UI/lastQueryFileDir"_s, QDir::homePath() ).toString();
   //save as qqf (QGIS query file)
   QString saveFileName = QFileDialog::getSaveFileName( nullptr, tr( "Save Query to File" ), lastQueryFileDir, tr( "Query files (*.qqf *.QQF)" ) );
   if ( saveFileName.isNull() )
   {
-    return;
+    return false;
   }
 
-  if ( !saveFileName.endsWith( QLatin1String( ".qqf" ), Qt::CaseInsensitive ) )
+  if ( !saveFileName.endsWith( ".qqf"_L1, Qt::CaseInsensitive ) )
   {
-    saveFileName += QLatin1String( ".qqf" );
+    saveFileName += ".qqf"_L1;
   }
 
   QFile saveFile( saveFileName );
   if ( !saveFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) )
   {
     QMessageBox::critical( nullptr, tr( "Save Query to File" ), tr( "Could not open file for writing." ) );
-    return;
+    return false;
   }
 
   QDomDocument xmlDoc;
-  QDomElement queryElem = xmlDoc.createElement( QStringLiteral( "Query" ) );
-  QDomText queryTextNode = xmlDoc.createTextNode( mTxtSql->text() );
+  QDomElement queryElem = xmlDoc.createElement( u"Query"_s );
+  const QDomText queryTextNode = xmlDoc.createTextNode( subset );
   queryElem.appendChild( queryTextNode );
   xmlDoc.appendChild( queryElem );
 
   QTextStream fileStream( &saveFile );
   xmlDoc.save( fileStream, 2 );
 
-  QFileInfo fi( saveFile );
-  s.setValue( QStringLiteral( "/UI/lastQueryFileDir" ), fi.absolutePath() );
+  const QFileInfo fi( saveFile );
+  s.setValue( u"/UI/lastQueryFileDir"_s, fi.absolutePath() );
+  return true;
 }
 
 void QgsQueryBuilder::loadQuery()
 {
-  QgsSettings s;
-  QString lastQueryFileDir = s.value( QStringLiteral( "/UI/lastQueryFileDir" ), QDir::homePath() ).toString();
+  QString subset;
+  if ( loadQueryFromFile( subset ) )
+  {
+    mTxtSql->clear();
+    mTxtSql->insertText( subset );
+  }
+}
 
-  QString queryFileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Query from File" ), lastQueryFileDir, tr( "Query files" ) + " (*.qqf);;" + tr( "All files" ) + " (*)" );
+bool QgsQueryBuilder::loadQueryFromFile( QString &subset )
+{
+  const QgsSettings s;
+  const QString lastQueryFileDir = s.value( u"/UI/lastQueryFileDir"_s, QDir::homePath() ).toString();
+
+  const QString queryFileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Query from File" ), lastQueryFileDir, tr( "Query files" ) + " (*.qqf);;" + tr( "All files" ) + " (*)" );
   if ( queryFileName.isNull() )
   {
-    return;
+    return false;
   }
 
   QFile queryFile( queryFileName );
   if ( !queryFile.open( QIODevice::ReadOnly ) )
   {
     QMessageBox::critical( nullptr, tr( "Load Query from File" ), tr( "Could not open file for reading." ) );
-    return;
+    return false;
   }
   QDomDocument queryDoc;
   if ( !queryDoc.setContent( &queryFile ) )
   {
     QMessageBox::critical( nullptr, tr( "Load Query from File" ), tr( "File is not a valid xml document." ) );
-    return;
+    return false;
   }
 
-  QDomElement queryElem = queryDoc.firstChildElement( QStringLiteral( "Query" ) );
+  const QDomElement queryElem = queryDoc.firstChildElement( u"Query"_s );
   if ( queryElem.isNull() )
   {
     QMessageBox::critical( nullptr, tr( "Load Query from File" ), tr( "File is not a valid query document." ) );
-    return;
+    return false;
   }
 
-  QString query = queryElem.text();
-
-  //TODO: test if all the attributes are valid
-  QgsExpression search( query );
-  if ( search.hasParserError() )
-  {
-    QMessageBox::critical( this, tr( "Query Result" ), search.parserErrorString() );
-    return;
-  }
-
-  mTxtSql->clear();
-  mTxtSql->insertText( query );
+  subset = queryElem.text();
+  return true;
 }
 
 void QgsQueryBuilder::layerSubsetStringChanged()
 {
   if ( mIgnoreLayerSubsetStringChangedSignal )
     return;
-  mUseUnfilteredLayer->setDisabled( mLayer->subsetString().isEmpty() );
+  mUseUnfilteredLayer->setDisabled( mLayer->subsetString().isEmpty() || mLayer->isSqlQuery() );
 }

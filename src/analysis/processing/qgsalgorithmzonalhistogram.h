@@ -18,10 +18,11 @@
 #ifndef QGSALGORITHMZONALHISTOGRAM_H
 #define QGSALGORITHMZONALHISTOGRAM_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -30,9 +31,7 @@
  */
 class QgsZonalHistogramAlgorithm : public QgsProcessingAlgorithm
 {
-
   public:
-
     QgsZonalHistogramAlgorithm() = default;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
     QString name() const override;
@@ -41,31 +40,26 @@ class QgsZonalHistogramAlgorithm : public QgsProcessingAlgorithm
     QString group() const override;
     QString groupId() const override;
     QString shortHelpString() const override;
+    QString shortDescription() const override;
     QgsZonalHistogramAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
     bool prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 
   private:
-
-    std::unique_ptr< QgsRasterInterface > mRasterInterface;
-    int mRasterBand;
+    std::unique_ptr<QgsRasterInterface> mRasterInterface;
+    int mRasterBand = 1;
     bool mHasNoDataValue = false;
     float mNodataValue = -1;
     QgsRectangle mRasterExtent;
     QgsCoordinateReferenceSystem mCrs;
-    double mCellSizeX;
-    double mCellSizeY;
-    double mNbCellsXProvider;
-    double mNbCellsYProvider;
-
+    double mCellSizeX = 0;
+    double mCellSizeY = 0;
+    double mNbCellsXProvider = 0;
+    double mNbCellsYProvider = 0;
 };
 
 ///@endcond PRIVATE
 
 #endif // QGSALGORITHMZONALHISTOGRAM_H
-
-

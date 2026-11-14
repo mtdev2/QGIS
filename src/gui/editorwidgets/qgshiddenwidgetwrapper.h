@@ -16,14 +16,14 @@
 #ifndef QGSHIDDENWIDGETWRAPPER_H
 #define QGSHIDDENWIDGETWRAPPER_H
 
-#include "qgseditorwidgetwrapper.h"
 #include "qgis_gui.h"
+#include "qgseditorwidgetwrapper.h"
 
 SIP_NO_FILE
 
 /**
  * \ingroup gui
- * Wraps a hidden widget. Fields with this widget type will not be visible.
+ * \brief Wraps a hidden widget. Fields with this widget type will not be visible.
  * \note not available in Python bindings
  */
 
@@ -31,7 +31,6 @@ class GUI_EXPORT QgsHiddenWidgetWrapper : public QgsEditorWidgetWrapper
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsHiddenWidgetWrapper.
      *
@@ -54,7 +53,7 @@ class GUI_EXPORT QgsHiddenWidgetWrapper : public QgsEditorWidgetWrapper
     bool valid() const override;
 
   private:
-    void updateValues( const QVariant &value, const QVariantList  & = QVariantList() ) override;
+    void updateValues( const QVariant &value, const QVariantList & = QVariantList() ) override;
 
     QVariant mValue;
 };

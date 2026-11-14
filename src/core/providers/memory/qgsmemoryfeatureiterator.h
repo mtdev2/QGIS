@@ -15,12 +15,14 @@
 #ifndef QGSMEMORYFEATUREITERATOR_H
 #define QGSMEMORYFEATUREITERATOR_H
 
-#define SIP_NO_FILE
 
-#include "qgsfeatureiterator.h"
+#include "qgscoordinatetransform.h"
 #include "qgsexpressioncontext.h"
+#include "qgsfeatureiterator.h"
 #include "qgsfields.h"
 #include "qgsgeometry.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -31,7 +33,7 @@ typedef QMap<QgsFeatureId, QgsFeature> QgsFeatureMap;
 class QgsSpatialIndex;
 
 
-class QgsMemoryFeatureSource final: public QgsAbstractFeatureSource
+class QgsMemoryFeatureSource final : public QgsAbstractFeatureSource
 {
   public:
     explicit QgsMemoryFeatureSource( const QgsMemoryProvider *p );
@@ -52,7 +54,7 @@ class QgsMemoryFeatureSource final: public QgsAbstractFeatureSource
 };
 
 
-class QgsMemoryFeatureIterator final: public QgsAbstractFeatureIteratorFromSource<QgsMemoryFeatureSource>
+class QgsMemoryFeatureIterator final : public QgsAbstractFeatureIteratorFromSource<QgsMemoryFeatureSource>
 {
   public:
     QgsMemoryFeatureIterator( QgsMemoryFeatureSource *source, bool ownSource, const QgsFeatureRequest &request );
@@ -63,7 +65,6 @@ class QgsMemoryFeatureIterator final: public QgsAbstractFeatureIteratorFromSourc
     bool close() override;
 
   protected:
-
     bool fetchFeature( QgsFeature &feature ) override;
 
   private:
@@ -72,6 +73,8 @@ class QgsMemoryFeatureIterator final: public QgsAbstractFeatureIteratorFromSourc
 
     QgsGeometry mSelectRectGeom;
     std::unique_ptr< QgsGeometryEngine > mSelectRectEngine;
+    QgsGeometry mDistanceWithinGeom;
+    std::unique_ptr< QgsGeometryEngine > mDistanceWithinEngine;
     QgsRectangle mFilterRect;
     QgsFeatureMap::const_iterator mSelectIterator;
     bool mUsingFeatureIdList = false;
@@ -79,7 +82,6 @@ class QgsMemoryFeatureIterator final: public QgsAbstractFeatureIteratorFromSourc
     QList<QgsFeatureId>::const_iterator mFeatureIdListIterator;
     std::unique_ptr< QgsExpression > mSubsetExpression;
     QgsCoordinateTransform mTransform;
-
 };
 
 ///@endcond PRIVATE

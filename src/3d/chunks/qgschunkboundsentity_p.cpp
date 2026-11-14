@@ -15,92 +15,41 @@
 
 #include "qgschunkboundsentity_p.h"
 
-#include <Qt3DRender/QBuffer>
-#include <Qt3DExtras/QPhongMaterial>
-
+#include "qgs3dwiredmesh_p.h"
 #include "qgsaabb.h"
+#include "qgsbox3d.h"
+#include "qgsgeotransform.h"
+#include "qgsunlitmaterial.h"
 
+#include "moc_qgschunkboundsentity_p.cpp"
 
 ///@cond PRIVATE
 
-LineMeshGeometry::LineMeshGeometry( Qt3DCore::QNode *parent )
-  : Qt3DRender::QGeometry( parent )
-  , mPositionAttribute( new Qt3DRender::QAttribute( this ) )
-#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
-  , mVertexBuffer( new Qt3DRender::QBuffer( Qt3DRender::QBuffer::VertexBuffer, this ) )
-#else
-  , mVertexBuffer( new Qt3DRender::QBuffer( this ) )
-#endif
-{
-  mPositionAttribute->setAttributeType( Qt3DRender::QAttribute::VertexAttribute );
-  mPositionAttribute->setBuffer( mVertexBuffer );
-  mPositionAttribute->setVertexBaseType( Qt3DRender::QAttribute::Float );
-  mPositionAttribute->setVertexSize( 3 );
-  mPositionAttribute->setName( Qt3DRender::QAttribute::defaultPositionAttributeName() );
-
-  addAttribute( mPositionAttribute );
-}
-
-void LineMeshGeometry::setVertices( const QList<QVector3D> &vertices )
-{
-  QByteArray vertexBufferData;
-  vertexBufferData.resize( vertices.size() * 3 * sizeof( float ) );
-  float *rawVertexArray = reinterpret_cast<float *>( vertexBufferData.data() );
-  int idx = 0;
-  for ( const auto &v : vertices )
-  {
-    rawVertexArray[idx++] = v.x();
-    rawVertexArray[idx++] = v.y();
-    rawVertexArray[idx++] = v.z();
-  }
-
-  mVertexCount = vertices.count();
-  mVertexBuffer->setData( vertexBufferData );
-}
-
-
-// ----------------
-
-
-AABBMesh::AABBMesh( Qt3DCore::QNode *parent )
-  : Qt3DRender::QGeometryRenderer( parent )
-{
-  setInstanceCount( 1 );
-  setIndexOffset( 0 );
-  setFirstInstance( 0 );
-  setPrimitiveType( Qt3DRender::QGeometryRenderer::Lines );
-
-  mLineMeshGeo = new LineMeshGeometry( this );
-  setGeometry( mLineMeshGeo );
-}
-
-void AABBMesh::setBoxes( const QList<QgsAABB> &bboxes )
-{
-  QList<QVector3D> vertices;
-  Q_FOREACH ( const QgsAABB &bbox, bboxes )
-    vertices << bbox.verticesForLines();
-  mLineMeshGeo->setVertices( vertices );
-  setVertexCount( mLineMeshGeo->vertexCount() );
-}
-
-
-// ----------------
-
-
-QgsChunkBoundsEntity::QgsChunkBoundsEntity( Qt3DCore::QNode *parent )
+QgsChunkBoundsEntity::QgsChunkBoundsEntity( const QgsVector3D &vertexDataOrigin, Qt3DCore::QNode *parent )
   : Qt3DCore::QEntity( parent )
+  , mVertexDataOrigin( vertexDataOrigin )
 {
-  mAabbMesh = new AABBMesh;
+  mAabbMesh = new Qgs3DWiredMesh;
   addComponent( mAabbMesh );
 
-  Qt3DExtras::QPhongMaterial *bboxesMaterial = new Qt3DExtras::QPhongMaterial;
-  bboxesMaterial->setAmbient( Qt::red );
+  auto *bboxesMaterial = new QgsUnlitMaterial();
+  bboxesMaterial->setColor( Qt::red );
+  bboxesMaterial->setCastsShadows( false );
   addComponent( bboxesMaterial );
+
+  QgsGeoTransform *transform = new QgsGeoTransform;
+  transform->setGeoTranslation( mVertexDataOrigin );
+  addComponent( transform );
 }
 
-void QgsChunkBoundsEntity::setBoxes( const QList<QgsAABB> &bboxes )
+void QgsChunkBoundsEntity::setBoxes( const QList<QgsBox3D> &bboxes )
 {
-  mAabbMesh->setBoxes( bboxes );
+  QList<QgsAABB> aabbBoxes;
+  for ( const QgsBox3D &box : bboxes )
+  {
+    aabbBoxes << QgsAABB::fromBox3D( box, mVertexDataOrigin );
+  }
+  mAabbMesh->setVertices( aabbBoxes );
 }
 
 /// @endcond

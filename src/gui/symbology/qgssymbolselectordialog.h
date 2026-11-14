@@ -16,19 +16,19 @@
 #ifndef QGSSYMBOLSELECTORDIALOG_H
 #define QGSSYMBOLSELECTORDIALOG_H
 
-#include <QDialog>
-#include "qgis_sip.h"
-
 #include "ui_qgssymbolselectordialogbase.h"
 
-#include "qgspanelwidget.h"
-#include "qgssymbolwidgetcontext.h"
-#include "qgsproperty.h"
-#include "qgshelp.h"
-
-#include <QStandardItemModel>
-#include <QDialogButtonBox>
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgshelp.h"
+#include "qgspanelwidget.h"
+#include "qgsproperty.h"
+#include "qgssymbolwidgetcontext.h"
+
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPointer>
+#include <QStandardItemModel>
 
 class QgsStyle;
 class QgsSymbol;
@@ -38,18 +38,19 @@ class QgsVectorLayer;
 class QMenu;
 class QWidget;
 
-class SymbolLayerItem;
 class QgsMarkerSymbol;
 class QgsLineSymbol;
 class QgsMarkerSymbolLayer;
 class QgsLineSymbolLayer;
+class QgsSymbolLayerModel;
+class QgsSymbolLayerModelNode;
 
 class QgsMapCanvas;
 
 #ifndef SIP_RUN
 /// @cond PRIVATE
 
-class DataDefinedRestorer: public QObject
+class DataDefinedRestorer : public QObject
 {
     Q_OBJECT
   public:
@@ -61,16 +62,16 @@ class DataDefinedRestorer: public QObject
   private:
     QgsMarkerSymbol *mMarker = nullptr;
     const QgsMarkerSymbolLayer *mMarkerSymbolLayer = nullptr;
-    double mSize;
-    double mAngle;
+    double mSize = 0;
+    double mAngle = 0;
     QPointF mMarkerOffset;
     QgsProperty mDDSize;
     QgsProperty mDDAngle;
 
     QgsLineSymbol *mLine = nullptr;
     const QgsLineSymbolLayer *mLineSymbolLayer = nullptr;
-    double mWidth;
-    double mLineOffset;
+    double mWidth = 0;
+    double mLineOffset = 0;
     QgsProperty mDDWidth;
 
     void save();
@@ -82,17 +83,16 @@ class QgsSymbolSelectorDialog;
 
 /**
  * \ingroup gui
- * Symbol selector widget that can be used to select and build a symbol
+ * \brief Symbol selector widget that can be used to select and build a symbol.
  */
-class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::QgsSymbolSelectorDialogBase
+class GUI_EXPORT QgsSymbolSelectorWidget : public QgsPanelWidget, private Ui::QgsSymbolSelectorDialogBase
 {
     Q_OBJECT
     /// To allow for non API break access from the dialog.
     friend class QgsSymbolSelectorDialog;
 
   public:
-
-    // TODO QGIS 4.0 - transfer ownership of symbol to widget!
+    // TODO QGIS 5.0 - transfer ownership of symbol to widget!
 
     /**
      * Symbol selector widget that can be used to select and build a symbol
@@ -104,6 +104,16 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
      */
     QgsSymbolSelectorWidget( QgsSymbol *symbol, QgsStyle *style, QgsVectorLayer *vl, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
+    // TODO QGIS 5.0 -- remove when normal constructor takes ownership
+
+    /**
+     * Creates a QgsSymbolSelectorWidget which takes ownership of a symbol and maintains
+     * the ownership for the life of the widget.
+     *
+     * \note Not available in Python bindings.
+    */
+    static QgsSymbolSelectorWidget *createWidgetWithSymbolOwnership( std::unique_ptr<QgsSymbol> symbol, QgsStyle *style, QgsVectorLayer *vl, QWidget *parent SIP_TRANSFERTHIS = nullptr ) SIP_SKIP;
+
     //! Returns menu for "advanced" button - create it if doesn't exist and show the advanced button
     QMenu *advancedMenu();
 
@@ -111,14 +121,12 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
      * Sets the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \param context symbol widget context
      * \see context()
-     * \since QGIS 3.0
      */
     void setContext( const QgsSymbolWidgetContext &context );
 
     /**
      * Returns the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \see setContext()
-     * \since QGIS 3.0
      */
     QgsSymbolWidgetContext context() const;
 
@@ -128,15 +136,14 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
      */
     QgsSymbol *symbol() { return mSymbol; }
 
-    // TODO QGIS 4.0 - transfer ownership of symbol to widget!
+    // TODO QGIS 5.0 - transfer ownership of symbol to widget!
 
     /**
      * Loads the given symbol into the widget.
      * \param symbol The symbol to load.
-     * \param parent The parent symbol layer item. If the parent parameter is null, the whole symbol and model will be reset.
      * \note The ownership of the symbol is not transferred and must exist for the lifetime of the widget.
      */
-    void loadSymbol( QgsSymbol *symbol, SymbolLayerItem *parent = nullptr ) SIP_SKIP;
+    void loadSymbol( QgsSymbol *symbol ) SIP_SKIP;
 
   public slots:
 
@@ -167,7 +174,6 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
 
     /**
      * Duplicates the current symbol layer and places the duplicated layer above the current symbol layer
-     * \since QGIS 2.14
      */
     void duplicateLayer();
 
@@ -191,8 +197,9 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
     void symbolChanged();
 
     /**
-     * alters tree and sets proper widget when Layer Type is changed
-     * \note: The layer is received from the LayerPropertiesWidget
+     * Alters tree and sets proper widget when Layer Type is changed
+     *
+     * \note The layer is received from the LayerPropertiesWidget
      */
     void changeLayer( QgsSymbolLayer *layer );
 
@@ -211,13 +218,23 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
      */
     void projectDataChanged();
 
+
+    /**
+     * Called when the symbol layer model data has changed (e.g enable property). Updates
+     * the symbol preview, widget to take changes into account.
+     */
+    void modelDataChanged( const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles = QList<int>() );
+
     /**
      * Called when layers are about to be removed from the project.
      */
     void layersAboutToBeRemoved( const QList<QgsMapLayer *> &layers );
 
-  private:
+    void emitSymbolModified();
 
+    void updateListIcons();
+
+  private:
     /**
      * Reload the current symbol in the view.
      */
@@ -233,13 +250,21 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
      */
     void updateLockButton();
 
-    SymbolLayerItem *currentLayerItem();
+    void updateLockButtonIcon();
+
+    QgsSymbolLayerModelNode *currentLayerNode();
 
     /**
      * The current symbol layer that is active in the interface.
      * \returns The active symbol layer.
      */
     QgsSymbolLayer *currentLayer();
+
+    /**
+     * The node which is current in the symbol layers tree, or NULLPTR if there
+     * is none. Both a symbol node and a symbol layer node can be current.
+     */
+    QgsSymbolLayerModelNode *currentNode();
 
     /**
      * Move the current active layer by a set offset in the list.
@@ -255,10 +280,13 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
 
     QgsStyle *mStyle = nullptr;
     QgsSymbol *mSymbol = nullptr;
+    std::unique_ptr<QgsSymbol> mOwnedSymbol;
     QMenu *mAdvancedMenu = nullptr;
-    QgsVectorLayer *mVectorLayer = nullptr;
+    QAction *mLockColorAction = nullptr;
+    QAction *mLockSelectionColorAction = nullptr;
+    QPointer<QgsVectorLayer> mVectorLayer;
 
-    QStandardItemModel *model = nullptr;
+    QgsSymbolLayerModel *mSymbolLayersModel = nullptr;
     QWidget *mPresentWidget = nullptr;
 
     std::unique_ptr<DataDefinedRestorer> mDataDefineRestorer;
@@ -266,19 +294,18 @@ class GUI_EXPORT QgsSymbolSelectorWidget: public QgsPanelWidget, private Ui::Qgs
     QgsFeature mPreviewFeature;
     QgsExpressionContext mPreviewExpressionContext;
     bool mBlockModified = false;
-
 };
 
 /**
  * \ingroup gui
  * \class QgsSymbolSelectorDialog
+ * \brief A dialog that can be used to select and build a symbol.
  */
 class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsSymbolSelectorDialog.
      *
@@ -297,14 +324,12 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
      * Sets the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \param context symbol widget context
      * \see context()
-     * \since QGIS 3.0
      */
     void setContext( const QgsSymbolWidgetContext &context );
 
     /**
      * Returns the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \see setContext()
-     * \since QGIS 3.0
      */
     QgsSymbolWidgetContext context() const;
 
@@ -317,9 +342,8 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
     /**
      * Loads the given symbol into the widget.
      * \param symbol The symbol to load.
-     * \param parent The parent symbol layer item. If the parent parameter is null, the whole symbol and model will be reset.
      */
-    void loadSymbol( QgsSymbol *symbol, SymbolLayerItem *parent = nullptr ) SIP_SKIP;
+    void loadSymbol( QgsSymbol *symbol ) SIP_SKIP;
 
     /**
      * Returns a reference to the dialog's button box.
@@ -339,7 +363,6 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
 
     /**
      * Duplicates the current symbol layer and places the duplicated layer above the current symbol layer
-     * \since QGIS 2.14
      */
     void duplicateLayer();
 
@@ -352,13 +375,13 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
     void symbolChanged();
 
     /**
-     * alters tree and sets proper widget when Layer Type is changed
-     * \note: The layer is received from the LayerPropertiesWidget
+     * Alters tree and sets proper widget when Layer Type is changed
+     *
+     * \note The layer is received from the LayerPropertiesWidget
      */
     void changeLayer( QgsSymbolLayer *layer );
 
   protected:
-
     // Reimplements dialog keyPress event so we can ignore it
     void keyPressEvent( QKeyEvent *e ) override;
 
@@ -368,17 +391,19 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
 
   signals:
 
+    /**
+     * Emitted when the symbol defined in the dialog is modified.
+     */
     void symbolModified();
 
   private:
-
     void reloadSymbol();
 
     void updateUi();
 
     void updateLockButton();
 
-    SymbolLayerItem *currentLayerItem();
+    QgsSymbolLayerModelNode *currentLayerNode();
 
     QgsSymbolLayer *currentLayer();
 
@@ -388,8 +413,6 @@ class GUI_EXPORT QgsSymbolSelectorDialog : public QDialog
 
     QgsSymbolSelectorWidget *mSelectorWidget = nullptr;
     QDialogButtonBox *mButtonBox = nullptr;
-    QgsSymbolWidgetContext mContext;
-
 };
 
 #endif

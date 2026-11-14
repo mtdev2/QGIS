@@ -15,193 +15,266 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgis.h"
 #include "qgseptprovider.h"
-#include "qgseptpointcloudindex.h"
-#include "qgseptdataitems.h"
-#include "qgsruntimeprofiler.h"
+
+#include "qgis.h"
 #include "qgsapplication.h"
+#include "qgseptpointcloudindex.h"
+#include "qgsproviderregistry.h"
+#include "qgsprovidersublayerdetails.h"
+#include "qgsproviderutils.h"
+#include "qgsruntimeprofiler.h"
+#include "qgsthreadingutils.h"
+
+#include <QFileInfo>
+#include <QIcon>
+#include <QString>
+
+#include "moc_qgseptprovider.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
-#define PROVIDER_KEY QStringLiteral( "ept" )
-#define PROVIDER_DESCRIPTION QStringLiteral( "EPT point cloud data provider" )
+#define PROVIDER_KEY u"ept"_s
+#define PROVIDER_DESCRIPTION u"EPT point cloud data provider"_s
 
-QgsEptProvider::QgsEptProvider(
-  const QString &uri,
-  const QgsDataProvider::ProviderOptions &options,
-  QgsDataProvider::ReadFlags flags )
+QgsEptProvider::QgsEptProvider( const QString &uri, const QgsDataProvider::ProviderOptions &options, Qgis::DataProviderReadFlags flags )
   : QgsPointCloudDataProvider( uri, options, flags )
   , mIndex( new QgsEptPointCloudIndex )
 {
   std::unique_ptr< QgsScopedRuntimeProfile > profile;
-  if ( QgsApplication::profiler()->groupIsActive( QStringLiteral( "projectload" ) ) )
-    profile = qgis::make_unique< QgsScopedRuntimeProfile >( tr( "Open data source" ), QStringLiteral( "projectload" ) );
+  if ( QgsApplication::profiler()->groupIsActive( u"projectload"_s ) )
+    profile = std::make_unique< QgsScopedRuntimeProfile >( tr( "Open data source" ), u"projectload"_s );
 
-  loadIndex( );
+  loadIndex();
+  if ( mIndex && !mIndex.isValid() )
+  {
+    appendError( mIndex.error() );
+  }
+}
+
+Qgis::DataProviderFlags QgsEptProvider::flags() const
+{
+  return Qgis::DataProviderFlag::FastExtent2D;
 }
 
 QgsEptProvider::~QgsEptProvider() = default;
 
 QgsCoordinateReferenceSystem QgsEptProvider::crs() const
 {
-  return mIndex->crs();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.crs();
 }
 
 QgsRectangle QgsEptProvider::extent() const
 {
-  return mIndex->extent();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.extent();
 }
 
 QgsPointCloudAttributeCollection QgsEptProvider::attributes() const
 {
-  return mIndex->attributes();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.attributes();
 }
 
 bool QgsEptProvider::isValid() const
 {
-  return mIndex->isValid();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.isValid();
 }
 
 QString QgsEptProvider::name() const
 {
-  return QStringLiteral( "ept" );
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return u"ept"_s;
 }
 
 QString QgsEptProvider::description() const
 {
-  return QStringLiteral( "Point Clouds EPT" );
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return u"Point Clouds EPT"_s;
 }
 
-QgsPointCloudIndex *QgsEptProvider::index() const
+QgsPointCloudIndex QgsEptProvider::index() const
 {
-  return mIndex.get();
+  // BAD! 2D rendering of point clouds is NOT thread safe
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS_NON_FATAL
+
+  return mIndex;
 }
 
-int QgsEptProvider::pointCount() const
+qint64 QgsEptProvider::pointCount() const
 {
-  return mIndex->pointCount();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.pointCount();
 }
 
-QVariantList QgsEptProvider::metadataClasses( const QString &attribute ) const
+void QgsEptProvider::loadIndex()
 {
-  return mIndex->metadataClasses( attribute );
-}
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
 
-QVariant QgsEptProvider::metadataClassStatistic( const QString &attribute, const QVariant &value, QgsStatisticalSummary::Statistic statistic ) const
-{
-  return mIndex->metadataClassStatistic( attribute, value, statistic );
-}
-
-void QgsEptProvider::loadIndex( )
-{
-  if ( mIndex->isValid() )
+  if ( mIndex.isValid() )
     return;
 
-  mIndex->load( dataSourceUri() );
+  QgsProviderMetadata *metadata = QgsProviderRegistry::instance()->providerMetadata( PROVIDER_KEY );
+  const QVariantMap decodedUri = metadata->decodeUri( dataSourceUri() );
+  const QString authcfg = decodedUri.value( u"authcfg"_s ).toString();
+  const QString path = decodedUri.value( u"path"_s ).toString();
+  mIndex.load( path, authcfg );
 }
 
 QVariantMap QgsEptProvider::originalMetadata() const
 {
-  return mIndex->originalMetadata();
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  return mIndex.originalMetadata();
 }
 
-void QgsEptProvider::generateIndex()
-{
+void QgsEptProvider::generateIndex() {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   //no-op, index is always generated
 }
 
-QVariant QgsEptProvider::metadataStatistic( const QString &attribute, QgsStatisticalSummary::Statistic statistic ) const
+QgsEptProviderMetadata::QgsEptProviderMetadata()
+  : QgsProviderMetadata( PROVIDER_KEY, PROVIDER_DESCRIPTION )
+{}
+
+QIcon QgsEptProviderMetadata::icon() const
 {
-  return mIndex->metadataStatistic( attribute, statistic );
+  return QgsApplication::getThemeIcon( u"mIconPointCloudLayer.svg"_s );
 }
 
-QgsEptProviderMetadata::QgsEptProviderMetadata():
-  QgsProviderMetadata( PROVIDER_KEY, PROVIDER_DESCRIPTION )
-{
-}
-
-QgsEptProvider *QgsEptProviderMetadata::createProvider( const QString &uri, const QgsDataProvider::ProviderOptions &options, QgsDataProvider::ReadFlags flags )
+QgsEptProvider *QgsEptProviderMetadata::createProvider( const QString &uri, const QgsDataProvider::ProviderOptions &options, Qgis::DataProviderReadFlags flags )
 {
   return new QgsEptProvider( uri, options, flags );
 }
 
-QList<QgsDataItemProvider *> QgsEptProviderMetadata::dataItemProviders() const
+QList<QgsProviderSublayerDetails> QgsEptProviderMetadata::querySublayers( const QString &uri, Qgis::SublayerQueryFlags, QgsFeedback * ) const
 {
-  QList< QgsDataItemProvider * > providers;
-  providers << new QgsEptDataItemProvider;
-  return providers;
+  const QVariantMap parts = decodeUri( uri );
+  if ( parts.value( u"file-name"_s ).toString().compare( "ept.json"_L1, Qt::CaseInsensitive ) == 0 )
+  {
+    QgsProviderSublayerDetails details;
+    details.setUri( uri );
+    details.setProviderKey( u"ept"_s );
+    details.setType( Qgis::LayerType::PointCloud );
+    details.setName( QgsProviderUtils::suggestLayerNameFromFilePath( uri ) );
+    return { details };
+  }
+  else
+  {
+    return {};
+  }
 }
 
 int QgsEptProviderMetadata::priorityForUri( const QString &uri ) const
 {
   const QVariantMap parts = decodeUri( uri );
-  QFileInfo fi( parts.value( QStringLiteral( "path" ) ).toString() );
-  if ( fi.fileName().compare( QLatin1String( "ept.json" ), Qt::CaseInsensitive ) == 0 )
+  if ( parts.value( u"file-name"_s ).toString().compare( "ept.json"_L1, Qt::CaseInsensitive ) == 0 )
     return 100;
 
   return 0;
 }
 
-QList<QgsMapLayerType> QgsEptProviderMetadata::validLayerTypesForUri( const QString &uri ) const
+QList<Qgis::LayerType> QgsEptProviderMetadata::validLayerTypesForUri( const QString &uri ) const
 {
   const QVariantMap parts = decodeUri( uri );
-  QFileInfo fi( parts.value( QStringLiteral( "path" ) ).toString() );
-  if ( fi.fileName().compare( QLatin1String( "ept.json" ), Qt::CaseInsensitive ) == 0 )
-    return QList< QgsMapLayerType>() << QgsMapLayerType::PointCloudLayer;
+  if ( parts.value( u"file-name"_s ).toString().compare( "ept.json"_L1, Qt::CaseInsensitive ) == 0 )
+    return QList< Qgis::LayerType>() << Qgis::LayerType::PointCloud;
 
-  return QList< QgsMapLayerType>();
+  return QList< Qgis::LayerType>();
 }
 
 bool QgsEptProviderMetadata::uriIsBlocklisted( const QString &uri ) const
 {
   const QVariantMap parts = decodeUri( uri );
-  if ( !parts.contains( QStringLiteral( "path" ) ) )
+  if ( !parts.contains( u"path"_s ) )
     return false;
 
-  QFileInfo fi( parts.value( QStringLiteral( "path" ) ).toString() );
+  const QFileInfo fi( parts.value( u"path"_s ).toString() );
 
   // internal details only
-  if ( fi.fileName().compare( QLatin1String( "ept-build.json" ), Qt::CaseInsensitive ) == 0 )
+  if ( fi.fileName().compare( "ept-build.json"_L1, Qt::CaseInsensitive ) == 0 )
     return true;
 
   return false;
 }
 
+QString QgsEptProviderMetadata::encodeUri( const QVariantMap &parts ) const
+{
+  QString uri = parts.value( u"path"_s ).toString();
+
+  const QString authcfg = parts.value( u"authcfg"_s ).toString();
+  if ( !authcfg.isEmpty() )
+    uri += u" authcfg='%1'"_s.arg( authcfg );
+
+  return uri;
+}
+
 QVariantMap QgsEptProviderMetadata::decodeUri( const QString &uri ) const
 {
-  const QString path = uri;
   QVariantMap uriComponents;
-  uriComponents.insert( QStringLiteral( "path" ), path );
+
+  const thread_local QRegularExpression rx( u" authcfg='([^']*)'"_s );
+  const QRegularExpressionMatch match = rx.match( uri );
+  if ( match.hasMatch() )
+    uriComponents.insert( u"authcfg"_s, match.captured( 1 ) );
+
+  QString path = uri;
+  path.remove( rx );
+  path = path.trimmed();
+  const QUrl url = QUrl::fromUserInput( path );
+
+  uriComponents.insert( u"path"_s, path );
+  uriComponents.insert( u"file-name"_s, url.fileName() );
+
   return uriComponents;
 }
 
-QString QgsEptProviderMetadata::filters( QgsProviderMetadata::FilterType type )
+QString QgsEptProviderMetadata::filters( Qgis::FileFilterType type )
 {
   switch ( type )
   {
-    case QgsProviderMetadata::FilterType::FilterVector:
-    case QgsProviderMetadata::FilterType::FilterRaster:
-    case QgsProviderMetadata::FilterType::FilterMesh:
-    case QgsProviderMetadata::FilterType::FilterMeshDataset:
+    case Qgis::FileFilterType::Vector:
+    case Qgis::FileFilterType::Raster:
+    case Qgis::FileFilterType::Mesh:
+    case Qgis::FileFilterType::MeshDataset:
+    case Qgis::FileFilterType::VectorTile:
+    case Qgis::FileFilterType::TiledScene:
       return QString();
 
-    case QgsProviderMetadata::FilterType::FilterPointCloud:
-      return QObject::tr( "Entwine Point Clouds" ) + QStringLiteral( " (ept.json EPT.JSON)" );
+    case Qgis::FileFilterType::PointCloud:
+      return QObject::tr( "Entwine Point Clouds" ) + u" (ept.json EPT.JSON)"_s;
   }
   return QString();
 }
 
-QString QgsEptProviderMetadata::encodeUri( const QVariantMap &parts ) const
+QgsProviderMetadata::ProviderCapabilities QgsEptProviderMetadata::providerCapabilities() const
 {
-  const QString path = parts.value( QStringLiteral( "path" ) ).toString();
-  return path;
+  return FileBasedUris;
+}
+
+QList<Qgis::LayerType> QgsEptProviderMetadata::supportedLayerTypes() const
+{
+  return { Qgis::LayerType::PointCloud };
 }
 
 QgsProviderMetadata::ProviderMetadataCapabilities QgsEptProviderMetadata::capabilities() const
 {
-  return ProviderMetadataCapability::LayerTypesForUri
-         | ProviderMetadataCapability::PriorityForUri;
+  return ProviderMetadataCapability::LayerTypesForUri | ProviderMetadataCapability::PriorityForUri | ProviderMetadataCapability::QuerySublayers;
 }
-///@endcond
 
+#undef PROVIDER_KEY
+#undef PROVIDER_DESCRIPTION
+
+///@endcond

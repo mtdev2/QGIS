@@ -16,32 +16,38 @@
  ***************************************************************************/
 
 #include "qgsapplication.h"
-#include "qgslayout.h"
-#include "qgslayoutitemlabel.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
-#include "qgsmultirenderchecker.h"
 #include "qgsfontutils.h"
-#include "qgsproject.h"
-#include "qgsprintlayout.h"
 #include "qgslayoutatlas.h"
+#include "qgslayoutitemhtml.h"
+#include "qgslayoutitemlabel.h"
+#include "qgslayoutmanager.h"
+#include "qgslayoutmultiframe.h"
 #include "qgslayoutpagecollection.h"
+#include "qgslayoutrendercontext.h"
+#include "qgslayoutreportcontext.h"
+#include "qgsmultirenderchecker.h"
+#include "qgsprintlayout.h"
+#include "qgsproject.h"
+#include "qgstest.h"
+#include "qgsvectorlayer.h"
 
 #include <QObject>
-#include "qgstest.h"
+#include <QString>
 
-class TestQgsLayoutLabel : public QObject
+using namespace Qt::StringLiterals;
+
+class TestQgsLayoutLabel : public QgsTest
 {
     Q_OBJECT
 
   public:
-    TestQgsLayoutLabel() = default;
+    TestQgsLayoutLabel()
+      : QgsTest( u"Layout Label Tests"_s, u"composer_label"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     // test simple expression evaluation
     void evaluation();
@@ -54,12 +60,11 @@ class TestQgsLayoutLabel : public QObject
     void marginMethods(); //tests getting/setting margins
     void render();
     void renderAsHtml();
-    void renderAsHtmlRelative();
+    void renderAsHtmlLineHeight();
     void labelRotation();
 
   private:
     QgsVectorLayer *mVectorLayer = nullptr;
-    QString mReport;
 };
 
 void TestQgsLayoutLabel::initTestCase()
@@ -68,35 +73,15 @@ void TestQgsLayoutLabel::initTestCase()
   QgsApplication::initQgis();
 
   //create maplayers from testdata and add to layer registry
-  QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + '/' +  "france_parts.shp" );
-  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(),
-                                     vectorFileInfo.completeBaseName(),
-                                     QStringLiteral( "ogr" ) );
-
+  const QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + '/' + "france_parts.shp" );
+  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
 }
 
 void TestQgsLayoutLabel::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
-
   delete mVectorLayer;
 
   QgsApplication::exitQgis();
-}
-
-void TestQgsLayoutLabel::init()
-{
-}
-
-void TestQgsLayoutLabel::cleanup()
-{
 }
 
 void TestQgsLayoutLabel::evaluation()
@@ -110,39 +95,36 @@ void TestQgsLayoutLabel::evaluation()
   label->setMargin( 1 );
   l.addLayoutItem( label );
 
-  qWarning() << "composer label font: " << label->font().toString() << " exactMatch:" << label->font().exactMatch();
-
-
   {
     // $CURRENT_DATE evaluation
-    QString expected = "__" + QDate::currentDate().toString() + "__";
-    label->setText( QStringLiteral( "__$CURRENT_DATE__" ) );
-    QString evaluated = label->currentText();
+    const QString expected = "__" + QDate::currentDate().toString() + "__";
+    label->setText( u"__$CURRENT_DATE__"_s );
+    const QString evaluated = label->currentText();
     QCOMPARE( evaluated, expected );
   }
   {
     // $CURRENT_DATE() evaluation
-    QDateTime now = QDateTime::currentDateTime();
-    QString expected = "__" + now.toString( QStringLiteral( "dd" ) ) + "(ok)__";
-    label->setText( QStringLiteral( "__$CURRENT_DATE(dd)(ok)__" ) );
-    QString evaluated = label->currentText();
+    const QDateTime now = QDateTime::currentDateTime();
+    const QString expected = "__" + now.toString( u"dd"_s ) + "(ok)__";
+    label->setText( u"__$CURRENT_DATE(dd)(ok)__"_s );
+    const QString evaluated = label->currentText();
     QCOMPARE( evaluated, expected );
   }
   {
     // $CURRENT_DATE() evaluation (inside an expression)
-    QDate now = QDate::currentDate();
-    int dd = now.day();
+    const QDate now = QDate::currentDate();
+    const int dd = now.day();
 
-    QString expected = "__" + QString::number( dd + 1 ) + "(ok)__";
-    label->setText( QStringLiteral( "__[%$CURRENT_DATE(dd) + 1%](ok)__" ) );
-    QString evaluated = label->currentText();
+    const QString expected = "__" + QString::number( dd + 1 ) + "(ok)__";
+    label->setText( u"__[%$CURRENT_DATE(dd) + 1%](ok)__"_s );
+    const QString evaluated = label->currentText();
     QCOMPARE( evaluated, expected );
   }
   {
     // expression evaluation (without feature)
-    QString expected = QStringLiteral( "__[NAME_1]42__" );
-    label->setText( QStringLiteral( "__[%try(\"NAME_1\", '[NAME_1]')%][%21*2%]__" ) );
-    QString evaluated = label->currentText();
+    const QString expected = u"__[NAME_1]42__"_s;
+    label->setText( u"__[%try(\"NAME_1\", '[NAME_1]')%][%21*2%]__"_s );
+    const QString evaluated = label->currentText();
     QCOMPARE( evaluated, expected );
   }
 }
@@ -162,17 +144,17 @@ void TestQgsLayoutLabel::featureEvaluationUsingAtlas()
   l.atlas()->seekTo( 0 );
   {
     // evaluation with a feature
-    label->setText( QStringLiteral( "[%\"NAME_1\"||'_ok'%]" ) );
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "Basse-Normandie_ok" );
+    label->setText( u"[%\"NAME_1\"||'_ok'%]"_s );
+    const QString evaluated = label->currentText();
+    const QString expected = u"Basse-Normandie_ok"_s;
     QCOMPARE( evaluated, expected );
   }
   l.atlas()->seekTo( 1 );
   {
     // evaluation with a feature
-    label->setText( QStringLiteral( "[%\"NAME_1\"||'_ok'%]" ) );
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "Bretagne_ok" );
+    label->setText( u"[%\"NAME_1\"||'_ok'%]"_s );
+    const QString evaluated = label->currentText();
+    const QString expected = u"Bretagne_ok"_s;
     QCOMPARE( evaluated, expected );
   }
 }
@@ -195,18 +177,18 @@ void TestQgsLayoutLabel::featureEvaluationUsingContext()
   l.reportContext().setFeature( f );
   {
     // evaluation with a feature
-    label->setText( QStringLiteral( "[%\"NAME_1\"||'_ok'%]" ) );
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "Basse-Normandie_ok" );
+    label->setText( u"[%\"NAME_1\"||'_ok'%]"_s );
+    const QString evaluated = label->currentText();
+    const QString expected = u"Basse-Normandie_ok"_s;
     QCOMPARE( evaluated, expected );
   }
   it.nextFeature( f );
   l.reportContext().setFeature( f );
   {
     // evaluation with a feature
-    label->setText( QStringLiteral( "[%\"NAME_1\"||'_ok'%]" ) );
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "Bretagne_ok" );
+    label->setText( u"[%\"NAME_1\"||'_ok'%]"_s );
+    const QString evaluated = label->currentText();
+    const QString expected = u"Bretagne_ok"_s;
     QCOMPARE( evaluated, expected );
   }
 }
@@ -225,9 +207,9 @@ void TestQgsLayoutLabel::pageEvaluation()
   l.addLayoutItem( label );
 
   {
-    label->setText( QStringLiteral( "[%@layout_page||'/'||@layout_numpages%]" ) );
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "1/2" );
+    label->setText( u"[%@layout_page||'/'||@layout_numpages%]"_s );
+    const QString evaluated = label->currentText();
+    const QString expected = u"1/2"_s;
     QCOMPARE( evaluated, expected );
 
     // move to the second page and re-evaluate
@@ -243,12 +225,12 @@ void TestQgsLayoutLabel::pageSizeEvaluation()
 
   QgsLayoutItemLabel *label = new QgsLayoutItemLabel( &l );
   label->setMargin( 1 );
-  label->setText( QStringLiteral( "[%array_to_string(@layout_pageoffsets)%]" ) );
+  label->setText( u"[%array_to_string(@layout_pageoffsets)%]"_s );
   l.addLayoutItem( label );
 
   {
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "0" );
+    const QString evaluated = label->currentText();
+    const QString expected = u"0"_s;
     QCOMPARE( evaluated, expected );
   }
 
@@ -258,8 +240,8 @@ void TestQgsLayoutLabel::pageSizeEvaluation()
   l.pageCollection()->addPage( page2 );
 
   {
-    QString evaluated = label->currentText();
-    QString expected = QStringLiteral( "0,220" );
+    const QString evaluated = label->currentText();
+    const QString expected = u"0,220"_s;
     QCOMPARE( evaluated, expected );
   }
 }
@@ -292,14 +274,16 @@ void TestQgsLayoutLabel::render()
   label->setMargin( 1 );
   l.addLayoutItem( label );
 
-  label->setText( QStringLiteral( "test label" ) );
-  label->setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ), 48 ) );
+  label->setText( u"test label"_s );
+  QgsTextFormat format;
+  format.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
+  format.setSize( 48 );
+  format.setSizeUnit( Qgis::RenderUnit::Points );
+  label->setTextFormat( format );
   label->attemptMove( QgsLayoutPoint( 70, 70 ) );
   label->adjustSizeToText();
 
-  QgsLayoutChecker checker( QStringLiteral( "composerlabel_render" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_label" ) );
-  QVERIFY( checker.testLayout( mReport, 0, 0 ) );
+  QVERIFY( QGSLAYOUTCHECK( u"composerlabel_render"_s, &l ) );
 }
 
 void TestQgsLayoutLabel::renderAsHtml()
@@ -311,40 +295,49 @@ void TestQgsLayoutLabel::renderAsHtml()
   label->setMargin( 1 );
   l.addLayoutItem( label );
 
-  label->setFontColor( QColor( 200, 40, 60 ) );
-  label->setText( QStringLiteral( "test <i>html</i>" ) );
-  label->setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ), 48 ) );
+  label->setText( u"test <i>html</i>"_s );
+
+  QgsTextFormat format;
+  format.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
+  format.setSize( 48 );
+  format.setSizeUnit( Qgis::RenderUnit::Points );
+  format.setColor( QColor( 200, 40, 60 ) );
+  label->setTextFormat( format );
+
   label->setPos( 70, 70 );
   label->adjustSizeToText();
   label->setMode( QgsLayoutItemLabel::ModeHtml );
   label->update();
 
-  QgsLayoutChecker checker( QStringLiteral( "composerlabel_renderhtml" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_label" ) );
-  QVERIFY( checker.testLayout( mReport, 0, 10 ) );
+  QVERIFY( QGSLAYOUTCHECK( u"composerlabel_renderhtml"_s, &l, 0, 10 ) );
 }
 
-void TestQgsLayoutLabel::renderAsHtmlRelative()
+void TestQgsLayoutLabel::renderAsHtmlLineHeight()
 {
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
-  l.renderContext().mIsPreviewRender = false;
+
   QgsLayoutItemLabel *label = new QgsLayoutItemLabel( &l );
   label->setMargin( 1 );
   l.addLayoutItem( label );
 
-  QgsProject::instance()->setFileName( QStringLiteral( TEST_DATA_DIR ) +  QDir::separator() + "test.qgs" );
-  label->setFontColor( QColor( 200, 40, 60 ) );
-  label->setText( QStringLiteral( "test <img src=\"small_sample_image.png\" />" ) );
-  label->setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ), 48 ) );
+  label->setText( u"test <i>html</i><br>with <u>line height</u>."_s );
+
+  QgsTextFormat format;
+  format.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
+  format.setSize( 48 );
+  format.setSizeUnit( Qgis::RenderUnit::Points );
+  format.setColor( QColor( 200, 40, 60 ) );
+  format.setLineHeight( 2.0 );
+  format.setLineHeightUnit( Qgis::RenderUnit::Percentage );
+  label->setTextFormat( format );
+
   label->setPos( 70, 70 );
   label->adjustSizeToText();
   label->setMode( QgsLayoutItemLabel::ModeHtml );
   label->update();
 
-  QgsLayoutChecker checker( QStringLiteral( "composerlabel_renderhtmlrelative" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_label" ) );
-  QVERIFY( checker.testLayout( mReport, 0, 0 ) );
+  QVERIFY( QGSLAYOUTCHECK( u"composerlabel_renderhtmllineheight"_s, &l, 0, 10 ) );
 }
 
 void TestQgsLayoutLabel::labelRotation()
@@ -354,17 +347,22 @@ void TestQgsLayoutLabel::labelRotation()
   QgsLayoutItemLabel *label = new QgsLayoutItemLabel( &l );
   label->setMargin( 1 );
   l.addLayoutItem( label );
-  label->setText( QStringLiteral( "test label" ) );
-  label->setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ), 30 ) );
+  label->setText( u"test label"_s );
+
+  QgsTextFormat format;
+  format.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
+  format.setSize( 30 );
+  format.setSizeUnit( Qgis::RenderUnit::Points );
+  label->setTextFormat( format );
+
   label->attemptMove( QgsLayoutPoint( 70, 70 ) );
   label->adjustSizeToText();
   label->setBackgroundColor( QColor::fromRgb( 255, 150, 0 ) );
   label->setBackgroundEnabled( true );
   label->setItemRotation( 135 );
 
-  QgsLayoutChecker checker( QStringLiteral( "layoutrotation_label" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_items" ) );
-  QVERIFY( checker.testLayout( mReport, 0, 0 ) );
+  mControlPathPrefix = u"composer_items"_s;
+  QVERIFY( QGSLAYOUTCHECK( u"layoutrotation_label"_s, &l ) );
 }
 
 QGSTEST_MAIN( TestQgsLayoutLabel )

@@ -17,8 +17,9 @@
 #define QGSMESHRENDERERMESHSETTINGSWIDGET_H
 
 #include "ui_qgsmeshrenderermeshsettingswidgetbase.h"
-#include "qgsmeshrenderersettings.h"
+
 #include "qgis_gui.h"
+#include "qgsmeshrenderersettings.h"
 
 #include <QWidget>
 
@@ -27,7 +28,10 @@ SIP_NO_FILE
 class QgsMeshLayer;
 
 /**
- * A widget for setup of the mesh frame settings of
+ * \ingroup gui
+ * \class QgsMeshRendererMeshSettingsWidget
+ *
+ * \brief A widget for setup of the mesh frame settings of
  * the mesh layer. Can be used for native,
  * triangular and edge mesh renderer settings.
  */
@@ -36,7 +40,6 @@ class QgsMeshRendererMeshSettingsWidget : public QWidget, private Ui::QgsMeshRen
     Q_OBJECT
 
   public:
-
     enum MeshType
     {
       Native,

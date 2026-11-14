@@ -18,15 +18,16 @@
 #ifndef QGSREMAPPINGPROXYFEATURESINK_H
 #define QGSREMAPPINGPROXYFEATURESINK_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
+#include "qgscoordinatetransform.h"
 #include "qgsfeaturesink.h"
 #include "qgsproperty.h"
 
 /**
  * \class QgsRemappingSinkDefinition
  * \ingroup core
- * Defines the parameters used to remap features when creating a QgsRemappingProxyFeatureSink.
+ * \brief Defines the parameters used to remap features when creating a QgsRemappingProxyFeatureSink.
  *
  * The definition includes parameters required to correctly map incoming features to the structure
  * of the destination sink, e.g. information about how to create output field values and how to transform
@@ -37,7 +38,6 @@
 class CORE_EXPORT QgsRemappingSinkDefinition
 {
   public:
-
     /**
      * Returns the field mapping, which defines how to map the values from incoming features to destination
      * field values.
@@ -106,14 +106,14 @@ class CORE_EXPORT QgsRemappingSinkDefinition
      *
      * \see setDestinationWkbType()
      */
-    QgsWkbTypes::Type destinationWkbType() const { return mDestinationWkbType; }
+    Qgis::WkbType destinationWkbType() const { return mDestinationWkbType; }
 
     /**
      * Sets the WKB geometry \a type for the destination.
      *
      * \see setDestinationWkbType()
      */
-    void setDestinationWkbType( QgsWkbTypes::Type type ) { mDestinationWkbType = type; }
+    void setDestinationWkbType( Qgis::WkbType type ) { mDestinationWkbType = type; }
 
     /**
      * Returns the fields for the destination sink.
@@ -143,30 +143,28 @@ class CORE_EXPORT QgsRemappingSinkDefinition
      */
     bool loadVariant( const QVariantMap &map );
 
+    // TODO c++20 - replace with = default
     bool operator==( const QgsRemappingSinkDefinition &other ) const;
     bool operator!=( const QgsRemappingSinkDefinition &other ) const;
 
   private:
-
     QMap< QString, QgsProperty > mFieldMap;
 
     QgsCoordinateReferenceSystem mSourceCrs;
     QgsCoordinateReferenceSystem mDestinationCrs;
 
-    QgsWkbTypes::Type mDestinationWkbType = QgsWkbTypes::Unknown;
+    Qgis::WkbType mDestinationWkbType = Qgis::WkbType::Unknown;
 
     QgsFields mDestinationFields;
-
 };
 
 Q_DECLARE_METATYPE( QgsRemappingSinkDefinition )
 
 
-
 /**
  * \class QgsRemappingProxyFeatureSink
  * \ingroup core
- * A QgsFeatureSink which proxies incoming features to a destination feature sink, after applying
+ * \brief A QgsFeatureSink which proxies incoming features to a destination feature sink, after applying
  * transformations and field value mappings.
  *
  * This sink allows for transformation of incoming features to match the requirements of storing
@@ -178,7 +176,6 @@ Q_DECLARE_METATYPE( QgsRemappingSinkDefinition )
 class CORE_EXPORT QgsRemappingProxyFeatureSink : public QgsFeatureSink
 {
   public:
-
 #ifndef SIP_RUN
 
     /**
@@ -204,7 +201,7 @@ class CORE_EXPORT QgsRemappingProxyFeatureSink : public QgsFeatureSink
     /**
      * Sets the expression \a context to use when evaluating mapped field values.
      */
-    void setExpressionContext( const QgsExpressionContext &context );
+    void setExpressionContext( const QgsExpressionContext &context ) const;
 
     /**
      * Sets the transform \a context to use when reprojecting features.
@@ -227,7 +224,6 @@ class CORE_EXPORT QgsRemappingProxyFeatureSink : public QgsFeatureSink
     QgsFeatureSink *destinationSink() { return mSink; }
 
   private:
-
     QgsRemappingSinkDefinition mDefinition;
     QgsCoordinateTransform mTransform;
     QgsFeatureSink *mSink = nullptr;
@@ -236,7 +232,3 @@ class CORE_EXPORT QgsRemappingProxyFeatureSink : public QgsFeatureSink
 };
 
 #endif // QGSREMAPPINGPROXYFEATURESINK_H
-
-
-
-

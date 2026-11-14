@@ -16,11 +16,11 @@
 #ifndef QGSLABELLINESETTINGS_H
 #define QGSLABELLINESETTINGS_H
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgslabeling.h"
-#include "qgsunittypes.h"
 #include "qgsmapunitscale.h"
+
 #include <QString>
 
 class QgsPropertyCollection;
@@ -30,7 +30,7 @@ class QgsExpressionContext;
  * \ingroup core
  * \class QgsLabelLineSettings
  *
- * Contains settings related to how the label engine places and formats
+ * \brief Contains settings related to how the label engine places and formats
  * labels for line features (or polygon features which are labeled in
  * a "perimeter" style mode).
  *
@@ -38,17 +38,19 @@ class QgsExpressionContext;
  */
 class CORE_EXPORT QgsLabelLineSettings
 {
-  public:
+    Q_GADGET
 
+  public:
     /**
      * Placement options for direction symbols.
      */
     enum class DirectionSymbolPlacement : int
     {
       SymbolLeftRight, //!< Place direction symbols on left/right of label
-      SymbolAbove, //!< Place direction symbols on above label
-      SymbolBelow //!< Place direction symbols on below label
+      SymbolAbove,     //!< Place direction symbols on above label
+      SymbolBelow      //!< Place direction symbols on below label
     };
+    Q_ENUM( DirectionSymbolPlacement )
 
     /**
      * Line anchor types
@@ -56,8 +58,21 @@ class CORE_EXPORT QgsLabelLineSettings
     enum class AnchorType : int
     {
       HintOnly, //!< Line anchor is a hint for preferred placement only, but other placements close to the hint are permitted
-      Strict, //!< Line anchor is a strict placement, and other placements are not permitted
+      Strict,   //!< Line anchor is a strict placement, and other placements are not permitted
     };
+    Q_ENUM( AnchorType )
+
+    /**
+     * Clipping behavior for line anchor calculation.
+     *
+     * \since QGIS 3.20
+     */
+    enum class AnchorClipping : int
+    {
+      UseVisiblePartsOfLine, //!< Only visible parts of lines are considered when calculating the line anchor for labels
+      UseEntireLine,         //!< Entire original feature line geometry is used when calculating the line anchor for labels
+    };
+    Q_ENUM( AnchorClipping )
 
     /**
      * Returns the line placement flags, which dictate how line labels can be placed
@@ -65,7 +80,7 @@ class CORE_EXPORT QgsLabelLineSettings
      *
      * \see setPlacementFlags()
      */
-    QgsLabeling::LinePlacementFlags placementFlags() const { return mPlacementFlags; }
+    Qgis::LabelLinePlacementFlags placementFlags() const { return mPlacementFlags; }
 
     /**
      * Returns the line placement \a flags, which dictate how line labels can be placed
@@ -73,7 +88,7 @@ class CORE_EXPORT QgsLabelLineSettings
      *
      * \see placementFlags()
      */
-    void setPlacementFlags( QgsLabeling::LinePlacementFlags flags ) { mPlacementFlags = flags; }
+    void setPlacementFlags( Qgis::LabelLinePlacementFlags flags ) { mPlacementFlags = flags; }
 
     /**
      * Returns TRUE if connected line features with identical label text should be merged
@@ -92,7 +107,7 @@ class CORE_EXPORT QgsLabelLineSettings
     void setMergeLines( bool merge ) { mMergeLines = merge; }
 
     /**
-     * Updates the thinning settings to respect any data defined properties
+     * Updates the line settings to respect any data defined properties
      * set within the specified \a properties collection.
      */
     void updateDataDefinedProperties( const QgsPropertyCollection &properties, QgsExpressionContext &context );
@@ -207,7 +222,7 @@ class CORE_EXPORT QgsLabelLineSettings
      * \see overrunDistanceUnit()
      * \see overrunDistanceMapUnitScale()
      */
-    void setOverrunDistance( double distance ) {  mOverrunDistance = distance; }
+    void setOverrunDistance( double distance ) { mOverrunDistance = distance; }
 
     /**
      * Returns the units for label overrun distance.
@@ -215,7 +230,7 @@ class CORE_EXPORT QgsLabelLineSettings
      * \see overrunDistance()
      * \see overrunDistanceMapUnitScale()
      */
-    QgsUnitTypes::RenderUnit overrunDistanceUnit() const {return mOverrunDistanceUnit; }
+    Qgis::RenderUnit overrunDistanceUnit() const { return mOverrunDistanceUnit; }
 
     /**
      * Sets the \a unit for label overrun distance.
@@ -223,7 +238,7 @@ class CORE_EXPORT QgsLabelLineSettings
      * \see overrunDistance()
      * \see overrunDistanceMapUnitScale()
      */
-    void setOverrunDistanceUnit( const QgsUnitTypes::RenderUnit &unit ) { mOverrunDistanceUnit = unit;}
+    void setOverrunDistanceUnit( const Qgis::RenderUnit &unit ) { mOverrunDistanceUnit = unit; }
 
     /**
      * Returns the map unit scale for label overrun distance.
@@ -250,7 +265,9 @@ class CORE_EXPORT QgsLabelLineSettings
      * the end of the line.
      *
      * \see setLineAnchorPercent()
+     * \see anchorTextPoint()
      * \see anchorType()
+     * \see anchorClipping()
      */
     double lineAnchorPercent() const { return mLineAnchorPercent; }
 
@@ -263,7 +280,9 @@ class CORE_EXPORT QgsLabelLineSettings
      * the end of the line.
      *
      * \see lineAnchorPercent()
+     * \see setAnchorTextPoint()
      * \see setAnchorType()
+     * \see setAnchorClipping()
      */
     void setLineAnchorPercent( double percent ) { mLineAnchorPercent = percent; }
 
@@ -273,6 +292,7 @@ class CORE_EXPORT QgsLabelLineSettings
      *
      * \see setAnchorType()
      * \see lineAnchorPercent()
+     * \see anchorClipping()
      */
     AnchorType anchorType() const { return mAnchorType; }
 
@@ -282,11 +302,72 @@ class CORE_EXPORT QgsLabelLineSettings
      *
      * \see anchorType()
      * \see setLineAnchorPercent()
+     * \see setAnchorClipping()
      */
     void setAnchorType( AnchorType type ) { mAnchorType = type; }
 
+    /**
+     * Returns the line anchor clipping mode, which dictates how line strings are clipped
+     * before calculating the line anchor placement.
+     *
+     * \see setAnchorClipping()
+     * \see anchorType()
+     * \see lineAnchorPercent()
+     *
+     * \since QGIS 3.20
+     */
+    AnchorClipping anchorClipping() const { return mAnchorClipping; }
+
+    /**
+     * Sets the line anchor \a clipping mode, which dictates how line strings are clipped
+     * before calculating the line anchor placement.
+     *
+     * \see anchorClipping()
+     * \see setAnchorType()
+     * \see setLineAnchorPercent()
+     *
+     * \since QGIS 3.20
+     */
+    void setAnchorClipping( AnchorClipping clipping ) { mAnchorClipping = clipping; }
+
+    /**
+     * Returns the line anchor text point, which dictates which part of the label text
+     * should be placed at the lineAnchorPercent().
+     *
+     * \see setAnchorTextPoint()
+     *
+     * \since QGIS 3.26
+     */
+    Qgis::TextAnchorPoint anchorTextPoint() const { return mAnchorTextPoint; }
+
+    /**
+     * Sets the line anchor text \a point, which dictates which part of the label text
+     * should be placed at the lineAnchorPercent().
+     *
+     * \see anchorTextPoint()
+     *
+     * \since QGIS 3.26
+     */
+    void setAnchorTextPoint( Qgis::TextAnchorPoint point ) { mAnchorTextPoint = point; }
+
+    /**
+     * Returns the mode which determine how curved labels are generated and placed.
+     *
+     * \see setCurvedLabelMode()
+     * \since QGIS 4.0
+     */
+    Qgis::CurvedLabelMode curvedLabelMode() const { return mCurvedLabelMode; }
+
+    /**
+     * Sets the \a mode which determine how curved labels are generated and placed.
+     *
+     * \see curvedLabelMode()
+     * \since QGIS 4.0
+     */
+    void setCurvedLabelMode( Qgis::CurvedLabelMode mode ) { mCurvedLabelMode = mode; }
+
   private:
-    QgsLabeling::LinePlacementFlags mPlacementFlags = QgsLabeling::LinePlacementFlag::AboveLine | QgsLabeling::LinePlacementFlag::MapOrientation;
+    Qgis::LabelLinePlacementFlags mPlacementFlags = Qgis::LabelLinePlacementFlag::AboveLine | Qgis::LabelLinePlacementFlag::MapOrientation;
     bool mMergeLines = false;
     bool mAddDirectionSymbol = false;
     QString mLeftDirectionSymbol = QString( '<' );
@@ -294,11 +375,15 @@ class CORE_EXPORT QgsLabelLineSettings
     bool mReverseDirectionSymbol = false;
     DirectionSymbolPlacement mPlaceDirectionSymbol = DirectionSymbolPlacement::SymbolLeftRight;
     double mOverrunDistance = 0;
-    QgsUnitTypes::RenderUnit mOverrunDistanceUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mOverrunDistanceUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mOverrunDistanceMapUnitScale;
 
     double mLineAnchorPercent = 0.5;
     AnchorType mAnchorType = AnchorType::HintOnly;
+    AnchorClipping mAnchorClipping = AnchorClipping::UseVisiblePartsOfLine;
+    Qgis::TextAnchorPoint mAnchorTextPoint = Qgis::TextAnchorPoint::FollowPlacement;
+
+    Qgis::CurvedLabelMode mCurvedLabelMode = Qgis::CurvedLabelMode::Default;
 };
 
 #endif // QGSLABELLINESETTINGS_H

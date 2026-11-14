@@ -14,33 +14,39 @@
  ***************************************************************************/
 #include "qgsguiutils.h"
 
-#include "qgsapplication.h"
-#include "qgssettings.h"
-#include "qgsencodingfiledialog.h"
-#include "qgslogger.h"
-#include "qgis_gui.h"
 #include "qgis.h"
+#include "qgis_gui.h"
+#include "qgsapplication.h"
+#include "qgsencodingfiledialog.h"
+#include "qgsfileutils.h"
+#include "qgslogger.h"
+#include "qgssettings.h"
 
-#include <QImageWriter>
-#include <QFontDialog>
 #include <QApplication>
+#include <QDockWidget>
+#include <QFontDialog>
+#include <QImageWriter>
+#include <QMainWindow>
+#include <QMenu>
+#include <QMessageBox>
 #include <QRegularExpression>
+#include <QString>
+#include <QTabBar>
 
+using namespace Qt::StringLiterals;
 
 namespace QgsGuiUtils
 {
 
-  bool GUI_EXPORT openFilesRememberingFilter( QString const &filterName,
-      QString const &filters, QStringList &selectedFiles, QString &enc, QString &title,
-      bool cancelAll )
+  bool GUI_EXPORT openFilesRememberingFilter( QString const &filterName, QString const &filters, QStringList &selectedFiles, QString &enc, QString &title, bool cancelAll )
   {
     Q_UNUSED( enc )
 
     QgsSettings settings;
     QString lastUsedFilter = settings.value( "/UI/" + filterName, "" ).toString();
-    QString lastUsedDir = settings.value( "/UI/" + filterName + "Dir", QDir::homePath() ).toString();
+    const QString lastUsedDir = settings.value( "/UI/" + filterName + "Dir", QDir::homePath() ).toString();
 
-    QgsDebugMsg( "Opening file dialog with filters: " + filters );
+    QgsDebugMsgLevel( "Opening file dialog with filters: " + filters, 3 );
     if ( !cancelAll )
     {
       selectedFiles = QFileDialog::getOpenFileNames( nullptr, title, lastUsedDir, filters, &lastUsedFilter );
@@ -76,11 +82,11 @@ namespace QgsGuiUtils
       // Fix by Tim - getting the dirPath from the dialog
       // directly truncates the last node in the dir path.
       // This is a workaround for that
-      QString firstFileName = selectedFiles.first();
-      QFileInfo fi( firstFileName );
-      QString path = fi.path();
+      const QString firstFileName = selectedFiles.first();
+      const QFileInfo fi( firstFileName );
+      const QString path = fi.path();
 
-      QgsDebugMsg( "Writing last used dir: " + path );
+      QgsDebugMsgLevel( "Writing last used dir: " + path, 2 );
 
       settings.setValue( "/UI/" + filterName, lastUsedFilter );
       settings.setValue( "/UI/" + filterName + "Dir", path );
@@ -93,30 +99,42 @@ namespace QgsGuiUtils
     // get a list of supported output image types
     QMap<QString, QString> filterMap;
     const auto supportedImageFormats { QImageWriter::supportedImageFormats() };
+    QStringList imageFormats;
+    // add PNG format first for certain file dialog to auto-fill from first listed extension
+    imageFormats << u"*.png *.PNG"_s;
     for ( const QByteArray &format : supportedImageFormats )
     {
-      //svg doesn't work so skip it
+      // svg doesn't work so skip it
       if ( format == "svg" )
+      {
         continue;
+      }
 
       filterMap.insert( createFileFilter_( format ), format );
+
+      if ( format != "png" )
+      {
+        imageFormats << u"*.%1 *.%2"_s.arg( format, QString( format ).toUpper() );
+      }
     }
+    const QString formatByExtension = u"%1 (%2)"_s.arg( QObject::tr( "Format by Extension" ), imageFormats.join( ' '_L1 ) );
 
 #ifdef QGISDEBUG
-    QgsDebugMsgLevel( QStringLiteral( "Available Filters Map: " ), 2 );
+    QgsDebugMsgLevel( u"Available Filters Map: "_s, 2 );
     for ( QMap<QString, QString>::iterator it = filterMap.begin(); it != filterMap.end(); ++it )
     {
       QgsDebugMsgLevel( it.key() + "  :  " + it.value(), 2 );
     }
 #endif
 
-    QgsSettings settings;  // where we keep last used filter in persistent state
-    QString lastUsedDir = settings.value( QStringLiteral( "UI/lastSaveAsImageDir" ), QDir::homePath() ).toString();
+    QgsSettings settings; // where we keep last used filter in persistent state
+    const QString lastUsedDir = settings.value( u"UI/lastSaveAsImageDir"_s, QDir::homePath() ).toString();
 
-    // Prefer "png" format unless the user previously chose a different format
-    QString pngExtension = QStringLiteral( "png" );
-    QString pngFilter = createFileFilter_( pngExtension );
-    QString selectedFilter = settings.value( QStringLiteral( "UI/lastSaveAsImageFilter" ), pngFilter ).toString();
+    QString selectedFilter = settings.value( u"UI/lastSaveAsImageFilter"_s, QString() ).toString();
+    if ( selectedFilter.isEmpty() )
+    {
+      selectedFilter = formatByExtension;
+    }
 
     QString initialPath;
     if ( defaultFilename.isNull() )
@@ -132,27 +150,18 @@ namespace QgsGuiUtils
 
     QString outputFileName;
     QString ext;
-#if defined(Q_OS_WIN) || defined(Q_OS_MAC) || defined(Q_OS_LINUX)
-    outputFileName = QFileDialog::getSaveFileName( parent, message, initialPath, QStringList( filterMap.keys() ).join( QLatin1String( ";;" ) ), &selectedFilter );
-
-    if ( !outputFileName.isNull() )
-    {
-      ext = filterMap.value( selectedFilter, QString() );
-      if ( !ext.isNull() )
-        settings.setValue( QStringLiteral( "UI/lastSaveAsImageFilter" ), selectedFilter );
-      settings.setValue( QStringLiteral( "UI/lastSaveAsImageDir" ), QFileInfo( outputFileName ).absolutePath() );
-    }
+#if defined( Q_OS_WIN ) || defined( Q_OS_MAC ) || defined( Q_OS_LINUX )
+    outputFileName = QFileDialog::getSaveFileName( parent, message, initialPath, formatByExtension + u";;"_s + qgsMapJoinKeys( filterMap, u";;"_s ), &selectedFilter );
 #else
-
     //create a file dialog using the filter list generated above
-    std::unique_ptr<QFileDialog> fileDialog( new QFileDialog( parent, message, initialPath, QStringList( filterMap.keys() ).join( ";;" ) ) );
+    auto fileDialog = std::make_unique<QFileDialog>( parent, message, initialPath, formatByExtension + u";;"_s + qgsMapJoinKeys( filterMap, u";;"_s ) );
 
     // allow for selection of more than one file
     fileDialog->setFileMode( QFileDialog::AnyFile );
     fileDialog->setAcceptMode( QFileDialog::AcceptSave );
     fileDialog->setOption( QFileDialog::DontConfirmOverwrite, false );
 
-    if ( !selectedFilter.isEmpty() )     // set the filter to the last one used
+    if ( !selectedFilter.isEmpty() ) // set the filter to the last one used
     {
       fileDialog->selectNameFilter( selectedFilter );
     }
@@ -162,35 +171,48 @@ namespace QgsGuiUtils
     {
       outputFileName = fileDialog->selectedFiles().first();
     }
-
-    selectedFilter = fileDialog->selectedNameFilter();
-    QgsDebugMsg( "Selected filter: " + selectedFilter );
-    ext = filterMap.value( selectedFilter, QString() );
-
-    if ( !ext.isNull() )
-      settings.setValue( "/UI/lastSaveAsImageFilter", selectedFilter );
-
-    settings.setValue( "/UI/lastSaveAsImageDir", fileDialog->directory().absolutePath() );
 #endif
 
-    // Add the file type suffix to the fileName if required
-    if ( !ext.isNull() && !outputFileName.endsWith( '.' + ext.toLower(), Qt::CaseInsensitive ) )
+    if ( !outputFileName.isNull() )
     {
-      outputFileName += '.' + ext;
+      if ( selectedFilter == formatByExtension )
+      {
+        settings.setValue( u"UI/lastSaveAsImageFilter"_s, QString() );
+        ext = QFileInfo( outputFileName ).suffix();
+
+        auto match = std::find_if( filterMap.begin(), filterMap.end(), [&ext]( const QString &filter ) { return filter == ext; } );
+        if ( match == filterMap.end() )
+        {
+          // Use "png" format when extension missing or not matching
+          ext = u"png"_s;
+          selectedFilter = createFileFilter_( ext );
+          outputFileName = QgsFileUtils::addExtensionFromFilter( outputFileName, selectedFilter );
+        }
+      }
+      else
+      {
+        ext = filterMap.value( selectedFilter, QString() );
+        if ( !ext.isEmpty() )
+        {
+          outputFileName = QgsFileUtils::addExtensionFromFilter( outputFileName, selectedFilter );
+          settings.setValue( u"UI/lastSaveAsImageFilter"_s, selectedFilter );
+        }
+      }
+      settings.setValue( u"UI/lastSaveAsImageDir"_s, QFileInfo( outputFileName ).absolutePath() );
     }
 
-    return qMakePair<QString, QString>( outputFileName, ext );
+    return qMakePair( outputFileName, ext );
   }
 
   QString createFileFilter_( QString const &longName, QString const &glob )
   {
-    return QStringLiteral( "%1 (%2 %3)" ).arg( longName, glob.toLower(), glob.toUpper() );
+    return u"%1 (%2 %3)"_s.arg( longName, glob.toLower(), glob.toUpper() );
   }
 
   QString createFileFilter_( QString const &format )
   {
-    QString longName = format.toUpper() + " format";
-    QString glob = "*." + format;
+    const QString longName = format.toUpper() + " format";
+    const QString glob = "*." + format;
     return createFileFilter_( longName, glob );
   }
 
@@ -199,7 +221,7 @@ namespace QgsGuiUtils
     // parent is intentionally not set to 'this' as
     // that would make it follow the style sheet font
     // see also #12233 and #4937
-#if defined(Q_OS_MAC)
+#if defined( Q_OS_MAC )
     // Native dialog broken on macOS with Qt5
     // probably only broken in Qt5.11.1 and .2
     //    (see https://successfulsoftware.net/2018/11/02/qt-is-broken-on-macos-right-now/ )
@@ -213,14 +235,14 @@ namespace QgsGuiUtils
   void saveGeometry( QWidget *widget, const QString &keyName )
   {
     QgsSettings settings;
-    QString key = createWidgetKey( widget, keyName );
+    const QString key = createWidgetKey( widget, keyName );
     settings.setValue( key, widget->saveGeometry() );
   }
 
   bool restoreGeometry( QWidget *widget, const QString &keyName )
   {
-    QgsSettings settings;
-    QString key = createWidgetKey( widget, keyName );
+    const QgsSettings settings;
+    const QString key = createWidgetKey( widget, keyName );
     return widget->restoreGeometry( settings.value( key ).toByteArray() );
   }
 
@@ -239,27 +261,13 @@ namespace QgsGuiUtils
     {
       subKey = widget->objectName();
     }
-    QString key = QStringLiteral( "Windows/%1/geometry" ).arg( subKey );
+    QString key = u"Windows/%1/geometry"_s.arg( subKey );
     return key;
   }
 
   int scaleIconSize( int standardSize )
   {
     return QgsApplication::scaleIconSize( standardSize );
-  }
-
-  QSize iconSize( bool dockableToolbar )
-  {
-    QgsSettings s;
-    int w = s.value( QStringLiteral( "/qgis/iconSize" ), 32 ).toInt();
-    QSize size( w, w );
-
-    if ( dockableToolbar )
-    {
-      size = panelIconSize( size );
-    }
-
-    return size;
   }
 
   QSize panelIconSize( QSize size )
@@ -280,13 +288,13 @@ namespace QgsGuiUtils
   {
     const int precision { significantDigits( dataType ) };
     QString result { QLocale().toString( value, 'f', precision ) };
-    if ( ! displayTrailingZeroes )
+    if ( !displayTrailingZeroes )
     {
       const QRegularExpression zeroesRe { QStringLiteral( R"raw(\%1\d*?(0+$))raw" ).arg( QLocale().decimalPoint() ) };
       if ( zeroesRe.match( result ).hasMatch() )
       {
         result.truncate( zeroesRe.match( result ).capturedStart( 1 ) );
-        if ( result.endsWith( QLocale().decimalPoint( ) ) )
+        if ( result.endsWith( QLocale().decimalPoint() ) )
         {
           result.chop( 1 );
         }
@@ -304,6 +312,7 @@ namespace QgsGuiUtils
       case Qgis::DataType::Int32:
       case Qgis::DataType::UInt32:
       case Qgis::DataType::Byte:
+      case Qgis::DataType::Int8:
       case Qgis::DataType::CInt16:
       case Qgis::DataType::CInt32:
       case Qgis::DataType::ARGB32:
@@ -328,7 +337,149 @@ namespace QgsGuiUtils
     }
     return 0;
   }
-}
+
+  bool isNonStandardGeoPackageGeometryType( Qgis::WkbType wkbType )
+  {
+    const Qgis::WkbType flatType = QgsWkbTypes::flatType( wkbType );
+    return ( flatType == Qgis::WkbType::PolyhedralSurface || flatType == Qgis::WkbType::TIN || flatType == Qgis::WkbType::Triangle );
+  }
+
+  bool warnAboutNonStandardGeoPackageGeometryType( Qgis::WkbType wkbType, QWidget *parent, const QString &dialogTitle, bool showDialog, bool *isNonStandard )
+  {
+    const bool nonStandard = isNonStandardGeoPackageGeometryType( wkbType );
+
+    if ( isNonStandard )
+    {
+      *isNonStandard = nonStandard;
+    }
+
+    if ( !nonStandard )
+    {
+      return true;
+    }
+
+    if ( !showDialog )
+    {
+      return true;
+    }
+
+    return QMessageBox::question(
+             parent,
+             dialogTitle,
+             QObject::tr(
+               "PolyhedralSurface, TIN and Triangle are non-standard GeoPackage geometry types "
+               "and may not be recognized by other software.\n\n"
+               "Do you want to continue?"
+             ),
+             QMessageBox::Yes | QMessageBox::No,
+             QMessageBox::No
+           )
+           == QMessageBox::Yes;
+  }
+
+  void addDockWidget( QMainWindow *window, Qt::DockWidgetArea area, QDockWidget *dockwidget )
+  {
+    window->addDockWidget( area, dockwidget );
+    // Make the right and left docks consume all vertical space and top
+    // and bottom docks nest between them
+    window->setCorner( Qt::TopLeftCorner, Qt::LeftDockWidgetArea );
+    window->setCorner( Qt::BottomLeftCorner, Qt::LeftDockWidgetArea );
+    window->setCorner( Qt::TopRightCorner, Qt::RightDockWidgetArea );
+    window->setCorner( Qt::BottomRightCorner, Qt::RightDockWidgetArea );
+    // add to the Panel submenu, if it exists
+    if ( auto menu = window->findChild< QMenu * >( u"mPanelMenu"_s ) )
+    {
+      menu->addAction( dockwidget->toggleViewAction() );
+    }
+
+    dockwidget->show();
+  }
+
+  void addTabifiedDockWidget( QMainWindow *window, Qt::DockWidgetArea area, QDockWidget *dockWidget, const QStringList &tabifyWith, bool raiseTab )
+  {
+    QList<QDockWidget *> dockWidgetsInArea;
+    const QList<QDockWidget *> allDockWidgets = window->findChildren<QDockWidget *>();
+    for ( QDockWidget *w : allDockWidgets )
+    {
+      if ( w->isVisible() && window->dockWidgetArea( w ) == area )
+      {
+        dockWidgetsInArea << w;
+      }
+    }
+
+    addDockWidget( window, area, dockWidget ); // First add the dock widget, then attempt to tabify
+    if ( dockWidgetsInArea.empty() )
+      return;
+
+    // Get the base dock widget that we'll use to tabify our new dockWidget
+    QDockWidget *tabifyWithDockWidget = nullptr;
+    for ( const QString &targetName : tabifyWith )
+    {
+      auto it = std::find_if( dockWidgetsInArea.begin(), dockWidgetsInArea.end(), [&targetName]( QDockWidget *cw ) {
+        return cw->objectName() == targetName || cw->property( "dock_uuid" ).toString() == targetName;
+      } );
+
+      if ( it != dockWidgetsInArea.end() )
+      {
+        tabifyWithDockWidget = *it;
+        break;
+      }
+    }
+
+    if ( !tabifyWithDockWidget )
+    {
+      // fallback to the first available dock widget if no matches were found, or if no tabifyWith names were specified
+      tabifyWithDockWidget = dockWidgetsInArea.at( 0 );
+    }
+    if ( tabifyWithDockWidget == dockWidget )
+      return;
+
+    // find the currently active dock widget so that we can restore that if we're not raising the new tab
+    QTabBar *existingTabBar = nullptr;
+    int currentTabIndex = -1;
+    if ( !raiseTab && dockWidgetsInArea.length() > 1 )
+    {
+      // Chances are we've already got a tabBar, if so, get
+      // currentTabIndex to restore status after inserting our new tab
+      const QList<QTabBar *> tabBars = window->findChildren<QTabBar *>( QString(), Qt::FindDirectChildrenOnly );
+      bool tabBarFound = false;
+      for ( QTabBar *tabBar : tabBars )
+      {
+        for ( int i = 0; i < tabBar->count(); i++ )
+        {
+          if ( tabBar->tabText( i ) == tabifyWithDockWidget->windowTitle() )
+          {
+            existingTabBar = tabBar;
+            currentTabIndex = tabBar->currentIndex();
+            tabBarFound = true;
+            break;
+          }
+        }
+        if ( tabBarFound )
+        {
+          break;
+        }
+      }
+    }
+
+    // Now we can put the new dockWidget on top of tabifyWith
+    window->tabifyDockWidget( tabifyWithDockWidget, dockWidget );
+
+    // Should we restore dock widgets status?
+    if ( !raiseTab )
+    {
+      if ( existingTabBar )
+      {
+        existingTabBar->setCurrentIndex( currentTabIndex );
+      }
+      else
+      {
+        tabifyWithDockWidget->raise(); // Single base dock widget, we can just raise it
+      }
+    }
+  }
+
+} // namespace QgsGuiUtils
 
 //
 // QgsTemporaryCursorOverride
@@ -380,4 +531,28 @@ void QgsTemporaryCursorRestoreOverride::restore()
     QApplication::setOverrideCursor( *it );
   }
   mCursors.clear();
+}
+
+//
+// QWidgetUpdateBlocker
+//
+
+QWidgetUpdateBlocker::QWidgetUpdateBlocker( QWidget *widget )
+  : mWidget( widget )
+{
+  mWidget->setUpdatesEnabled( false );
+}
+
+void QWidgetUpdateBlocker::release()
+{
+  if ( !mWidget )
+    return;
+
+  mWidget->setUpdatesEnabled( true );
+  mWidget = nullptr;
+}
+
+QWidgetUpdateBlocker::~QWidgetUpdateBlocker()
+{
+  release();
 }

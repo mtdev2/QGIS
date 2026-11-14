@@ -7,7 +7,7 @@
 #include <vector>
 #include <odbc/Config.h>
 //------------------------------------------------------------------------------
-namespace odbc {
+NS_ODBC_START
 //------------------------------------------------------------------------------
 /**
  *  Specifies the type of an ODBC DSN.
@@ -26,6 +26,97 @@ enum class DSNType
      * Indicates that only user DSNs will be returned.
      */
     USER
+};
+//------------------------------------------------------------------------------
+/**
+ *  Specifies the type of the index.
+ */
+enum class IndexType
+{
+    /**
+     * All indexes are returned.
+     */
+    ALL,
+    /**
+     * Only unique indexes are returned.
+     */
+    UNIQUE
+};
+//------------------------------------------------------------------------------
+/**
+ *  Specifies the accuracy of the statistics about a single table and
+ *  its indexes.
+ */
+enum class StatisticsAccuracy
+{
+    /**
+     * Requests that the driver unconditionally retrieves the statistics.
+     */
+    ENSURE,
+    /**
+     * Requests that the driver retrieves the CARDINALITY and PAGES only if they
+     * are readily available from the server.
+     */
+    QUICK
+};
+//------------------------------------------------------------------------------
+/**
+ *  Specifies the constants that identify whether the column allows NULL values.
+ */
+enum class ColumnNullableValue
+{
+    /**
+     * Column does not allow NULL values.
+     */
+    NO_NULLS,
+    /**
+     * Column allows NULL values.
+     */
+    NULLABLE
+};
+//------------------------------------------------------------------------------
+/**
+ *  Specifies the type of unique row identifier.
+ */
+enum class RowIdentifierType
+{
+    /**
+     * Returns the optimal column or set of columns that, by retrieving values
+     * from the column or columns, allows any row in the specified table to be
+     * uniquely identified. A column can be either a pseudo - column
+     * specifically designed for this purpose (as in Oracle ROWID or Ingres TID)
+     * or the column or columns of any unique index for the table.
+     */
+    BEST_ROWID,
+    /**
+     * Returns the column or columns in the specified table, if any, that are
+     * automatically updated by the data source when any value in the row is
+     * updated by any transaction (as in SQLBase ROWID or Sybase TIMESTAMP).
+     */
+    ROWVER
+};
+//------------------------------------------------------------------------------
+/**
+ *  Specifies the required scope of the row identifier (rowid).
+ */
+enum class RowIdentifierScope
+{
+    /**
+     * The rowid is guaranteed to be valid only while positioned on that row.
+     * A later reselect using rowid may not return a row if the row was updated
+     * or deleted by another transaction.
+     */
+     CURRENT_ROW,
+     /**
+      * The rowid is guaranteed to be valid for the duration of the session
+      * (across transaction boundaries).
+      */
+     SESSION,
+     /**
+      * The rowid is guaranteed to be valid for the duration of the current
+      * transaction.
+      */
+     TRANSACTION
 };
 //------------------------------------------------------------------------------
 /**
@@ -84,6 +175,8 @@ public:
     static constexpr int TypeTime = 92;
     /// Year, month, day, hour, minute, and second fields.
     static constexpr int TypeTimestamp = 93;
+    /// Unknown data type.
+    static constexpr int Unknown = 0;
     /// Variable length binary data.
     static constexpr int VarBinary = -3;
     /// Variable-length character string.
@@ -225,7 +318,7 @@ public:
      *
      * @return  Returns the unscaled value of this decimal number.
      */
-    const char* unscaledValue() const { return value_.c_str(); };
+    const char* unscaledValue() const { return value_.c_str(); }
 
     /**
      * Returns a string representation of this number.
@@ -955,6 +1048,6 @@ inline std::ostream& operator<<(std::ostream& out, const Binary& val)
     return out;
 }
 //------------------------------------------------------------------------------
-} // namespace odbc
+NS_ODBC_END
 //------------------------------------------------------------------------------
 #endif

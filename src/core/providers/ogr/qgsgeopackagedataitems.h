@@ -15,16 +15,19 @@
 #ifndef QGSGEOPACKAGEDATAITEMS_H
 #define QGSGEOPACKAGEDATAITEMS_H
 
-#include "qgsdataitem.h"
+#include "qgis_sip.h"
+#include "qgsconnectionsitem.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
 #include "qgsdataprovider.h"
+#include "qgslayeritem.h"
 #include "qgstaskmanager.h"
-#include "qgis_sip.h"
 
 #include <QStringList>
 
-///@cond PRIVATE
 #define SIP_NO_FILE
+
+///@cond PRIVATE
 
 
 /**
@@ -41,7 +44,7 @@ class CORE_EXPORT QgsGeoPackageCollectionItem : public QgsDataCollectionItem
     bool equal( const QgsDataItem *other ) override;
 
     //! Returns the layer type from \a geometryType
-    static QgsLayerItem::LayerType layerTypeFromDb( const QString &geometryType );
+    static Qgis::BrowserLayerType layerTypeFromDb( const QString &geometryType );
 
     //! Deletes a geopackage raster layer
     bool deleteRasterLayer( const QString &layerName, QString &errCause );
@@ -66,7 +69,7 @@ class CORE_EXPORT QgsGeoPackageCollectionItem : public QgsDataCollectionItem
   public:
     bool layerCollection() const override;
     bool hasDragEnabled() const override;
-    QgsMimeDataUtils::Uri mimeUri() const override;
+    QgsMimeDataUtils::UriList mimeUris() const override;
 };
 
 
@@ -78,7 +81,6 @@ class CORE_EXPORT QgsGeoPackageAbstractLayerItem : public QgsLayerItem
     Q_OBJECT
 
   public:
-
     /**
      * Returns a list of all table names for the geopackage
      */
@@ -101,10 +103,9 @@ class CORE_EXPORT QgsGeoPackageAbstractLayerItem : public QgsLayerItem
     QgsGeoPackageCollectionItem *collection() const;
 
   protected:
-    QgsGeoPackageAbstractLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, LayerType layerType, const QString &providerKey );
+    QgsGeoPackageAbstractLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, Qgis::BrowserLayerType layerType, const QString &providerKey );
 
   private:
-
     //! Store a casted pointer to the parent collection
     QgsGeoPackageCollectionItem *mCollection = nullptr;
 };
@@ -119,13 +120,12 @@ class CORE_EXPORT QgsGeoPackageRasterLayerItem : public QgsGeoPackageAbstractLay
 };
 
 
-
-class CORE_EXPORT QgsGeoPackageVectorLayerItem final: public QgsGeoPackageAbstractLayerItem
+class CORE_EXPORT QgsGeoPackageVectorLayerItem final : public QgsGeoPackageAbstractLayerItem
 {
     Q_OBJECT
 
   public:
-    QgsGeoPackageVectorLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, LayerType layerType );
+    QgsGeoPackageVectorLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, Qgis::BrowserLayerType layerType );
     bool executeDeleteLayer( QString &errCause ) override;
 
     // QgsDataItem interface
@@ -136,7 +136,7 @@ class CORE_EXPORT QgsGeoPackageVectorLayerItem final: public QgsGeoPackageAbstra
  * \brief The QgsGeoPackageConnectionItem class adds the stored
  *        connection management to QgsGeoPackageCollectionItem
  */
-class CORE_EXPORT QgsGeoPackageConnectionItem final: public QgsGeoPackageCollectionItem
+class CORE_EXPORT QgsGeoPackageConnectionItem final : public QgsGeoPackageCollectionItem
 {
     Q_OBJECT
 
@@ -146,7 +146,7 @@ class CORE_EXPORT QgsGeoPackageConnectionItem final: public QgsGeoPackageCollect
 };
 
 
-class CORE_EXPORT QgsGeoPackageRootItem final: public QgsConnectionsRootItem
+class CORE_EXPORT QgsGeoPackageRootItem final : public QgsConnectionsRootItem
 {
     Q_OBJECT
 
@@ -164,36 +164,13 @@ class CORE_EXPORT QgsGeoPackageRootItem final: public QgsConnectionsRootItem
 
 
 //! Provider for geopackage data item
-class QgsGeoPackageDataItemProvider final: public QgsDataItemProvider
+class QgsGeoPackageDataItemProvider final : public QgsDataItemProvider
 {
   public:
     QString name() override;
     QString dataProviderKey() const override;
-    int capabilities() const override;
+    Qgis::DataItemProviderCapabilities capabilities() const override;
     QgsDataItem *createDataItem( const QString &path, QgsDataItem *parentItem ) override;
-};
-
-
-/**
- * \brief The QgsConcurrentFileWriterImportTask class is the parent task for
- * importing layers from a drag and drop operation in the browser.
- * Individual layers need to be added as individual substask.
- */
-class CORE_EXPORT QgsConcurrentFileWriterImportTask : public QgsTask
-{
-    Q_OBJECT
-
-  public:
-    QgsConcurrentFileWriterImportTask( const QString &desc = QString() ) : QgsTask( desc ) {}
-    void emitProgressChanged( double progress ) { setProgress( progress ); }
-
-  protected:
-
-    bool run() override
-    {
-      return true;
-    }
-
 };
 
 ///@endcond

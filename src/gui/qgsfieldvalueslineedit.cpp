@@ -14,13 +14,16 @@
  ***************************************************************************/
 
 #include "qgsfieldvalueslineedit.h"
-#include "qgsvectorlayer.h"
+
 #include "qgsfloatingwidget.h"
+#include "qgsvectorlayer.h"
 
 #include <QCompleter>
+#include <QHBoxLayout>
 #include <QStringListModel>
 #include <QTimer>
-#include <QHBoxLayout>
+
+#include "moc_qgsfieldvalueslineedit.cpp"
 
 QgsFieldValuesLineEdit::QgsFieldValuesLineEdit( QWidget *parent )
   : QgsFilterLineEdit( parent )
@@ -28,6 +31,7 @@ QgsFieldValuesLineEdit::QgsFieldValuesLineEdit( QWidget *parent )
   QCompleter *c = new QCompleter( this );
   c->setCaseSensitivity( Qt::CaseInsensitive );
   c->setFilterMode( Qt::MatchContains );
+  c->setCompletionMode( QCompleter::UnfilteredPopupCompletion );
   setCompleter( c );
   connect( this, &QgsFieldValuesLineEdit::textEdited, this, &QgsFieldValuesLineEdit::requestCompleterUpdate );
   mShowPopupTimer.setSingleShot( true );
@@ -71,7 +75,7 @@ void QgsFieldValuesLineEdit::requestCompleterUpdate()
 void QgsFieldValuesLineEdit::triggerCompleterUpdate()
 {
   mShowPopupTimer.stop();
-  QString currentText = text();
+  const QString currentText = text();
 
   if ( currentText.isEmpty() )
   {
@@ -111,14 +115,14 @@ void QgsFieldValuesLineEdit::updateCompletionList( const QString &text )
 
 void QgsFieldValuesLineEdit::gathererThreadFinished()
 {
-  bool wasCanceled = mGatherer->wasCanceled();
+  const bool wasCanceled = mGatherer->wasCanceled();
 
   delete mGatherer;
   mGatherer = nullptr;
 
   if ( wasCanceled )
   {
-    QString text = mRequestedCompletionText;
+    const QString text = mRequestedCompletionText;
     mRequestedCompletionText.clear();
     updateCompletionList( text );
     return;

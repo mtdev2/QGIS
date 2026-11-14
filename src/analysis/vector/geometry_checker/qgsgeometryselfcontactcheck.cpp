@@ -13,10 +13,11 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsgeometrycheckcontext.h"
 #include "qgsgeometryselfcontactcheck.h"
-#include "qgsgeometryutils.h"
+
 #include "qgsfeaturepool.h"
+#include "qgsgeometrycheckcontext.h"
+#include "qgsgeometryutils.h"
 
 QList<QgsSingleGeometryCheckError *> QgsGeometrySelfContactCheck::processGeometry( const QgsGeometry &geometry ) const
 {
@@ -28,7 +29,7 @@ QList<QgsSingleGeometryCheckError *> QgsGeometrySelfContactCheck::processGeometr
     {
       // Test for self-contacts
       int n = geom->vertexCount( iPart, iRing );
-      bool isClosed = geom->vertexAt( QgsVertexId( iPart, iRing, 0 ) ) == geom->vertexAt( QgsVertexId( iPart, iRing, n - 1 ) );
+      const bool isClosed = geom->vertexAt( QgsVertexId( iPart, iRing, 0 ) ) == geom->vertexAt( QgsVertexId( iPart, iRing, n - 1 ) );
 
       // Geometry ring without duplicate nodes
       QVector<int> vtxMap;
@@ -37,7 +38,7 @@ QList<QgsSingleGeometryCheckError *> QgsGeometrySelfContactCheck::processGeometr
       ring.append( geom->vertexAt( QgsVertexId( iPart, iRing, 0 ) ) );
       for ( int i = 1; i < n; ++i )
       {
-        QgsPoint p = geom->vertexAt( QgsVertexId( iPart, iRing, i ) );
+        const QgsPoint p = geom->vertexAt( QgsVertexId( iPart, iRing, i ) );
         if ( QgsGeometryUtils::sqrDistance2D( p, ring.last() ) > mContext->tolerance * mContext->tolerance )
         {
           vtxMap.append( i );
@@ -68,7 +69,7 @@ QList<QgsSingleGeometryCheckError *> QgsGeometrySelfContactCheck::processGeometr
           }
           const QgsPoint &si = ring[i];
           const QgsPoint &sj = ring[j];
-          QgsPoint q = QgsGeometryUtils::projectPointOnSegment( p, si, sj );
+          const QgsPoint q = QgsGeometryUtils::projectPointOnSegment( p, si, sj );
           if ( QgsGeometryUtils::sqrDistance2D( p, q ) < mContext->tolerance * mContext->tolerance )
           {
             errors.append( new QgsSingleGeometryCheckError( this, geometry, QgsGeometry( p.clone() ), QgsVertexId( iPart, iRing, vtxMap[iVert] ) ) );
@@ -81,7 +82,8 @@ QList<QgsSingleGeometryCheckError *> QgsGeometrySelfContactCheck::processGeometr
   return errors;
 }
 
-void QgsGeometrySelfContactCheck::fixError( const QMap<QString, QgsFeaturePool *> &featurePools, QgsGeometryCheckError *error, int method, const QMap<QString, int> & /*mergeAttributeIndices*/, Changes & /*changes*/ ) const
+void QgsGeometrySelfContactCheck::
+  fixError( const QMap<QString, QgsFeaturePool *> &featurePools, QgsGeometryCheckError *error, int method, const QMap<QString, int> & /*mergeAttributeIndices*/, Changes & /*changes*/ ) const
 {
   Q_UNUSED( featurePools )
   if ( method == NoChange )
@@ -96,7 +98,7 @@ void QgsGeometrySelfContactCheck::fixError( const QMap<QString, QgsFeaturePool *
 
 QStringList QgsGeometrySelfContactCheck::resolutionMethods() const
 {
-  static QStringList methods = QStringList() << tr( "No action" );
+  static const QStringList methods = QStringList() << tr( "No action" );
   return methods;
 }
 

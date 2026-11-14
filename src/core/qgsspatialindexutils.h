@@ -17,6 +17,7 @@
 #define QGSSPATIALINDEXUTILS_H
 
 #include "qgis_core.h"
+
 #define SIP_NO_FILE
 
 class QgsRectangle;
@@ -34,14 +35,14 @@ namespace SpatialIndex
   {
     class IBuffer;
   }
-}
+} //namespace SpatialIndex
 ///@endcond
 
 /**
  * \ingroup core
  * \class QgsSpatialIndexUtils
  *
- * Contains utility functions for working with spatial indexes.
+ * \brief Contains utility functions for working with spatial indexes.
  *
  * \note Not available in Python bindings.
  * \since QGIS 3.12
@@ -49,12 +50,10 @@ namespace SpatialIndex
 class CORE_EXPORT QgsSpatialIndexUtils
 {
   public:
-
     /**
      * Converts a QGIS \a rectangle to a SpatialIndex region.
      */
     static SpatialIndex::Region rectangleToRegion( const QgsRectangle &rectangle );
-
 };
 
 #endif // QGSSPATIALINDEXUTILS_H

@@ -15,31 +15,37 @@
  ***************************************************************************/
 
 #include "qgslayertreeviewbadlayerindicator.h"
-#include "qgslayertree.h"
-#include "qgslayertreeview.h"
-#include "qgslayertreeutils.h"
-#include "qgslayertreemodel.h"
-#include "qgsvectorlayer.h"
-#include "qgsrasterlayer.h"
-#include "qgisapp.h"
-#include "qgsbrowsermodel.h"
-#include "qgsbrowsertreeview.h"
-#include "qgsbrowserproxymodel.h"
-#include "qgsmessageviewer.h"
 
 #include <functional>
+
+#include "qgisapp.h"
+#include "qgsbrowsermodel.h"
+#include "qgsbrowserproxymodel.h"
+#include "qgsbrowsertreeview.h"
+#include "qgslayertree.h"
+#include "qgslayertreemodel.h"
+#include "qgslayertreeutils.h"
+#include "qgslayertreeview.h"
+#include "qgsmessageviewer.h"
+#include "qgsrasterlayer.h"
+#include "qgsvectorlayer.h"
+
 #include <QDialog>
-#include <QVBoxLayout>
 #include <QDialogButtonBox>
+#include <QString>
+#include <QVBoxLayout>
+
+#include "moc_qgslayertreeviewbadlayerindicator.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayerTreeViewBadLayerIndicatorProvider::QgsLayerTreeViewBadLayerIndicatorProvider( QgsLayerTreeView *view )
   : QgsLayerTreeViewIndicatorProvider( view )
-{
-}
+{}
 
 void QgsLayerTreeViewBadLayerIndicatorProvider::reportLayerError( const QString &error, QgsMapLayer *layer )
 {
-  for ( const Error &e : qgis::as_const( mErrors ) )
+  for ( const Error &e : std::as_const( mErrors ) )
   {
     // don't report identical errors
     if ( e.layer == layer && error == e.error )
@@ -65,8 +71,8 @@ void QgsLayerTreeViewBadLayerIndicatorProvider::onIndicatorClicked( const QModel
   else
   {
     QStringList thisLayerErrors;
-    QList< Error > newErrors;
-    for ( const Error &error : qgis::as_const( mErrors ) )
+    QList<Error> newErrors;
+    for ( const Error &error : std::as_const( mErrors ) )
     {
       if ( error.layer != layer )
         newErrors.append( error );
@@ -85,10 +91,10 @@ void QgsLayerTreeViewBadLayerIndicatorProvider::onIndicatorClicked( const QModel
         m->setMessageAsPlainText( thisLayerErrors.at( 0 ) );
       else
       {
-        QString message = QStringLiteral( "<ul>" );
+        QString message = u"<ul>"_s;
         for ( const QString &e : thisLayerErrors )
-          message += QStringLiteral( "<li>%1</li>" ).arg( e );
-        message += QLatin1String( "</ul>" );
+          message += u"<li>%1</li>"_s.arg( e );
+        message += "</ul>"_L1;
         m->setMessageAsHtml( message );
       }
       m->exec();
@@ -99,9 +105,9 @@ void QgsLayerTreeViewBadLayerIndicatorProvider::onIndicatorClicked( const QModel
 QString QgsLayerTreeViewBadLayerIndicatorProvider::iconName( QgsMapLayer *layer )
 {
   if ( !layer->isValid() )
-    return QStringLiteral( "/mIndicatorBadLayer.svg" );
+    return u"/mIndicatorBadLayer.svg"_s;
   else
-    return QStringLiteral( "/mIndicatorLayerError.svg" );
+    return u"/mIndicatorLayerError.svg"_s;
 }
 
 QString QgsLayerTreeViewBadLayerIndicatorProvider::tooltipText( QgsMapLayer *layer )
@@ -110,7 +116,7 @@ QString QgsLayerTreeViewBadLayerIndicatorProvider::tooltipText( QgsMapLayer *lay
     return tr( "<b>Unavailable layer!</b><br>Layer data source could not be found. Click to set a new data source" );
   else
   {
-    for ( const Error &error : qgis::as_const( mErrors ) )
+    for ( const Error &error : std::as_const( mErrors ) )
     {
       if ( error.layer == layer )
         return error.error;
@@ -124,7 +130,7 @@ bool QgsLayerTreeViewBadLayerIndicatorProvider::acceptLayer( QgsMapLayer *layer 
   if ( !layer->isValid() )
     return true;
 
-  for ( const Error &error : qgis::as_const( mErrors ) )
+  for ( const Error &error : std::as_const( mErrors ) )
   {
     if ( error.layer == layer )
       return true;

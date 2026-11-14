@@ -17,13 +17,19 @@
 ///@cond PRIVATE
 
 #include "qgsmeshmemorydataprovider.h"
-#include "qgsmeshdataprovidertemporalcapabilities.h"
-#include "qgsmeshlayerutils.h"
-#include "qgstriangularmesh.h"
-#include <cstring>
 
-#define TEXT_PROVIDER_KEY QStringLiteral( "mesh_memory" )
-#define TEXT_PROVIDER_DESCRIPTION QStringLiteral( "Mesh memory provider" )
+#include "qgsapplication.h"
+#include "qgsmeshdataprovidertemporalcapabilities.h"
+
+#include <QIcon>
+#include <QString>
+
+#include "moc_qgsmeshmemorydataprovider.cpp"
+
+using namespace Qt::StringLiterals;
+
+#define TEXT_PROVIDER_KEY u"mesh_memory"_s
+#define TEXT_PROVIDER_DESCRIPTION u"Mesh memory provider"_s
 
 bool QgsMeshMemoryDataProvider::isValid() const
 {
@@ -45,9 +51,7 @@ QgsCoordinateReferenceSystem QgsMeshMemoryDataProvider::crs() const
   return QgsCoordinateReferenceSystem();
 }
 
-QgsMeshMemoryDataProvider::QgsMeshMemoryDataProvider( const QString &uri,
-    const ProviderOptions &options,
-    QgsDataProvider::ReadFlags flags )
+QgsMeshMemoryDataProvider::QgsMeshMemoryDataProvider( const QString &uri, const ProviderOptions &options, Qgis::DataProviderReadFlags flags )
   : QgsMeshDataProvider( uri, options, flags )
 {
   QString data( uri );
@@ -58,7 +62,7 @@ QgsMeshMemoryDataProvider::QgsMeshMemoryDataProvider( const QString &uri,
   }
   mIsValid = splitMeshSections( data );
 
-  temporalCapabilities()->setTemporalUnit( QgsUnitTypes::TemporalHours );
+  temporalCapabilities()->setTemporalUnit( Qgis::TemporalUnit::Hours );
 }
 
 QString QgsMeshMemoryDataProvider::providerKey()
@@ -71,24 +75,12 @@ QString QgsMeshMemoryDataProvider::providerDescription()
   return TEXT_PROVIDER_DESCRIPTION;
 }
 
-QgsMeshMemoryDataProvider *QgsMeshMemoryDataProvider::createProvider( const QString &uri,
-    const ProviderOptions &options,
-    QgsDataProvider::ReadFlags flags )
-{
-  return new QgsMeshMemoryDataProvider( uri, options, flags );
-}
-
 bool QgsMeshMemoryDataProvider::splitMeshSections( const QString &uri )
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList sections = uri.split( QStringLiteral( "---" ), QString::SkipEmptyParts );
-#else
-  const QStringList sections = uri.split( QStringLiteral( "---" ), Qt::SkipEmptyParts );
-#endif
+  const QStringList sections = uri.split( u"---"_s, Qt::SkipEmptyParts );
   if ( sections.size() != 2 )
   {
-    setError( QgsError( tr( "Invalid mesh definition, does not contain 2 sections" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid mesh definition, does not contain 2 sections" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
 
@@ -102,27 +94,18 @@ bool QgsMeshMemoryDataProvider::addMeshVertices( const QString &def )
 {
   QVector<QgsMeshVertex> vertices;
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList verticesCoords = def.split( '\n', QString::SkipEmptyParts );
-#else
   const QStringList verticesCoords = def.split( '\n', Qt::SkipEmptyParts );
-#endif
   for ( int i = 0; i < verticesCoords.size(); ++i )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    const QStringList coords = verticesCoords[i].split( ',', QString::SkipEmptyParts );
-#else
     const QStringList coords = verticesCoords[i].split( ',', Qt::SkipEmptyParts );
-#endif
     if ( coords.size() != 2 )
     {
-      setError( QgsError( tr( "Invalid mesh definition, vertex definition does not contain x, y" ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Invalid mesh definition, vertex definition does not contain x, y" ), u"Mesh Memory Provider"_s ) );
       return false;
     }
-    double x = coords.at( 0 ).toDouble();
-    double y = coords.at( 1 ).toDouble();
-    QgsMeshVertex vertex( x, y );
+    const double x = coords.at( 0 ).toDouble();
+    const double y = coords.at( 1 ).toDouble();
+    const QgsMeshVertex vertex( x, y );
     vertices.push_back( vertex );
   }
 
@@ -135,22 +118,13 @@ bool QgsMeshMemoryDataProvider::addMeshFacesOrEdges( const QString &def )
   QVector<QgsMeshFace> faces;
   QVector<QgsMeshEdge> edges;
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList elements = def.split( '\n', QString::SkipEmptyParts );
-#else
   const QStringList elements = def.split( '\n', Qt::SkipEmptyParts );
-#endif
   for ( int i = 0; i < elements.size(); ++i )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    const QStringList vertices = elements[i].split( ',', QString::SkipEmptyParts );
-#else
     const QStringList vertices = elements[i].split( ',', Qt::SkipEmptyParts );
-#endif
     if ( vertices.size() < 2 )
     {
-      setError( QgsError( tr( "Invalid mesh definition, edge must contain at least 2 vertices" ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Invalid mesh definition, edge must contain at least 2 vertices" ), u"Mesh Memory Provider"_s ) );
       return false;
     }
     else if ( vertices.size() == 2 )
@@ -158,8 +132,10 @@ bool QgsMeshMemoryDataProvider::addMeshFacesOrEdges( const QString &def )
       QgsMeshEdge edge;
       edge.first = vertices[0].toInt();
       edge.second = vertices[1].toInt();
-      if ( !checkVertexId( edge.first ) ) return false;
-      if ( !checkVertexId( edge.second ) ) return false;
+      if ( !checkVertexId( edge.first ) )
+        return false;
+      if ( !checkVertexId( edge.second ) )
+        return false;
       edges.push_back( edge );
     }
     else
@@ -167,8 +143,9 @@ bool QgsMeshMemoryDataProvider::addMeshFacesOrEdges( const QString &def )
       QgsMeshFace face;
       for ( int j = 0; j < vertices.size(); ++j )
       {
-        int vertex_id = vertices[j].toInt();
-        if ( !checkVertexId( vertex_id ) ) return false;
+        const int vertex_id = vertices[j].toInt();
+        if ( !checkVertexId( vertex_id ) )
+          return false;
         face.push_back( vertex_id );
       }
       faces.push_back( face );
@@ -180,8 +157,7 @@ bool QgsMeshMemoryDataProvider::addMeshFacesOrEdges( const QString &def )
 
   if ( mFaces.size() > 0 && mEdges.size() > 0 )
   {
-    setError( QgsError( tr( "Invalid mesh definition, unable to read mesh with both edges and faces" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid mesh definition, unable to read mesh with both edges and faces" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
 
@@ -191,16 +167,11 @@ bool QgsMeshMemoryDataProvider::addMeshFacesOrEdges( const QString &def )
 
 bool QgsMeshMemoryDataProvider::splitDatasetSections( const QString &uri, QgsMeshMemoryDatasetGroup &datasetGroup )
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList sections = uri.split( QStringLiteral( "---" ), QString::SkipEmptyParts );
-#else
-  const QStringList sections = uri.split( QStringLiteral( "---" ), Qt::SkipEmptyParts );
-#endif
+  const QStringList sections = uri.split( u"---"_s, Qt::SkipEmptyParts );
   bool success = sections.size() > 2;
   if ( !success )
   {
-    setError( QgsError( tr( "Invalid dataset definition, does not contain 3+ sections" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid dataset definition, does not contain 3+ sections" ), u"Mesh Memory Provider"_s ) );
   }
 
   if ( success )
@@ -212,12 +183,12 @@ bool QgsMeshMemoryDataProvider::splitDatasetSections( const QString &uri, QgsMes
   {
     if ( !success )
       break;
-    std::shared_ptr<QgsMeshMemoryDataset> dataset = std::make_shared<QgsMeshMemoryDataset>();
+    auto dataset = std::make_shared<QgsMeshMemoryDataset>();
     success = addDatasetValues( sections[i], dataset, datasetGroup.isScalar() );
     if ( success )
       success = checkDatasetValidity( dataset, datasetGroup.dataType() );
     if ( success )
-      datasetGroup.addDataset( dataset );
+      datasetGroup.addDataset( std::move( dataset ) );
   }
 
   return success;
@@ -225,28 +196,23 @@ bool QgsMeshMemoryDataProvider::splitDatasetSections( const QString &uri, QgsMes
 
 bool QgsMeshMemoryDataProvider::setDatasetGroupType( const QString &def, QgsMeshMemoryDatasetGroup &datasetGroup )
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList types = def.split( ' ', QString::SkipEmptyParts );
-#else
   const QStringList types = def.split( ' ', Qt::SkipEmptyParts );
-#endif
   if ( types.size() != 3 )
   {
-    setError( QgsError( tr( "Invalid type definition, must be Vertex/Edge/Face Vector/Scalar Name" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid type definition, must be Vertex/Edge/Face Vector/Scalar Name" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
 
   QgsMeshDatasetGroupMetadata::DataType type;
-  if ( 0 == QString::compare( types[0].trimmed(), QStringLiteral( "vertex" ), Qt::CaseInsensitive ) )
+  if ( 0 == QString::compare( types[0].trimmed(), u"vertex"_s, Qt::CaseInsensitive ) )
     type = QgsMeshDatasetGroupMetadata::DataOnVertices;
-  else if ( 0 == QString::compare( types[0].trimmed(), QStringLiteral( "edge" ), Qt::CaseInsensitive ) )
+  else if ( 0 == QString::compare( types[0].trimmed(), u"edge"_s, Qt::CaseInsensitive ) )
     type = QgsMeshDatasetGroupMetadata::DataOnEdges;
   else
     type = QgsMeshDatasetGroupMetadata::DataOnFaces;
 
   datasetGroup.setDataType( type );
-  datasetGroup.setIsScalar( 0 == QString::compare( types[1].trimmed(), QStringLiteral( "scalar" ), Qt::CaseInsensitive ) );
+  datasetGroup.setIsScalar( 0 == QString::compare( types[1].trimmed(), u"scalar"_s, Qt::CaseInsensitive ) );
   datasetGroup.setName( types[2].trimmed() );
 
   return true;
@@ -254,22 +220,13 @@ bool QgsMeshMemoryDataProvider::setDatasetGroupType( const QString &def, QgsMesh
 
 bool QgsMeshMemoryDataProvider::addDatasetGroupMetadata( const QString &def, QgsMeshMemoryDatasetGroup &datasetGroup )
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList metadataLines = def.split( '\n', QString::SkipEmptyParts );
-#else
   const QStringList metadataLines = def.split( '\n', Qt::SkipEmptyParts );
-#endif
   for ( int i = 0; i < metadataLines.size(); ++i )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    const QStringList keyVal = metadataLines[i].split( ':', QString::SkipEmptyParts );
-#else
-    const QStringList keyVal = metadataLines[i].split( ':', Qt::SkipEmptyParts );
-#endif
+    const QStringList keyVal = metadataLines[i].split( u": "_s, Qt::SkipEmptyParts );
     if ( keyVal.size() != 2 )
     {
-      setError( QgsError( tr( "Invalid dataset definition, dataset metadata does not contain key: value" ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Invalid dataset definition, dataset metadata does not contain key: value" ), u"Mesh Memory Provider"_s ) );
       return false;
     }
 
@@ -280,16 +237,11 @@ bool QgsMeshMemoryDataProvider::addDatasetGroupMetadata( const QString &def, Qgs
 
 bool QgsMeshMemoryDataProvider::addDatasetValues( const QString &def, std::shared_ptr<QgsMeshMemoryDataset> &dataset, bool isScalar )
 {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  const QStringList valuesLines = def.split( '\n', QString::SkipEmptyParts );
-#else
   const QStringList valuesLines = def.split( '\n', Qt::SkipEmptyParts );
-#endif
   // first line is time
   if ( valuesLines.size() < 2 )
   {
-    setError( QgsError( tr( "Invalid dataset definition, must contain at least 1 line (time)" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid dataset definition, must contain at least 1 line (time)" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
 
@@ -297,38 +249,37 @@ bool QgsMeshMemoryDataProvider::addDatasetValues( const QString &def, std::share
 
   for ( int i = 1; i < valuesLines.size(); ++i )
   {
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-    const QStringList values = valuesLines[i].split( ',', QString::SkipEmptyParts );
-#else
     const QStringList values = valuesLines[i].split( ',', Qt::SkipEmptyParts );
-#endif
     QgsMeshDatasetValue point;
 
     if ( isScalar )
     {
       if ( values.size() != 1 )
       {
-        setError( QgsError( tr( "Invalid dataset definition, dataset scalar values must be x" ),
-                            QStringLiteral( "Mesh Memory Provider" ) ) );
+        setError( QgsError( tr( "Invalid dataset definition, dataset scalar values must be x" ), u"Mesh Memory Provider"_s ) );
         return false;
       }
       else
       {
-        point.setX( values[0].toDouble() );
+        bool ok;
+        double val = values.at( 0 ).toDouble( &ok );
+        point.setX( ok ? val : std::numeric_limits<double>::quiet_NaN() );
       }
     }
     else
     {
       if ( values.size() < 2 )
       {
-        setError( QgsError( tr( "Invalid dataset definition, dataset vector values must be x, y" ),
-                            QStringLiteral( "Mesh Memory Provider" ) ) );
+        setError( QgsError( tr( "Invalid dataset definition, dataset vector values must be x, y" ), u"Mesh Memory Provider"_s ) );
         return false;
       }
       else
       {
-        point.setX( values[0].toDouble() );
-        point.setY( values[1].toDouble() );
+        bool ok;
+        double val = values.at( 0 ).toDouble( &ok );
+        point.setX( ok ? val : std::numeric_limits<double>::quiet_NaN() );
+        val = values.at( 1 ).toDouble( &ok );
+        point.setY( ok ? val : std::numeric_limits<double>::quiet_NaN() );
       }
     }
 
@@ -346,8 +297,7 @@ bool QgsMeshMemoryDataProvider::checkDatasetValidity( std::shared_ptr<QgsMeshMem
     if ( dataset->values.count() != vertexCount() )
     {
       valid = false;
-      setError( QgsError( tr( "Dataset defined on vertices has {} values, but mesh {}" ).arg( dataset->values.count(), vertexCount() ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Dataset defined on vertices has {} values, but mesh {}" ).arg( dataset->values.count(), vertexCount() ), u"Mesh Memory Provider"_s ) );
     }
   }
   else if ( dataType == QgsMeshDatasetGroupMetadata::DataOnFaces )
@@ -356,8 +306,7 @@ bool QgsMeshMemoryDataProvider::checkDatasetValidity( std::shared_ptr<QgsMeshMem
     if ( dataset->values.count() != faceCount() )
     {
       valid = false;
-      setError( QgsError( tr( "Dataset defined on faces has {} values, but mesh {}" ).arg( dataset->values.count(), faceCount() ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Dataset defined on faces has {} values, but mesh {}" ).arg( dataset->values.count(), faceCount() ), u"Mesh Memory Provider"_s ) );
     }
   }
   else if ( dataType == QgsMeshDatasetGroupMetadata::DataOnEdges )
@@ -366,8 +315,7 @@ bool QgsMeshMemoryDataProvider::checkDatasetValidity( std::shared_ptr<QgsMeshMem
     if ( dataset->values.count() != edgeCount() )
     {
       valid = false;
-      setError( QgsError( tr( "Dataset defined on edges has {} values, but mesh {}" ).arg( dataset->values.count(), edgeCount() ),
-                          QStringLiteral( "Mesh Memory Provider" ) ) );
+      setError( QgsError( tr( "Dataset defined on edges has {} values, but mesh {}" ).arg( dataset->values.count(), edgeCount() ), u"Mesh Memory Provider"_s ) );
     }
   }
   dataset->valid = valid;
@@ -378,14 +326,12 @@ bool QgsMeshMemoryDataProvider::checkVertexId( int vertexIndex )
 {
   if ( vertexIndex < 0 )
   {
-    setError( QgsError( tr( "Invalid mesh definition, vertex index must be positive value" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid mesh definition, vertex index must be positive value" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
   if ( mVertices.size() <= vertexIndex )
   {
-    setError( QgsError( tr( "Invalid mesh definition, missing vertex id defined in face" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Invalid mesh definition, missing vertex id defined in face" ), u"Mesh Memory Provider"_s ) );
     return false;
   }
 
@@ -400,11 +346,17 @@ void QgsMeshMemoryDataProvider::addGroupToTemporalCapabilities( int groupIndex, 
 
   if ( group.datasetCount() > 1 ) //non temporal dataset groups (count=1) have no time in the capabilities
   {
+    QString timeReferenceString = group.extraMetadata().value( u"reference_time"_s );
+    if ( !timeReferenceString.isEmpty() )
+    {
+      timeReferenceString.append( 'Z' ); //For now provider doesn't support time zone and return always in local time, force UTC
+      const QDateTime referenceTime = QDateTime::fromString( timeReferenceString, Qt::ISODate );
+      tempCap->addGroupReferenceDateTime( groupIndex, referenceTime );
+    }
     for ( int i = 0; i < group.memoryDatasets.count(); ++i )
       if ( group.memoryDatasets.at( i ) )
         tempCap->addDatasetTime( groupIndex, group.memoryDatasets.at( i )->time );
   }
-
 }
 
 int QgsMeshMemoryDataProvider::vertexCount() const
@@ -434,7 +386,7 @@ void QgsMeshMemoryDataProvider::populateMesh( QgsMesh *mesh ) const
 
 QgsRectangle QgsMeshMemoryDataProvider::extent() const
 {
-  return calculateExtent( );
+  return calculateExtent();
 }
 
 bool QgsMeshMemoryDataProvider::addDataset( const QString &uri )
@@ -448,8 +400,7 @@ bool QgsMeshMemoryDataProvider::addDataset( const QString &uri )
   }
   else
   {
-    setError( QgsError( tr( "Unable to add dataset group to invalid mesh" ),
-                        QStringLiteral( "Mesh Memory Provider" ) ) );
+    setError( QgsError( tr( "Unable to add dataset group to invalid mesh" ), u"Mesh Memory Provider"_s ) );
   }
 
   group.calculateStatistic();
@@ -466,6 +417,26 @@ bool QgsMeshMemoryDataProvider::addDataset( const QString &uri )
   }
 
   return valid;
+}
+
+bool QgsMeshMemoryDataProvider::removeDatasetGroup( int index )
+{
+  if ( index < 0 && index > datasetGroupCount() - 1 )
+  {
+    return false;
+  }
+  else
+  {
+    const QgsMeshDatasetGroupMetadata datasetGroupMeta = datasetGroupMetadata( index );
+
+    mDatasetGroups.removeAt( index );
+
+    if ( !mExtraDatasetUris.contains( datasetGroupMeta.uri() ) )
+      mExtraDatasetUris.removeAll( datasetGroupMeta.uri() );
+
+    emit dataChanged();
+    return true;
+  }
 }
 
 QStringList QgsMeshMemoryDataProvider::extraDatasets() const
@@ -499,21 +470,13 @@ QgsMeshDatasetGroupMetadata QgsMeshMemoryDataProvider::datasetGroupMetadata( int
 }
 
 
-
 QgsMeshDatasetMetadata QgsMeshMemoryDataProvider::datasetMetadata( QgsMeshDatasetIndex index ) const
 {
-  if ( ( index.group() >= 0 ) && ( index.group() < datasetGroupCount() ) &&
-       ( index.dataset() >= 0 ) && ( index.dataset() < datasetCount( index.group() ) )
-     )
+  if ( ( index.group() >= 0 ) && ( index.group() < datasetGroupCount() ) && ( index.dataset() >= 0 ) && ( index.dataset() < datasetCount( index.group() ) ) )
   {
     const QgsMeshMemoryDatasetGroup &grp = mDatasetGroups.at( index.group() );
-    QgsMeshDatasetMetadata metadata(
-      grp.memoryDatasets[index.dataset()]->time,
-      grp.memoryDatasets[index.dataset()]->valid,
-      grp.memoryDatasets[index.dataset()]->minimum,
-      grp.memoryDatasets[index.dataset()]->maximum,
-      0
-    );
+    QgsMeshDatasetMetadata
+      metadata( grp.memoryDatasets[index.dataset()]->time, grp.memoryDatasets[index.dataset()]->valid, grp.memoryDatasets[index.dataset()]->minimum, grp.memoryDatasets[index.dataset()]->maximum, 0 );
     return metadata;
   }
   else
@@ -524,9 +487,12 @@ QgsMeshDatasetMetadata QgsMeshMemoryDataProvider::datasetMetadata( QgsMeshDatase
 
 QgsMeshDatasetValue QgsMeshMemoryDataProvider::datasetValue( QgsMeshDatasetIndex index, int valueIndex ) const
 {
-  if ( ( index.group() >= 0 ) && ( index.group() < datasetGroupCount() ) &&
-       ( index.dataset() >= 0 ) && ( index.dataset() < datasetCount( index.group() ) ) &&
-       ( valueIndex >= 0 ) && ( valueIndex < mDatasetGroups[index.group()].memoryDatasets[index.dataset()]->values.count() ) )
+  if ( ( index.group() >= 0 )
+       && ( index.group() < datasetGroupCount() )
+       && ( index.dataset() >= 0 )
+       && ( index.dataset() < datasetCount( index.group() ) )
+       && ( valueIndex >= 0 )
+       && ( valueIndex < mDatasetGroups[index.group()].memoryDatasets[index.dataset()]->values.count() ) )
   {
     return mDatasetGroups[index.group()].memoryDatasets[index.dataset()]->values[valueIndex];
   }
@@ -541,7 +507,7 @@ QgsMeshDataBlock QgsMeshMemoryDataProvider::datasetValues( QgsMeshDatasetIndex i
   if ( ( index.group() >= 0 ) && ( index.group() < datasetGroupCount() ) )
   {
     const QgsMeshMemoryDatasetGroup group = mDatasetGroups[index.group()];
-    bool isScalar = group.isScalar();
+    const bool isScalar = group.isScalar();
     if ( ( index.dataset() >= 0 ) && ( index.dataset() < group.memoryDatasets.size() ) )
     {
       return group.memoryDatasets[index.dataset()]->datasetValues( isScalar, valueIndex, count );
@@ -557,12 +523,11 @@ QgsMeshDataBlock QgsMeshMemoryDataProvider::datasetValues( QgsMeshDatasetIndex i
   }
 }
 
-QgsMesh3dDataBlock QgsMeshMemoryDataProvider::dataset3dValues( QgsMeshDatasetIndex, int, int ) const
+QgsMesh3DDataBlock QgsMeshMemoryDataProvider::dataset3dValues( QgsMeshDatasetIndex, int, int ) const
 {
   // 3d stacked meshes are not supported by memory provider
-  return QgsMesh3dDataBlock();
+  return QgsMesh3DDataBlock();
 }
-
 
 
 bool QgsMeshMemoryDataProvider::isFaceActive( QgsMeshDatasetIndex index, int faceIndex ) const
@@ -594,13 +559,14 @@ QgsMeshDataBlock QgsMeshMemoryDataProvider::areFacesActive( QgsMeshDatasetIndex 
 }
 
 
-
-bool QgsMeshMemoryDataProvider::persistDatasetGroup( const QString &outputFilePath,
-    const QString &outputDriver,
-    const QgsMeshDatasetGroupMetadata &meta,
-    const QVector<QgsMeshDataBlock> &datasetValues,
-    const QVector<QgsMeshDataBlock> &datasetActive,
-    const QVector<double> &times )
+bool QgsMeshMemoryDataProvider::persistDatasetGroup(
+  const QString &outputFilePath,
+  const QString &outputDriver,
+  const QgsMeshDatasetGroupMetadata &meta,
+  const QVector<QgsMeshDataBlock> &datasetValues,
+  const QVector<QgsMeshDataBlock> &datasetActive,
+  const QVector<double> &times
+)
 {
   Q_UNUSED( outputFilePath )
   Q_UNUSED( outputDriver )
@@ -611,10 +577,7 @@ bool QgsMeshMemoryDataProvider::persistDatasetGroup( const QString &outputFilePa
   return true; // not implemented/supported
 }
 
-bool QgsMeshMemoryDataProvider::persistDatasetGroup( const QString &outputFilePath,
-    const QString &outputDriver,
-    QgsMeshDatasetSourceInterface *source,
-    int datasetGroupIndex )
+bool QgsMeshMemoryDataProvider::persistDatasetGroup( const QString &outputFilePath, const QString &outputDriver, QgsMeshDatasetSourceInterface *source, int datasetGroupIndex )
 {
   Q_UNUSED( outputFilePath )
   Q_UNUSED( outputDriver )
@@ -623,10 +586,18 @@ bool QgsMeshMemoryDataProvider::persistDatasetGroup( const QString &outputFilePa
   return true; // not implemented/supported
 }
 
+void QgsMeshMemoryDataProvider::close()
+{
+  mVertices.clear();
+  mFaces.clear();
+  mEdges.clear();
+  mDatasetGroups.clear();
+}
+
 QgsRectangle QgsMeshMemoryDataProvider::calculateExtent() const
 {
   QgsRectangle rec;
-  rec.setMinimal();
+  rec.setNull();
   for ( const QgsMeshVertex &v : mVertices )
   {
     rec.setXMinimum( std::min( rec.xMinimum(), v.x() ) );
@@ -638,5 +609,26 @@ QgsRectangle QgsMeshMemoryDataProvider::calculateExtent() const
 }
 
 
+QgsMeshMemoryProviderMetadata::QgsMeshMemoryProviderMetadata()
+  : QgsProviderMetadata( QgsMeshMemoryDataProvider::providerKey(), QgsMeshMemoryDataProvider::providerDescription() )
+{}
+
+QIcon QgsMeshMemoryProviderMetadata::icon() const
+{
+  return QgsApplication::getThemeIcon( u"mIconMeshLayer.svg"_s );
+}
+
+QgsDataProvider *QgsMeshMemoryProviderMetadata::createProvider( const QString &uri, const QgsDataProvider::ProviderOptions &options, Qgis::DataProviderReadFlags flags )
+{
+  return new QgsMeshMemoryDataProvider( uri, options, flags );
+}
+
+QList<Qgis::LayerType> QgsMeshMemoryProviderMetadata::supportedLayerTypes() const
+{
+  return { Qgis::LayerType::Mesh };
+}
+
+#undef TEXT_PROVIDER_KEY
+#undef TEXT_PROVIDER_DESCRIPTION
 
 ///@endcond

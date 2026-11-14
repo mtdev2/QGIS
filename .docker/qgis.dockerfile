@@ -42,22 +42,16 @@ RUN SUCCESS=OK \
   -DBINDINGS_GLOBAL_INSTALL=ON \
   -DWITH_STAGED_PLUGINS=ON \
   -DWITH_GRASS=ON \
-  -DSUPPRESS_QT_WARNINGS=ON \
   -DDISABLE_DEPRECATED=ON \
   -DENABLE_TESTS=OFF \
   -DWITH_QSPATIALITE=ON \
   -DWITH_APIDOC=OFF \
-  -DWITH_ASTYLE=OFF \
-  -DQT5_3DEXTRA_LIBRARY="/usr/lib/x86_64-linux-gnu/libQt53DExtras.so" \
-  -DQT5_3DEXTRA_INCLUDE_DIR="/QGIS/external/qt3dextra-headers" \
-  -DQt53DExtras_DIR="/QGIS/external/qt3dextra-headers/cmake/Qt53DExtras" \
-  -DCMAKE_PREFIX_PATH="/QGIS/external/qt3dextra-headers" \
   .. \
   && ninja install || SUCCESS=FAILED \
   && echo "$SUCCESS" > /QGIS/build_exit_value
 
 # Additional run-time dependencies
-RUN pip3 install jinja2 pygments pexpect && apt install -y expect
+RUN pip3 install jinja2 pexpect && apt install -y expect
 
 ################################################################################
 # Python testing environment setup

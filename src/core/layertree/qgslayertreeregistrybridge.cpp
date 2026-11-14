@@ -16,21 +16,24 @@
 #include "qgslayertreeregistrybridge.h"
 
 #include "qgslayertree.h"
-
-#include "qgsproject.h"
+#include "qgslayertreeutils.h"
 #include "qgslogger.h"
+#include "qgsproject.h"
+
+#include <QString>
+
+#include "moc_qgslayertreeregistrybridge.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayerTreeRegistryBridge::QgsLayerTreeRegistryBridge( QgsLayerTreeGroup *root, QgsProject *project, QObject *parent )
   : QObject( parent )
   , mRoot( root )
   , mProject( project )
-  , mRegistryRemovingLayers( false )
-  , mEnabled( true )
-  , mNewLayersVisible( true )
-  , mInsertionPoint( root, 0 )
+  , mInsertionPointGroup( root )
 {
   connect( mProject, &QgsProject::legendLayersAdded, this, &QgsLayerTreeRegistryBridge::layersAdded );
-  connect( mProject, qgis::overload<const QStringList &>::of<QgsProject>( &QgsProject::layersWillBeRemoved ), this, &QgsLayerTreeRegistryBridge::layersWillBeRemoved );
+  connect( mProject, qOverload<const QStringList &>( &QgsProject::layersWillBeRemoved ), this, &QgsLayerTreeRegistryBridge::layersWillBeRemoved );
 
   connect( mRoot, &QgsLayerTreeNode::willRemoveChildren, this, &QgsLayerTreeRegistryBridge::groupWillRemoveChildren );
   connect( mRoot, &QgsLayerTreeNode::removedChildren, this, &QgsLayerTreeRegistryBridge::groupRemovedChildren );
@@ -38,13 +41,20 @@ QgsLayerTreeRegistryBridge::QgsLayerTreeRegistryBridge( QgsLayerTreeGroup *root,
 
 void QgsLayerTreeRegistryBridge::setLayerInsertionPoint( QgsLayerTreeGroup *parentGroup, int index )
 {
-  mInsertionPoint.group = parentGroup;
-  mInsertionPoint.position = index;
+  mInsertionPointGroup = parentGroup;
+  mInsertionPointPosition = index;
 }
 
 void QgsLayerTreeRegistryBridge::setLayerInsertionPoint( const InsertionPoint &insertionPoint )
 {
-  mInsertionPoint = insertionPoint;
+  mInsertionPointGroup = insertionPoint.group;
+  mInsertionPointPosition = insertionPoint.position;
+}
+
+QgsLayerTreeRegistryBridge::InsertionPoint QgsLayerTreeRegistryBridge::layerInsertionPoint() const
+{
+  QgsLayerTreeGroup *group = mInsertionPointGroup.isNull() ? mRoot : mInsertionPointGroup.data();
+  return InsertionPoint( group, mInsertionPointPosition );
 }
 
 void QgsLayerTreeRegistryBridge::layersAdded( const QList<QgsMapLayer *> &layers )
@@ -52,26 +62,62 @@ void QgsLayerTreeRegistryBridge::layersAdded( const QList<QgsMapLayer *> &layers
   if ( !mEnabled )
     return;
 
-  QList<QgsLayerTreeNode *> nodes;
-  const auto constLayers = layers;
-  for ( QgsMapLayer *layer : constLayers )
+  QList<QgsLayerTreeNode *> newNodes;
+  for ( QgsMapLayer *layer : layers )
   {
-    QgsLayerTreeLayer *nodeLayer = new QgsLayerTreeLayer( layer );
+    QgsLayerTreeLayer *nodeLayer = nullptr;
+    switch ( mInsertionMethod )
+    {
+      case Qgis::LayerTreeInsertionMethod::OptimalInInsertionGroup:
+      {
+        QgsLayerTreeGroup *targetGroup = mInsertionPointGroup;
+        if ( !targetGroup )
+          targetGroup = mRoot;
+
+        // returned layer is already owned by the group!
+        nodeLayer = QgsLayerTreeUtils::insertLayerAtOptimalPlacement( targetGroup, layer );
+        break;
+      }
+
+      case Qgis::LayerTreeInsertionMethod::AboveInsertionPoint:
+      case Qgis::LayerTreeInsertionMethod::TopOfTree:
+      {
+        nodeLayer = new QgsLayerTreeLayer( layer );
+        newNodes << nodeLayer;
+        break;
+      }
+    }
+
+    if ( !nodeLayer )
+      continue;
+
     nodeLayer->setItemVisibilityChecked( mNewLayersVisible );
 
-    nodes << nodeLayer;
-
     // check whether the layer is marked as embedded
-    QString projectFile = mProject->layerIsEmbedded( nodeLayer->layerId() );
+    const QString projectFile = mProject->layerIsEmbedded( nodeLayer->layerId() );
     if ( !projectFile.isEmpty() )
     {
-      nodeLayer->setCustomProperty( QStringLiteral( "embedded" ), 1 );
-      nodeLayer->setCustomProperty( QStringLiteral( "embedded_project" ), projectFile );
+      nodeLayer->setCustomProperty( u"embedded"_s, 1 );
+      nodeLayer->setCustomProperty( u"embedded_project"_s, projectFile );
     }
   }
 
-  // add new layers to the right place
-  mInsertionPoint.group->insertChildNodes( mInsertionPoint.position, nodes );
+  switch ( mInsertionMethod )
+  {
+    case Qgis::LayerTreeInsertionMethod::AboveInsertionPoint:
+      if ( QgsLayerTreeGroup *group = mInsertionPointGroup )
+      {
+        group->insertChildNodes( mInsertionPointPosition, newNodes );
+        break;
+      }
+      // if no group for the insertion point, then insert into root instead
+      [[fallthrough]];
+    case Qgis::LayerTreeInsertionMethod::TopOfTree:
+      mRoot->insertChildNodes( 0, newNodes );
+      break;
+    case Qgis::LayerTreeInsertionMethod::OptimalInInsertionGroup:
+      break;
+  }
 
   // tell other components that layers have been added - this signal is used in QGIS to auto-select the first layer
   emit addedLayersToLayerTree( layers );
@@ -79,7 +125,7 @@ void QgsLayerTreeRegistryBridge::layersAdded( const QList<QgsMapLayer *> &layers
 
 void QgsLayerTreeRegistryBridge::layersWillBeRemoved( const QStringList &layerIds )
 {
-  QgsDebugMsgLevel( QStringLiteral( "%1 layers will be removed, enabled:%2" ).arg( layerIds.count() ).arg( mEnabled ), 4 );
+  QgsDebugMsgLevel( u"%1 layers will be removed, enabled:%2"_s.arg( layerIds.count() ).arg( mEnabled ), 4 );
 
   if ( !mEnabled )
     return;
@@ -143,7 +189,7 @@ void QgsLayerTreeRegistryBridge::groupRemovedChildren()
       toRemove << layerId;
   mLayerIdsForRemoval.clear();
 
-  QgsDebugMsgLevel( QStringLiteral( "%1 layers will be removed" ).arg( toRemove.count() ), 4 );
+  QgsDebugMsgLevel( u"%1 layers will be removed"_s.arg( toRemove.count() ), 4 );
 
   // delay the removal of layers from the registry. There may be other slots connected to map layer registry's signals
   // that might disrupt the execution flow - e.g. a processEvents() call may force update of layer tree view with

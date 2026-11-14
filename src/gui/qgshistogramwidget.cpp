@@ -16,14 +16,24 @@
  ***************************************************************************/
 
 #include "qgshistogramwidget.h"
+
 #include "qgsapplication.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingstree.h"
+#include "qgsstatisticalsummary.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayerutils.h"
-#include "qgsstatisticalsummary.h"
-#include "qgssettings.h"
 
-#include <QObject>
 #include <QMouseEvent>
+#include <QObject>
+#include <QString>
+
+#include "moc_qgshistogramwidget.cpp"
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryBool *QgsHistogramWidget::settingsHistogramShowMean = new QgsSettingsEntryBool( u"histogram-show-mean"_s, QgsSettingsTree::sTreeHistogram, false );
+const QgsSettingsEntryBool *QgsHistogramWidget::settingsHistogramShowStdev = new QgsSettingsEntryBool( u"histogram-show-stdev"_s, QgsSettingsTree::sTreeHistogram, false );
 
 // QWT Charting widget
 #include <qwt_global.h>
@@ -37,6 +47,7 @@
 #include <qwt_plot_layout.h>
 #include <qwt_plot_renderer.h>
 #include <qwt_plot_histogram.h>
+#include <qwt_text.h>
 
 
 QgsHistogramWidget::QgsHistogramWidget( QWidget *parent, QgsVectorLayer *layer, const QString &fieldOrExp )
@@ -55,11 +66,10 @@ QgsHistogramWidget::QgsHistogramWidget( QWidget *parent, QgsVectorLayer *layer, 
   if ( plotCanvasFrame )
     plotCanvasFrame->setFrameStyle( QFrame::NoFrame );
 
-  QgsSettings settings;
-  mMeanCheckBox->setChecked( settings.value( QStringLiteral( "HistogramWidget/showMean" ), false ).toBool() );
-  mStdevCheckBox->setChecked( settings.value( QStringLiteral( "HistogramWidget/showStdev" ), false ).toBool() );
+  mMeanCheckBox->setChecked( settingsHistogramShowMean->value() );
+  mStdevCheckBox->setChecked( settingsHistogramShowStdev->value() );
 
-  connect( mBinsSpinBox, static_cast < void ( QSpinBox::* )( int ) > ( &QSpinBox::valueChanged ), this, &QgsHistogramWidget::refresh );
+  connect( mBinsSpinBox, static_cast<void ( QSpinBox::* )( int )>( &QSpinBox::valueChanged ), this, &QgsHistogramWidget::refresh );
   connect( mMeanCheckBox, &QAbstractButton::toggled, this, &QgsHistogramWidget::refresh );
   connect( mStdevCheckBox, &QAbstractButton::toggled, this, &QgsHistogramWidget::refresh );
   connect( mLoadValuesButton, &QAbstractButton::clicked, this, &QgsHistogramWidget::refreshValues );
@@ -78,9 +88,8 @@ QgsHistogramWidget::QgsHistogramWidget( QWidget *parent, QgsVectorLayer *layer, 
 
 QgsHistogramWidget::~QgsHistogramWidget()
 {
-  QgsSettings settings;
-  settings.setValue( QStringLiteral( "HistogramWidget/showMean" ), mMeanCheckBox->isChecked() );
-  settings.setValue( QStringLiteral( "HistogramWidget/showStdev" ), mStdevCheckBox->isChecked() );
+  settingsHistogramShowMean->setValue( mMeanCheckBox->isChecked() );
+  settingsHistogramShowStdev->setValue( mStdevCheckBox->isChecked() );
 }
 
 static bool _rangesByLower( const QgsRendererRange &a, const QgsRendererRange &b )
@@ -106,7 +115,7 @@ void QgsHistogramWidget::refreshValues()
   bool ok;
   mValues = QgsVectorLayerUtils::getDoubleValues( mVectorLayer, mSourceFieldExp, ok );
 
-  if ( ! ok )
+  if ( !ok )
   {
     QApplication::restoreOverrideCursor();
     return;
@@ -119,7 +128,7 @@ void QgsHistogramWidget::refreshValues()
   mBinsSpinBox->setValue( std::max( mHistogram.optimalNumberBins(), 30 ) );
   mBinsSpinBox->blockSignals( false );
 
-  mStats.setStatistics( QgsStatisticalSummary::StDev );
+  mStats.setStatistics( Qgis::Statistic::StDev );
   mStats.calculate( mValues );
 
   mpPlot->setEnabled( true );
@@ -201,16 +210,14 @@ void QgsHistogramWidget::drawHistogram()
 
   // make colors list
   mHistoColors.clear();
-  for ( const QgsRendererRange &range : qgis::as_const( mRanges ) )
+  for ( const QgsRendererRange &range : std::as_const( mRanges ) )
   {
     mHistoColors << ( range.symbol() ? range.symbol()->color() : Qt::black );
   }
 
   //draw histogram
   QwtPlotHistogram *plotHistogram = nullptr;
-  plotHistogram = createPlotHistogram( !mRanges.isEmpty() ? mRanges.at( 0 ).label() : QString(),
-                                       !mRanges.isEmpty() ? QBrush( mHistoColors.at( 0 ) ) : mBrush,
-                                       !mRanges.isEmpty() ? Qt::NoPen : mPen );
+  plotHistogram = createPlotHistogram( !mRanges.isEmpty() ? mRanges.at( 0 ).label() : QString(), !mRanges.isEmpty() ? QBrush( mHistoColors.at( 0 ) ) : mBrush, !mRanges.isEmpty() ? Qt::NoPen : mPen );
   QVector<QwtIntervalSample> dataHisto;
 
   int bins = mBinsSpinBox->value();
@@ -236,8 +243,7 @@ void QgsHistogramWidget::drawHistogram()
       dataHisto << QwtIntervalSample( lastValue, mRanges.at( rangeIndex - 1 ).upperValue(), edges.at( bin ) );
     }
 
-    double upperEdge = !mRanges.isEmpty() ? std::min( edges.at( bin + 1 ), mRanges.at( rangeIndex ).upperValue() )
-                       : edges.at( bin + 1 );
+    double upperEdge = !mRanges.isEmpty() ? std::min( edges.at( bin + 1 ), mRanges.at( rangeIndex ).upperValue() ) : edges.at( bin + 1 );
 
     dataHisto << QwtIntervalSample( binValue, edges.at( bin ), upperEdge );
 
@@ -248,13 +254,13 @@ void QgsHistogramWidget::drawHistogram()
   plotHistogram->attach( mpPlot );
 
   mRangeMarkers.clear();
-  for ( const QgsRendererRange &range : qgis::as_const( mRanges ) )
+  for ( const QgsRendererRange &range : std::as_const( mRanges ) )
   {
     QwtPlotMarker *rangeMarker = new QwtPlotMarker();
     rangeMarker->attach( mpPlot );
     rangeMarker->setLineStyle( QwtPlotMarker::VLine );
     rangeMarker->setXValue( range.upperValue() );
-    rangeMarker->setLabel( QString::number( range.upperValue() ) );
+    rangeMarker->setLabel( QLocale().toString( range.upperValue() ) );
     rangeMarker->setLabelOrientation( Qt::Vertical );
     rangeMarker->setLabelAlignment( Qt::AlignLeft | Qt::AlignTop );
     rangeMarker->show();
@@ -320,4 +326,3 @@ QwtPlotHistogram *QgsHistogramWidget::createPlotHistogram( const QString &title,
   }
   return histogram;
 }
-

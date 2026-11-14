@@ -14,21 +14,31 @@
  ***************************************************************************/
 
 
-#include "qgstest.h"
+#include <memory>
 
-#include <editorwidgets/core/qgseditorwidgetregistry.h>
-#include <attributetable/qgsattributetableview.h>
-#include <attributetable/qgsdualview.h>
+#include "attributetable/qgsattributetableview.h"
+#include "attributetable/qgsdualview.h"
+#include "editform/qgsattributeeditorhtmlelement.h"
+#include "editorwidgets/core/qgseditorwidgetregistry.h"
+#include "qgsapplication.h"
+#include "qgsattributeeditorcontainer.h"
+#include "qgsattributeeditorfield.h"
 #include "qgsattributeform.h"
-#include <qgsapplication.h>
+#include "qgsattributeformeditorwidget.h"
+#include "qgsattributetablefiltermodel.h"
+#include "qgsfeature.h"
 #include "qgsfeatureiterator.h"
-#include <qgsvectorlayer.h>
-#include "qgsvectordataprovider.h"
-#include <qgsmapcanvas.h>
-#include <qgsfeature.h>
+#include "qgsfeaturelistmodel.h"
 #include "qgsgui.h"
-
+#include "qgsmapcanvas.h"
 #include "qgstest.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
+#include "qgsvectorlayercache.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQgsDualView : public QObject
 {
@@ -37,10 +47,10 @@ class TestQgsDualView : public QObject
     TestQgsDualView() = default;
 
   private slots:
-    void initTestCase(); // will be called before the first testfunction is executed.
+    void initTestCase();    // will be called before the first testfunction is executed.
     void cleanupTestCase(); // will be called after the last testfunction was executed.
-    void init(); // will be called before each testfunction is executed.
-    void cleanup(); // will be called after every testfunction.
+    void init();            // will be called before each testfunction is executed.
+    void cleanup();         // will be called after every testfunction.
 
     void testColumnCount();
 
@@ -56,12 +66,15 @@ class TestQgsDualView : public QObject
 
     void testAttributeFormSharedValueScanning();
     void testNoGeom();
+    void testNoShowFirstFeature();
+
+    void testDuplicateField();
 
   private:
     QgsMapCanvas *mCanvas = nullptr;
     QgsVectorLayer *mPointsLayer = nullptr;
     QString mTestDataDir;
-    QgsDualView *mDualView = nullptr;
+    std::unique_ptr<QgsDualView> mDualView;
 };
 
 void TestQgsDualView::initTestCase()
@@ -73,16 +86,15 @@ void TestQgsDualView::initTestCase()
   QgsGui::editorWidgetRegistry()->initEditors();
 
   // Setup a map canvas with a vector layer loaded...
-  QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
+  const QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
   mTestDataDir = myDataDir + '/';
 
   //
   // load a vector layer
   //
-  QString myPointsFileName = mTestDataDir + "points.shp";
-  QFileInfo myPointFileInfo( myPointsFileName );
-  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(),
-                                     myPointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QString myPointsFileName = mTestDataDir + "points.shp";
+  const QFileInfo myPointFileInfo( myPointsFileName );
+  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(), myPointFileInfo.completeBaseName(), u"ogr"_s );
 
   mCanvas = new QgsMapCanvas();
 }
@@ -96,27 +108,29 @@ void TestQgsDualView::cleanupTestCase()
 
 void TestQgsDualView::init()
 {
-  mDualView = new QgsDualView();
+  mDualView = std::make_unique<QgsDualView>();
   mDualView->init( mPointsLayer, mCanvas );
 }
 
 void TestQgsDualView::cleanup()
-{
-  delete mDualView;
-}
+{}
 
 void TestQgsDualView::testColumnCount()
 {
-  QCOMPARE( mDualView->tableView()->model()->columnCount(), mPointsLayer->fields().count() );
+  // the table model includes the actions column, so it should have fields + 1 columns
+  QCOMPARE( mDualView->tableView()->model()->columnCount(), mPointsLayer->fields().count() + 1 );
 }
 
 void TestQgsDualView::testColumnHeaders()
 {
   for ( int i = 0; i < mPointsLayer->fields().count(); ++i )
   {
-    QgsField fld = mPointsLayer->fields().at( i );
+    const QgsField fld = mPointsLayer->fields().at( i );
     QCOMPARE( mDualView->tableView()->model()->headerData( i, Qt::Horizontal ).toString(), fld.name() );
   }
+
+  // last column should be the actions column
+  QCOMPARE( mDualView->tableView()->model()->headerData( mPointsLayer->fields().count(), Qt::Horizontal ).toString(), "Actions" );
 }
 
 void TestQgsDualView::testData()
@@ -126,9 +140,9 @@ void TestQgsDualView::testData()
 
   for ( int i = 0; i < mPointsLayer->fields().count(); ++i )
   {
-    QgsField fld = mPointsLayer->fields().at( i );
+    const QgsField fld = mPointsLayer->fields().at( i );
 
-    QModelIndex index = mDualView->tableView()->model()->index( 0, i );
+    const QModelIndex index = mDualView->tableView()->model()->index( 0, i );
     QCOMPARE( mDualView->tableView()->model()->data( index ).toString(), fld.displayString( feature.attribute( i ) ) );
   }
 }
@@ -141,25 +155,25 @@ void TestQgsDualView::testAttributeTableConfig()
 void TestQgsDualView::testFilterSelected()
 {
   QgsFeature feature;
-  QList< QgsFeatureId > ids;
-  QgsFeatureIterator it = mPointsLayer->getFeatures( QgsFeatureRequest().setOrderBy( QgsFeatureRequest::OrderBy() << QgsFeatureRequest::OrderByClause( QStringLiteral( "Heading" ) ) ) );
+  QList<QgsFeatureId> ids;
+  QgsFeatureIterator it = mPointsLayer->getFeatures( QgsFeatureRequest().setOrderBy( QgsFeatureRequest::OrderBy() << QgsFeatureRequest::OrderByClause( u"Heading"_s ) ) );
   while ( it.nextFeature( feature ) )
     ids << feature.id();
 
   // select some features
-  QList< QgsFeatureId > selected;
+  QList<QgsFeatureId> selected;
   selected << ids.at( 1 ) << ids.at( 3 );
   mPointsLayer->selectByIds( qgis::listToSet( selected ) );
 
-  mDualView->setFilterMode( QgsAttributeTableFilterModel::ShowSelected );
+  mDualView->setFilterMode( Qgis::AttributeTableFilterMode::ShowSelected );
   QCOMPARE( mDualView->tableView()->model()->rowCount(), 2 );
 
-  int headingIdx = mPointsLayer->fields().lookupField( QStringLiteral( "Heading" ) );
-  QgsField fld = mPointsLayer->fields().at( headingIdx );
+  const int headingIdx = mPointsLayer->fields().lookupField( u"Heading"_s );
+  const QgsField fld = mPointsLayer->fields().at( headingIdx );
   for ( int i = 0; i < selected.count(); ++i )
   {
     mPointsLayer->getFeatures( QgsFeatureRequest().setFilterFid( selected.at( i ) ) ).nextFeature( feature );
-    QModelIndex index = mDualView->tableView()->model()->index( i, headingIdx );
+    const QModelIndex index = mDualView->tableView()->model()->index( i, headingIdx );
     QCOMPARE( mDualView->tableView()->model()->data( index ).toString(), fld.displayString( feature.attribute( headingIdx ) ) );
   }
 
@@ -170,10 +184,9 @@ void TestQgsDualView::testFilterSelected()
 
 void TestQgsDualView::testSelectAll()
 {
-
   QEventLoop loop;
   connect( qobject_cast<QgsAttributeTableFilterModel *>( mDualView->mFilterModel ), &QgsAttributeTableFilterModel::visibleReloaded, &loop, &QEventLoop::quit );
-  mDualView->setFilterMode( QgsAttributeTableFilterModel::ShowVisible );
+  mDualView->setFilterMode( Qgis::AttributeTableFilterMode::ShowVisible );
   // Only show parts of the canvas, so only one selected feature is visible
   mCanvas->setExtent( QgsRectangle( -139, 23, -100, 48 ) );
   loop.exec();
@@ -189,115 +202,113 @@ void TestQgsDualView::testSelectAll()
 
 void TestQgsDualView::testSort()
 {
-  mDualView->setSortExpression( QStringLiteral( "Class" ) );
+  mDualView->setSortExpression( u"Class"_s );
 
   QStringList classes;
-  classes << QStringLiteral( "B52" )
-          << QStringLiteral( "B52" )
-          << QStringLiteral( "B52" )
-          << QStringLiteral( "B52" )
-          << QStringLiteral( "Biplane" )
-          << QStringLiteral( "Biplane" )
-          << QStringLiteral( "Biplane" )
-          << QStringLiteral( "Biplane" )
-          << QStringLiteral( "Biplane" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" )
-          << QStringLiteral( "Jet" );
+  classes
+    << u"B52"_s
+    << u"B52"_s
+    << u"B52"_s
+    << u"B52"_s
+    << u"Biplane"_s
+    << u"Biplane"_s
+    << u"Biplane"_s
+    << u"Biplane"_s
+    << u"Biplane"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s
+    << u"Jet"_s;
 
   for ( int i = 0; i < classes.length(); ++i )
   {
-    QModelIndex index = mDualView->tableView()->model()->index( i, 0 );
+    const QModelIndex index = mDualView->tableView()->model()->index( i, 0 );
     QCOMPARE( mDualView->tableView()->model()->data( index ).toString(), classes.at( i ) );
   }
 
   QStringList headings;
-  headings << QStringLiteral( "0" )
-           <<  QStringLiteral( "0" )
-           <<  QStringLiteral( "12" )
-           <<  QStringLiteral( "34" )
-           <<  QStringLiteral( "80" )
-           <<  QStringLiteral( "85" )
-           <<  QStringLiteral( "90" )
-           <<  QStringLiteral( "90" )
-           <<  QStringLiteral( "95" )
-           <<  QStringLiteral( "100" )
-           <<  QStringLiteral( "140" )
-           <<  QStringLiteral( "160" )
-           <<  QStringLiteral( "180" )
-           <<  QStringLiteral( "240" )
-           <<  QStringLiteral( "270" )
-           <<  QStringLiteral( "300" )
-           <<  QStringLiteral( "340" );
+  headings << u"0"_s << u"0"_s << u"12"_s << u"34"_s << u"80"_s << u"85"_s << u"90"_s << u"90"_s << u"95"_s << u"100"_s << u"140"_s << u"160"_s << u"180"_s << u"240"_s << u"270"_s << u"300"_s << u"340"_s;
 
-  mDualView->setSortExpression( QStringLiteral( "Heading" ) );
+  mDualView->setSortExpression( u"Heading"_s );
 
   for ( int i = 0; i < headings.length(); ++i )
   {
-    QModelIndex index = mDualView->tableView()->model()->index( i, 1 );
+    const QModelIndex index = mDualView->tableView()->model()->index( i, 1 );
     QCOMPARE( mDualView->tableView()->model()->data( index ).toString(), headings.at( i ) );
   }
+
+  // Test crash when a field was added, sorted by and removed
+  const int fieldsCount = mPointsLayer->fields().count();
+  const int columnsCount = mDualView->attributeTableConfig().columns().size();
+  const QgsField newField( u"newField"_s, QMetaType::Type::QString );
+  mPointsLayer->startEditing();
+  mPointsLayer->addAttribute( newField );
+  QCOMPARE( mDualView->attributeTableConfig().columns().size(), columnsCount + 1 );
+  QCOMPARE( mPointsLayer->fields().count(), fieldsCount + 1 );
+  mDualView->setSortExpression( u"newField"_s );
+  mPointsLayer->rollBack();
+  QCOMPARE( mPointsLayer->fields().count(), fieldsCount );
+  QCOMPARE( mDualView->attributeTableConfig().columns().size(), columnsCount );
 }
 
 void TestQgsDualView::testAttributeFormSharedValueScanning()
 {
   // test QgsAttributeForm::scanForEqualAttributes
 
-  QSet< int > mixedValueFields;
-  QHash< int, QVariant > fieldSharedValues;
+  QSet<int> mixedValueFields;
+  QHash<int, QVariant> fieldSharedValues;
 
   // make a temporary layer to check through
-  QgsVectorLayer *layer = new QgsVectorLayer( QStringLiteral( "Point?field=col1:integer&field=col2:integer&field=col3:integer&field=col4:integer" ), QStringLiteral( "test" ), QStringLiteral( "memory" ) );
+  QgsVectorLayer *layer = new QgsVectorLayer( u"Point?field=col1:integer&field=col2:integer&field=col3:integer&field=col4:integer"_s, u"test"_s, u"memory"_s );
   QVERIFY( layer->isValid() );
   QgsFeature f1( layer->dataProvider()->fields(), 1 );
-  f1.setAttribute( QStringLiteral( "col1" ), 1 );
-  f1.setAttribute( QStringLiteral( "col2" ), 1 );
-  f1.setAttribute( QStringLiteral( "col3" ), 3 );
-  f1.setAttribute( QStringLiteral( "col4" ), 1 );
+  f1.setAttribute( u"col1"_s, 1 );
+  f1.setAttribute( u"col2"_s, 1 );
+  f1.setAttribute( u"col3"_s, 3 );
+  f1.setAttribute( u"col4"_s, 1 );
   QgsFeature f2( layer->dataProvider()->fields(), 2 );
-  f2.setAttribute( QStringLiteral( "col1" ), 1 );
-  f2.setAttribute( QStringLiteral( "col2" ), 2 );
-  f2.setAttribute( QStringLiteral( "col3" ), 3 );
-  f2.setAttribute( QStringLiteral( "col4" ), 2 );
+  f2.setAttribute( u"col1"_s, 1 );
+  f2.setAttribute( u"col2"_s, 2 );
+  f2.setAttribute( u"col3"_s, 3 );
+  f2.setAttribute( u"col4"_s, 2 );
   QgsFeature f3( layer->dataProvider()->fields(), 3 );
-  f3.setAttribute( QStringLiteral( "col1" ), 1 );
-  f3.setAttribute( QStringLiteral( "col2" ), 2 );
-  f3.setAttribute( QStringLiteral( "col3" ), 3 );
-  f3.setAttribute( QStringLiteral( "col4" ), 2 );
+  f3.setAttribute( u"col1"_s, 1 );
+  f3.setAttribute( u"col2"_s, 2 );
+  f3.setAttribute( u"col3"_s, 3 );
+  f3.setAttribute( u"col4"_s, 2 );
   QgsFeature f4( layer->dataProvider()->fields(), 4 );
-  f4.setAttribute( QStringLiteral( "col1" ), 1 );
-  f4.setAttribute( QStringLiteral( "col2" ), 1 );
-  f4.setAttribute( QStringLiteral( "col3" ), 3 );
-  f4.setAttribute( QStringLiteral( "col4" ), 2 );
+  f4.setAttribute( u"col1"_s, 1 );
+  f4.setAttribute( u"col2"_s, 1 );
+  f4.setAttribute( u"col3"_s, 3 );
+  f4.setAttribute( u"col4"_s, 2 );
   layer->dataProvider()->addFeatures( QgsFeatureList() << f1 << f2 << f3 << f4 );
 
-  QgsAttributeForm form( layer );
+  const QgsAttributeForm form( layer );
 
   QgsFeatureIterator it = layer->getFeatures();
 
   form.scanForEqualAttributes( it, mixedValueFields, fieldSharedValues );
 
-  QCOMPARE( mixedValueFields, QSet< int >() << 1 << 3 );
+  QCOMPARE( mixedValueFields, QSet<int>() << 1 << 3 );
   QCOMPARE( fieldSharedValues.value( 0 ).toInt(), 1 );
   QCOMPARE( fieldSharedValues.value( 2 ).toInt(), 3 );
 
   // add another feature so all attributes are different
   QgsFeature f5( layer->dataProvider()->fields(), 5 );
-  f5.setAttribute( QStringLiteral( "col1" ), 11 );
-  f5.setAttribute( QStringLiteral( "col2" ), 11 );
-  f5.setAttribute( QStringLiteral( "col3" ), 13 );
-  f5.setAttribute( QStringLiteral( "col4" ), 12 );
+  f5.setAttribute( u"col1"_s, 11 );
+  f5.setAttribute( u"col2"_s, 11 );
+  f5.setAttribute( u"col3"_s, 13 );
+  f5.setAttribute( u"col4"_s, 12 );
   layer->dataProvider()->addFeatures( QgsFeatureList() << f5 );
 
   it = layer->getFeatures();
 
   form.scanForEqualAttributes( it, mixedValueFields, fieldSharedValues );
-  QCOMPARE( mixedValueFields, QSet< int >() << 0 << 1 << 2 << 3 );
+  QCOMPARE( mixedValueFields, QSet<int>() << 0 << 1 << 2 << 3 );
   QVERIFY( fieldSharedValues.isEmpty() );
 
   // single feature, all attributes should be shared
@@ -313,7 +324,7 @@ void TestQgsDualView::testAttributeFormSharedValueScanning()
 void TestQgsDualView::testNoGeom()
 {
   //test that both the master model and cache for the dual view either both request geom or both don't request geom
-  std::unique_ptr< QgsDualView > dv( new QgsDualView() );
+  auto dv = std::make_unique<QgsDualView>();
 
   // request with geometry
   QgsFeatureRequest req;
@@ -321,24 +332,112 @@ void TestQgsDualView::testNoGeom()
   // check that both master model AND cache are using geometry
   QgsAttributeTableModel *model = dv->masterModel();
   QVERIFY( model->layerCache()->cacheGeometry() );
-  QVERIFY( !( model->request().flags() & QgsFeatureRequest::NoGeometry ) );
+  QVERIFY( !( model->request().flags() & Qgis::FeatureRequestFlag::NoGeometry ) );
 
   // request with NO geometry, but using filter rect (which should override and request geom)
   req = QgsFeatureRequest().setFilterRect( QgsRectangle( 1, 2, 3, 4 ) );
-  dv.reset( new QgsDualView() );
+  dv = std::make_unique<QgsDualView>();
   dv->init( mPointsLayer, mCanvas, req );
   model = dv->masterModel();
   QVERIFY( model->layerCache()->cacheGeometry() );
-  QVERIFY( !( model->request().flags() & QgsFeatureRequest::NoGeometry ) );
+  QVERIFY( !( model->request().flags() & Qgis::FeatureRequestFlag::NoGeometry ) );
 
   // request with NO geometry
-  req = QgsFeatureRequest().setFlags( QgsFeatureRequest::NoGeometry );
-  dv.reset( new QgsDualView() );
+  req = QgsFeatureRequest().setFlags( Qgis::FeatureRequestFlag::NoGeometry );
+  dv = std::make_unique<QgsDualView>();
   dv->init( mPointsLayer, mCanvas, req );
   model = dv->masterModel();
   QVERIFY( !model->layerCache()->cacheGeometry() );
-  QVERIFY( ( model->request().flags() & QgsFeatureRequest::NoGeometry ) );
+  QVERIFY( ( model->request().flags() & Qgis::FeatureRequestFlag::NoGeometry ) );
+
+  // request with NO geometry but with an ordering expression which does
+  req = QgsFeatureRequest().setFlags( Qgis::FeatureRequestFlag::NoGeometry );
+  dv = std::make_unique<QgsDualView>();
+  dv->init( mPointsLayer, mCanvas, req );
+  auto config = mPointsLayer->attributeTableConfig();
+  config.setSortExpression( "$x" );
+  dv->setAttributeTableConfig( config );
+  model = dv->masterModel();
+  QVERIFY( model->layerCache()->cacheGeometry() );
+  QVERIFY( !( model->request().flags() & Qgis::FeatureRequestFlag::NoGeometry ) );
 }
+
+void TestQgsDualView::testNoShowFirstFeature()
+{
+  auto dv = std::make_unique<QgsDualView>();
+
+  QgsAttributeTableConfig config = mPointsLayer->attributeTableConfig();
+  config.setSortExpression( u"\"Class\""_s );
+  mPointsLayer->setAttributeTableConfig( config );
+
+  QgsFeatureRequest req;
+  dv->init( mPointsLayer, mCanvas, req, QgsAttributeEditorContext(), true, false );
+  QCOMPARE( dv->mFeatureListModel->data( dv->mFeatureListModel->index( 0, 0 ), QgsFeatureListModel::Role::FeatureRole ).value<QgsFeature>().attribute( u"Class"_s ), u"B52"_s );
+
+  config.setSortExpression( QString() );
+  mPointsLayer->setAttributeTableConfig( config );
+}
+
+void TestQgsDualView::testDuplicateField()
+{
+  // test updating same field appearing in different widget
+
+  // make a temporary vector layer
+  const QString def = u"Point?field=col0:integer"_s;
+  QgsVectorLayer *layer = new QgsVectorLayer( def, u"test"_s, u"memory"_s );
+  layer->setEditorWidgetSetup( 0, QgsEditorWidgetSetup( u"Range"_s, QVariantMap() ) );
+
+  // add same field twice so they get synced
+  QgsEditFormConfig editFormConfig = layer->editFormConfig();
+  editFormConfig.clearTabs();
+  editFormConfig.invisibleRootContainer()->addChildElement( new QgsAttributeEditorField( "col0", 0, editFormConfig.invisibleRootContainer() ) );
+  editFormConfig.invisibleRootContainer()->addChildElement( new QgsAttributeEditorField( "col0", 0, editFormConfig.invisibleRootContainer() ) );
+  editFormConfig.setLayout( Qgis::AttributeFormLayout::DragAndDrop );
+  layer->setEditFormConfig( editFormConfig );
+
+  // add a feature to the vector layer
+  QgsFeature ft( layer->dataProvider()->fields(), 1 );
+  ft.setAttribute( u"col0"_s, 1 );
+  layer->dataProvider()->addFeature( ft );
+
+  QgsDualView dualView;
+  dualView.init( layer, mCanvas );
+
+  layer->startEditing();
+
+  const QList<QgsAttributeFormEditorWidget *> formEditorWidgets = dualView.mAttributeForm->mFormEditorWidgets.values( 0 );
+
+  // reset mIsChanged state
+  formEditorWidgets[0]->changesCommitted();
+  formEditorWidgets[1]->changesCommitted();
+  QVERIFY( !formEditorWidgets[0]->hasChanged() );
+  QVERIFY( !formEditorWidgets[1]->hasChanged() );
+
+  formEditorWidgets[0]->editorWidget()->setValues( 20, QVariantList() );
+  QCOMPARE( formEditorWidgets[0]->editorWidget()->value().toInt(), 20 );
+  QCOMPARE( formEditorWidgets[1]->editorWidget()->value().toInt(), 20 );
+  QVERIFY( formEditorWidgets[0]->hasChanged() );
+  QVERIFY( formEditorWidgets[1]->hasChanged() );
+  ft = layer->getFeature( ft.id() );
+  QCOMPARE( ft.attribute( u"col0"_s ).toInt(), 20 );
+
+  // reset mIsChanged state
+  formEditorWidgets[0]->changesCommitted();
+  formEditorWidgets[1]->changesCommitted();
+  QVERIFY( !formEditorWidgets[0]->hasChanged() );
+  QVERIFY( !formEditorWidgets[1]->hasChanged() );
+
+  formEditorWidgets[1]->editorWidget()->setValues( 21, QVariantList() );
+  QCOMPARE( formEditorWidgets[0]->editorWidget()->value().toInt(), 21 );
+  QCOMPARE( formEditorWidgets[1]->editorWidget()->value().toInt(), 21 );
+  QVERIFY( formEditorWidgets[0]->hasChanged() );
+  QVERIFY( formEditorWidgets[1]->hasChanged() );
+  ft = layer->getFeature( ft.id() );
+  QCOMPARE( ft.attribute( u"col0"_s ).toInt(), 21 );
+
+  layer->rollBack();
+}
+
 
 QGSTEST_MAIN( TestQgsDualView )
 #include "testqgsdualview.moc"

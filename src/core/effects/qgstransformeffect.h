@@ -17,12 +17,16 @@
 #ifndef QGSTRANSFORMEFFECT_H
 #define QGSTRANSFORMEFFECT_H
 
+#include "qgis.h"
 #include "qgis_core.h"
-#include "qgspainteffect.h"
 #include "qgis_sip.h"
 #include "qgsmapunitscale.h"
-#include "qgsunittypes.h"
+#include "qgspainteffect.h"
+
 #include <QPainter>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
@@ -30,28 +34,24 @@
  * \brief A paint effect which applies transformations (such as move,
  * scale and rotate) to a picture.
  *
- * \since QGIS 2.9
  */
 
 class CORE_EXPORT QgsTransformEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     /**
      * Creates a new QgsTransformEffect effect from a properties string map.
      * \param map encoded properties string map
      * \returns new QgsTransformEffect
      */
-    static QgsPaintEffect *create( const QVariantMap &map ) SIP_FACTORY;
+    static std::unique_ptr<QgsPaintEffect> create( const QVariantMap &map );
 
-    /**
-     * Constructor for QgsTransformEffect.
-     */
     QgsTransformEffect() = default;
 
-    QString type() const override { return QStringLiteral( "transform" ); }
+    QString type() const override { return u"transform"_s; }
     QVariantMap properties() const override;
+
+    using QgsPaintEffect::readProperties;
     void readProperties( const QVariantMap &props ) override;
     QgsTransformEffect *clone() const override SIP_FACTORY;
 
@@ -103,7 +103,7 @@ class CORE_EXPORT QgsTransformEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see setTranslateY
      * \see setTranslateMapUnitScale
      */
-    void setTranslateUnit( const QgsUnitTypes::RenderUnit unit ) { mTranslateUnit = unit; }
+    void setTranslateUnit( const Qgis::RenderUnit unit ) { mTranslateUnit = unit; }
 
     /**
      * Returns the units used for the transform translation.
@@ -113,7 +113,7 @@ class CORE_EXPORT QgsTransformEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see translateY
      * \see translateMapUnitScale
      */
-    QgsUnitTypes::RenderUnit translateUnit() const { return mTranslateUnit; }
+    Qgis::RenderUnit translateUnit() const { return mTranslateUnit; }
 
     /**
      * Sets the map unit scale used for the transform translation.
@@ -243,15 +243,13 @@ class CORE_EXPORT QgsTransformEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     bool reflectY() const { return mReflectY; }
 
   protected:
-
     void draw( QgsRenderContext &context ) override;
     QRectF boundingRect( const QRectF &rect, const QgsRenderContext &context ) const override;
 
   private:
-
     double mTranslateX = 0.0;
     double mTranslateY = 0.0;
-    QgsUnitTypes::RenderUnit mTranslateUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mTranslateUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mTranslateMapUnitScale;
     double mScaleX = 1.0;
     double mScaleY = 1.0;
@@ -262,8 +260,6 @@ class CORE_EXPORT QgsTransformEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     bool mReflectY = false;
 
     QTransform createTransform( const QgsRenderContext &context ) const;
-
 };
 
 #endif // QGSTRANSFORMEFFECT_H
-

@@ -17,11 +17,15 @@
 
 #include "qgsalgorithmextractbyexpression.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
 QString QgsExtractByExpressionAlgorithm::name() const
 {
-  return QStringLiteral( "extractbyexpression" );
+  return u"extractbyexpression"_s;
 }
 
 QString QgsExtractByExpressionAlgorithm::displayName() const
@@ -41,27 +45,33 @@ QString QgsExtractByExpressionAlgorithm::group() const
 
 QString QgsExtractByExpressionAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorselection" );
+  return u"vectorselection"_s;
 }
 
 void QgsExtractByExpressionAlgorithm::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterFeatureSource( QStringLiteral( "INPUT" ), QObject::tr( "Input layer" ),
-                QList< int >() << QgsProcessing::TypeVector ) );
-  addParameter( new QgsProcessingParameterExpression( QStringLiteral( "EXPRESSION" ), QObject::tr( "Expression" ), QVariant(), QStringLiteral( "INPUT" ) ) );
+  addParameter( new QgsProcessingParameterFeatureSource( u"INPUT"_s, QObject::tr( "Input layer" ), QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::Vector ) ) );
+  addParameter( new QgsProcessingParameterExpression( u"EXPRESSION"_s, QObject::tr( "Expression" ), QVariant(), u"INPUT"_s ) );
 
-  addParameter( new QgsProcessingParameterFeatureSink( QStringLiteral( "OUTPUT" ), QObject::tr( "Matching features" ) ) );
-  QgsProcessingParameterFeatureSink *failOutput = new QgsProcessingParameterFeatureSink( QStringLiteral( "FAIL_OUTPUT" ),  QObject::tr( "Non-matching" ),
-      QgsProcessing::TypeVectorAnyGeometry, QVariant(), true );
+  addParameter( new QgsProcessingParameterFeatureSink( u"OUTPUT"_s, QObject::tr( "Matching features" ) ) );
+  QgsProcessingParameterFeatureSink *failOutput = new QgsProcessingParameterFeatureSink( u"FAIL_OUTPUT"_s, QObject::tr( "Non-matching" ), Qgis::ProcessingSourceType::VectorAnyGeometry, QVariant(), true );
   failOutput->setCreateByDefault( false );
   addParameter( failOutput );
 }
 
 QString QgsExtractByExpressionAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm creates a new vector layer that only contains matching features from an input layer. "
-                      "The criteria for adding features to the resulting layer is based on a QGIS expression.\n\n"
-                      "For more information about expressions see the <a href =\"{qgisdocs}/user_manual/working_with_vector/expression.html\">user manual</a>" );
+  return QObject::tr(
+    "This algorithm creates a new vector layer that only contains matching features from an input layer. "
+    "The criteria for adding features to the resulting layer is based on a QGIS expression.\n\n"
+    "For help with QGIS expression functions, see the inbuilt help for specific functions "
+    "which is available in the expression builder."
+  );
+}
+
+QString QgsExtractByExpressionAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Creates a vector layer that only contains features matching a QGIS expression from an input layer." );
 }
 
 QgsExtractByExpressionAlgorithm *QgsExtractByExpressionAlgorithm::createInstance() const
@@ -71,21 +81,21 @@ QgsExtractByExpressionAlgorithm *QgsExtractByExpressionAlgorithm::createInstance
 
 QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  std::unique_ptr< QgsProcessingFeatureSource > source( parameterAsSource( parameters, QStringLiteral( "INPUT" ), context ) );
-  if ( !source )
-    throw QgsProcessingException( invalidSourceError( parameters, QStringLiteral( "INPUT" ) ) );
+  QGS_MARK_ALGORITHM_SOURCE
 
-  QString expressionString = parameterAsExpression( parameters, QStringLiteral( "EXPRESSION" ), context );
+  std::unique_ptr<QgsProcessingFeatureSource> source( parameterAsSource( parameters, u"INPUT"_s, context ) );
+  if ( !source )
+    throw QgsProcessingException( invalidSourceError( parameters, u"INPUT"_s ) );
+
+  const QString expressionString = parameterAsExpression( parameters, u"EXPRESSION"_s, context );
 
   QString matchingSinkId;
-  std::unique_ptr< QgsFeatureSink > matchingSink( parameterAsSink( parameters, QStringLiteral( "OUTPUT" ), context, matchingSinkId, source->fields(),
-      source->wkbType(), source->sourceCrs() ) );
+  std::unique_ptr<QgsFeatureSink> matchingSink( parameterAsSink( parameters, u"OUTPUT"_s, context, matchingSinkId, source->fields(), source->wkbType(), source->sourceCrs() ) );
   if ( !matchingSink )
-    throw QgsProcessingException( invalidSinkError( parameters, QStringLiteral( "OUTPUT" ) ) );
+    throw QgsProcessingException( invalidSinkError( parameters, u"OUTPUT"_s ) );
 
   QString nonMatchingSinkId;
-  std::unique_ptr< QgsFeatureSink > nonMatchingSink( parameterAsSink( parameters, QStringLiteral( "FAIL_OUTPUT" ), context, nonMatchingSinkId, source->fields(),
-      source->wkbType(), source->sourceCrs() ) );
+  std::unique_ptr<QgsFeatureSink> nonMatchingSink( parameterAsSink( parameters, u"FAIL_OUTPUT"_s, context, nonMatchingSinkId, source->fields(), source->wkbType(), source->sourceCrs() ) );
 
   QgsExpression expression( expressionString );
   if ( expression.hasParserError() )
@@ -95,9 +105,9 @@ QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap
 
   QgsExpressionContext expressionContext = createExpressionContext( parameters, context, source.get() );
 
-  long count = source->featureCount();
+  const long count = source->featureCount();
 
-  double step = count > 0 ? 100.0 / count : 1;
+  const double step = count > 0 ? 100.0 / count : 1;
   int current = 0;
 
   if ( !nonMatchingSink )
@@ -107,7 +117,7 @@ QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap
     req.setFilterExpression( expressionString );
     req.setExpressionContext( expressionContext );
 
-    QgsFeatureIterator it = source->getFeatures( req, QgsProcessingFeatureSource::FlagSkipGeometryValidityChecks );
+    QgsFeatureIterator it = source->getFeatures( req, Qgis::ProcessingFeatureSourceFlag::SkipGeometryValidityChecks );
     QgsFeature f;
     while ( it.nextFeature( f ) )
     {
@@ -116,7 +126,10 @@ QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap
         break;
       }
 
-      matchingSink->addFeature( f, QgsFeatureSink::FastInsert );
+      if ( !matchingSink->addFeature( f, QgsFeatureSink::FastInsert ) )
+        throw QgsProcessingException( writeFeatureError( matchingSink.get(), parameters, u"OUTPUT"_s ) );
+      else
+        feedback->featureAddedToSink( u"OUTPUT"_s );
 
       feedback->setProgress( current * step );
       current++;
@@ -140,11 +153,17 @@ QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap
       expressionContext.setFeature( f );
       if ( expression.evaluate( &expressionContext ).toBool() )
       {
-        matchingSink->addFeature( f, QgsFeatureSink::FastInsert );
+        if ( !matchingSink->addFeature( f, QgsFeatureSink::FastInsert ) )
+          throw QgsProcessingException( writeFeatureError( matchingSink.get(), parameters, u"OUTPUT"_s ) );
+        else
+          feedback->featureAddedToSink( u"OUTPUT"_s );
       }
       else
       {
-        nonMatchingSink->addFeature( f, QgsFeatureSink::FastInsert );
+        if ( !nonMatchingSink->addFeature( f, QgsFeatureSink::FastInsert ) )
+          throw QgsProcessingException( writeFeatureError( nonMatchingSink.get(), parameters, u"FAIL_OUTPUT"_s ) );
+        else
+          feedback->featureAddedToSink( u"FAIL_OUTPUT"_s );
       }
 
       feedback->setProgress( current * step );
@@ -152,13 +171,22 @@ QVariantMap QgsExtractByExpressionAlgorithm::processAlgorithm( const QVariantMap
     }
   }
 
+  if ( matchingSink )
+  {
+    matchingSink->finalize();
+    feedback->featureSinkFinalized( u"OUTPUT"_s );
+  }
+  if ( nonMatchingSink )
+  {
+    nonMatchingSink->finalize();
+    feedback->featureSinkFinalized( u"FAIL_OUTPUT"_s );
+  }
 
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OUTPUT" ), matchingSinkId );
+  outputs.insert( u"OUTPUT"_s, matchingSinkId );
   if ( nonMatchingSink )
-    outputs.insert( QStringLiteral( "FAIL_OUTPUT" ), nonMatchingSinkId );
+    outputs.insert( u"FAIL_OUTPUT"_s, nonMatchingSinkId );
   return outputs;
 }
 
 ///@endcond
-

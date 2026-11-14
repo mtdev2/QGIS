@@ -17,19 +17,20 @@
 #define QGSMAPLAYERLOADSTYLEDIALOG_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
 
 #include "ui_qgsvectorlayerloadstyledialog.h"
-#include "qgsguiutils.h"
+
 #include "qgis_gui.h"
-#include "qgsvectorlayerproperties.h"
 #include "qgsmaplayer.h"
+#include "qgsvectorlayerproperties.h"
+
+#define SIP_NO_FILE
 
 class QgsMapLayerStyleCategoriesModel;
 
 /**
  * \ingroup gui
- * A reusable dialog which allows users to select stored layer styles and categories to load
+ * \brief A reusable dialog which allows users to select stored layer styles and categories to load
  * for a map layer.
  *
  * Currently supports
@@ -43,7 +44,6 @@ class GUI_EXPORT QgsMapLayerLoadStyleDialog : public QDialog, private Ui::QgsVec
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsMapLayerLoadStyleDialog, associated with the specified map \a layer.
      */
@@ -55,9 +55,9 @@ class GUI_EXPORT QgsMapLayerLoadStyleDialog : public QDialog, private Ui::QgsVec
     QgsMapLayer::StyleCategories styleCategories() const;
 
     /**
-     * Returns the selected vector style type, for vector layers only.
+     * Returns the selected style type.
      */
-    QgsVectorLayerProperties::StyleType currentStyleType() const;
+    QgsLayerPropertiesDialog::StyleType currentStyleType() const;
 
     /**
      * Returns the file extension for the selected layer style source file.
@@ -83,6 +83,13 @@ class GUI_EXPORT QgsMapLayerLoadStyleDialog : public QDialog, private Ui::QgsVec
      */
     QString selectedStyleId();
 
+    /**
+     * Do not allow loading styles from databases, only from files.
+     * Sets the dialog accordingly, disable style type selection combo box and set it to file.
+     *
+     */
+    void allowLoadingOnlyFromFiles();
+
   public slots:
     void accept() override;
 
@@ -92,6 +99,9 @@ class GUI_EXPORT QgsMapLayerLoadStyleDialog : public QDialog, private Ui::QgsVec
     void onOthersTableSelectionChanged();
     void deleteStyleFromDB();
     void showHelp();
+    void selectAll();
+    void deselectAll();
+    void invertSelection();
 
   private:
     void selectionChanged( QTableWidget *styleTable );

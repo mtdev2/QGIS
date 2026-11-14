@@ -15,10 +15,9 @@
 #ifndef QGSMAPCANVASSNAPPINGUTILS_H
 #define QGSMAPCANVASSNAPPINGUTILS_H
 
-#include "qgssnappingutils.h"
 #include "qgis_gui.h"
-
 #include "qgsmaptool.h"
+#include "qgssnappingutils.h"
 
 class QgsMapCanvas;
 
@@ -26,15 +25,13 @@ class QProgressDialog;
 
 /**
  * \ingroup gui
- * Snapping utils instance that is connected to a canvas and updates the configuration
+ * \brief Snapping utils instance that is connected to a canvas and updates the configuration
  *  (map settings + current layer) whenever that is changed in the canvas.
- *  \since QGIS 2.8
  */
 class GUI_EXPORT QgsMapCanvasSnappingUtils : public QgsSnappingUtils
 {
     Q_OBJECT
   public:
-
     /**
      * Construct map canvas snapping utils object
      *

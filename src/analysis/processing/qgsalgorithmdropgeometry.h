@@ -18,10 +18,11 @@
 #ifndef QGSALGORITHMDROPGEOMETRY_H
 #define QGSALGORITHMDROPGEOMETRY_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -30,9 +31,7 @@
  */
 class QgsDropGeometryAlgorithm : public QgsProcessingFeatureBasedAlgorithm
 {
-
   public:
-
     QgsDropGeometryAlgorithm() = default;
     QString name() const override;
     QString displayName() const override;
@@ -40,21 +39,19 @@ class QgsDropGeometryAlgorithm : public QgsProcessingFeatureBasedAlgorithm
     QString group() const override;
     QString groupId() const override;
     QString shortHelpString() const override;
+    QString shortDescription() const override;
     QgsDropGeometryAlgorithm *createInstance() const override SIP_FACTORY;
     QgsCoordinateReferenceSystem outputCrs( const QgsCoordinateReferenceSystem &inputCrs ) const override;
     bool supportInPlaceEdit( const QgsMapLayer *layer ) const override;
 
   protected:
-
     QString outputName() const override;
-    QgsWkbTypes::Type outputWkbType( QgsWkbTypes::Type inputWkbType ) const override;
+    Qgis::WkbType outputWkbType( Qgis::WkbType inputWkbType ) const override;
     QgsFeatureRequest request() const override;
-    QgsProcessingFeatureSource::Flag sourceFlags() const override;
+    Qgis::ProcessingFeatureSourceFlags sourceFlags() const override;
     QgsFeatureList processFeature( const QgsFeature &feature, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 };
 
 ///@endcond PRIVATE
 
 #endif // QGSALGORITHMDROPGEOMETRY_H
-
-

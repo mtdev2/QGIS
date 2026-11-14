@@ -13,24 +13,30 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
 #include "qgscodeeditorcss.h"
 
-#include <QWidget>
-#include <QString>
 #include <QFont>
+#include <QString>
+#include <QWidget>
 #include <Qsci/qscilexercss.h>
 
+#include "moc_qgscodeeditorcss.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsCodeEditorCSS::QgsCodeEditorCSS( QWidget *parent )
-  : QgsCodeEditor( parent )
+  : QgsCodeEditor( parent, QString(), false, false, QgsCodeEditor::Flag::CodeFolding )
 {
   if ( !parent )
   {
     setTitle( tr( "CSS Editor" ) );
   }
-  setFoldingVisible( true );
   QgsCodeEditorCSS::initializeLexer();
+}
+
+Qgis::ScriptLanguage QgsCodeEditorCSS::language() const
+{
+  return Qgis::ScriptLanguage::Css;
 }
 
 void QgsCodeEditorCSS::initializeLexer()
@@ -79,15 +85,13 @@ void QgsCodeEditorCSS::initializeLexer()
 //
 QgsQsciLexerCSS::QgsQsciLexerCSS( QObject *parent )
   : QsciLexerCSS( parent )
-{
-
-}
+{}
 
 QString QgsQsciLexerCSS::description( int style ) const
 {
   // see https://www.riverbankcomputing.com/pipermail/qscintilla/2019-July/001415.html
   if ( style == QsciLexerCSS::Comment )
-    return QStringLiteral( "Comment" );
+    return u"Comment"_s;
 
   return QsciLexerCSS::description( style );
 }

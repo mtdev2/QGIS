@@ -15,8 +15,9 @@
  ***************************************************************************/
 
 #include "qgslayoutaligner.h"
-#include "qgslayoutitem.h"
+
 #include "qgslayout.h"
+#include "qgslayoutitem.h"
 #include "qgslayoutundostack.h"
 
 void QgsLayoutAligner::alignItems( QgsLayout *layout, const QList<QgsLayoutItem *> &items, QgsLayoutAligner::Alignment alignment )
@@ -26,7 +27,7 @@ void QgsLayoutAligner::alignItems( QgsLayout *layout, const QList<QgsLayoutItem 
     return;
   }
 
-  QRectF itemBBox = boundingRectOfItems( items );
+  const QRectF itemBBox = boundingRectOfItems( items );
   if ( !itemBBox.isValid() )
   {
     return;
@@ -84,7 +85,7 @@ void QgsLayoutAligner::alignItems( QgsLayout *layout, const QList<QgsLayoutItem 
     }
 
     // need to keep item units
-    QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
+    const QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
     item->attemptMove( newPos, false );
 
     layout->undoStack()->endCommand();
@@ -104,9 +105,8 @@ void QgsLayoutAligner::distributeItems( QgsLayout *layout, const QList<QgsLayout
     return;
   }
 
-  auto collectReferenceCoord = [distribution]( QgsLayoutItem * item )->double
-  {
-    QRectF itemBBox = item->sceneBoundingRect();
+  auto collectReferenceCoord = [distribution]( QgsLayoutItem *item ) -> double {
+    const QRectF itemBBox = item->sceneBoundingRect();
     switch ( distribution )
     {
       case DistributeLeft:
@@ -136,7 +136,7 @@ void QgsLayoutAligner::distributeItems( QgsLayout *layout, const QList<QgsLayout
   QMap< double, QgsLayoutItem * > itemCoords;
   for ( QgsLayoutItem *item : items )
   {
-    double refCoord = collectReferenceCoord( item );
+    const double refCoord = collectReferenceCoord( item );
     minCoord = std::min( minCoord, refCoord );
     maxCoord = std::max( maxCoord, refCoord );
     itemCoords.insert( refCoord, item );
@@ -144,8 +144,7 @@ void QgsLayoutAligner::distributeItems( QgsLayout *layout, const QList<QgsLayout
 
   const double step = ( maxCoord - minCoord ) / ( items.size() - 1 );
 
-  auto distributeItemToCoord = [layout, distribution]( QgsLayoutItem * item, double refCoord )
-  {
+  auto distributeItemToCoord = [layout, distribution]( QgsLayoutItem *item, double refCoord ) {
     QPointF shifted = item->pos();
     switch ( distribution )
     {
@@ -174,7 +173,7 @@ void QgsLayoutAligner::distributeItems( QgsLayout *layout, const QList<QgsLayout
     }
 
     // need to keep item units
-    QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
+    const QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
     item->attemptMove( newPos, false );
   };
 
@@ -197,9 +196,8 @@ void QgsLayoutAligner::resizeItems( QgsLayout *layout, const QList<QgsLayoutItem
   if ( !( items.size() >= 2 || ( items.size() == 1 && resize == ResizeToSquare ) ) )
     return;
 
-  auto collectSize = [resize]( QgsLayoutItem * item )->double
-  {
-    QRectF itemBBox = item->sceneBoundingRect();
+  auto collectSize = [resize]( QgsLayoutItem *item ) -> double {
+    const QRectF itemBBox = item->sceneBoundingRect();
     switch ( resize )
     {
       case ResizeNarrowest:
@@ -217,7 +215,7 @@ void QgsLayoutAligner::resizeItems( QgsLayout *layout, const QList<QgsLayoutItem
   double newSize = collectSize( items.at( 0 ) );
   for ( QgsLayoutItem *item : items )
   {
-    double size = collectSize( item );
+    const double size = collectSize( item );
     switch ( resize )
     {
       case ResizeNarrowest:
@@ -233,8 +231,7 @@ void QgsLayoutAligner::resizeItems( QgsLayout *layout, const QList<QgsLayoutItem
     }
   }
 
-  auto resizeItemToSize = [layout, resize]( QgsLayoutItem * item, double size )
-  {
+  auto resizeItemToSize = [layout, resize]( QgsLayoutItem *item, double size ) {
     QSizeF newSize = item->rect().size();
     switch ( resize )
     {
@@ -257,7 +254,7 @@ void QgsLayoutAligner::resizeItems( QgsLayout *layout, const QList<QgsLayoutItem
     }
 
     // need to keep item units
-    QgsLayoutSize newSizeWithUnits = layout->convertFromLayoutUnits( newSize, item->sizeWithUnits().units() );
+    const QgsLayoutSize newSizeWithUnits = layout->convertFromLayoutUnits( newSize, item->sizeWithUnits().units() );
     item->attemptResize( newSizeWithUnits );
   };
 
@@ -381,12 +378,10 @@ void QgsLayoutAligner::distributeEquispacedItems( QgsLayout *layout, const QList
 
   for ( QgsLayoutItem *item : items )
   {
-    QRectF itemBBox = item->sceneBoundingRect();
+    const QRectF itemBBox = item->sceneBoundingRect();
 
-    double item_min = ( distribution == DistributeHSpace ? itemBBox.left() :
-                        itemBBox.top() );
-    double item_max = ( distribution == DistributeHSpace ? itemBBox.right() :
-                        itemBBox.bottom() );
+    const double item_min = ( distribution == DistributeHSpace ? itemBBox.left() : itemBBox.top() );
+    const double item_max = ( distribution == DistributeHSpace ? itemBBox.right() : itemBBox.bottom() );
 
     minCoord = std::min( minCoord, item_min );
     maxCoord = std::max( maxCoord, item_max );
@@ -413,13 +408,12 @@ void QgsLayoutAligner::distributeEquispacedItems( QgsLayout *layout, const QList
       shifted.setY( currentVal );
     }
 
-    QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
+    const QgsLayoutPoint newPos = layout->convertFromLayoutUnits( shifted, item->positionWithUnits().units() );
     item->attemptMove( newPos, false );
 
     layout->undoStack()->endCommand();
 
-    currentVal += ( distribution == DistributeHSpace ? item->rect().width() :
-                    item->rect().height() ) + step;
+    currentVal += ( distribution == DistributeHSpace ? item->rect().width() : item->rect().height() ) + step;
   }
   layout->undoStack()->endMacro();
   return;

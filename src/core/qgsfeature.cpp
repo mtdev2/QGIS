@@ -14,16 +14,22 @@ email                : sherman at mrcc.com
  ***************************************************************************/
 
 #include "qgsfeature.h"
-#include "qgsfeature_p.h"
-#include "qgsfields.h"
-#include "qgsgeometry.h"
-#include "qgsrectangle.h"
-#include "qgsfield_p.h" // for approximateMemoryUsage()
-#include "qgsfields_p.h" // for approximateMemoryUsage()
 
+#include "qgsfeature_p.h"
+#include "qgsfield_p.h"
+#include "qgsfields.h"
+#include "qgsfields_p.h"
+#include "qgsgeometry.h"
+#include "qgslogger.h"
 #include "qgsmessagelog.h"
+#include "qgsrectangle.h"
 
 #include <QDataStream>
+#include <QString>
+
+#include "moc_qgsfeature.cpp"
+
+using namespace Qt::StringLiterals;
 
 /***************************************************************************
  * This class is considered CRITICAL and any change MUST be accompanied with
@@ -50,28 +56,34 @@ QgsFeature::QgsFeature( const QgsFields &fields, QgsFeatureId id )
 
 QgsFeature::QgsFeature( const QgsFeature &rhs ) //NOLINT
   : d( rhs.d )
-{
-}
+{}
 
-QgsFeature &QgsFeature::operator=( const QgsFeature &rhs )   //NOLINT
+QgsFeature &QgsFeature::operator=( const QgsFeature &rhs ) //NOLINT
 {
+  if ( &rhs == this )
+    return *this;
+
   d = rhs.d;
   return *this;
 }
 
-bool QgsFeature::operator ==( const QgsFeature &other ) const
+bool QgsFeature::operator==( const QgsFeature &other ) const
 {
   if ( d == other.d )
     return true;
 
-  if ( d->fid == other.d->fid
-       && d->valid == other.d->valid
-       && d->fields == other.d->fields
-       && d->attributes == other.d->attributes
-       && d->geometry.equals( other.d->geometry ) )
-    return true;
+  if ( !( d->fid == other.d->fid && d->valid == other.d->valid && d->fields == other.d->fields && d->attributes == other.d->attributes && d->symbol == other.d->symbol ) )
+    return false;
 
-  return false;
+  // compare geometry
+  if ( d->geometry.isNull() && other.d->geometry.isNull() )
+    return true;
+  else if ( d->geometry.isNull() || other.d->geometry.isNull() )
+    return false;
+  else if ( !d->geometry.isExactlyEqual( other.d->geometry ) )
+    return false;
+
+  return true;
 }
 
 bool QgsFeature::operator!=( const QgsFeature &other ) const
@@ -80,8 +92,7 @@ bool QgsFeature::operator!=( const QgsFeature &other ) const
 }
 
 QgsFeature::~QgsFeature() //NOLINT
-{
-}
+{}
 
 /***************************************************************************
  * This class is considered CRITICAL and any change MUST be accompanied with
@@ -126,6 +137,24 @@ QgsAttributes QgsFeature::attributes() const
   return d->attributes;
 }
 
+QVariantMap QgsFeature::attributeMap() const
+{
+  QVariantMap res;
+  const int fieldSize = d->fields.size();
+  const int attributeSize = d->attributes.size();
+  if ( fieldSize != attributeSize )
+  {
+    QgsDebugError( u"Attribute size (%1) does not match number of fields (%2)"_s.arg( attributeSize ).arg( fieldSize ) );
+    return QVariantMap();
+  }
+
+  for ( int i = 0; i < attributeSize; ++i )
+  {
+    res[d->fields.at( i ).name()] = d->attributes.at( i );
+  }
+  return res;
+}
+
 int QgsFeature::attributeCount() const
 {
   return d->attributes.size();
@@ -133,9 +162,6 @@ int QgsFeature::attributeCount() const
 
 void QgsFeature::setAttributes( const QgsAttributes &attrs )
 {
-  if ( attrs == d->attributes )
-    return;
-
   d.detach();
   d->attributes = attrs;
   d->valid = true;
@@ -157,6 +183,9 @@ void QgsFeature::setGeometry( std::unique_ptr<QgsAbstractGeometry> geometry )
 
 void QgsFeature::clearGeometry()
 {
+  if ( d->geometry.isNull() && d->valid )
+    return;
+
   setGeometry( QgsGeometry() );
 }
 
@@ -237,7 +266,7 @@ bool QgsFeature::setAttribute( int idx, const QVariant &value )
 {
   if ( idx < 0 || idx >= d->attributes.size() )
   {
-    QgsMessageLog::logMessage( QObject::tr( "Attribute index %1 out of bounds [0;%2]" ).arg( idx ).arg( d->attributes.size() ), QString(), Qgis::Warning );
+    QgsMessageLog::logMessage( QObject::tr( "Attribute index %1 out of bounds [0;%2]" ).arg( idx ).arg( d->attributes.size() ), QString(), Qgis::MessageLevel::Warning );
     return false;
   }
 
@@ -284,6 +313,28 @@ QVariant QgsFeature::attribute( int fieldIdx ) const
   return d->attributes.at( fieldIdx );
 }
 
+bool QgsFeature::isUnsetValue( int fieldIdx ) const
+{
+  if ( fieldIdx < 0 || fieldIdx >= d->attributes.count() )
+    return false;
+
+  return d->attributes.at( fieldIdx ).userType() == qMetaTypeId<QgsUnsetAttributeValue>();
+}
+
+const QgsSymbol *QgsFeature::embeddedSymbol() const
+{
+  return d->symbol.get();
+}
+
+void QgsFeature::setEmbeddedSymbol( QgsSymbol *symbol )
+{
+  if ( symbol == d->symbol.get() )
+    return;
+
+  d.detach();
+  d->symbol.reset( symbol );
+}
+
 QVariant QgsFeature::attribute( const QString &name ) const
 {
   int fieldIdx = fieldNameIndex( name );
@@ -314,16 +365,16 @@ static size_t qgsQVariantApproximateMemoryUsage( const QVariant &v )
   // A QVariant has a private structure that is a union of things whose larger
   // size if a long long, and a int
   size_t s = sizeof( QVariant ) + sizeof( long long ) + sizeof( int );
-  if ( v.type() == QVariant::String )
+  if ( v.userType() == QMetaType::Type::QString )
   {
     s += qgsQStringApproximateMemoryUsage( v.toString() );
   }
-  else if ( v.type() == QVariant::StringList )
+  else if ( v.userType() == QMetaType::Type::QStringList )
   {
     for ( const QString &str : v.toStringList() )
       s += qgsQStringApproximateMemoryUsage( str );
   }
-  else if ( v.type() == QVariant::List )
+  else if ( v.userType() == QMetaType::Type::QVariantList )
   {
     for ( const QVariant &subV : v.toList() )
       s += qgsQVariantApproximateMemoryUsage( subV );
@@ -336,7 +387,7 @@ int QgsFeature::approximateMemoryUsage() const
   size_t s = sizeof( *this ) + sizeof( *d );
 
   // Attributes
-  for ( const QVariant &attr : qgis::as_const( d->attributes ) )
+  for ( const QVariant &attr : std::as_const( d->attributes ) )
   {
     s += qgsQVariantApproximateMemoryUsage( attr );
   }
@@ -350,7 +401,7 @@ int QgsFeature::approximateMemoryUsage() const
   // Fields
   s += sizeof( QgsFieldsPrivate );
   // TODO potentially: take into account the length of the name, comment, default value, etc...
-  s += d->fields.size() * ( sizeof( QgsField )  + sizeof( QgsFieldPrivate ) );
+  s += d->fields.size() * ( sizeof( QgsField ) + sizeof( QgsFieldPrivate ) );
 
   return static_cast<int>( s );
 }
@@ -393,9 +444,9 @@ QDataStream &operator>>( QDataStream &in, QgsFeature &feature )
   return in;
 }
 
-uint qHash( const QgsFeature &key, uint seed )
+size_t qHash( const QgsFeature &key, size_t seed )
 {
-  uint hash = seed;
+  size_t hash = seed;
   const auto constAttributes = key.attributes();
   for ( const QVariant &attr : constAttributes )
   {
@@ -407,4 +458,3 @@ uint qHash( const QgsFeature &key, uint seed )
 
   return hash;
 }
-

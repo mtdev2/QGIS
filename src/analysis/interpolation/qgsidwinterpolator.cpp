@@ -16,9 +16,12 @@
  ***************************************************************************/
 
 #include "qgsidwinterpolator.h"
-#include "qgis.h"
+
 #include <cmath>
 #include <limits>
+
+#include "qgis.h"
+#include "qgsgeometryutils_base.h"
 
 QgsIDWInterpolator::QgsIDWInterpolator( const QList<LayerData> &layerData )
   : QgsInterpolator( layerData )
@@ -34,9 +37,9 @@ int QgsIDWInterpolator::interpolatePoint( double x, double y, double &result, Qg
   double sumCounter = 0;
   double sumDenominator = 0;
 
-  for ( const QgsInterpolatorVertexData &vertex : qgis::as_const( mCachedBaseData ) )
+  for ( const QgsInterpolatorVertexData &vertex : std::as_const( mCachedBaseData ) )
   {
-    double distance = std::sqrt( ( vertex.x - x ) * ( vertex.x - x ) + ( vertex.y - y ) * ( vertex.y - y ) );
+    double distance = QgsGeometryUtilsBase::distance2D( vertex.x, vertex.y, x, y );
     if ( qgsDoubleNear( distance, 0.0 ) )
     {
       result = vertex.z;

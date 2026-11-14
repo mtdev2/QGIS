@@ -17,11 +17,15 @@
 
 #include "qgsalgorithmconverttocurves.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
 QString QgsConvertToCurvesAlgorithm::name() const
 {
-  return QStringLiteral( "converttocurves" );
+  return u"converttocurves"_s;
 }
 
 QString QgsConvertToCurvesAlgorithm::displayName() const
@@ -41,7 +45,7 @@ QString QgsConvertToCurvesAlgorithm::group() const
 
 QString QgsConvertToCurvesAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeometry" );
+  return u"vectorgeometry"_s;
 }
 
 QString QgsConvertToCurvesAlgorithm::outputName() const
@@ -51,8 +55,15 @@ QString QgsConvertToCurvesAlgorithm::outputName() const
 
 QString QgsConvertToCurvesAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm converts a geometry into its curved geometry equivalent.\n\n"
-                      "Already curved geometries will be retained without change." );
+  return QObject::tr(
+    "This algorithm converts a geometry into its curved geometry equivalent.\n\n"
+    "Already curved geometries will be retained without change."
+  );
+}
+
+QString QgsConvertToCurvesAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Converts a geometry into its curved geometry equivalent." );
 }
 
 QgsConvertToCurvesAlgorithm *QgsConvertToCurvesAlgorithm::createInstance() const
@@ -62,49 +73,47 @@ QgsConvertToCurvesAlgorithm *QgsConvertToCurvesAlgorithm::createInstance() const
 
 QList<int> QgsConvertToCurvesAlgorithm::inputLayerTypes() const
 {
-  return QList<int>() << QgsProcessing::TypeVectorLine << QgsProcessing::TypeVectorPolygon;
+  return QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::VectorLine ) << static_cast<int>( Qgis::ProcessingSourceType::VectorPolygon );
 }
 
 void QgsConvertToCurvesAlgorithm::initParameters( const QVariantMap & )
 {
-  std::unique_ptr< QgsProcessingParameterNumber > tolerance = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "DISTANCE" ),
-      QObject::tr( "Maximum distance tolerance" ), QgsProcessingParameterNumber::Double,
-      0.000001, false, 0, 10000000.0 );
+  auto tolerance = std::make_unique<QgsProcessingParameterNumber>( u"DISTANCE"_s, QObject::tr( "Maximum distance tolerance" ), Qgis::ProcessingNumberParameterType::Double, 0.000001, false, 0, 10000000.0 );
   tolerance->setIsDynamic( true );
-  tolerance->setDynamicPropertyDefinition( QgsPropertyDefinition( QStringLiteral( "DISTANCE" ), QObject::tr( "Maximum distance tolerance" ), QgsPropertyDefinition::DoublePositive ) );
-  tolerance->setDynamicLayerParameterName( QStringLiteral( "INPUT" ) );
+  tolerance->setDynamicPropertyDefinition( QgsPropertyDefinition( u"DISTANCE"_s, QObject::tr( "Maximum distance tolerance" ), QgsPropertyDefinition::DoublePositive ) );
+  tolerance->setDynamicLayerParameterName( u"INPUT"_s );
   addParameter( tolerance.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > angleTolerance = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "ANGLE" ),
-      QObject::tr( "Maximum angle tolerance" ), QgsProcessingParameterNumber::Double,
-      0.000001, false, 0, 45.0 );
+  auto angleTolerance = std::make_unique<QgsProcessingParameterNumber>( u"ANGLE"_s, QObject::tr( "Maximum angle tolerance" ), Qgis::ProcessingNumberParameterType::Double, 0.000001, false, 0, 45.0 );
   angleTolerance->setIsDynamic( true );
-  angleTolerance->setDynamicPropertyDefinition( QgsPropertyDefinition( QStringLiteral( "ANGLE" ), QObject::tr( "Maximum angle tolerance" ), QgsPropertyDefinition::DoublePositive ) );
-  angleTolerance->setDynamicLayerParameterName( QStringLiteral( "INPUT" ) );
+  angleTolerance->setDynamicPropertyDefinition( QgsPropertyDefinition( u"ANGLE"_s, QObject::tr( "Maximum angle tolerance" ), QgsPropertyDefinition::DoublePositive ) );
+  angleTolerance->setDynamicLayerParameterName( u"INPUT"_s );
   addParameter( angleTolerance.release() );
 }
 
 bool QgsConvertToCurvesAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mTolerance = parameterAsDouble( parameters, QStringLiteral( "DISTANCE" ), context );
-  mDynamicTolerance = QgsProcessingParameters::isDynamic( parameters, QStringLiteral( "DISTANCE" ) );
+  mTolerance = parameterAsDouble( parameters, u"DISTANCE"_s, context );
+  mDynamicTolerance = QgsProcessingParameters::isDynamic( parameters, u"DISTANCE"_s );
   if ( mDynamicTolerance )
-    mToleranceProperty = parameters.value( QStringLiteral( "DISTANCE" ) ).value< QgsProperty >();
+    mToleranceProperty = parameters.value( u"DISTANCE"_s ).value<QgsProperty>();
 
-  mAngleTolerance = parameterAsDouble( parameters, QStringLiteral( "ANGLE" ), context );
-  mDynamicAngleTolerance = QgsProcessingParameters::isDynamic( parameters, QStringLiteral( "ANGLE" ) );
+  mAngleTolerance = parameterAsDouble( parameters, u"ANGLE"_s, context );
+  mDynamicAngleTolerance = QgsProcessingParameters::isDynamic( parameters, u"ANGLE"_s );
   if ( mDynamicAngleTolerance )
-    mAngleToleranceProperty = parameters.value( QStringLiteral( "ANGLE" ) ).value< QgsProperty >();
+    mAngleToleranceProperty = parameters.value( u"ANGLE"_s ).value<QgsProperty>();
 
   return true;
 }
 
 QgsFeatureList QgsConvertToCurvesAlgorithm::processFeature( const QgsFeature &feature, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFeature f = feature;
   if ( f.hasGeometry() )
   {
-    QgsGeometry geometry = f.geometry();
+    const QgsGeometry geometry = f.geometry();
     double tolerance = mTolerance;
     if ( mDynamicTolerance )
       tolerance = mToleranceProperty.valueAsDouble( context.expressionContext(), tolerance );
@@ -117,25 +126,25 @@ QgsFeatureList QgsConvertToCurvesAlgorithm::processFeature( const QgsFeature &fe
   return QgsFeatureList() << f;
 }
 
-QgsWkbTypes::Type QgsConvertToCurvesAlgorithm::outputWkbType( QgsWkbTypes::Type inputWkbType ) const
+Qgis::WkbType QgsConvertToCurvesAlgorithm::outputWkbType( Qgis::WkbType inputWkbType ) const
 {
   if ( QgsWkbTypes::isCurvedType( inputWkbType ) )
     return inputWkbType;
 
-  QgsWkbTypes::Type outType = QgsWkbTypes::Unknown;
+  Qgis::WkbType outType = Qgis::WkbType::Unknown;
   switch ( QgsWkbTypes::geometryType( inputWkbType ) )
   {
-    case QgsWkbTypes::PointGeometry:
-    case QgsWkbTypes::NullGeometry:
-    case QgsWkbTypes::UnknownGeometry:
+    case Qgis::GeometryType::Point:
+    case Qgis::GeometryType::Null:
+    case Qgis::GeometryType::Unknown:
       return inputWkbType;
 
-    case QgsWkbTypes::LineGeometry:
-      outType = QgsWkbTypes::CompoundCurve;
+    case Qgis::GeometryType::Line:
+      outType = Qgis::WkbType::CompoundCurve;
       break;
 
-    case QgsWkbTypes::PolygonGeometry:
-      outType = QgsWkbTypes::CurvePolygon;
+    case Qgis::GeometryType::Polygon:
+      outType = Qgis::WkbType::CurvePolygon;
       break;
   }
 
@@ -153,5 +162,3 @@ QgsWkbTypes::Type QgsConvertToCurvesAlgorithm::outputWkbType( QgsWkbTypes::Type 
 
 
 ///@endcond
-
-

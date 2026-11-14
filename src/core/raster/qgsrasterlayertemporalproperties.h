@@ -19,16 +19,19 @@
 #ifndef QGSRASTERLAYERTEMPORALPROPERTIES_H
 #define QGSRASTERLAYERTEMPORALPROPERTIES_H
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsrange.h"
+#include "qgsinterval.h"
 #include "qgsmaplayertemporalproperties.h"
-#include "qgsrasterdataprovidertemporalcapabilities.h"
+#include "qgsrange.h"
+
+class QgsRasterLayer;
 
 /**
  * \class QgsRasterLayerTemporalProperties
  * \ingroup core
- * Implementation of map layer temporal properties for raster layers.
+ * \brief Implementation of map layer temporal properties for raster layers.
  *
  * \since QGIS 3.14
  */
@@ -37,7 +40,6 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsRasterLayerTemporalProperties, with the specified \a parent object.
      *
@@ -47,29 +49,21 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
 
     bool isVisibleInTemporalRange( const QgsDateTimeRange &range ) const override;
     QgsDateTimeRange calculateTemporalExtent( QgsMapLayer *layer ) const override SIP_SKIP;
-
-    /**
-     * Mode of the raster temporal properties
-     **/
-    enum TemporalMode
-    {
-      ModeFixedTemporalRange = 0, //!< Mode when temporal properties have fixed start and end datetimes.
-      ModeTemporalRangeFromDataProvider = 1, //!< Mode when raster layer delegates temporal range handling to the dataprovider.
-    };
+    QList< QgsDateTimeRange > allTemporalRanges( QgsMapLayer *layer ) const override;
 
     /**
      * Returns the temporal properties mode.
      *
      *\see setMode()
-    **/
-    TemporalMode mode() const;
+    */
+    Qgis::RasterTemporalMode mode() const;
 
     /**
      * Sets the temporal properties \a mode.
      *
      *\see mode()
-    **/
-    void setMode( TemporalMode mode );
+    */
+    void setMode( Qgis::RasterTemporalMode mode );
 
     /**
      * Returns flags associated to the temporal property.
@@ -81,16 +75,16 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
      * layers or bands in the data provider.
      *
      *\see setIntervalHandlingMethod()
-    **/
-    QgsRasterDataProviderTemporalCapabilities::IntervalHandlingMethod intervalHandlingMethod() const;
+    */
+    Qgis::TemporalIntervalMatchMethod intervalHandlingMethod() const;
 
     /**
      * Sets the desired \a method to use when resolving a temporal interval to matching
      * layers or bands in the data provider.
      *
      *\see intervalHandlingMethod()
-    **/
-    void setIntervalHandlingMethod( QgsRasterDataProviderTemporalCapabilities::IntervalHandlingMethod method );
+    */
+    void setIntervalHandlingMethod( Qgis::TemporalIntervalMatchMethod method );
 
     /**
      * Sets a temporal \a range to apply to the whole layer. All bands from
@@ -98,7 +92,7 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
      * a render context intersects the specified \a range.
      *
      * \warning This setting is only effective when mode() is
-     * QgsRasterLayerTemporalProperties::ModeFixedTemporalRange
+     * Qgis::RasterTemporalMode::FixedTemporalRange
      *
      * \see fixedTemporalRange()
      */
@@ -107,12 +101,130 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
     /**
      * Returns the fixed temporal range for the layer.
      *
-     * \warning To be used only when mode() is
-     * QgsRasterLayerTemporalProperties::ModeFixedTemporalRange
+     * \warning To be used only when mode() is Qgis::RasterTemporalMode::FixedTemporalRange
      *
      * \see setFixedTemporalRange()
-    **/
+    */
     const QgsDateTimeRange &fixedTemporalRange() const;
+
+    /**
+     * Returns the fixed temporal range for each band.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::FixedRangePerBand.
+     *
+     * \see setFixedRangePerBand()
+     * \since QGIS 3.38
+     */
+    QMap<int, QgsDateTimeRange> fixedRangePerBand() const;
+
+    /**
+     * Sets the fixed temporal range for each band.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::FixedRangePerBand.
+     *
+     * \see fixedRangePerBand()
+     * \since QGIS 3.38
+     */
+    void setFixedRangePerBand( const QMap<int, QgsDateTimeRange> &ranges );
+
+    /**
+     * Returns the band corresponding to the specified \a range.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::FixedRangePerBand.
+     * For other modes it will always return -1.
+     *
+     * \since QGIS 3.38
+     */
+    int bandForTemporalRange( QgsRasterLayer *layer, const QgsDateTimeRange &range ) const;
+
+    /**
+     * Returns a filtered list of bands which match the specified \a range.
+     *
+     * \since QGIS 3.38
+     */
+    QList< int > filteredBandsForTemporalRange( QgsRasterLayer *layer, const QgsDateTimeRange &range ) const;
+
+    /**
+     * Returns the band number from which temporal values should be taken.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see setBandNumber()
+     * \since QGIS 3.38
+     */
+    int bandNumber() const;
+
+    /**
+     * Sets the band number from which temporal values should be taken.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see bandNumber()
+     * \since QGIS 3.38
+     */
+    void setBandNumber( int number );
+
+    /**
+     * Returns the temporal offset, which is a fixed datetime which should be added to individual pixel values
+     * from the layer.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see setTemporalRepresentationOffset()
+     * \since QGIS 3.38
+     */
+    QDateTime temporalRepresentationOffset() const;
+
+    /**
+     * Sets the temporal offset, which is a fixed datetime which should be added to individual pixel values
+     * from the layer.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see temporalRepresentationOffset()
+     * \since QGIS 3.38
+     */
+    void setTemporalRepresentationOffset( const QDateTime &offset );
+
+    /**
+     * Returns TRUE if pixels will be accumulated over time (i.e. all pixels which
+     * occur before or within the map's temporal range should be rendered).
+     *
+     * \warning This setting is only effective when mode() is
+     * Qgis::RasterTemporalMode::RepresentsTemporalValues
+     *
+     * \see setAccumulatePixels()
+     * \since QGIS 4.0
+     */
+    bool accumulatePixels() const;
+
+    /**
+     * Sets whether pixels will be accumulated over time (i.e. all pixels which
+     * occur before or within the map's temporal range should be rendered).
+     *
+     * \warning This setting is only effective when mode() is
+     * Qgis::RasterTemporalMode::RepresentsTemporalValues
+     *
+     * \see accumulatePixels()
+     * \since QGIS 4.0
+     */
+    void setAccumulatePixels( bool accumulate );
+
+    /**
+     * Returns the scale, which is an interval factor which should be applied to individual pixel
+     * values from the layer.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see setTemporalRepresentationScale()
+     * \since QGIS 3.38
+     */
+    const QgsInterval &temporalRepresentationScale() const;
+
+    /**
+     * Sets the scale, which is an interval factor which should be applied to individual pixel
+     * values from the layer.
+     *
+     * \note This is only considered when mode() is Qgis::RasterTemporalMode::RepresentsTemporalValues.
+     * \see temporalRepresentationScale()
+     * \since QGIS 3.38
+     */
+    void setTemporalRepresentationScale( const QgsInterval &scale );
 
     QDomElement writeXml( QDomElement &element, QDomDocument &doc, const QgsReadWriteContext &context ) override;
 
@@ -121,15 +233,22 @@ class CORE_EXPORT QgsRasterLayerTemporalProperties : public QgsMapLayerTemporalP
     void setDefaultsFromDataProviderTemporalCapabilities( const QgsDataProviderTemporalCapabilities *capabilities ) override;
 
   private:
-
     //! Temporal layer mode.
-    TemporalMode mMode = ModeFixedTemporalRange;
+    Qgis::RasterTemporalMode mMode = Qgis::RasterTemporalMode::FixedTemporalRange;
 
     //! Temporal layer data fetch mode.
-    QgsRasterDataProviderTemporalCapabilities::IntervalHandlingMethod mIntervalHandlingMethod = QgsRasterDataProviderTemporalCapabilities::MatchUsingWholeRange;
+    Qgis::TemporalIntervalMatchMethod mIntervalHandlingMethod = Qgis::TemporalIntervalMatchMethod::MatchUsingWholeRange;
 
     //! Represents fixed temporal range.
     QgsDateTimeRange mFixedRange;
+
+    QMap< int, QgsDateTimeRange > mRangePerBand;
+
+    int mBandNumber = 1;
+
+    QDateTime mTemporalRepresentationOffset;
+    QgsInterval mTemporalRepresentationScale;
+    bool mAccumulatePixels = false;
 };
 
 #endif // QGSRASTERLAYERTEMPORALPROPERTIES_H

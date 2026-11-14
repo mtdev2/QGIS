@@ -16,12 +16,13 @@
 #ifndef QGSSQLITEEXPRESSIONCOMPILER_H
 #define QGSSQLITEEXPRESSIONCOMPILER_H
 
-#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
 #include "qgis_core.h"
 #include "qgssqlexpressioncompiler.h"
+
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
@@ -31,13 +32,11 @@
  * This class is designed to be used by SpatiaLite and OGR providers.
  * \note Not part of stable API, may change in future versions of QGIS
  * \note Not available in Python bindings
- * \since QGIS 2.16
  */
 
 class CORE_EXPORT QgsSQLiteExpressionCompiler : public QgsSqlExpressionCompiler
 {
   public:
-
     /**
      * Constructor for expression compiler.
      * \param fields fields from provider
@@ -48,7 +47,6 @@ class CORE_EXPORT QgsSQLiteExpressionCompiler : public QgsSqlExpressionCompiler
     explicit QgsSQLiteExpressionCompiler( const QgsFields &fields, bool ignoreStaticNodes = false );
 
   protected:
-
     Result compileNode( const QgsExpressionNode *node, QString &str ) override;
     QString quotedIdentifier( const QString &identifier ) override;
     QString quotedValue( const QVariant &value, bool &ok ) override;
@@ -57,7 +55,6 @@ class CORE_EXPORT QgsSQLiteExpressionCompiler : public QgsSqlExpressionCompiler
     QString castToReal( const QString &value ) const override;
     QString castToInt( const QString &value ) const override;
     QString castToText( const QString &value ) const override;
-
 };
 
 ///@endcond

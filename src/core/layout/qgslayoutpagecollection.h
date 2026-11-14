@@ -17,33 +17,35 @@
 #ifndef QGSLAYOUTPAGECOLLECTION_H
 #define QGSLAYOUTPAGECOLLECTION_H
 
+#include <memory>
+
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgssymbol.h"
 #include "qgslayout.h"
-#include "qgslayoutitempage.h"
 #include "qgslayoutitem.h"
-#include "qgslayoutserializableobject.h"
+#include "qgslayoutitempage.h"
 #include "qgslayoutpoint.h"
+#include "qgslayoutserializableobject.h"
+
 #include <QObject>
-#include <memory>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsLayout;
 class QgsLayoutGuideCollection;
+class QgsMargins;
 
 /**
  * \ingroup core
  * \class QgsLayoutPageCollection
  * \brief A manager for a collection of pages in a layout.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSerializableObject
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutItemPage, with the specified parent \a layout.
      */
@@ -51,7 +53,7 @@ class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSeri
 
     ~QgsLayoutPageCollection() override;
 
-    QString stringType() const override { return QStringLiteral( "LayoutPageCollection" ); }
+    QString stringType() const override { return u"LayoutPageCollection"_s; }
     QgsLayout *layout() override;
 
     /**
@@ -233,7 +235,7 @@ class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSeri
      * Returns the symbol to use for drawing pages in the collection.
      * \see setPageStyleSymbol()
      *
-     * \deprecated Use QgsLayoutItemPage::pageStyleSymbol() instead.
+     * \deprecated QGIS 3.40. Use QgsLayoutItemPage::pageStyleSymbol() instead.
      */
     Q_DECL_DEPRECATED const QgsFillSymbol *pageStyleSymbol() const SIP_DEPRECATED;
 
@@ -365,7 +367,7 @@ class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSeri
      * repositioned so that the new top-left bounds of the layout is at the point
      * (marginLeft, marginTop). An optional margin can be specified.
      */
-    void resizeToContents( const QgsMargins &margins, QgsUnitTypes::LayoutUnit marginUnits );
+    void resizeToContents( const QgsMargins &margins, Qgis::LayoutUnit marginUnits );
 
     /**
      * Stores the collection's state in a DOM element. The \a parentElement should refer to the parent layout's DOM element.
@@ -388,6 +390,13 @@ class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSeri
      * Returns a reference to the collection's guide collection, which manages page snap guides.
      */
     SIP_SKIP const QgsLayoutGuideCollection &guides() const;
+
+    /**
+     * Apply the source page properties (size & background color) to all other pages
+     *
+     * \since QGIS 3.42
+     */
+    void applyPropertiesToAllOtherPages( int sourcePage );
 
   public slots:
 
@@ -412,7 +421,6 @@ class CORE_EXPORT QgsLayoutPageCollection : public QObject, public QgsLayoutSeri
     void pageAboutToBeRemoved( int pageNumber );
 
   private:
-
     QgsLayout *mLayout = nullptr;
 
     std::unique_ptr< QgsLayoutGuideCollection > mGuideCollection;

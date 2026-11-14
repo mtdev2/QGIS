@@ -18,8 +18,9 @@
 #ifndef QGSCONNECTIONREGISTRY_H
 #define QGSCONNECTIONREGISTRY_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
+
 #include <QObject>
 
 class QgsAbstractProviderConnection;
@@ -28,7 +29,7 @@ class QgsAbstractProviderConnection;
 /**
  * \class QgsConnectionRegistry
  * \ingroup core
- * A registry for saved data provider connections, allowing retrieval of
+ * \brief A registry for saved data provider connections, allowing retrieval of
  * saved connections by name and provider type.
  *
  * QgsConnectionRegistry is not usually directly created, but rather accessed through
@@ -40,15 +41,12 @@ class CORE_EXPORT QgsConnectionRegistry : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsConnectionRegistry.
      */
     QgsConnectionRegistry( QObject *parent SIP_TRANSFERTHIS = nullptr );
 
-    //! Registry cannot be copied
     QgsConnectionRegistry( const QgsConnectionRegistry &other ) = delete;
-    //! Registry cannot be copied
     QgsConnectionRegistry &operator=( const QgsConnectionRegistry &other ) = delete;
 
     /**
@@ -61,15 +59,12 @@ class CORE_EXPORT QgsConnectionRegistry : public QObject
      *
      * \throws QgsProviderConnectionException
      */
-    QgsAbstractProviderConnection *createConnection( const QString &name ) SIP_THROW( QgsProviderConnectionException ) SIP_FACTORY;
+    std::unique_ptr<QgsAbstractProviderConnection> createConnection( const QString &name ) SIP_THROW( QgsProviderConnectionException );
 
   private:
-
 #ifdef SIP_RUN
     QgsConnectionRegistry( const QgsConnectionRegistry &other );
 #endif
 };
 
 #endif // QGSCONNECTIONREGISTRY_H
-
-

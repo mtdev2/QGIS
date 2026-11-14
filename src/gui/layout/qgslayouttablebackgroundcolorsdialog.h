@@ -19,28 +19,29 @@
 #define QGSLAYOUTTABLEBACKGROUNDCOLORSDIALOG_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslayouttablebackgroundstyles.h"
+
+#include "qgis_gui.h"
+#include "qgslayouttable.h"
 
 #include <QDialog>
-#include "qgis_gui.h"
-#include "ui_qgslayouttablebackgroundstyles.h"
-#include "qgslayouttable.h"
+
+#define SIP_NO_FILE
 
 class QCheckBox;
 class QgsColorButton;
 
 /**
  * \ingroup gui
- * A dialog for customization of the cell background colors for a QgsLayoutTable
+ * \brief A dialog for customization of the cell background colors for a QgsLayoutTable
  *
  * \note This class is not a part of public API
- * \since QGIS 3.0
 */
-class GUI_EXPORT QgsLayoutTableBackgroundColorsDialog: public QDialog, private Ui::QgsLayoutTableBackgroundDialog
+class GUI_EXPORT QgsLayoutTableBackgroundColorsDialog : public QDialog, private Ui::QgsLayoutTableBackgroundDialog
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsLayoutTableBackgroundColorsDialog
      * \param table associated layout table
@@ -58,16 +59,13 @@ class GUI_EXPORT QgsLayoutTableBackgroundColorsDialog: public QDialog, private U
     void showHelp();
 
   private:
-
     QgsLayoutTable *mTable = nullptr;
-    QMap< QgsLayoutTable::CellStyleGroup, QCheckBox * > mCheckBoxMap;
-    QMap< QgsLayoutTable::CellStyleGroup, QgsColorButton * > mColorButtonMap;
+    QMap<QgsLayoutTable::CellStyleGroup, QCheckBox *> mCheckBoxMap;
+    QMap<QgsLayoutTable::CellStyleGroup, QgsColorButton *> mColorButtonMap;
 
 
     //! Sets the GUI elements to the values of the table
     void setGuiElementValues();
-
-
 };
 
 #endif // QGSLAYOUTTABLEBACKGROUNDCOLORSDIALOG_H

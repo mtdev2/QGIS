@@ -19,18 +19,20 @@
 #include "qgis_sip.h"
 #include "qgstextformat.h"
 
+#include <QPointer>
 #include <QToolButton>
 
 class QgsExpressionContextGenerator;
 class QgsMapCanvas;
 class QgsMessageBar;
 class QgsTextFormatPanelWidget;
+class QgsScreenHelper;
 
 
 /**
  * \ingroup gui
  * \class QgsFontButton
- * A button for customizing QgsTextFormat settings.
+ * \brief A button for customizing QgsTextFormat settings.
  *
  * The button will open a detailed text format settings dialog when clicked. An attached drop-down
  * menu allows for copying and pasting text styles, picking colors for the text, and for dropping
@@ -41,7 +43,6 @@ class QgsTextFormatPanelWidget;
  * mode (without settings for color) is also available when the resultant font is
  * used only in a QFont object.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsFontButton : public QToolButton
 {
@@ -53,12 +54,11 @@ class GUI_EXPORT QgsFontButton : public QToolButton
     Q_PROPERTY( QgsTextFormat textFormat READ textFormat WRITE setTextFormat NOTIFY changed )
 
   public:
-
     //! Available button modes.
     enum Mode
     {
-      ModeTextRenderer,  //!< Configure font settings for use with QgsTextRenderer
-      ModeQFont, //!< Configure font settings for use with QFont objects
+      ModeTextRenderer, //!< Configure font settings for use with QgsTextRenderer
+      ModeQFont,        //!< Configure font settings for use with QFont objects
     };
 
     Q_ENUM( Mode )
@@ -272,14 +272,14 @@ class GUI_EXPORT QgsFontButton : public QToolButton
     void changed();
 
   protected:
-
     bool event( QEvent *e ) override;
     void changeEvent( QEvent *e ) override;
     void showEvent( QShowEvent *e ) override;
     void resizeEvent( QResizeEvent *event ) override;
 
-    // Reimplemented to detect right mouse button clicks on the color button and allow dragging colors
+    // Reimplemented to allow dragging colors
     void mousePressEvent( QMouseEvent *e ) override;
+    void contextMenuEvent( QContextMenuEvent *e ) override;
     // Reimplemented to allow dragging fonts from button
     void mouseMoveEvent( QMouseEvent *e ) override;
 
@@ -306,6 +306,7 @@ class GUI_EXPORT QgsFontButton : public QToolButton
     void addRecentColor( const QColor &color );
 
   private:
+    QgsScreenHelper *mScreenHelper = nullptr;
 
     QSize mSizeHint;
 
@@ -322,7 +323,7 @@ class GUI_EXPORT QgsFontButton : public QToolButton
 
     QMenu *mMenu = nullptr;
 
-    QPointer< QgsVectorLayer > mLayer;
+    QPointer<QgsVectorLayer> mLayer;
 
     QSize mIconSize;
 
@@ -330,8 +331,8 @@ class GUI_EXPORT QgsFontButton : public QToolButton
 
     bool mShowNoFormat = false;
     QString mNullFormatString;
-    QPointer< QAction > mNullFormatAction;
-    QPointer< QgsTextFormatPanelWidget > mActivePanel;
+    QPointer<QAction> mNullFormatAction;
+    QPointer<QgsTextFormatPanelWidget> mActivePanel;
 
     /**
      * Attempts to parse \a mimeData as a text format.

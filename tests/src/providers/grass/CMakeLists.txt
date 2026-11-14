@@ -2,10 +2,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/providers/grass
 )
 include_directories(SYSTEM
-  ${GDAL_INCLUDE_DIR}
-  ${PROJ_INCLUDE_DIR}
   ${POSTGRES_INCLUDE_DIR}
-  ${GEOS_INCLUDE_DIR}
 )
 
 
@@ -22,14 +19,12 @@ macro (ADD_QGIS_GRASS_TEST grass_build_version testname testsrc)
     COMPILE_FLAGS "-DGRASS_BASE=\\\"${GRASS_PREFIX${grass_build_version}}\\\" \"-DGRASS_BUILD_VERSION=${grass_build_version}\""
   )
   target_link_libraries(qgis_${testname}${grass_build_version}
-    ${Qt5Xml_LIBRARIES}
-    ${Qt5Core_LIBRARIES}
-    ${Qt5Svg_LIBRARIES}
-    ${Qt5Test_LIBRARIES}
-    ${PROJ_LIBRARY}
-    ${GEOS_LIBRARY}
-    ${GDAL_LIBRARY}
+    ${QT_VERSION_BASE}::Xml
+    ${QT_VERSION_BASE}::Core
+    ${QT_VERSION_BASE}::Svg
+    ${QT_VERSION_BASE}::Test
     qgis_core
+    qgis_test
     qgisgrass${grass_build_version}
   )
   if(WIN32 AND NOT USING_NMAKE)
@@ -73,6 +68,9 @@ endif()
       )
     endif()
   endif()
+
+  set_tests_properties(qgis_${testname}${grass_build_version} PROPERTIES FIXTURES_REQUIRED SOURCETREE)
+
 endmacro (ADD_QGIS_GRASS_TEST)
 
 macro (ADD_QGIS_GRASS_TESTS version)
@@ -83,8 +81,8 @@ macro (ADD_QGIS_GRASS_TESTS version)
   endif()
 endmacro (ADD_QGIS_GRASS_TESTS)
 
-foreach(GRASS_BUILD_VERSION 6 7)
+foreach(GRASS_BUILD_VERSION 6 7 8)
   if(GRASS_FOUND${GRASS_BUILD_VERSION})
     add_subdirectory(${GRASS_BUILD_VERSION})
   endif()
-endforeach(GRASS_BUILD_VERSION 6 7)
+endforeach(GRASS_BUILD_VERSION 6 7 8)

@@ -1,5 +1,5 @@
 # Public Header Files
-SET(public_headers
+set(public_headers
     Config.h
     Connection.h
     DatabaseMetaData.h
@@ -22,7 +22,7 @@ SET(public_headers
 )
 
 # Sources
-SET(odbccpp_sources
+set(odbccpp_sources
     Connection.cpp
     DatabaseMetaData.cpp
     DatabaseMetaDataBase.cpp
@@ -45,15 +45,30 @@ SET(odbccpp_sources
     internal/UtilInternal.cpp
 )
 
-# Static library
-ADD_LIBRARY(odbccpp_static
+add_library(odbccpp
     STATIC
-        ${odbccpp_sources}
-)
-TARGET_COMPILE_DEFINITIONS(odbccpp_static
+        ${odbccpp_sources})
+
+target_include_directories(odbccpp
     PUBLIC
-        ODBC_STATIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-TARGET_INCLUDE_DIRECTORIES(odbccpp_static PUBLIC ${ODBC_INCLUDE_DIRS})
-SET_PROPERTY(TARGET odbccpp_static PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(odbccpp
+    PUBLIC
+        ODBC::ODBC
+)
+
+target_compile_definitions(odbccpp
+    PUBLIC
+        ODBC_STATIC
+        "NS_ODBC=qgs::odbc"
+        "NS_ODBC_START=namespace qgs { namespace odbc {"
+        "NS_ODBC_END=} }"
+)
+set_property(TARGET odbccpp PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+set_property(TARGET odbccpp PROPERTY public_headers ${public_headers})
+
+set_target_properties(odbccpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)

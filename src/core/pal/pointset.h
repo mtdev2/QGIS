@@ -30,18 +30,18 @@
 #ifndef POINTSET_H
 #define POINTSET_H
 
-#define SIP_NO_FILE
-
 
 #include <cfloat>
 #include <cmath>
-#include <QLinkedList>
 #include <geos_c.h>
 #include <memory>
 #include <vector>
 
 #include "qgis_core.h"
+#include "qgsgeos.h"
 #include "qgsrectangle.h"
+
+#define SIP_NO_FILE
 
 namespace pal
 {
@@ -52,19 +52,23 @@ namespace pal
 
   class PointSet;
 
-  struct CHullBox
+  /**
+   * Represents the minimum area, oriented bounding box surrounding a convex hull.
+   */
+  struct OrientedConvexHullBoundingBox
   {
-    double x[4];
-    double y[4];
+      double x[4] = { 0, 0, 0, 0 };
+      double y[4] = { 0, 0, 0, 0 };
 
-    double alpha;
+      double alpha = 0;
 
-    double width;
-    double length;
+      double width = 0;
+      double length = 0;
   };
 
   /**
    * \class pal::PointSet
+   * \brief The underlying raw pal geometry class.
    * \note not available in Python bindings
    * \ingroup core
    */
@@ -111,17 +115,16 @@ namespace pal
       bool containsLabelCandidate( double x, double y, double width, double height, double alpha = 0 ) const;
 
       /**
-       * Computes a con???? hull. Maybe convex, maybe concave. The person who wrote this
-       * had no care for anyone else ever reading their code.
+       * Computes an oriented bounding box for the shape's convex hull.
        */
-      CHullBox compute_chull_bbox();
+      OrientedConvexHullBoundingBox computeConvexHullOrientedBoundingBox( bool &ok ) const;
 
       /**
-       * Split a concave shape into several convex shapes.
+       * Split a polygon using some random logic into some other polygons.
+       *
+       * \warning this code is completely unreadable and cannot be understood by mortals
        */
-      static void splitPolygons( QLinkedList<PointSet *> &inputShapes,
-                                 QLinkedList<PointSet *> &outputShapes,
-                                 double xrm, double yrm );
+      static QVector<PointSet *> splitPolygons( PointSet *inputShape, double labelWidth, double labelHeight );
 
       /**
        * Extends linestrings by the specified amount at the start and end of the line,
@@ -134,12 +137,17 @@ namespace pal
       void extendLineByDistance( double startDistance, double endDistance, double smoothDistance );
 
       /**
+       * Offsets linestrings by the specified \a distance.
+       */
+      void offsetCurveByDistance( double distance );
+
+      /**
        * Returns the squared minimum distance between the point set geometry and the point (px,py)
        * Optionally, the nearest point is stored in (rx,ry).
        * \param px x coordinate of the point
        * \param py y coordinate of the points
-       * \param rx pointer to x coorinates of the nearest point (can be NULL)
-       * \param ry pointer to y coorinates of the nearest point (can be NULL)
+       * \param rx pointer to x coordinates of the nearest point (can be NULL)
+       * \param ry pointer to y coordinates of the nearest point (can be NULL)
        * \returns minimum distance
        */
       double minDistanceToPoint( double px, double py, double *rx = nullptr, double *ry = nullptr ) const;
@@ -151,10 +159,7 @@ namespace pal
       /**
        * Returns the point set bounding box.
        */
-      QgsRectangle boundingBox() const
-      {
-        return QgsRectangle( xmin, ymin, xmax, ymax );
-      }
+      QgsRectangle boundingBox() const { return QgsRectangle( xmin, ymin, xmax, ymax ); }
 
       /**
        * Returns TRUE if the bounding box of this pointset intersects the bounding box
@@ -175,7 +180,17 @@ namespace pal
        * \param px final x coord on line
        * \param py final y coord on line
       */
-      void getPointByDistance( double *d, double *ad, double dl, double *px, double *py );
+      void getPointByDistance( double *d, double *ad, double dl, double *px, double *py ) const;
+
+      /**
+       * Returns a GEOS geometry representing the point interpolated on the shape by distance.
+       */
+      geos::unique_ptr interpolatePoint( double distance ) const;
+
+      /**
+       * Returns the distance along the geometry closest to the specified GEOS \a point.
+       */
+      double lineLocatePoint( const GEOSGeometry *point ) const;
 
       /**
        * Returns the point set's GEOS geometry.
@@ -197,16 +212,25 @@ namespace pal
        */
       bool isClosed() const;
 
+      /**
+       * Returns a WKT representation of the point set.
+       */
+      QString toWkt() const;
+
+      /**
+       * Returns a vector of edge distances as well as its total length
+       */
+      std::tuple< std::vector< double >, double > edgeDistances() const;
+
       int nbPoints;
       std::vector< double > x;
-      std::vector< double > y;   // points order is counterclockwise
+      std::vector< double > y; // points order is counterclockwise
 
     protected:
       mutable GEOSGeometry *mGeos = nullptr;
       mutable bool mOwnsGeom = false;
 
-      int *cHull = nullptr;
-      int cHullSize = 0;
+      std::vector< int > convexHull;
 
       int type;
 
@@ -224,7 +248,8 @@ namespace pal
       void deleteCoords();
       void createGeosGeom() const;
       const GEOSPreparedGeometry *preparedGeom() const;
-      void invalidateGeos();
+
+      void invalidateGeos() const;
 
       double xmin = std::numeric_limits<double>::max();
       double xmax = std::numeric_limits<double>::lowest();
@@ -232,15 +257,15 @@ namespace pal
       double ymax = std::numeric_limits<double>::lowest();
 
     private:
-
       mutable const GEOSPreparedGeometry *mGeosPreparedBoundary = nullptr;
       mutable const GEOSPreparedGeometry *mPreparedGeom = nullptr;
 
-      PointSet &operator= ( const PointSet & ) = delete;
+      mutable GEOSGeometry *mMultipartGeos = nullptr;
+      mutable const GEOSPreparedGeometry *mMultipartPreparedGeos = nullptr;
 
+      PointSet &operator=( const PointSet & ) = delete;
   };
 
 } // namespace pal
 
 #endif
-

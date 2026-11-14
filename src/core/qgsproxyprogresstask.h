@@ -18,13 +18,15 @@
 #ifndef QGSPROXYPROGRESSTASK_H
 #define QGSPROXYPROGRESSTASK_H
 
-#include "qgsvirtuallayerdefinition.h"
 #include "qgstaskmanager.h"
+#include "qgsvirtuallayerdefinition.h"
+
+#include <QWaitCondition>
 
 /**
  * \ingroup core
  *
- * A QgsTask shell which proxies progress reports.
+ * \brief A QgsTask shell which proxies progress reports.
  *
  * Simple task shell which runs until finalized and reports progress only.
  * This is usually used to expose a blocking operation's progress via
@@ -37,11 +39,13 @@ class CORE_EXPORT QgsProxyProgressTask : public QgsTask
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsProxyProgressTask, with the specified \a description.
      */
-    QgsProxyProgressTask( const QString &description );
+    QgsProxyProgressTask( const QString &description, bool canCancel = false );
+
+    QgsProxyProgressTask( const QgsProxyProgressTask &other ) = delete;
+    QgsProxyProgressTask &operator=( const QgsProxyProgressTask &other ) = delete;
 
     /**
      * Finalizes the task, with the specified \a result.
@@ -60,19 +64,30 @@ class CORE_EXPORT QgsProxyProgressTask : public QgsTask
      */
     void setProxyProgress( double progress );
 
-  private:
+    void cancel() override;
 
+  signals:
+
+    /**
+     * Emitted when the task is canceled.
+     *
+     * \since QGIS 3.26
+     */
+    void canceled();
+
+  private:
     QWaitCondition mNotFinishedWaitCondition;
     QMutex mNotFinishedMutex;
     bool mAlreadyFinished = false;
     bool mResult = true;
-
 };
 
 /**
  * \ingroup core
  *
- * Scoped QgsScopedProxyProgressTask, which automatically adds the proxy task
+ * \brief A QgsProxyProgressTask with automatic lifetime.
+ *
+ * QgsScopedProxyProgressTask implements a QgsProxyProgressTask which automatically adds the proxy task
  * to the application task manager on construction and finalizes the task
  * when it goes out of scope.
  *
@@ -81,11 +96,13 @@ class CORE_EXPORT QgsProxyProgressTask : public QgsTask
 class CORE_EXPORT QgsScopedProxyProgressTask
 {
   public:
-
     /**
      * Constructor for QgsScopedProxyProgressTask, with the specified \a description.
      */
     QgsScopedProxyProgressTask( const QString &description );
+
+    QgsScopedProxyProgressTask( const QgsScopedProxyProgressTask &other ) = delete;
+    QgsScopedProxyProgressTask &operator=( const QgsScopedProxyProgressTask &other ) = delete;
 
     ~QgsScopedProxyProgressTask();
 
@@ -95,8 +112,11 @@ class CORE_EXPORT QgsScopedProxyProgressTask
     void setProgress( double progress );
 
   private:
-
     QgsProxyProgressTask *mTask = nullptr;
+
+#ifdef SIP_RUN
+    QgsScopedProxyProgressTask( const QgsScopedProxyProgressTask &other );
+#endif
 
     // SIP generates .cpp code that doesn't compile if commenting out the legit following line.
     // Q_DISABLE_COPY( QgsScopedProxyProgressTask )

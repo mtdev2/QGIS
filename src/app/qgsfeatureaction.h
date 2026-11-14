@@ -17,42 +17,61 @@
 #ifndef QGSFEATUREACTION_H
 #define QGSFEATUREACTION_H
 
+#include "qgis_app.h"
 #include "qgsfeature.h"
+#include "qgshighlight.h"
 
+#include <QAction>
 #include <QList>
 #include <QPair>
-#include <QAction>
+#include <QPointer>
 #include <QUuid>
-#include "qgis_app.h"
 
 class QgsIdentifyResultsDialog;
 class QgsVectorLayer;
-class QgsHighlight;
 class QgsAttributeDialog;
 class QgsExpressionContextScope;
+class QgsVectorLayerToolsContext;
 
 class APP_EXPORT QgsFeatureAction : public QAction
 {
     Q_OBJECT
 
   public:
-    QgsFeatureAction( const QString &name, QgsFeature &f, QgsVectorLayer *vl, QUuid actionId = QString(), int defaultAttr = -1, QObject *parent = nullptr );
+    QgsFeatureAction( const QString &name, QgsFeature &f, QgsVectorLayer *vl, QUuid actionId = QUuid(), int defaultAttr = -1, QObject *parent = nullptr );
 
-  public slots:
-    void execute();
-    bool viewFeatureForm( QgsHighlight *h = nullptr );
-    bool editFeature( bool showModal = true );
+    enum class AddFeatureResult
+    {
+      Success = 0,
+      LayerStateError = 1,
+      Canceled = 2,
+      Pending = 3,
+      FeatureError = 4
+    };
 
     /**
      * Add a new feature to the layer.
      * Will set the default values to recently used or provider defaults based on settings
      * and override with values in defaultAttributes if provided.
      *
+     * \param context            Context
      * \param defaultAttributes  Provide some default attributes here if desired.
+     * \param scope              Scope of the expression
+     * \param highlight          Optional canvas highlight for feature
      *
-     * \returns TRUE if feature was added if showModal is true. If showModal is FALSE, returns TRUE in every case
+     * \returns result if feature was added if showModal is true. If showModal is FALSE, returns Pending in every case
      */
-    bool addFeature( const QgsAttributeMap &defaultAttributes = QgsAttributeMap(), bool showModal = true, QgsExpressionContextScope *scope = nullptr );
+    AddFeatureResult addFeature(
+      const QgsVectorLayerToolsContext &context,
+      const QgsAttributeMap &defaultAttributes = QgsAttributeMap(),
+      std::unique_ptr<QgsExpressionContextScope> scope = std::unique_ptr<QgsExpressionContextScope>(),
+      std::unique_ptr<QgsHighlight> highlight = std::unique_ptr<QgsHighlight>()
+    );
+
+  public slots:
+    void execute();
+    bool viewFeatureForm( QgsHighlight *h = nullptr );
+    bool editFeature( bool showModal = true );
 
     /**
      * Sets whether to force suppression of the attribute form popup after creating a new feature.
@@ -79,6 +98,8 @@ class APP_EXPORT QgsFeatureAction : public QAction
 
   private slots:
     void onFeatureSaved( const QgsFeature &feature );
+    void unhideParentWidget();
+    void hideParentDialog( QWidget *targetWidget );
 
   private:
     QgsAttributeDialog *newDialog( bool cloneFeature );
@@ -88,11 +109,10 @@ class APP_EXPORT QgsFeatureAction : public QAction
     QUuid mActionId;
     int mIdx;
 
-    bool mFeatureSaved;
+    bool mFeatureSaved = false;
 
     bool mForceSuppressFormPopup = false;
-
-    static QHash<QgsVectorLayer *, QgsAttributeMap> sLastUsedValues;
+    QPointer< QWidget > mHiddenWindow;
 };
 
 #endif

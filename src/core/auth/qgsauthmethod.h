@@ -17,28 +17,30 @@
 #ifndef QGSAUTHMETHOD_H
 #define QGSAUTHMETHOD_H
 
-#include <QObject>
+#include "qgsconfig.h"
+
+#include "qgis_core.h"
+#include "qgis_sip.h"
+
 #include <QFlags>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QObject>
+#include <QRecursiveMutex>
 #include <QStringList>
 #include <QUrl>
-#include <QMutex>
-
-#include "qgis_core.h"
 
 class QgsAuthMethodConfig;
 
 /**
  * \ingroup core
- * Abstract base class for authentication method plugins
+ * \brief Abstract base class for authentication method plugins.
  */
 class CORE_EXPORT QgsAuthMethod : public QObject
 {
     Q_OBJECT
 
   public:
-
     /**
      * Flags that represent the update points (where authentication configurations are expanded)
      * supported by an authentication method. These equate to the 'update*()' virtual functions
@@ -47,14 +49,14 @@ class CORE_EXPORT QgsAuthMethod : public QObject
      * \note When adding an 'update' member function, also add the corresponding Expansion flag.
      * \note These flags will be added to as new update points are added
      */
-    enum Expansion
+    enum Expansion SIP_ENUM_BASETYPE( IntFlag )
     {
       // TODO: Figure out all different authentication expansions current layer providers use
-      NetworkRequest       = 0x1,
-      NetworkReply         = 0x2,
-      DataSourceUri        = 0x4,
+      NetworkRequest = 0x1,
+      NetworkReply = 0x2,
+      DataSourceUri = 0x4,
       GenericDataSourceUri = 0x8,
-      NetworkProxy                = 0x16,
+      NetworkProxy = 0x16,
       All = NetworkRequest | NetworkReply | DataSourceUri | GenericDataSourceUri | NetworkProxy
     };
     Q_DECLARE_FLAGS( Expansions, Expansion )
@@ -71,12 +73,27 @@ class CORE_EXPORT QgsAuthMethod : public QObject
     //! Increment this if method is significantly updated, allow updater code to be written for previously stored authcfg
     int version() const { return mVersion; }
 
+
+#ifdef HAVE_GUI
+    SIP_IF_FEATURE( HAVE_GUI )
+
+    /**
+     * Constructs the configuration for the authentication method
+     * \since QGIS 3.22
+     */
+    virtual QWidget *editWidget( QWidget *parent ) const;
+    SIP_END
+#endif
+
     /**
      * Flags that represent the update points (where authentication configurations are expanded)
      * supported by an authentication method.
      * \note These should directly correlate to existing 'update*()' member functions
      */
-    QgsAuthMethod::Expansions supportedExpansions() const { return mExpansions; }
+    QgsAuthMethod::Expansions supportedExpansions() const
+    {
+      return mExpansions;
+    }
 
     /**
      * The data providers that the method supports, allowing for filtering out authcfgs that are not
@@ -92,8 +109,7 @@ class CORE_EXPORT QgsAuthMethod : public QObject
      * for custom updater code specific to the provider
      * \returns Whether the update succeeded
      */
-    virtual bool updateNetworkRequest( QNetworkRequest &request, const QString &authcfg,
-                                       const QString &dataprovider = QString() )
+    virtual bool updateNetworkRequest( QNetworkRequest &request, const QString &authcfg, const QString &dataprovider = QString() )
     {
       Q_UNUSED( request )
       Q_UNUSED( authcfg )
@@ -109,8 +125,7 @@ class CORE_EXPORT QgsAuthMethod : public QObject
      * for custom updater code specific to the provider
      * \returns Whether the update succeeded
      */
-    virtual bool updateNetworkReply( QNetworkReply *reply, const QString &authcfg,
-                                     const QString &dataprovider = QString() )
+    virtual bool updateNetworkReply( QNetworkReply *reply, const QString &authcfg, const QString &dataprovider = QString() )
     {
       Q_UNUSED( reply )
       Q_UNUSED( authcfg )
@@ -126,8 +141,7 @@ class CORE_EXPORT QgsAuthMethod : public QObject
      * for custom updater code specific to the provider
      * \returns Whether the update succeeded
      */
-    virtual bool updateDataSourceUriItems( QStringList &connectionItems, const QString &authcfg,
-                                           const QString &dataprovider = QString() )
+    virtual bool updateDataSourceUriItems( QStringList &connectionItems, const QString &authcfg, const QString &dataprovider = QString() )
     {
       Q_UNUSED( connectionItems )
       Q_UNUSED( authcfg )
@@ -143,8 +157,7 @@ class CORE_EXPORT QgsAuthMethod : public QObject
      * for custom updater code specific to the provider
      * \returns Whether the update succeeded
      */
-    virtual bool updateNetworkProxy( QNetworkProxy &proxy, const QString &authcfg,
-                                     const QString &dataprovider = QString() )
+    virtual bool updateNetworkProxy( QNetworkProxy &proxy, const QString &authcfg, const QString &dataprovider = QString() )
     {
       Q_UNUSED( proxy )
       Q_UNUSED( authcfg )
@@ -167,15 +180,11 @@ class CORE_EXPORT QgsAuthMethod : public QObject
     virtual void updateMethodConfig( QgsAuthMethodConfig &mconfig ) = 0;
 
   protected:
-
     /**
      * Construct a default authentication method
      * \note Non-public since this is an abstract base class
      */
-    explicit QgsAuthMethod()
-      : mMutex( QMutex::RecursionMode::Recursive )
-    {}
-
+    explicit QgsAuthMethod();
 
     //! Tag signifying that this is an authentcation method (e.g. for use as title in message log panel output)
     static QString authMethodTag() { return QObject::tr( "Authentication method" ); }
@@ -191,8 +200,7 @@ class CORE_EXPORT QgsAuthMethod : public QObject
     QgsAuthMethod::Expansions mExpansions = QgsAuthMethod::Expansions();
     QStringList mDataProviders;
     int mVersion = 0;
-    QMutex mMutex;
-
+    QRecursiveMutex mMutex;
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsAuthMethod::Expansions )
 

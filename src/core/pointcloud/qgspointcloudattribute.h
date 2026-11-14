@@ -21,18 +21,21 @@
 #include "qgis.h"
 #include "qgis_core.h"
 #include "qgsfields.h"
+#include "qgsvector3d.h"
+
+#include <QSet>
 #include <QString>
 #include <QVector>
 
-#include "qgsvector3d.h"
+using namespace Qt::StringLiterals;
 
 class QgsPointCloudAttributeCollection;
 
 /**
  * \ingroup core
  *
- * Attribute for point cloud data
- * pair of name and size in bytes
+ * \brief Attribute for point cloud data
+ * pair of name and size in bytes.
  *
  * \since QGIS 3.18
  */
@@ -42,15 +45,18 @@ class CORE_EXPORT QgsPointCloudAttribute
     //! Systems of unit measurement
     enum DataType
     {
-      Char, //!< Char 1 byte
-      Short, //!< Short int 2 bytes
+      Char,   //!< Char 1 byte
+      UChar,  //!< Unsigned char 1 byte
+      Short,  //!< Short int 2 bytes
       UShort, //!< Unsigned short int 2 bytes
-      Int32, //!< Int32 4 bytes
-      Float, //!< Float 4 bytes
+      Int32,  //!< Int32 4 bytes
+      UInt32, //!< Unsigned int32 4 bytes
+      Int64,  //!< Int64 8 bytes
+      UInt64, //!< Unsigned int64 8 bytes
+      Float,  //!< Float 4 bytes
       Double, //!< Double 8 bytes
     };
 
-    //! Ctor
     QgsPointCloudAttribute();
     //! Ctor
     QgsPointCloudAttribute( const QString &name, DataType type );
@@ -73,7 +79,7 @@ class CORE_EXPORT QgsPointCloudAttribute
      *
      * \see type()
      */
-    QVariant::Type variantType() const;
+    QMetaType::Type variantType() const;
 
     /**
      * Returns the type to use when displaying this field.
@@ -85,25 +91,47 @@ class CORE_EXPORT QgsPointCloudAttribute
     QString displayType() const;
 
     /**
+     * Returns the attribute's value as a double for data pointed to by \a ptr
+     *
+     * \note Not available in Python binding
+     * \since QGIS 3.26
+     */
+    double convertValueToDouble( const char *ptr ) const SIP_SKIP;
+
+    /**
      * Returns TRUE if the specified data \a type is numeric.
      */
     static bool isNumeric( DataType type );
 
 #ifdef SIP_RUN
+    // clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsPointCloudAttribute: %1 (%2)>" ).arg( sipCpp->name() ).arg( sipCpp->displayType() );
+    QString str = u"<QgsPointCloudAttribute: %1 (%2)>"_s.arg( sipCpp->name() ).arg( sipCpp->displayType() );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
-    /**
+      /**
     * Retrieves the x, y, z values for the point at index \a i.
     */
-    static void getPointXYZ( const char *ptr, int i, std::size_t pointRecordSize, int xOffset, QgsPointCloudAttribute::DataType xType,
-                             int yOffset, QgsPointCloudAttribute::DataType yType,
-                             int zOffset, QgsPointCloudAttribute::DataType zType,
-                             const QgsVector3D &indexScale, const QgsVector3D &indexOffset, double &x, double &y, double &z ) SIP_SKIP;
+      static void getPointXYZ(
+        const char *ptr,
+        int i,
+        std::size_t pointRecordSize,
+        int xOffset,
+        QgsPointCloudAttribute::DataType xType,
+        int yOffset,
+        QgsPointCloudAttribute::DataType yType,
+        int zOffset,
+        QgsPointCloudAttribute::DataType zType,
+        const QgsVector3D &indexScale,
+        const QgsVector3D &indexOffset,
+        double &x,
+        double &y,
+        double &z
+      ) SIP_SKIP;
 
     /**
     * Retrieves all the attributes of a point
@@ -115,25 +143,32 @@ class CORE_EXPORT QgsPointCloudAttribute
 
     QString mName;
     int mSize = 0;
-    DataType mType;
+    DataType mType = DataType::Char;
 };
 
 /**
  * \ingroup core
  *
- * Collection of point cloud attributes
+ * \brief A collection of point cloud attributes.
  *
  * \since QGIS 3.18
  */
 class CORE_EXPORT QgsPointCloudAttributeCollection
 {
   public:
-    //! Ctor
     QgsPointCloudAttributeCollection();
     //! Ctor with given attributes
     QgsPointCloudAttributeCollection( const QVector<QgsPointCloudAttribute> &attributes );
     //! Adds extra attribute
     void push_back( const QgsPointCloudAttribute &attribute );
+
+    /**
+     *  Adds specific missing attributes from another QgsPointCloudAttributeCollection
+     * \param otherCollection a QgsPointCloudAttributeCollection with more attributes
+     * \param matchingNames the names of the attributes to be added
+     * \since QGIS 3.26
+     */
+    void extend( const QgsPointCloudAttributeCollection &otherCollection, const QSet<QString> &matchingNames );
 
     //! Returns all attributes
     QVector<QgsPointCloudAttribute> attributes() const;
@@ -176,12 +211,12 @@ class CORE_EXPORT QgsPointCloudAttributeCollection
 
     struct CachedAttributeData
     {
-      int index;
-      int offset;
-      CachedAttributeData( int index, int offset )
-        : index( index )
-        , offset( offset )
-      {}
+        int index;
+        int offset;
+        CachedAttributeData( int index, int offset )
+          : index( index )
+          , offset( offset )
+        {}
     };
 
     QMap< QString, CachedAttributeData > mCachedAttributes;

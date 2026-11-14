@@ -15,16 +15,21 @@
  ***************************************************************************/
 
 #include "qgslayoutpolylinewidget.h"
-#include "qgssymbolselectordialog.h"
-#include "qgsstyle.h"
-#include "qgssymbollayerutils.h"
-#include "qgslayoutitemregistry.h"
+
 #include "qgslayout.h"
+#include "qgslayoutitemregistry.h"
+#include "qgslayoutreportcontext.h"
 #include "qgslayoutundostack.h"
+#include "qgslinesymbol.h"
 #include "qgsvectorlayer.h"
 
 #include <QButtonGroup>
 #include <QFileDialog>
+#include <QString>
+
+#include "moc_qgslayoutpolylinewidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayoutPolylineWidget::QgsLayoutPolylineWidget( QgsLayoutItemPolyline *polyline )
   : QgsLayoutItemBaseWidget( nullptr, polyline )
@@ -33,8 +38,8 @@ QgsLayoutPolylineWidget::QgsLayoutPolylineWidget( QgsLayoutItemPolyline *polylin
   setupUi( this );
   setPanelTitle( tr( "Polyline Properties" ) );
 
-  connect( mStrokeWidthSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPolylineWidget::arrowStrokeWidthChanged );
-  connect( mArrowHeadWidthSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPolylineWidget::arrowHeadWidthChanged );
+  connect( mStrokeWidthSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPolylineWidget::arrowStrokeWidthChanged );
+  connect( mArrowHeadWidthSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPolylineWidget::arrowHeadWidthChanged );
   connect( mArrowHeadFillColorButton, &QgsColorButton::colorChanged, this, &QgsLayoutPolylineWidget::arrowHeadFillColorChanged );
   connect( mArrowHeadStrokeColorButton, &QgsColorButton::colorChanged, this, &QgsLayoutPolylineWidget::arrowHeadStrokeColorChanged );
   connect( mRadioStartArrow, &QRadioButton::toggled, this, &QgsLayoutPolylineWidget::startArrowHeadToggled );
@@ -65,13 +70,15 @@ QgsLayoutPolylineWidget::QgsLayoutPolylineWidget( QgsLayoutItemPolyline *polylin
 
   mArrowHeadStrokeColorButton->setColorDialogTitle( tr( "Select Arrow Head Stroke Color" ) );
   mArrowHeadStrokeColorButton->setAllowOpacity( true );
-  mArrowHeadStrokeColorButton->setContext( QStringLiteral( "composer" ) );
+  mArrowHeadStrokeColorButton->setContext( u"composer"_s );
   mArrowHeadStrokeColorButton->setNoColorString( tr( "Transparent Stroke" ) );
+  mArrowHeadStrokeColorButton->setOpaqueColorString( tr( "Opaque Stroke" ) );
   mArrowHeadStrokeColorButton->setShowNoColor( true );
   mArrowHeadFillColorButton->setColorDialogTitle( tr( "Select Arrow Head Fill Color" ) );
   mArrowHeadFillColorButton->setAllowOpacity( true );
-  mArrowHeadFillColorButton->setContext( QStringLiteral( "composer" ) );
+  mArrowHeadFillColorButton->setContext( u"composer"_s );
   mArrowHeadFillColorButton->setNoColorString( tr( "Transparent Fill" ) );
+  mArrowHeadFillColorButton->setOpaqueColorString( tr( "Opaque Fill" ) );
   mArrowHeadFillColorButton->setShowNoColor( true );
 
   //add widget for general composer item properties
@@ -81,7 +88,7 @@ QgsLayoutPolylineWidget::QgsLayoutPolylineWidget( QgsLayoutItemPolyline *polylin
   mItemPropertiesWidget->showFrameGroup( false );
   mainLayout->addWidget( mItemPropertiesWidget );
 
-  mLineStyleButton->setSymbolType( QgsSymbol::Line );
+  mLineStyleButton->setSymbolType( Qgis::SymbolType::Line );
   connect( mLineStyleButton, &QgsSymbolButton::changed, this, &QgsLayoutPolylineWidget::symbolChanged );
 
   if ( mPolyline )
@@ -115,7 +122,7 @@ bool QgsLayoutPolylineWidget::setNewItem( QgsLayoutItem *item )
     disconnect( mPolyline, &QgsLayoutObject::changed, this, &QgsLayoutPolylineWidget::setGuiElementValues );
   }
 
-  mPolyline = qobject_cast< QgsLayoutItemPolyline * >( item );
+  mPolyline = qobject_cast<QgsLayoutItemPolyline *>( item );
   mItemPropertiesWidget->setItem( mPolyline );
 
   if ( mPolyline )
@@ -318,7 +325,7 @@ void QgsLayoutPolylineWidget::mStartMarkerLineEdit_textChanged( const QString &t
     return;
 
   mPolyline->beginCommand( tr( "Change Start Marker File" ) );
-  QFileInfo fi( text );
+  const QFileInfo fi( text );
   if ( fi.exists() && fi.isFile() )
   {
     mPolyline->setStartSvgMarkerPath( text );
@@ -336,7 +343,7 @@ void QgsLayoutPolylineWidget::mEndMarkerLineEdit_textChanged( const QString &tex
     return;
 
   mPolyline->beginCommand( tr( "Change End Marker File" ) );
-  QFileInfo fi( text );
+  const QFileInfo fi( text );
   if ( fi.exists() && fi.isFile() )
   {
     mPolyline->setEndSvgMarkerPath( text );
@@ -355,20 +362,20 @@ void QgsLayoutPolylineWidget::mStartMarkerToolButton_clicked()
 
   if ( !mStartMarkerLineEdit->text().isEmpty() )
   {
-    QFileInfo fi( mStartMarkerLineEdit->text() );
+    const QFileInfo fi( mStartMarkerLineEdit->text() );
     openDir = fi.dir().absolutePath();
   }
 
   if ( openDir.isEmpty() )
   {
-    openDir = s.value( QStringLiteral( "/UI/lastComposerMarkerDir" ), QDir::homePath() ).toString();
+    openDir = s.value( u"/UI/lastComposerMarkerDir"_s, QDir::homePath() ).toString();
   }
 
-  QString svgFileName = QFileDialog::getOpenFileName( this, tr( "Start marker svg file" ), openDir );
+  const QString svgFileName = QFileDialog::getOpenFileName( this, tr( "Start marker svg file" ), openDir );
   if ( !svgFileName.isNull() )
   {
-    QFileInfo fileInfo( svgFileName );
-    s.setValue( QStringLiteral( "/UI/lastComposerMarkerDir" ), fileInfo.absolutePath() );
+    const QFileInfo fileInfo( svgFileName );
+    s.setValue( u"/UI/lastComposerMarkerDir"_s, fileInfo.absolutePath() );
     mPolyline->beginCommand( tr( "Change Start Marker File" ) );
     mStartMarkerLineEdit->setText( svgFileName );
     mPolyline->endCommand();
@@ -382,20 +389,20 @@ void QgsLayoutPolylineWidget::mEndMarkerToolButton_clicked()
 
   if ( !mEndMarkerLineEdit->text().isEmpty() )
   {
-    QFileInfo fi( mEndMarkerLineEdit->text() );
+    const QFileInfo fi( mEndMarkerLineEdit->text() );
     openDir = fi.dir().absolutePath();
   }
 
   if ( openDir.isEmpty() )
   {
-    openDir = s.value( QStringLiteral( "/UI/lastComposerMarkerDir" ), QDir::homePath() ).toString();
+    openDir = s.value( u"/UI/lastComposerMarkerDir"_s, QDir::homePath() ).toString();
   }
 
-  QString svgFileName = QFileDialog::getOpenFileName( this, tr( "End marker svg file" ), openDir );
+  const QString svgFileName = QFileDialog::getOpenFileName( this, tr( "End marker svg file" ), openDir );
   if ( !svgFileName.isNull() )
   {
-    QFileInfo fileInfo( svgFileName );
-    s.setValue( QStringLiteral( "/UI/lastComposerMarkerDir" ), fileInfo.absolutePath() );
+    const QFileInfo fileInfo( svgFileName );
+    s.setValue( u"/UI/lastComposerMarkerDir"_s, fileInfo.absolutePath() );
     mPolyline->beginCommand( tr( "Change End Marker File" ) );
     mEndMarkerLineEdit->setText( svgFileName );
     mPolyline->endCommand();

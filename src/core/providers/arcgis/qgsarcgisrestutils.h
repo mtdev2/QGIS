@@ -15,20 +15,21 @@
 #ifndef QGSARCGISRESTUTILS_H
 #define QGSARCGISRESTUTILS_H
 
-#include "qgswkbtypes.h"
-#include "qgsrectangle.h"
-#include "qgsmarkersymbollayer.h"
-
-#include "qgis_sip.h"
-
-#include <QStringList>
-#include <QVariant>
 #include <functional>
 #include <memory>
 
+#include "qgis_sip.h"
+#include "qgscoordinatereferencesystem.h"
+#include "qgswkbtypes.h"
+
+#include <QStringList>
+#include <QTimeZone>
+#include <QVariant>
+
 class QNetworkReply;
 class QgsNetworkAccessManager;
-class QgsFields;
+class QgsField;
+class QgsGeometry;
 class QgsAbstractGeometry;
 class QgsAbstractVectorLayerLabeling;
 class QgsCoordinateReferenceSystem;
@@ -44,12 +45,64 @@ class QgsCircularString;
 class QgsCompoundCurve;
 class QgsMultiPoint;
 class QgsMultiSurface;
+class QgsMultiLineString;
 class QgsPolygon;
 class QgsMultiCurve;
+class QgsMultiPolygon;
+class QgsCurvePolygon;
+class QgsFeature;
+class QgsLineString;
+class QgsCurve;
+class QgsSymbolConverterContext;
 
 /**
  * \ingroup core
- * Utility functions for working with ArcGIS REST services.
+ * \brief Contains the context of a ArcGIS REST service operation.
+ *
+ * \see QgsArcGisRestUtils
+ *
+ * \since QGIS 3.28
+ */
+class CORE_EXPORT QgsArcGisRestContext
+{
+  public:
+    /**
+     * Sets the time \a zone for datetime values.
+     *
+     * \see timeZone()
+     */
+    void setTimeZone( const QTimeZone &zone ) { mTimeZone = zone; }
+
+    /**
+     * Returns the time zone for datetime values.
+     *
+     * \see setTimeZone()
+     */
+    QTimeZone timeZone() const { return mTimeZone; }
+
+    /**
+     * Sets the name of the objectId field.
+     *
+     * \see objectIdFieldName()
+     */
+    void setObjectIdFieldName( const QString &name ) { mObjectIdFieldName = name; }
+
+    /**
+     * Returns the name of the objectId field.
+     *
+     * \see setObjectIdFieldName()
+     */
+    QString objectIdFieldName() const { return mObjectIdFieldName; }
+
+  private:
+    QTimeZone mTimeZone;
+
+    QString mObjectIdFieldName;
+};
+
+/**
+ * \ingroup core
+ * \brief Utility functions for working with ArcGIS REST services.
  *
  * \see QgsArcGisPortalUtils
  *
@@ -57,17 +110,18 @@ class QgsMultiCurve;
  */
 class CORE_EXPORT QgsArcGisRestUtils
 {
-  public:
+    Q_GADGET
 
+  public:
     /**
      * Converts an ESRI REST field \a type to a QVariant type.
      */
-    static QVariant::Type convertFieldType( const QString &type );
+    static QMetaType::Type convertFieldType( const QString &type );
 
     /**
      * Converts an ESRI REST geometry \a type to a WKB type.
      */
-    static QgsWkbTypes::Type convertGeometryType( const QString &type );
+    static Qgis::WkbType convertGeometryType( const QString &type );
 
     /**
      * Converts an ESRI REST \a geometry JSON definition to a QgsAbstractGeometry.
@@ -78,11 +132,14 @@ class CORE_EXPORT QgsArcGisRestUtils
      * \param esriGeometryType ESRI geometry type string
      * \param hasM set to TRUE to if geometry includes M values
      * \param hasZ set to TRUE to if geometry includes Z values
+     * \param allowCurves controls whether the returned geometry can be a curved geometry type (since QGIS 4.0)
      * \param crs if specified will be set to the parsed geometry CRS
      *
      * \returns converted geometry
      */
-    static QgsAbstractGeometry *convertGeometry( const QVariantMap &geometry, const QString &esriGeometryType, bool hasM, bool hasZ, QgsCoordinateReferenceSystem *crs SIP_OUT = nullptr ) SIP_FACTORY;
+    static std::unique_ptr< QgsAbstractGeometry > convertGeometry(
+      const QVariantMap &geometry, const QString &esriGeometryType, bool hasM, bool hasZ, bool allowCurves = true, QgsCoordinateReferenceSystem *crs SIP_OUT = nullptr
+    );
 
     /**
      * Converts a spatial reference JSON definition to a QgsCoordinateReferenceSystem value.
@@ -92,23 +149,47 @@ class CORE_EXPORT QgsArcGisRestUtils
     /**
      * Converts a symbol JSON \a definition to a QgsSymbol.
      *
-     * Caller takes ownership of the returned symbol.
+     * \param definition symbol JSON definition
+     * \param context conversion context, used to collect warnings and errors encountered during conversion.
+     * \returns the converted symbol, or nullptr on failure. Caller takes ownership of the returned symbol.
+     * \note The \a context parameter was added in QGIS 4.2
      */
-    static QgsSymbol *convertSymbol( const QVariantMap &definition ) SIP_FACTORY;
+    static std::unique_ptr< QgsSymbol > convertSymbol( const QVariantMap &definition, QgsSymbolConverterContext &context );
+
+    /**
+     * Converts a symbol JSON \a definition to a QgsSymbol.
+     *
+     * \param definition symbol JSON definition
+     * \returns the converted symbol, or nullptr on failure. Caller takes ownership of the returned symbol.
+     * \deprecated QGIS 4.2. Use the overload with a QgsSymbolConverterContext argument instead.
+     */
+    Q_DECL_DEPRECATED static std::unique_ptr< QgsSymbol > convertSymbol( const QVariantMap &definition ) SIP_DEPRECATED;
 
     /**
      * Converts renderer JSON \a data to an equivalent QgsFeatureRenderer.
      *
-     * Caller takes ownership of the returned renderer.
+     * \param rendererData renderer JSON data
+     * \param context conversion context, used to collect warnings and errors encountered during conversion.
+     * \returns the converted renderer, or nullptr on failure. Caller takes ownership of the returned renderer.
+     * \note The \a context parameter was added in QGIS 4.2
      */
-    static QgsFeatureRenderer *convertRenderer( const QVariantMap &rendererData ) SIP_FACTORY;
+    static std::unique_ptr< QgsFeatureRenderer > convertRenderer( const QVariantMap &rendererData, QgsSymbolConverterContext &context );
+
+    /**
+     * Converts renderer JSON \a data to an equivalent QgsFeatureRenderer.
+     *
+     * \param rendererData renderer JSON data
+     * \returns the converted renderer, or nullptr on failure. Caller takes ownership of the returned renderer.
+     * \deprecated QGIS 4.2. Use the overload with a QgsSymbolConverterContext argument instead.
+     */
+    Q_DECL_DEPRECATED static std::unique_ptr< QgsFeatureRenderer > convertRenderer( const QVariantMap &rendererData ) SIP_DEPRECATED;
 
     /**
      * Converts labeling JSON \a data to an equivalent QGIS vector labeling.
      *
      * Caller takes ownership of the returned object.
      */
-    static QgsAbstractVectorLayerLabeling *convertLabeling( const QVariantList &data ) SIP_FACTORY;
+    static std::unique_ptr< QgsAbstractVectorLayerLabeling > convertLabeling( const QVariantList &data );
 
     /**
      * Converts an ESRI labeling expression to a QGIS expression string.
@@ -135,59 +216,244 @@ class CORE_EXPORT QgsArcGisRestUtils
      */
     static QDateTime convertDateTime( const QVariant &value );
 
+    /**
+     * Converts a \a geometry to an ArcGIS REST JSON representation.
+     *
+     * Returns an empty map if the geometry cannot be converted.
+     *
+     * \since QGIS 3.28
+     */
+    static QVariantMap geometryToJson( const QgsGeometry &geometry, const QgsArcGisRestContext &context, const QgsCoordinateReferenceSystem &crs = QgsCoordinateReferenceSystem() );
+
+    /**
+     * Converts a \a crs to an ArcGIS REST JSON representation.
+     *
+     * Returns an empty map if the \a crs is not valid.
+     *
+     * \since QGIS 3.28
+     */
+    static QVariantMap crsToJson( const QgsCoordinateReferenceSystem &crs );
+
+    /**
+     * Converts a rectangle \a value to a QgsRectangle.
+     *
+     * Returns a null rectangle if the value cannot be converted.
+     *
+     * \since QGIS 3.34
+     */
+    static QgsRectangle convertRectangle( const QVariant &value );
+
+    /**
+     * Flags which control the behavior of converting features to JSON.
+     *
+     * \since QGIS 3.28
+     */
+    enum class FeatureToJsonFlag : int SIP_ENUM_BASETYPE( IntFlag )
+    {
+      IncludeGeometry = 1 << 0,              //!< Whether to include the geometry definition
+      IncludeNonObjectIdAttributes = 1 << 1, //!< Whether to include any non-objectId attributes
+      SkipUnsetAttributes = 1 << 2,          //!< Skip unset attributes. \since QGIS 3.44
+    };
+    Q_ENUM( FeatureToJsonFlag );
+
+    /**
+     * Flags which control the behavior of converting features to JSON.
+     *
+     * \since QGIS 3.28
+     */
+    Q_DECLARE_FLAGS( FeatureToJsonFlags, FeatureToJsonFlag )
+    Q_FLAG( FeatureToJsonFlags )
+
+    /**
+     * Converts a \a feature to an ArcGIS REST JSON representation.
+     *
+     * \since QGIS 3.28
+     */
+    static QVariantMap featureToJson(
+      const QgsFeature &feature,
+      const QgsArcGisRestContext &context,
+      const QgsCoordinateReferenceSystem &crs = QgsCoordinateReferenceSystem(),
+      QgsArcGisRestUtils::FeatureToJsonFlags flags = QgsArcGisRestUtils::FeatureToJsonFlags(
+        static_cast< int >( QgsArcGisRestUtils::FeatureToJsonFlag::IncludeGeometry ) | static_cast< int >( QgsArcGisRestUtils::FeatureToJsonFlag::IncludeNonObjectIdAttributes )
+      )
+    );
+
+    /**
+     * Converts a variant to a REST attribute value.
+     *
+     * \since QGIS 3.28
+     */
+    static QVariant variantToAttributeValue( const QVariant &variant, QMetaType::Type expectedType, const QgsArcGisRestContext &context );
+
+    /**
+     * Converts a \a field's definition to an ArcGIS REST JSON representation.
+     *
+     * \since QGIS 3.28
+     */
+    static QVariantMap fieldDefinitionToJson( const QgsField &field );
+
+    /**
+     * Converts a string value to a REST service type.
+     *
+     * \since QGIS 3.28
+     */
+    static Qgis::ArcGisRestServiceType serviceTypeFromString( const QString &type );
+
+    /**
+     * Parses a capabilities string to known values.
+     *
+     * \since QGIS 4.2
+     */
+    static Qgis::ArcGisRestServiceCapabilities serviceCapabilitiesFromString( const QString &capabilities );
+
+    /**
+     * Returns the raster data type corresponding to an ESRI \a pixelType string.
+     *
+     * \since QGIS 4.2
+     */
+    static Qgis::DataType dataTypeFromString( const QString &pixelType );
+
+#ifndef SIP_RUN
+    /**
+     * Struct representing whether the theoretical limits of a pixel type are
+     * useful for describing actual data boundaries.
+     *
+     * \note Not available in Python bindings
+     *
+     * \since QGIS 4.2
+     */
+    struct PixelTypeLimitUsefulness
+    {
+        //! TRUE if the theoretical minimum value is a useful data boundary (e.g., 0 for unsigned types)
+        bool minIsUseful = false;
+        //! TRUE if the theoretical maximum value is a useful data boundary (e.g., 255 for U8)
+        bool maxIsUseful = false;
+    };
+#endif
+
+    /**
+     * Returns whether the theoretical minimum and maximum values for a given ESRI
+     * \a pixelType are practically useful for representing expected data ranges.
+     *
+     * For instance, an unsigned 8-bit integer ('U8') has a useful minimum (0)
+     * and maximum (255). Conversely, floating-point types ('F32'/'F64') return FALSE
+     * because their maximum theoretical limits are too large to represent a useful
+     * indication of the actual data present in a layer.
+     *
+     * \note Not available in Python bindings
+     *
+     * \since QGIS 4.2
+     */
+    SIP_SKIP static PixelTypeLimitUsefulness pixelTypeLimitUsefulness( const QString &pixelType );
+
+    /**
+     * Returns the valid data range given an ESRI \a pixelType string.
+     *
+     * \note Not available in Python bindings
+     *
+     * \since QGIS 4.2
+     */
+    SIP_SKIP static std::optional< std::pair< double, double > > rangeForPixelType( const QString &pixelType );
+
+    /**
+     * Attempts to match arbitrary band name strings to a QGIS raster color interpretation.
+     *
+     * Since band names are free-form strings, this is a best-effort translation only.
+     *
+     * \since QGIS 4.2
+     */
+    static Qgis::RasterColorInterpretation colorInterpretationFromBandName( const QString &bandName );
+
+    /**
+     * Returns a sensible no-data value to use for the specified data \a type.
+     *
+     * \param type data type
+     * \param ok will be set to TRUE if there IS a sensible nodata value for the specified type
+     *
+     * \returns suggested nodata value, if one exists
+     *
+     * \since QGIS 4.2
+     */
+    static double defaultNoDataForDataType( Qgis::DataType type, bool &ok SIP_OUT );
+
   private:
+    /**
+     * Applies visual variables from renderer JSON \a data to a \a symbol.
+     *
+     * Currently only rotation visual variables (\c rotationInfo) are supported.
+     * Warnings and errors encountered during conversion are pushed to \a context.
+     */
+    static void applyVisualVariables( const QVariantMap &rendererData, QgsSymbol *symbol, QgsSymbolConverterContext &context );
 
     /**
      * Converts a JSON \a list to a point geometry of the specified wkb \a type.
      */
-    static std::unique_ptr< QgsPoint > convertPoint( const QVariantList &list, QgsWkbTypes::Type type );
+    static std::unique_ptr< QgsPoint > convertPoint( const QVariantList &list, Qgis::WkbType type );
 
     /**
      * Converts circular string JSON \a data to a geometry object of the specified \a type.
      *
      * The \a startPoint argument must specify the starting point of the circular string.
      */
-    static std::unique_ptr< QgsCircularString > convertCircularString( const QVariantMap &data, QgsWkbTypes::Type type, const QgsPoint &startPoint );
+    static std::unique_ptr< QgsCircularString > convertCircularString( const QVariantMap &data, Qgis::WkbType type, const QgsPoint &startPoint );
 
     /**
      * Converts a compound curve JSON \a list to a geometry object of the specified \a type.
      */
-    static std::unique_ptr< QgsCompoundCurve > convertCompoundCurve( const QVariantList &list, QgsWkbTypes::Type type );
+    static std::unique_ptr< QgsCurve > convertCompoundCurve( const QVariantList &list, Qgis::WkbType type );
+
+    /**
+     * Converts a line string JSON \a list to a geometry object of the specified \a type.
+     */
+    static std::unique_ptr< QgsLineString > convertLineString( const QVariantList &list, Qgis::WkbType type );
 
     /**
      * Converts point \a data to a point object of the specified \a type.
      */
-    static std::unique_ptr< QgsPoint > convertGeometryPoint( const QVariantMap &data, QgsWkbTypes::Type pointType );
+    static std::unique_ptr< QgsPoint > convertGeometryPoint( const QVariantMap &data, Qgis::WkbType pointType );
 
     /**
      * Converts multipoint \a data to a multipoint object of the specified \a type.
      */
-    static std::unique_ptr< QgsMultiPoint > convertMultiPoint( const QVariantMap &geometryData, QgsWkbTypes::Type pointType );
+    static std::unique_ptr< QgsMultiPoint > convertMultiPoint( const QVariantMap &geometryData, Qgis::WkbType pointType );
 
     /**
      * Converts polyline \a data to a curve object of the specified \a type.
+     *
+     *The \a allowCurves argument controls whether the returned geometry can be a curved geometry type.
      */
-    static std::unique_ptr< QgsMultiCurve > convertGeometryPolyline( const QVariantMap &data, QgsWkbTypes::Type pointType );
+    static std::unique_ptr< QgsMultiCurve > convertGeometryPolyline( const QVariantMap &data, Qgis::WkbType pointType, bool allowCurves );
 
     /**
      * Converts polygon \a data to a polygon object of the specified \a type.
+     *
+     * The \a allowCurves argument controls whether the returned geometry can be a curved geometry type.
      */
-    static std::unique_ptr< QgsMultiSurface > convertGeometryPolygon( const QVariantMap &data, QgsWkbTypes::Type pointType );
+    static std::unique_ptr< QgsMultiSurface > convertGeometryPolygon( const QVariantMap &data, Qgis::WkbType pointType, bool allowCurves );
 
     /**
      * Converts envelope \a data to a polygon object.
      */
     static std::unique_ptr< QgsPolygon > convertEnvelope( const QVariantMap &data );
 
-    static std::unique_ptr< QgsLineSymbol > parseEsriLineSymbolJson( const QVariantMap &symbolData );
-    static std::unique_ptr< QgsFillSymbol > parseEsriFillSymbolJson( const QVariantMap &symbolData );
-    static std::unique_ptr< QgsFillSymbol > parseEsriPictureFillSymbolJson( const QVariantMap &symbolData );
-    static std::unique_ptr< QgsMarkerSymbol > parseEsriMarkerSymbolJson( const QVariantMap &symbolData );
-    static std::unique_ptr< QgsMarkerSymbol > parseEsriPictureMarkerSymbolJson( const QVariantMap &symbolData );
-
-    static QgsSimpleMarkerSymbolLayerBase::Shape parseEsriMarkerShape( const QString &style );
+    static QVariantMap pointToJson( const QgsPoint *point );
+    static QVariantMap multiPointToJson( const QgsMultiPoint *multiPoint );
+    static QVariantList lineStringToJsonPath( const QgsLineString *line );
+    static QVariantList curveToJsonCurve( const QgsCurve *curve, bool includeStart );
+    static QVariantMap lineStringToJson( const QgsLineString *line );
+    static QVariantMap curveToJson( const QgsCurve *curve );
+    static QVariantMap multiLineStringToJson( const QgsMultiLineString *multiLine );
+    static QVariantMap multiCurveToJson( const QgsMultiCurve *multiCurve );
+    static QVariantList polygonToJsonRings( const QgsPolygon *polygon );
+    static QVariantList curvePolygonToJsonRings( const QgsCurvePolygon *polygon );
+    static QVariantMap polygonToJson( const QgsPolygon *polygon );
+    static QVariantMap curvePolygonToJson( const QgsCurvePolygon *polygon );
+    static QVariantMap multiPolygonToJson( const QgsMultiPolygon *polygon );
+    static QVariantMap multiSurfaceToJson( const QgsMultiSurface *multiSurface );
 
     friend class TestQgsArcGisRestUtils;
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS( QgsArcGisRestUtils::FeatureToJsonFlags )
 
 #endif // QGSARCGISRESTUTILS_H

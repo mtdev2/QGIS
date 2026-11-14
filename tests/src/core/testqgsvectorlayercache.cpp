@@ -15,8 +15,12 @@
 
 
 #include "qgstest.h"
+
 #include <QObject>
+#include <QString>
 #include <QTemporaryFile>
+
+using namespace Qt::StringLiterals;
 
 //qgis includes...
 #include "qgsfeatureiterator.h"
@@ -30,7 +34,6 @@
 #include <QDebug>
 
 /**
- * @ingroup UnitTests
  * This is a unit test for the vector layer cache
  *
  * \see QgsVectorLayerCache
@@ -42,10 +45,10 @@ class TestVectorLayerCache : public QObject
     TestVectorLayerCache() = default;
 
   private slots:
-    void initTestCase();      // will be called before the first testfunction is executed.
-    void cleanupTestCase();   // will be called after the last testfunction was executed.
-    void init();              // will be called before each testfunction is executed.
-    void cleanup();           // will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
+    void init();            // will be called before each testfunction is executed.
+    void cleanup();         // will be called after every testfunction.
 
     void testCacheOverflow();    // Test cache will work if too many features to cache them all are present
     void testCacheAttrActions(); // Test attribute add/ attribute delete
@@ -57,13 +60,20 @@ class TestVectorLayerCache : public QObject
     void testCacheGeom();
     void testFullCacheWithRect(); // Test that if rect is set then no full cache can exist, see #19468
 
+    /**
+     * Test the cache functionality with subset of attributes.
+     */
+    void testMixedAttributesCache();
+
     void onCommittedFeaturesAdded( const QString &, const QgsFeatureList & );
 
+    void testCompleteFeatureAtId();
+
   private:
-    QgsVectorLayerCache           *mVectorLayerCache = nullptr;
-    QgsCacheIndexFeatureId        *mFeatureIdIndex = nullptr;
-    QgsVectorLayer                *mPointsLayer = nullptr;
-    QgsFeatureList                 mAddedFeatures;
+    QgsVectorLayerCache *mVectorLayerCache = nullptr;
+    QgsCacheIndexFeatureId *mFeatureIdIndex = nullptr;
+    QgsVectorLayer *mPointsLayer = nullptr;
+    QgsFeatureList mAddedFeatures;
     QMap<QString, QString> mTmpFiles;
 };
 
@@ -76,17 +86,17 @@ void TestVectorLayerCache::initTestCase()
 
   // Backup test shape file and attributes
   QStringList backupFiles;
-  backupFiles << QStringLiteral( "points.shp" ) << QStringLiteral( "points.shx" ) << QStringLiteral( "points.dbf" ) << QStringLiteral( "points.prj" );
+  backupFiles << u"points.shp"_s << u"points.shx"_s << u"points.dbf"_s << u"points.prj"_s;
 
-  QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
-  QString myTestDataDir = myDataDir + '/';
+  const QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
+  const QString myTestDataDir = myDataDir + '/';
 
-  Q_FOREACH ( const QString &f, backupFiles )
+  for ( const QString &f : backupFiles )
   {
-    QString origFileName = myTestDataDir + f;
-    QFileInfo origFileInfo( origFileName );
+    const QString origFileName = myTestDataDir + f;
+    const QFileInfo origFileInfo( origFileName );
 
-    QString tmpFileName = QDir::tempPath() + '/' + origFileInfo.baseName() + '_' + QString::number( qApp->applicationPid() ) + '.' + origFileInfo.completeSuffix();
+    const QString tmpFileName = QDir::tempPath() + '/' + origFileInfo.baseName() + '_' + QString::number( qApp->applicationPid() ) + '.' + origFileInfo.completeSuffix();
 
     qDebug() << "Copy " << origFileName << " " << tmpFileName;
 
@@ -97,10 +107,9 @@ void TestVectorLayerCache::initTestCase()
   //
   // load a vector layer
   //
-  QString myPointsFileName = mTmpFiles.value( myTestDataDir + "points.shp" );
-  QFileInfo myPointFileInfo( myPointsFileName );
-  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(),
-                                     myPointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QString myPointsFileName = mTmpFiles.value( myTestDataDir + "points.shp" );
+  const QFileInfo myPointFileInfo( myPointsFileName );
+  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(), myPointFileInfo.completeBaseName(), u"ogr"_s );
 }
 
 void TestVectorLayerCache::init()
@@ -125,7 +134,7 @@ void TestVectorLayerCache::cleanupTestCase()
 
   for ( it = mTmpFiles.constBegin(); it != mTmpFiles.constEnd(); ++it )
   {
-    QString tmpFileName = it.value();
+    const QString tmpFileName = it.value();
     qDebug() << "Remove " << tmpFileName;
     QFile::remove( tmpFileName );
   }
@@ -159,15 +168,15 @@ void TestVectorLayerCache::testCacheAttrActions()
 
   // Add an attribute, make sure it is returned also if a cached feature is requested
   mPointsLayer->startEditing();
-  QVariant::Type attrType = QVariant::Int;
-  mPointsLayer->addAttribute( QgsField( QStringLiteral( "newAttr" ), attrType, QStringLiteral( "Int" ), 5, 0 ) );
+  const QMetaType::Type attrType = QMetaType::Type::Int;
+  mPointsLayer->addAttribute( QgsField( u"newAttr"_s, attrType, u"Int"_s, 5, 0 ) );
   mPointsLayer->commitChanges();
 
   QVERIFY( mVectorLayerCache->featureAtId( 15, f ) );
   QVERIFY( f.attribute( "newAttr" ).isValid() );
 
-  QgsFields allFields = mPointsLayer->fields();
-  int idx = allFields.indexFromName( QStringLiteral( "newAttr" ) );
+  const QgsFields allFields = mPointsLayer->fields();
+  const int idx = allFields.indexFromName( u"newAttr"_s );
 
   mPointsLayer->startEditing();
   mPointsLayer->deleteAttribute( idx );
@@ -192,7 +201,7 @@ void TestVectorLayerCache::testFeatureActions()
   mPointsLayer->commitChanges();
   disconnect( mPointsLayer, SIGNAL( committedFeaturesAdded( QString, QgsFeatureList ) ), this, SLOT( onCommittedFeaturesAdded( QString, QgsFeatureList ) ) );
 
-  QgsFeatureId fid = mAddedFeatures.last().id();
+  const QgsFeatureId fid = mAddedFeatures.last().id();
 
   QVERIFY( mVectorLayerCache->featureAtId( fid, f ) );
 
@@ -208,15 +217,17 @@ void TestVectorLayerCache::testSubsetRequest()
 {
   QgsFeature f;
 
-  QgsFields fields = mPointsLayer->fields();
+  const QgsFields fields = mPointsLayer->fields();
   QStringList requiredFields;
-  requiredFields << QStringLiteral( "Class" ) << QStringLiteral( "Cabin Crew" );
+  requiredFields << u"Class"_s << u"Cabin Crew"_s;
 
   mVectorLayerCache->featureAtId( 16, f );
-  QVariant a = f.attribute( 3 );
+  const QVariant a = f.attribute( 3 );
 
   QgsFeatureIterator itSubset = mVectorLayerCache->getFeatures( QgsFeatureRequest().setSubsetOfAttributes( requiredFields, fields ) );
-  while ( itSubset.nextFeature( f ) ) {}
+  while ( itSubset.nextFeature( f ) )
+  {
+  }
   itSubset.close();
 
   mVectorLayerCache->featureAtId( 16, f );
@@ -267,11 +278,15 @@ void TestVectorLayerCache::testFullCacheThroughRequest()
     // suck in all features
   }
 
-  // cache should now contain all features
+  // cache should now contain all features, and should iterate through in the same order as the non-cached feature ordering
   it = mPointsLayer->getFeatures();
+  QgsFeatureIterator itCached = cache.getFeatures( QgsFeatureRequest() );
+  QgsFeature fCached;
   while ( it.nextFeature( f ) )
   {
     QVERIFY( cache.isFidCached( f.id() ) );
+    itCached.nextFeature( fCached );
+    QCOMPARE( f.id(), fCached.id() );
   }
 
   // so it should be a full cache!
@@ -284,9 +299,9 @@ void TestVectorLayerCache::testCanUseCacheForRequest()
   QgsFeature f;
   QgsFeatureIterator it = mPointsLayer->getFeatures();
   it.nextFeature( f );
-  QgsFeatureId id1 = f.id();
+  const QgsFeatureId id1 = f.id();
   it.nextFeature( f );
-  QgsFeatureId id2 = f.id();
+  const QgsFeatureId id2 = f.id();
 
   QgsVectorLayerCache cache( mPointsLayer, 10 );
   // initially nothing in cache, so can't use it to fulfill the request
@@ -298,7 +313,9 @@ void TestVectorLayerCache::testCanUseCacheForRequest()
 
   // get just the first feature into the cache
   it = cache.getFeatures( QgsFeatureRequest().setFilterFid( id1 ) );
-  while ( it.nextFeature( f ) ) { }
+  while ( it.nextFeature( f ) )
+  {
+  }
   QCOMPARE( cache.cachedFeatureIds(), QgsFeatureIds() << id1 );
   QVERIFY( cache.canUseCacheForRequest( QgsFeatureRequest().setFilterFid( id1 ), it ) );
   //verify that the returned iterator was correct
@@ -312,7 +329,9 @@ void TestVectorLayerCache::testCanUseCacheForRequest()
 
   // get feature 2 into cache
   it = cache.getFeatures( QgsFeatureRequest().setFilterFid( id2 ) );
-  while ( it.nextFeature( f ) ) { }
+  while ( it.nextFeature( f ) )
+  {
+  }
   QCOMPARE( cache.cachedFeatureIds(), QgsFeatureIds() << id1 << id2 );
   QVERIFY( cache.canUseCacheForRequest( QgsFeatureRequest().setFilterFid( id1 ), it ) );
   QVERIFY( it.nextFeature( f ) );
@@ -351,12 +370,12 @@ void TestVectorLayerCache::testCacheGeom()
   QgsFeature f;
   QgsFeatureIterator it = mPointsLayer->getFeatures();
   it.nextFeature( f );
-  QgsFeatureId id1 = f.id();
+  const QgsFeatureId id1 = f.id();
   it.nextFeature( f );
-  QgsFeatureId id2 = f.id();
+  const QgsFeatureId id2 = f.id();
 
   QgsFeatureRequest req;
-  req.setFlags( QgsFeatureRequest::NoGeometry ); // should be ignored by cache
+  req.setFlags( Qgis::FeatureRequestFlag::NoGeometry ); // should be ignored by cache
   req.setFilterFids( QgsFeatureIds() << id1 << id2 );
 
   it = cache.getFeatures( req );
@@ -395,19 +414,19 @@ void TestVectorLayerCache::testCacheGeom()
 
 void TestVectorLayerCache::testFullCacheWithRect()
 {
-  QgsVectorLayerCache cache( mPointsLayer, mPointsLayer->dataProvider()->featureCount() );
+  QgsVectorLayerCache cache( mPointsLayer, static_cast<int>( mPointsLayer->dataProvider()->featureCount() ) );
   // cache geometry
   cache.setCacheGeometry( true );
-  QVERIFY( ! cache.hasFullCache() );
+  QVERIFY( !cache.hasFullCache() );
   QgsFeatureRequest req;
-  req.setFilterRect( mPointsLayer->dataProvider()->extent().buffered( - mPointsLayer->dataProvider()->extent().width() / 2 ) );
+  req.setFilterRect( mPointsLayer->dataProvider()->extent().buffered( -mPointsLayer->dataProvider()->extent().width() / 2 ) );
   QgsFeatureIterator it = cache.getFeatures( req );
   QgsFeature f;
   while ( it.nextFeature( f ) )
   {
     QVERIFY( f.hasGeometry() );
   }
-  QVERIFY( ! cache.hasFullCache() );
+  QVERIFY( !cache.hasFullCache() );
 
   // Filter rect contains extent
   req.setFilterRect( mPointsLayer->dataProvider()->extent().buffered( 1 ) );
@@ -417,13 +436,100 @@ void TestVectorLayerCache::testFullCacheWithRect()
     QVERIFY( f.hasGeometry() );
   }
   QVERIFY( cache.hasFullCache() );
+}
 
+void TestVectorLayerCache::testMixedAttributesCache()
+{
+  // Test cache with no subset
+  QgsVectorLayerCache cache( mPointsLayer, static_cast<int>( mPointsLayer->dataProvider()->featureCount() ) );
+  QgsFeature f;
+  QgsFeatureIterator it = cache.getFeatures();
+  it.nextFeature( f );
+
+  QVERIFY( cache.isFidCached( f.id() ) );
+  QVERIFY( cache.mCache[f.id()]->allAttributesFetched() );
+
+  // Test with subset
+  QgsVectorLayerCache cacheSubset( mPointsLayer, static_cast<int>( mPointsLayer->dataProvider()->featureCount() ) );
+  cacheSubset.setCacheSubsetOfAttributes( { 2 } );
+  QgsFeatureIterator itSubset = cacheSubset.getFeatures();
+  itSubset.nextFeature( f );
+
+  QVERIFY( !cacheSubset.isFidCached( f.id() ) );
+  cacheSubset.featureAtId( f.id(), f );
+  QVERIFY( cacheSubset.isFidCached( f.id() ) );
+  QVERIFY( !cacheSubset.mCache[f.id()]->allAttributesFetched() );
+  QVERIFY( f.attribute( 0 ).isNull() );
+  QVERIFY( f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
+
+  cacheSubset.featureAtIdWithAllAttributes( 0, f );
+  QVERIFY( cacheSubset.isFidCached( 0 ) );
+  QVERIFY( cacheSubset.mCache[0]->allAttributesFetched() );
+  QVERIFY( !f.attribute( 0 ).isNull() );
+  QVERIFY( !f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
+
+  cacheSubset.featureAtIdWithAllAttributes( 1, f );
+  QVERIFY( cacheSubset.isFidCached( 1 ) );
+  QVERIFY( cacheSubset.mCache[1]->allAttributesFetched() );
+  QVERIFY( !f.attribute( 0 ).isNull() );
+  QVERIFY( !f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
+
+  // Test subset with request
+  QgsVectorLayerCache cacheSubsetWithRequest( mPointsLayer, static_cast<int>( mPointsLayer->dataProvider()->featureCount() ) );
+  cacheSubsetWithRequest.setCacheSubsetOfAttributes( { 1, 2 } );
+  QgsFeatureRequest req;
+  req.setSubsetOfAttributes( { 2 } );
+  QgsFeatureIterator itSubsetWithRequest = cacheSubsetWithRequest.getFeatures( req );
+  itSubsetWithRequest.nextFeature( f );
+
+  QVERIFY( cacheSubset.isFidCached( 0 ) );
+  QVERIFY( !cacheSubsetWithRequest.mCache[f.id()]->allAttributesFetched() );
+  QVERIFY( f.attribute( 0 ).isNull() );
+  QVERIFY( !f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
 }
 
 void TestVectorLayerCache::onCommittedFeaturesAdded( const QString &layerId, const QgsFeatureList &features )
 {
   Q_UNUSED( layerId )
   mAddedFeatures.append( features );
+}
+
+void TestVectorLayerCache::testCompleteFeatureAtId()
+{
+  QgsVectorLayerCache cache( mPointsLayer, static_cast<int>( mPointsLayer->dataProvider()->featureCount() ) );
+  // cache only attributes
+  cache.setCacheGeometry( false );
+  cache.invalidate();
+  cache.setFullCache( true );
+
+  QgsFeature f;
+  QgsFeatureIterator it = cache.getFeatures();
+  it.nextFeature( f );
+
+  QVERIFY( cache.isFidCached( f.id() ) );
+  QVERIFY( cache.mCache[f.id()]->allAttributesFetched() );
+  QVERIFY( !cache.mCache[f.id()]->geometryFetched() );
+
+  cache.featureAtIdWithAllAttributes( 0, f );
+  QVERIFY( cache.mCache[0]->allAttributesFetched() );
+  QVERIFY( !cache.mCache[0]->geometryFetched() );
+  QVERIFY( !f.attribute( 0 ).isNull() );
+  QVERIFY( !f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
+  QVERIFY( f.geometry().isNull() );
+
+  cache.completeFeatureAtId( 0, f );
+  QVERIFY( cache.isFidCached( 0 ) );
+  QVERIFY( cache.mCache[0]->allAttributesFetched() );
+  QVERIFY( cache.mCache[0]->geometryFetched() );
+  QVERIFY( !f.attribute( 0 ).isNull() );
+  QVERIFY( !f.attribute( 1 ).isNull() );
+  QVERIFY( !f.attribute( 2 ).isNull() );
+  QVERIFY( !f.geometry().isNull() );
 }
 
 QGSTEST_MAIN( TestVectorLayerCache )

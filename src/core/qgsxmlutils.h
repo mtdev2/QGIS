@@ -18,24 +18,25 @@
 class QDomDocument;
 
 class QgsRectangle;
+class QgsBox3D;
+
+#include "qgis.h"
+#include "qgis_core.h"
+#include "qgis_sip.h"
 
 #include <QDomElement>
 #include <QMetaEnum>
+#include <QString>
 
-#include "qgis_core.h"
-#include "qgis_sip.h"
-#include "qgsunittypes.h"
-
-
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
- * Assorted helper methods for reading and writing chunks of XML
+ * \brief Assorted helper methods for reading and writing chunks of XML.
  */
 class CORE_EXPORT QgsXmlUtils
 {
   public:
-
     /* reading */
 
     /**
@@ -44,9 +45,17 @@ class CORE_EXPORT QgsXmlUtils
      * \returns distance units
      * \see writeMapUnits()
      */
-    static QgsUnitTypes::DistanceUnit readMapUnits( const QDomElement &element );
+    static Qgis::DistanceUnit readMapUnits( const QDomElement &element );
 
     static QgsRectangle readRectangle( const QDomElement &element );
+
+    /**
+     * Decodes a DOM element to a 3D box.
+     * \param element DOM document
+     * \returns decoded 3D box
+     * \since QGIS 3.36
+     */
+    static QgsBox3D readBox3D( const QDomElement &element );
 
     /* writing */
 
@@ -57,9 +66,26 @@ class CORE_EXPORT QgsXmlUtils
      * \returns element containing encoded units
      * \see readMapUnits()
      */
-    static QDomElement writeMapUnits( QgsUnitTypes::DistanceUnit units, QDomDocument &doc );
+    static QDomElement writeMapUnits( Qgis::DistanceUnit units, QDomDocument &doc );
 
-    static QDomElement writeRectangle( const QgsRectangle &rect, QDomDocument &doc );
+    /**
+     * Encodes a 3D box to a DOM element.
+     * \param box 3D box to encode
+     * \param doc DOM document
+     * \param elementName name of the DOM element
+     * \returns element containing encoded 3D box
+     * \since QGIS 3.36
+     */
+    static QDomElement writeBox3D( const QgsBox3D &box, QDomDocument &doc, const QString &elementName = u"extent3D"_s );
+
+    /**
+     * Encodes a rectangle to a DOM element.
+     * \param rect rectangle to encode
+     * \param doc DOM document
+     * \param elementName name of the DOM element
+     * \returns element containing encoded rectangle
+     */
+    static QDomElement writeRectangle( const QgsRectangle &rect, QDomDocument &doc, const QString &elementName = u"extent"_s );
 
     /**
      * Write a QVariant to a QDomElement.
@@ -70,6 +96,7 @@ class CORE_EXPORT QgsXmlUtils
      * - QVariant::Int
      * - QVariant::Double
      * - QVariant::String
+     * - QVariant::Rect (since QGIS 4.0)
      * - QgsProperty (since QGIS 3.4)
      * - QgsCoordinateReferenceSystem (since QGIS 3.4)
      */
@@ -93,12 +120,12 @@ class CORE_EXPORT QgsXmlUtils
     {
       T value = defaultValue;
       // Get source categories
-      QMetaEnum metaEnum = QMetaEnum::fromType<T>();
-      QString sourceCategoriesStr( element.attribute( attributeName, metaEnum.valueToKeys( static_cast<int>( defaultValue ) ) ) );
+      const QMetaEnum metaEnum = QMetaEnum::fromType<T>();
+      const QString sourceCategoriesStr( element.attribute( attributeName, metaEnum.valueToKeys( static_cast<int>( defaultValue ) ) ) );
       if ( metaEnum.isValid() )
       {
         bool ok = false;
-        int newValue = metaEnum.keysToValue( sourceCategoriesStr.toUtf8().constData(), &ok );
+        const int newValue = metaEnum.keysToValue( sourceCategoriesStr.toUtf8().constData(), &ok );
         if ( ok )
           value = static_cast<T>( newValue );
       }

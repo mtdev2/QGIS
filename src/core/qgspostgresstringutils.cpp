@@ -14,9 +14,15 @@
  ***************************************************************************/
 
 #include "qgspostgresstringutils.h"
-#include "qgsmessagelog.h"
-#include <QDebug>
+
 #include <nlohmann/json.hpp>
+
+#include "qgsmessagelog.h"
+
+#include <QRegularExpression>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 using namespace nlohmann;
 
@@ -32,21 +38,22 @@ QString QgsPostgresStringUtils::getNextString( const QString &txt, int &i, const
   QString cur = txt.mid( i );
   if ( cur.startsWith( '"' ) )
   {
-    QRegExp stringRe( "^\"((?:\\\\.|[^\"\\\\])*)\".*" );
-    if ( !stringRe.exactMatch( cur ) )
+    const thread_local QRegularExpression stringRe( QRegularExpression::anchoredPattern( "^\"((?:\\\\.|[^\"\\\\])*)\".*" ) );
+    const QRegularExpressionMatch match = stringRe.match( cur );
+    if ( !match.hasMatch() )
     {
       QgsMessageLog::logMessage( QObject::tr( "Cannot find end of double quoted string: %1" ).arg( txt ), QObject::tr( "PostgresStringUtils" ) );
       return QString();
     }
-    i += stringRe.cap( 1 ).length() + 2;
+    i += match.captured( 1 ).length() + 2;
     jumpSpace( txt, i );
-    if ( !txt.midRef( i ).startsWith( sep ) && i < txt.length() )
+    if ( !QStringView { txt }.mid( i ).startsWith( sep ) && i < txt.length() )
     {
       QgsMessageLog::logMessage( QObject::tr( "Cannot find separator: %1" ).arg( txt.mid( i ) ), QObject::tr( "PostgresStringUtils" ) );
       return QString();
     }
     i += sep.length();
-    return stringRe.cap( 1 ).replace( QLatin1String( "\\\"" ), QLatin1String( "\"" ) ).replace( QLatin1String( "\\\\" ), QLatin1String( "\\" ) );
+    return match.captured( 1 ).replace( "\\\""_L1, "\""_L1 ).replace( "\\\\"_L1, "\\"_L1 );
   }
   else
   {
@@ -71,19 +78,22 @@ QVariantList QgsPostgresStringUtils::parseArray( const QString &string )
   if ( newVal.trimmed().startsWith( '{' ) )
   {
     //it's a multidimensional array
-    QStringList values;
-    QString subarray = newVal;
+    QString subarray = newVal.trimmed();
     while ( !subarray.isEmpty() )
     {
       bool escaped = false;
       int openedBrackets = 1;
       int i = 0;
-      while ( i < subarray.length()  && openedBrackets > 0 )
+      while ( openedBrackets > 0 )
       {
         ++i;
+        if ( i >= subarray.length() )
+          break;
 
-        if ( subarray.at( i ) == '}' && !escaped ) openedBrackets--;
-        else if ( subarray.at( i ) == '{' && !escaped ) openedBrackets++;
+        if ( subarray.at( i ) == '}' && !escaped )
+          openedBrackets--;
+        else if ( subarray.at( i ) == '{' && !escaped )
+          openedBrackets++;
 
         escaped = !escaped ? subarray.at( i ) == '\\' : false;
       }
@@ -102,7 +112,7 @@ QVariantList QgsPostgresStringUtils::parseArray( const QString &string )
     int i = 0;
     while ( i < newVal.length() )
     {
-      const QString value = getNextString( newVal, i, QStringLiteral( "," ) );
+      const QString value = getNextString( newVal, i, u","_s );
       if ( value.isNull() )
       {
         QgsMessageLog::logMessage( QObject::tr( "Error parsing PG like array: %1" ).arg( newVal ), QObject::tr( "PostgresStringUtils" ) );
@@ -113,19 +123,18 @@ QVariantList QgsPostgresStringUtils::parseArray( const QString &string )
   }
 
   return variantList;
-
 }
 
 QString QgsPostgresStringUtils::buildArray( const QVariantList &list )
 {
   QStringList sl;
-  for ( const QVariant &v : qgis::as_const( list ) )
+  for ( const QVariant &v : std::as_const( list ) )
   {
     // Convert to proper type
-    switch ( v.type() )
+    switch ( v.userType() )
     {
-      case QVariant::Type::Int:
-      case QVariant::Type::LongLong:
+      case QMetaType::Type::Int:
+      case QMetaType::Type::LongLong:
         sl.push_back( v.toString() );
         break;
       default:
@@ -136,8 +145,8 @@ QString QgsPostgresStringUtils::buildArray( const QVariantList &list )
         }
         else
         {
-          newS.replace( '\\', QLatin1String( R"(\\)" ) );
-          newS.replace( '\"', QLatin1String( R"(\")" ) );
+          newS.replace( '\\', R"(\\)"_L1 );
+          newS.replace( '\"', R"(\")"_L1 );
           sl.push_back( "\"" + newS + "\"" );
         }
         break;

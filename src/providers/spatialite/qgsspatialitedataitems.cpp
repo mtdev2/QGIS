@@ -14,22 +14,29 @@
  ***************************************************************************/
 #include "qgsspatialitedataitems.h"
 
-#include "qgsapplication.h"
-#include "qgsspatialiteprovider.h"
+#include "qgsfieldsitem.h"
 #include "qgsspatialiteconnection.h"
+#include "qgsspatialiteprovider.h"
+
+#include <QString>
+
+#include "moc_qgsspatialitedataitems.cpp"
+
+using namespace Qt::StringLiterals;
 
 #ifdef HAVE_GUI
 #include "qgsspatialitesourceselect.h"
 #endif
 
 #include "qgslogger.h"
-#include "qgsvectorlayerexporter.h"
-#include "qgsvectorlayer.h"
+
+#include <QDir>
+#include <QFileInfo>
 
 
 bool SpatiaLiteUtils::deleteLayer( const QString &dbPath, const QString &tableName, QString &errCause )
 {
-  QgsDebugMsg( "deleting layer " + tableName );
+  QgsDebugMsgLevel( "deleting layer " + tableName, 2 );
 
   QgsSqliteHandle *hndl = QgsSqliteHandle::openDb( dbPath );
   if ( !hndl )
@@ -52,7 +59,7 @@ bool SpatiaLiteUtils::deleteLayer( const QString &dbPath, const QString &tableNa
   ret = sqlite3_exec( sqlite_handle, "VACUUM", nullptr, nullptr, nullptr );
   if ( ret != SQLITE_OK )
   {
-    QgsDebugMsg( "Failed to run VACUUM after deleting table on database " + dbPath );
+    QgsDebugError( "Failed to run VACUUM after deleting table on database " + dbPath );
   }
 
   QgsSqliteHandle::closeDb( hndl );
@@ -60,44 +67,44 @@ bool SpatiaLiteUtils::deleteLayer( const QString &dbPath, const QString &tableNa
   return true;
 }
 
-QgsSLLayerItem::QgsSLLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, LayerType layerType )
-  : QgsLayerItem( parent, name, path, uri, layerType, QStringLiteral( "spatialite" ) )
+QgsSLLayerItem::QgsSLLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, Qgis::BrowserLayerType layerType )
+  : QgsLayerItem( parent, name, path, uri, layerType, u"spatialite"_s )
 {
-  mCapabilities |= Delete;
-  setState( NotPopulated );
+  mCapabilities |= Qgis::BrowserItemCapability::Delete;
+  setState( Qgis::BrowserItemState::NotPopulated );
 }
 
 // ------
 
 QgsSLConnectionItem::QgsSLConnectionItem( QgsDataItem *parent, const QString &name, const QString &path )
-  : QgsDataCollectionItem( parent, name, path, QStringLiteral( "spatialite" ) )
+  : QgsDataCollectionItem( parent, name, path, u"spatialite"_s )
 {
   mDbPath = QgsSpatiaLiteConnection::connectionPath( name );
   mToolTip = mDbPath;
-  mCapabilities |= Collapse;
+  mCapabilities |= Qgis::BrowserItemCapability::Collapse;
 }
 
-static QgsLayerItem::LayerType _layerTypeFromDb( const QString &dbType )
+static Qgis::BrowserLayerType _layerTypeFromDb( const QString &dbType )
 {
-  if ( dbType == QLatin1String( "POINT" ) || dbType == QLatin1String( "MULTIPOINT" ) )
+  if ( dbType == "POINT"_L1 || dbType == "MULTIPOINT"_L1 )
   {
-    return QgsLayerItem::Point;
+    return Qgis::BrowserLayerType::Point;
   }
-  else if ( dbType == QLatin1String( "LINESTRING" ) || dbType == QLatin1String( "MULTILINESTRING" ) )
+  else if ( dbType == "LINESTRING"_L1 || dbType == "MULTILINESTRING"_L1 )
   {
-    return QgsLayerItem::Line;
+    return Qgis::BrowserLayerType::Line;
   }
-  else if ( dbType == QLatin1String( "POLYGON" ) || dbType == QLatin1String( "MULTIPOLYGON" ) )
+  else if ( dbType == "POLYGON"_L1 || dbType == "MULTIPOLYGON"_L1 )
   {
-    return QgsLayerItem::Polygon;
+    return Qgis::BrowserLayerType::Polygon;
   }
-  else if ( dbType == QLatin1String( "qgis_table" ) )
+  else if ( dbType == "qgis_table"_L1 )
   {
-    return QgsLayerItem::Table;
+    return Qgis::BrowserLayerType::Table;
   }
   else
   {
-    return QgsLayerItem::NoType;
+    return Qgis::BrowserLayerType::NoType;
   }
 }
 
@@ -106,7 +113,7 @@ QVector<QgsDataItem *> QgsSLConnectionItem::createChildren()
   QVector<QgsDataItem *> children;
   QgsSpatiaLiteConnection connection( mName );
 
-  QgsSpatiaLiteConnection::Error err = connection.fetchTables( true );
+  const QgsSpatiaLiteConnection::Error err = connection.fetchTables( true );
   if ( err != QgsSpatiaLiteConnection::NoError )
   {
     QString msg;
@@ -128,14 +135,14 @@ QVector<QgsDataItem *> QgsSLConnectionItem::createChildren()
         msg = tr( "Unknown error" );
         break;
     }
-    QString msgDetails = connection.errorMessage();
+    const QString msgDetails = connection.errorMessage();
     if ( !msgDetails.isEmpty() )
-      msg = QStringLiteral( "%1 (%2)" ).arg( msg, msgDetails );
+      msg = u"%1 (%2)"_s.arg( msg, msgDetails );
     children.append( new QgsErrorItem( this, msg, mPath + "/error" ) );
     return children;
   }
 
-  QString connectionInfo = QStringLiteral( "dbname='%1'" ).arg( QString( connection.path() ).replace( '\'', QLatin1String( "\\'" ) ) );
+  const QString connectionInfo = u"dbname='%1'"_s.arg( QString( connection.path() ).replace( '\'', "\\'"_L1 ) );
   QgsDataSourceUri uri( connectionInfo );
 
   const auto constTables = connection.tables();
@@ -162,17 +169,18 @@ bool QgsSLConnectionItem::equal( const QgsDataItem *other )
 // ---------------------------------------------------------------------------
 
 QgsSLRootItem::QgsSLRootItem( QgsDataItem *parent, const QString &name, const QString &path )
-  : QgsConnectionsRootItem( parent, name, path, QStringLiteral( "spatialite" ) )
+  : QgsConnectionsRootItem( parent, name, path, u"spatialite"_s )
 {
-  mCapabilities |= Fast;
-  mIconName = QStringLiteral( "mIconSpatialite.svg" );
+  mCapabilities |= Qgis::BrowserItemCapability::Fast;
+  mIconName = u"mIconSpatialite.svg"_s;
   populate();
 }
 
 QVector<QgsDataItem *> QgsSLRootItem::createChildren()
 {
   QVector<QgsDataItem *> connections;
-  Q_FOREACH ( const QString &connName, QgsSpatiaLiteConnection::connectionList() )
+  const QStringList list = QgsSpatiaLiteConnection::connectionList();
+  for ( const QString &connName : list )
   {
     QgsDataItem *conn = new QgsSLConnectionItem( this, connName, mPath + '/' + connName );
     connections.push_back( conn );
@@ -239,11 +247,11 @@ static bool initializeSpatialMetadata( sqlite3 *sqlite_handle, QString &errCause
 
 bool SpatiaLiteUtils::createDb( const QString &dbPath, QString &errCause )
 {
-  QgsDebugMsg( QStringLiteral( "creating a new db" ) );
+  QgsDebugMsgLevel( u"creating a new db"_s, 2 );
 
-  QFileInfo fullPath = QFileInfo( dbPath );
-  QDir path = fullPath.dir();
-  QgsDebugMsg( QStringLiteral( "making this dir: %1" ).arg( path.absolutePath() ) );
+  const QFileInfo fullPath = QFileInfo( dbPath );
+  const QDir path = fullPath.dir();
+  QgsDebugMsgLevel( u"making this dir: %1"_s.arg( path.absolutePath() ), 2 );
 
   // Must be sure there is destination directory ~/.qgis
   QDir().mkpath( path.absolutePath() );
@@ -267,7 +275,7 @@ bool SpatiaLiteUtils::createDb( const QString &dbPath, QString &errCause )
     sqlite3_free( errMsg );
     return false;
   }
-  bool init_res = ::initializeSpatialMetadata( database.get(), errCause );
+  const bool init_res = ::initializeSpatialMetadata( database.get(), errCause );
 
   return init_res;
 }
@@ -276,23 +284,23 @@ bool SpatiaLiteUtils::createDb( const QString &dbPath, QString &errCause )
 
 QString QgsSpatiaLiteDataItemProvider::name()
 {
-  return QStringLiteral( "spatialite" );
+  return u"spatialite"_s;
 }
 
 QString QgsSpatiaLiteDataItemProvider::dataProviderKey() const
 {
-  return QStringLiteral( "spatialite" );
+  return u"spatialite"_s;
 }
 
-int QgsSpatiaLiteDataItemProvider::capabilities() const
+Qgis::DataItemProviderCapabilities QgsSpatiaLiteDataItemProvider::capabilities() const
 {
-  return QgsDataProvider::Database;
+  return Qgis::DataItemProviderCapability::Databases;
 }
 
 QgsDataItem *QgsSpatiaLiteDataItemProvider::createDataItem( const QString &pathIn, QgsDataItem *parentItem )
 {
   Q_UNUSED( pathIn )
-  return new QgsSLRootItem( parentItem, QStringLiteral( "SpatiaLite" ), QStringLiteral( "spatialite:" ) );
+  return new QgsSLRootItem( parentItem, u"SpatiaLite"_s, u"spatialite:"_s );
 }
 
 
@@ -304,9 +312,6 @@ bool QgsSLConnectionItem::layerCollection() const
 QVector<QgsDataItem *> QgsSLLayerItem::createChildren()
 {
   QVector<QgsDataItem *> children;
-  children.push_back( new QgsFieldsItem( this,
-                                         path() + QStringLiteral( "/columns/ " ),
-                                         uri(),
-                                         QStringLiteral( "spatialite" ), QString(), name() ) );
+  children.push_back( new QgsFieldsItem( this, path() + u"/columns/ "_s, uri(), u"spatialite"_s, QString(), name() ) );
   return children;
 }

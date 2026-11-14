@@ -1,4 +1,40 @@
 if (ENABLE_TESTS)
+
+
+  macro (add_qgis_test TESTSRC)
+    set(options OPTIONAL)
+    set(oneValueArgs MODULE LABELS)
+    set(multiValueArgs LINKEDLIBRARIES DEPENDENCIES)
+    cmake_parse_arguments(ARG_QGIS_TEST "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    set (TESTNAME ${TESTSRC})
+    string(REPLACE "test" "" TESTNAME ${TESTNAME})
+    string(REPLACE "qgs" "" TESTNAME ${TESTNAME})
+    string(REPLACE ".cpp" "" TESTNAME ${TESTNAME})
+    set (TESTNAME  "test_${ARG_QGIS_TEST_MODULE}_${TESTNAME}")
+    add_executable(${TESTNAME} ${TESTSRC} ${util_SRCS})
+    # add_custom_target(${TESTNAME}moc ALL DEPENDS ${${TESTNAME}_MOC_SRCS})
+    set_target_properties(${TESTNAME} PROPERTIES AUTORCC TRUE)
+    target_link_libraries(${TESTNAME} ${ARG_QGIS_TEST_LINKEDLIBRARIES})
+    target_link_libraries(${TESTNAME} qgis_test)
+    add_test(${TESTNAME} ${CMAKE_BINARY_DIR}/output/bin/${TESTNAME} -maxwarnings 10000)
+    if (DEFINED ARG_QGIS_TEST_DEPENDENCIES)
+      add_dependencies(${TESTNAME} ${ARG_QGIS_TEST_DEPENDENCIES})
+    endif()
+    if (DEFINED ARG_QGIS_TEST_LABELS)
+      set_tests_properties(${TESTNAME} PROPERTIES LABELS ${ARG_QGIS_TEST_LABELS})
+    endif()
+
+    if(ENABLE_MODELTEST)
+      target_link_libraries(${TESTNAME} ${QT_VERSION_BASE}::Test)
+    endif()
+
+    set_tests_properties(${TESTNAME} PROPERTIES FIXTURES_REQUIRED SOURCETREE)
+    target_compile_definitions(${TESTNAME} PRIVATE "CMAKE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+  endmacro()
+
+
+
   #############################################################
   # Compiler defines
 
@@ -40,7 +76,9 @@ if (ENABLE_TESTS)
     add_subdirectory(analysis)
     add_subdirectory(geometry_checker)
   endif()
-  add_subdirectory(auth)
+  if (WITH_AUTH)
+    add_subdirectory(auth)
+  endif()
   add_subdirectory(providers)
   if (WITH_DESKTOP)
     add_subdirectory(app)

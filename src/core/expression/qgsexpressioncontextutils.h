@@ -17,11 +17,15 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsfeature.h"
-#include "qgspointlocator.h"
 #include "qgsexpressioncontext.h"
+#include "qgsfeature.h"
+#include "qgsmeshdataprovider.h"
+#include "qgspointlocator.h"
+
 #include <QString>
 #include <QVariantMap>
+
+using namespace Qt::StringLiterals;
 
 class QgsExpressionContextScope;
 class QgsProject;
@@ -29,6 +33,7 @@ class QgsLayout;
 class QgsSymbol;
 class QgsLayoutAtlas;
 class QgsLayoutItem;
+class QgsMapSettings;
 class QgsProcessingAlgorithm;
 class QgsProcessingModelAlgorithm;
 class QgsProcessingContext;
@@ -39,19 +44,17 @@ class QgsLayoutMultiFrame;
  * \class QgsExpressionContextUtils
  * \brief Contains utilities for working with QgsExpressionContext objects, including methods
  * for creating scopes for specific uses (e.g., project scopes, layer scopes).
- * \since QGIS 2.12
  */
 
 class CORE_EXPORT QgsExpressionContextUtils
 {
   public:
-
     /**
      * Creates a new scope which contains variables and functions relating to the global QGIS context.
      * For instance, QGIS version numbers and variables specified through QGIS options.
      * \see setGlobalVariable()
      */
-    static QgsExpressionContextScope *globalScope() SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> globalScope();
 
     /**
      * Creates a new scope which contains functions and variables from the current attribute form/table \a formFeature.
@@ -59,7 +62,7 @@ class CORE_EXPORT QgsExpressionContextUtils
      * The \a formMode (SingleEditMode etc.) is passed as text
      * \since QGIS 3.2
      */
-    static QgsExpressionContextScope *formScope( const QgsFeature &formFeature = QgsFeature( ), const QString &formMode = QString() ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> formScope( const QgsFeature &formFeature = QgsFeature(), const QString &formMode = QString() );
 
     /**
      * Creates a new scope which contains functions and variables from the current parent attribute form/table \a formFeature.
@@ -67,7 +70,7 @@ class CORE_EXPORT QgsExpressionContextUtils
      * The \a formMode (SingleEditMode etc.) is passed as text
      * \since QGIS 3.14
      */
-    static QgsExpressionContextScope *parentFormScope( const QgsFeature &formFeature = QgsFeature( ), const QString &formMode = QString() ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> parentFormScope( const QgsFeature &formFeature = QgsFeature(), const QString &formMode = QString() );
 
     /**
      * Sets a global context variable. This variable will be contained within scopes retrieved via
@@ -105,7 +108,7 @@ class CORE_EXPORT QgsExpressionContextUtils
      * \param project What project to use
      * \see setProjectVariable()
      */
-    static QgsExpressionContextScope *projectScope( const QgsProject *project ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> projectScope( const QgsProject *project );
 
     /**
      * Sets a project context variable. This variable will be contained within scopes retrieved via
@@ -144,13 +147,12 @@ class CORE_EXPORT QgsExpressionContextUtils
      * Creates a new scope which contains variables and functions relating to a QgsMapLayer.
      * For instance, layer name, id and fields.
      */
-    static QgsExpressionContextScope *layerScope( const QgsMapLayer *layer ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> layerScope( const QgsMapLayer *layer );
 
     /**
      * Creates a list of three scopes: global, layer's project and layer.
-     * \since QGIS 3.0
      */
-    static QList<QgsExpressionContextScope *> globalProjectLayerScopes( const QgsMapLayer *layer ) SIP_FACTORY;
+    static std::vector<std::unique_ptr<QgsExpressionContextScope>> globalProjectLayerScopes( const QgsMapLayer *layer );
 
     /**
       * Sets a layer context variable. This variable will be contained within scopes retrieved via
@@ -177,30 +179,36 @@ class CORE_EXPORT QgsExpressionContextUtils
      * Creates a new scope which contains variables and functions relating to a QgsMapSettings object.
      * For instance, map scale and rotation.
      */
-    static QgsExpressionContextScope *mapSettingsScope( const QgsMapSettings &mapSettings ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> mapSettingsScope( const QgsMapSettings &mapSettings );
 
     /**
      * Sets the expression context variables which are available for expressions triggered by
      * a map tool capture like add feature.
      *
-     * \since QGIS 3.0
      */
-    static QgsExpressionContextScope *mapToolCaptureScope( const QList<QgsPointLocator::Match> &matches ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> mapToolCaptureScope( const QList<QgsPointLocator::Match> &matches );
+
+    /**
+     * Sets the expression context variables which are available for expressions triggered by moving the mouse over a feature
+     * of the currently selected layer.
+     * \param position map coordinates of the current pointer position in the CRS of the layer which triggered the action.
+     *
+     * \since QGIS 3.30
+     */
+    static std::unique_ptr<QgsExpressionContextScope> mapLayerPositionScope( const QgsPointXY &position );
 
     /**
      * Updates a symbol scope related to a QgsSymbol to an expression context.
      * \param symbol symbol to extract properties from
      * \param symbolScope pointer to an existing scope to update
-     * \since QGIS 2.14
      */
     static QgsExpressionContextScope *updateSymbolScope( const QgsSymbol *symbol, QgsExpressionContextScope *symbolScope = nullptr );
 
     /**
      * Creates a new scope which contains variables and functions relating to a QgsLayout \a layout.
      * For instance, number of pages and page sizes.
-     * \since QGIS 3.0
      */
-    static QgsExpressionContextScope *layoutScope( const QgsLayout *layout ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> layoutScope( const QgsLayout *layout );
 
     /**
      * Sets a layout context variable. This variable will be contained within scopes retrieved via
@@ -210,7 +218,6 @@ class CORE_EXPORT QgsExpressionContextUtils
      * \param value variable value
      * \see setLayoutVariables()
      * \see layoutScope()
-     * \since QGIS 3.0
      */
     static void setLayoutVariable( QgsLayout *layout, const QString &name, const QVariant &value );
 
@@ -221,7 +228,6 @@ class CORE_EXPORT QgsExpressionContextUtils
      * \param variables new set of layer variables
      * \see setLayoutVariable()
      * \see layoutScope()
-     * \since QGIS 3.0
      */
     static void setLayoutVariables( QgsLayout *layout, const QVariantMap &variables );
 
@@ -230,16 +236,15 @@ class CORE_EXPORT QgsExpressionContextUtils
      * For instance, current page name and number.
      * \param atlas source atlas. If NULLPTR, a set of default atlas variables will be added to the scope.
      */
-    static QgsExpressionContextScope *atlasScope( const QgsLayoutAtlas *atlas ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> atlasScope( const QgsLayoutAtlas *atlas );
 
     /**
      * Creates a new scope which contains variables and functions relating to a QgsLayoutItem.
      * For instance, item size and position.
      * \see setLayoutItemVariable()
      * \see setLayoutItemVariables()
-     * \since QGIS 3.0
      */
-    static QgsExpressionContextScope *layoutItemScope( const QgsLayoutItem *item ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> layoutItemScope( const QgsLayoutItem *item );
 
     /**
      * Sets a layout \a item context variable, with the given \a name and \a value.
@@ -247,7 +252,6 @@ class CORE_EXPORT QgsExpressionContextUtils
      * layoutItemScope().
      * \see setLayoutItemVariables()
      * \see layoutItemScope()
-     * \since QGIS 3.0
      */
     static void setLayoutItemVariable( QgsLayoutItem *item, const QString &name, const QVariant &value );
 
@@ -256,7 +260,6 @@ class CORE_EXPORT QgsExpressionContextUtils
      * with the \a variables specified.
      * \see setLayoutItemVariable()
      * \see layoutItemScope()
-     * \since QGIS 3.0
      */
     static void setLayoutItemVariables( QgsLayoutItem *item, const QVariantMap &variables );
 
@@ -266,7 +269,7 @@ class CORE_EXPORT QgsExpressionContextUtils
      * \see setLayoutMultiFrameVariables()
      * \since QGIS 3.10
      */
-    static QgsExpressionContextScope *multiFrameScope( const QgsLayoutMultiFrame *frame ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> multiFrameScope( const QgsLayoutMultiFrame *frame );
 
     /**
      * Sets a layout multi \a frame context variable, with the given \a name and \a value.
@@ -300,7 +303,7 @@ class CORE_EXPORT QgsExpressionContextUtils
      * For instance, algorithm name and parameter functions.
      * \see processingModelAlgorithmScope()
      */
-    static QgsExpressionContextScope *processingAlgorithmScope( const QgsProcessingAlgorithm *algorithm, const QVariantMap &parameters, QgsProcessingContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> processingAlgorithmScope( const QgsProcessingAlgorithm *algorithm, const QVariantMap &parameters, QgsProcessingContext &context );
 
     /**
      * Creates a new scope which contains variables and functions relating to a processing \a model algorithm,
@@ -308,21 +311,30 @@ class CORE_EXPORT QgsExpressionContextUtils
      * For instance, model name and path variables.
      * \since QGIS 3.6
      */
-    static QgsExpressionContextScope *processingModelAlgorithmScope( const QgsProcessingModelAlgorithm *model, const QVariantMap &parameters, QgsProcessingContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> processingModelAlgorithmScope( const QgsProcessingModelAlgorithm *model, const QVariantMap &parameters, QgsProcessingContext &context );
 
     /**
      * Creates a new scope which contains variables and functions relating to provider notifications
      * \param message the notification message
      */
-    static QgsExpressionContextScope *notificationScope( const QString &message = QString() ) SIP_FACTORY;
+    static std::unique_ptr<QgsExpressionContextScope> notificationScope( const QString &message = QString() );
 
     /**
      * Registers all known core functions provided by QgsExpressionContextScope objects.
+     *
+     * \warning This should never be called manually -- it is an internal detail only, initialized automatically in the expression engine.
+     *
+     * \note Not available in Python bindings
      */
-    static void registerContextFunctions();
+    SIP_SKIP static void registerContextFunctions( QgsExpression::SharedFunctionPtrList &functions );
+
+    /**
+     * Creates a new scope which contains functions relating to mesh layer element \a elementType
+     * \since QGIS 3.22
+     */
+    static std::unique_ptr<QgsExpressionContextScope> meshExpressionScope( QgsMesh::ElementType elementType );
 
   private:
-
     class GetLayerVisibility : public QgsScopedExpressionFunction
     {
       public:
@@ -336,25 +348,39 @@ class CORE_EXPORT QgsExpressionContextUtils
         QList< QPointer< QgsMapLayer > > mLayers;
         QMap< QPointer< QgsMapLayer >, QPair< double, double > > mScaleBasedVisibilityDetails;
         double mScale = 0.0;
-
     };
 
     friend class QgsLayoutItemMap; // needs access to GetLayerVisibility
-
 };
+
+///@cond PRIVATE
+#ifndef SIP_RUN
+class LoadLayerFunction : public QgsScopedExpressionFunction
+{
+  public:
+    LoadLayerFunction()
+      : QgsScopedExpressionFunction( u"load_layer"_s, QgsExpressionFunction::ParameterList() << QgsExpressionFunction::Parameter( u"uri"_s ) << QgsExpressionFunction::Parameter( u"provider"_s ), u"Map Layers"_s )
+    {}
+
+    QVariant func( const QVariantList &, const QgsExpressionContext *, QgsExpression *parent, const QgsExpressionNodeFunction * ) override;
+    bool isStatic( const QgsExpressionNodeFunction *node, QgsExpression *parent, const QgsExpressionContext *context ) const override;
+
+    QgsScopedExpressionFunction *clone() const override;
+};
+#endif
+///@endcond
 
 #ifndef SIP_RUN
 
 /**
  * \class QgsExpressionContextScopePopper
- * RAII class to pop scope from an expression context on destruction
+ * \brief RAII class to pop scope from an expression context on destruction
  * \ingroup core
  * \since QGIS 3.10
  */
 class QgsExpressionContextScopePopper
 {
   public:
-
     /**
      * Constructor for QgsExpressionContextScopePopper. Appends the specified \a scope to the
      * end of \a context. \a scope will be automatically popped and deleted when this QgsExpressionContextScopePopper
@@ -369,10 +395,7 @@ class QgsExpressionContextScopePopper
       mContext.appendScope( scope );
     }
 
-    ~QgsExpressionContextScopePopper()
-    {
-      delete mContext.popScope();
-    }
+    ~QgsExpressionContextScopePopper() { delete mContext.popScope(); }
 
   private:
     QgsExpressionContext &mContext;

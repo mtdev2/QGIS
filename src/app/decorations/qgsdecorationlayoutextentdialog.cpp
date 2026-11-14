@@ -17,18 +17,24 @@
 
 #include "qgsdecorationlayoutextentdialog.h"
 
+#include "qgisapp.h"
 #include "qgsdecorationlayoutextent.h"
-
-#include "qgslogger.h"
+#include "qgsfillsymbol.h"
+#include "qgsgui.h"
+#include "qgsguiutils.h"
 #include "qgshelp.h"
+#include "qgslogger.h"
+#include "qgssettings.h"
 #include "qgsstyle.h"
 #include "qgssymbol.h"
 #include "qgssymbolselectordialog.h"
-#include "qgisapp.h"
-#include "qgsguiutils.h"
-#include "qgssettings.h"
 #include "qgstextformatwidget.h"
-#include "qgsgui.h"
+
+#include <QString>
+
+#include "moc_qgsdecorationlayoutextentdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsDecorationLayoutExtentDialog::QgsDecorationLayoutExtentDialog( QgsDecorationLayoutExtent &deco, QWidget *parent )
   : QDialog( parent )
@@ -41,7 +47,7 @@ QgsDecorationLayoutExtentDialog::QgsDecorationLayoutExtentDialog( QgsDecorationL
   connect( buttonBox, &QDialogButtonBox::accepted, this, &QgsDecorationLayoutExtentDialog::buttonBox_accepted );
   connect( buttonBox, &QDialogButtonBox::rejected, this, &QgsDecorationLayoutExtentDialog::buttonBox_rejected );
 
-  mSymbolButton->setSymbolType( QgsSymbol::Fill );
+  mSymbolButton->setSymbolType( Qgis::SymbolType::Fill );
 
   updateGuiElements();
   connect( buttonBox->button( QDialogButtonBox::Apply ), &QAbstractButton::clicked, this, &QgsDecorationLayoutExtentDialog::apply );
@@ -62,7 +68,7 @@ void QgsDecorationLayoutExtentDialog::updateGuiElements()
 void QgsDecorationLayoutExtentDialog::updateDecoFromGui()
 {
   mDeco.setEnabled( grpEnable->isChecked() );
-  mDeco.setSymbol( mSymbolButton->clonedSymbol< QgsFillSymbol >() );
+  mDeco.setSymbol( mSymbolButton->clonedSymbol<QgsFillSymbol>() );
   mDeco.setTextFormat( mButtonFontStyle->textFormat() );
   mDeco.setLabelExtents( mCheckBoxLabelExtents->isChecked() );
 }
@@ -86,5 +92,5 @@ void QgsDecorationLayoutExtentDialog::buttonBox_rejected()
 
 void QgsDecorationLayoutExtentDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "introduction/general_tools.html#layout-extents" ) );
+  QgsHelp::openHelp( u"map_views/map_view.html#layoutextents-decoration"_s );
 }

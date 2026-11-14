@@ -15,30 +15,38 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgis.h"
+#include "qgs3d.h"
 #include "qgs3dsymbolregistry.h"
 #include "qgsabstract3dsymbol.h"
+#include "qgstest.h"
 
 #include <QObject>
-#include "qgstest.h"
-#include "qgs3d.h"
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 //dummy symbol for testing
 class Dummy3DSymbol : public QgsAbstract3DSymbol
 {
   public:
     Dummy3DSymbol() = default;
-    QString type() const override { return QStringLiteral( "Dummy" ); }
+    QString type() const override { return u"Dummy"_s; }
     QgsAbstract3DSymbol *clone() const override { return new Dummy3DSymbol(); }
     void writeXml( QDomElement &, const QgsReadWriteContext & ) const override {}
     void readXml( const QDomElement &, const QgsReadWriteContext & ) override {}
+    void setMaterialSettings( QgsAbstractMaterialSettings * ) override {};
 
     static QgsAbstract3DSymbol *create() { return new Dummy3DSymbol(); }
-
 };
 
-class TestQgs3DSymbolRegistry : public QObject
+class TestQgs3DSymbolRegistry : public QgsTest
 {
     Q_OBJECT
+  public:
+    TestQgs3DSymbolRegistry()
+      : QgsTest( u"3D Symbol Registry Tests"_s, u"3d"_s )
+    {}
 
   private slots:
     void initTestCase();
@@ -54,7 +62,6 @@ class TestQgs3DSymbolRegistry : public QObject
     void defaultSymbolForGeometryType();
 
   private:
-
 };
 
 void TestQgs3DSymbolRegistry::initTestCase()
@@ -69,24 +76,19 @@ void TestQgs3DSymbolRegistry::cleanupTestCase()
 }
 
 void TestQgs3DSymbolRegistry::init()
-{
-
-}
+{}
 
 void TestQgs3DSymbolRegistry::cleanup()
-{
-
-}
+{}
 
 void TestQgs3DSymbolRegistry::metadata()
 {
-  Qgs3DSymbolMetadata metadata = Qgs3DSymbolMetadata( QStringLiteral( "name" ), QStringLiteral( "display name" ), Dummy3DSymbol::create );
+  Qgs3DSymbolMetadata metadata = Qgs3DSymbolMetadata( u"name"_s, u"display name"_s, Dummy3DSymbol::create );
   QCOMPARE( metadata.type(), QString( "name" ) );
   QCOMPARE( metadata.visibleName(), QString( "display name" ) );
 
   //test creating symbol from metadata
-  QVariantMap map;
-  std::unique_ptr< QgsAbstract3DSymbol > symbol( metadata.create() );
+  const std::unique_ptr<QgsAbstract3DSymbol> symbol( metadata.create() );
   QVERIFY( symbol );
   Dummy3DSymbol *dummySymbol = dynamic_cast<Dummy3DSymbol *>( symbol.get() );
   QVERIFY( dummySymbol );
@@ -113,13 +115,13 @@ void TestQgs3DSymbolRegistry::instanceHasDefaultSymbols()
 void TestQgs3DSymbolRegistry::addSymbol()
 {
   Qgs3DSymbolRegistry *registry = QgsApplication::symbol3DRegistry();
-  int previousCount = registry->symbolTypes().length();
+  const int previousCount = registry->symbolTypes().length();
 
-  registry->addSymbolType( new Qgs3DSymbolMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy symbol" ), Dummy3DSymbol::create ) );
+  registry->addSymbolType( new Qgs3DSymbolMetadata( u"Dummy"_s, u"Dummy symbol"_s, Dummy3DSymbol::create ) );
   QCOMPARE( registry->symbolTypes().length(), previousCount + 1 );
   //try adding again, should have no effect
-  Qgs3DSymbolMetadata *dupe = new Qgs3DSymbolMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy symbol" ), Dummy3DSymbol::create );
-  QVERIFY( ! registry->addSymbolType( dupe ) );
+  Qgs3DSymbolMetadata *dupe = new Qgs3DSymbolMetadata( u"Dummy"_s, u"Dummy symbol"_s, Dummy3DSymbol::create );
+  QVERIFY( !registry->addSymbolType( dupe ) );
   QCOMPARE( registry->symbolTypes().length(), previousCount + 1 );
   delete dupe;
 
@@ -131,42 +133,42 @@ void TestQgs3DSymbolRegistry::addSymbol()
 void TestQgs3DSymbolRegistry::fetchTypes()
 {
   Qgs3DSymbolRegistry *registry = QgsApplication::symbol3DRegistry();
-  QStringList types = registry->symbolTypes();
+  const QStringList types = registry->symbolTypes();
 
   QVERIFY( types.contains( "Dummy" ) );
 
-  Qgs3DSymbolAbstractMetadata *metadata = registry->symbolMetadata( QStringLiteral( "Dummy" ) );
+  Qgs3DSymbolAbstractMetadata *metadata = registry->symbolMetadata( u"Dummy"_s );
   QCOMPARE( metadata->type(), QString( "Dummy" ) );
 
   //metadata for bad symbol
-  metadata = registry->symbolMetadata( QStringLiteral( "bad symbol" ) );
+  metadata = registry->symbolMetadata( u"bad symbol"_s );
   QVERIFY( !metadata );
 }
 
 void TestQgs3DSymbolRegistry::createSymbol()
 {
   Qgs3DSymbolRegistry *registry = QgsApplication::symbol3DRegistry();
-  std::unique_ptr< QgsAbstract3DSymbol > symbol( registry->createSymbol( QStringLiteral( "Dummy" ) ) );
+  std::unique_ptr<QgsAbstract3DSymbol> symbol( registry->createSymbol( u"Dummy"_s ) );
 
   QVERIFY( symbol.get() );
   Dummy3DSymbol *dummySymbol = dynamic_cast<Dummy3DSymbol *>( symbol.get() );
   QVERIFY( dummySymbol );
 
   //try creating a bad symbol
-  symbol.reset( registry->createSymbol( QStringLiteral( "bad symbol" ) ) );
-  QVERIFY( !symbol.get() );
+  symbol = registry->createSymbol( u"bad symbol"_s );
+  QVERIFY( !symbol );
 }
 
 void TestQgs3DSymbolRegistry::defaultSymbolForGeometryType()
 {
   Qgs3DSymbolRegistry *registry = QgsApplication::symbol3DRegistry();
-  std::unique_ptr< QgsAbstract3DSymbol > symbol( registry->defaultSymbolForGeometryType( QgsWkbTypes::PointGeometry ) );
-  QCOMPARE( symbol->type(), QStringLiteral( "point" ) );
-  symbol.reset( registry->defaultSymbolForGeometryType( QgsWkbTypes::LineGeometry ) );
-  QCOMPARE( symbol->type(), QStringLiteral( "line" ) );
-  symbol.reset( registry->defaultSymbolForGeometryType( QgsWkbTypes::PolygonGeometry ) );
-  QCOMPARE( symbol->type(), QStringLiteral( "polygon" ) );
-  symbol.reset( registry->defaultSymbolForGeometryType( QgsWkbTypes::NullGeometry ) );
+  std::unique_ptr<QgsAbstract3DSymbol> symbol( registry->defaultSymbolForGeometryType( Qgis::GeometryType::Point ) );
+  QCOMPARE( symbol->type(), u"point"_s );
+  symbol = registry->defaultSymbolForGeometryType( Qgis::GeometryType::Line );
+  QCOMPARE( symbol->type(), u"line"_s );
+  symbol = registry->defaultSymbolForGeometryType( Qgis::GeometryType::Polygon );
+  QCOMPARE( symbol->type(), u"polygon"_s );
+  symbol = registry->defaultSymbolForGeometryType( Qgis::GeometryType::Null );
   QVERIFY( !symbol );
 }
 

@@ -22,14 +22,12 @@
 
 #include "qgsserverrequest.h"
 
-
 /**
  * \ingroup server
  * \class QgsFcgiServerRequest
- * \brief Class defining fcgi request
- * \since QGIS 3.0
+ * \brief Defines fcgi requests.
  */
-class SERVER_EXPORT QgsFcgiServerRequest: public QgsServerRequest
+class SERVER_EXPORT QgsFcgiServerRequest : public QgsServerRequest
 {
   public:
     QgsFcgiServerRequest();
@@ -41,16 +39,28 @@ class SERVER_EXPORT QgsFcgiServerRequest: public QgsServerRequest
      */
     bool hasError() const { return mHasError; }
 
+    using QgsServerRequest::header;
+    /**
+     * Returns the header value
+     * \param name of the header
+     * \return the header value or an empty string
+     * \since QGIS 3.20
+     */
+    QString header( const QString &name ) const override;
+
   private:
     void readData();
 
     // Log request info: print debug infos
     // about the request
-    void printRequestInfos( const QUrl &url );
+    void printRequestInfos( const QUrl &url ) const;
 
+    // Fill the url given in argument with
+    // the server name, the server port and the schema (calculated from HTTPS)
+    void fillUrl( QUrl &url ) const;
 
     QByteArray mData;
-    bool       mHasError = false;
+    bool mHasError = false;
 };
 
 #endif

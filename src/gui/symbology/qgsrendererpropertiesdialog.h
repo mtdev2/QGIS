@@ -17,13 +17,13 @@
 #ifndef QGSRENDERERPROPERTIESDIALOG_H
 #define QGSRENDERERPROPERTIESDIALOG_H
 
-#include <QDialog>
-#include "qgis_sip.h"
-
 #include "ui_qgsrendererpropsdialogbase.h"
 
-#include "qgsfeaturerequest.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsfeaturerequest.h"
+
+#include <QDialog>
 
 class QKeyEvent;
 
@@ -39,13 +39,13 @@ class QgsMessageBar;
 /**
  * \ingroup gui
  * \class QgsRendererPropertiesDialog
+ * \brief A dialog for configuring vector layer renderers.
  */
 class GUI_EXPORT QgsRendererPropertiesDialog : public QDialog, private Ui::QgsRendererPropsDialogBase
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsRendererPropertiesDialog.
      * \param layer associated layer
@@ -61,7 +61,6 @@ class GUI_EXPORT QgsRendererPropertiesDialog : public QDialog, private Ui::QgsRe
      * Sets the map canvas associated with the dialog. This allows the widget to retrieve the current
      * map scale and other properties from the canvas.
      * \param canvas map canvas
-     * \since QGIS 2.12
      */
     void setMapCanvas( QgsMapCanvas *canvas );
 
@@ -134,16 +133,14 @@ class GUI_EXPORT QgsRendererPropertiesDialog : public QDialog, private Ui::QgsRe
     void syncToLayer();
 
   protected:
-
     /**
-     * Connect the given slot to the value changed event for the set of widgets
-     * Each widget is checked for type and the common type of signal is connected
-     * to the slot.
+     * Connect the value changed event for the set of widgets to
+     * widgetChanged signal. Each widget is checked for type and
+     * the common type of signal is connected to widgetChanged.
      *
      * \param widgets The list of widgets to check.
-     * \param slot The slot to connect to the signals.
      */
-    void connectValueChanged( const QList<QWidget *> &widgets, const char *slot );
+    void connectValueChanged( const QList<QWidget *> &widgets );
 
     // Reimplements dialog keyPress event so we can ignore it
     void keyPressEvent( QKeyEvent *event ) override;
@@ -153,7 +150,7 @@ class GUI_EXPORT QgsRendererPropertiesDialog : public QDialog, private Ui::QgsRe
 
     QgsRendererWidget *mActiveWidget = nullptr;
 
-    QgsPaintEffect *mPaintEffect = nullptr;
+    std::unique_ptr<QgsPaintEffect> mPaintEffect;
 
     QgsMapCanvas *mMapCanvas = nullptr;
     QgsMessageBar *mMessageBar = nullptr;
@@ -161,6 +158,8 @@ class GUI_EXPORT QgsRendererPropertiesDialog : public QDialog, private Ui::QgsRe
     QgsFeatureRequest::OrderBy mOrderBy;
 
   private:
+    static void initRendererWidgetFunctions();
+
     bool mDockMode = false;
 
     friend class QgsAppScreenShots;

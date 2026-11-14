@@ -18,28 +18,27 @@
 #define QGSLAYOUTREPORTSECTIONLABEL_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "qgis_gui.h"
+#include "qgslayout.h"
+#include "qgslayoutview.h"
 
 #include <QGraphicsRectItem>
-#include "qgis_gui.h"
-#include "qgslayoutview.h"
-#include "qgslayout.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
 /**
  * \ingroup gui
- * Draws a label describing the current report section within a layout designer view.
+ * \brief Draws a label describing the current report section within a layout designer view.
  *
  * \note not available in Python bindings
  *
- * \since QGIS 3.0
 */
-class GUI_EXPORT QgsLayoutReportSectionLabel: public QGraphicsRectItem
+class GUI_EXPORT QgsLayoutReportSectionLabel : public QGraphicsRectItem
 {
-
   public:
-
     /**
      * Constructor for QgsLayoutReportSectionLabel.
      */
@@ -51,11 +50,9 @@ class GUI_EXPORT QgsLayoutReportSectionLabel: public QGraphicsRectItem
     void setLabel( const QString &label );
 
   private:
-
-    QPointer< QgsLayout > mLayout;
-    QPointer< QgsLayoutView > mView;
+    QPointer<QgsLayout> mLayout;
+    QPointer<QgsLayoutView> mView;
     QString mLabel;
-
 };
 
 ///@endcond PRIVATE

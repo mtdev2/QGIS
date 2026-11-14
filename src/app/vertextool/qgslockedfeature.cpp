@@ -14,27 +14,31 @@
  ***************************************************************************/
 
 #include "qgslockedfeature.h"
-#include "qgsvertexeditor.h"
 
+#include "qgisapp.h"
 #include "qgsfeatureiterator.h"
-#include "qgspoint.h"
-#include "qgssettings.h"
-#include "qgslogger.h"
-#include "qgsvertexmarker.h"
 #include "qgsgeometryvalidator.h"
 #include "qgsguiutils.h"
-#include "qgsvectorlayer.h"
-#include "qgsrubberband.h"
-#include "qgisapp.h"
 #include "qgslayertreeview.h"
-#include "qgsproject.h"
-#include "qgsstatusbar.h"
+#include "qgslogger.h"
 #include "qgsmapcanvas.h"
+#include "qgspoint.h"
+#include "qgsproject.h"
+#include "qgsrubberband.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingsregistrycore.h"
+#include "qgsstatusbar.h"
+#include "qgsvectorlayer.h"
+#include "qgsvertexeditor.h"
+#include "qgsvertexmarker.h"
 
+#include <QString>
 
-QgsLockedFeature::QgsLockedFeature( QgsFeatureId featureId,
-                                    QgsVectorLayer *layer,
-                                    QgsMapCanvas *canvas )
+#include "moc_qgslockedfeature.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsLockedFeature::QgsLockedFeature( QgsFeatureId featureId, QgsVectorLayer *layer, QgsMapCanvas *canvas )
   : mFeatureId( featureId )
   , mLayer( layer )
   , mCanvas( canvas )
@@ -123,8 +127,7 @@ void QgsLockedFeature::geometryChanged( QgsFeatureId fid, const QgsGeometry &geo
 
 void QgsLockedFeature::validateGeometry( QgsGeometry *g )
 {
-  QgsSettings settings;
-  if ( settings.value( QStringLiteral( "qgis/digitizing/validate_geometries" ), 1 ).toInt() == 0 )
+  if ( QgsSettingsRegistryCore::settingsDigitizingValidateGeometries->value() == 0 )
     return;
 
   if ( !g )
@@ -144,13 +147,11 @@ void QgsLockedFeature::validateGeometry( QgsGeometry *g )
   while ( !mGeomErrorMarkers.isEmpty() )
   {
     QgsVertexMarker *vm = mGeomErrorMarkers.takeFirst();
-    QgsDebugMsg( "deleting " + vm->toolTip() );
+    QgsDebugMsgLevel( "deleting " + vm->toolTip(), 2 );
     delete vm;
   }
 
-  QgsGeometry::ValidationMethod method = QgsGeometry::ValidatorQgisInternal;
-  if ( settings.value( QStringLiteral( "qgis/digitizing/validate_geometries" ), 1 ).toInt() == 2 )
-    method = QgsGeometry::ValidatorGeos;
+  Qgis::GeometryValidationEngine method = QgsGeometryValidator::defaultValidationEngine();
   mValidator = new QgsGeometryValidator( *g, nullptr, method );
   connect( mValidator, &QgsGeometryValidator::errorFound, this, &QgsLockedFeature::addError );
   connect( mValidator, &QThread::finished, this, &QgsLockedFeature::validationFinished );
@@ -216,7 +217,7 @@ void QgsLockedFeature::deleteVertexMap()
   mVertexMap.clear();
 }
 
-bool QgsLockedFeature::isSelected( int vertexNr )
+bool QgsLockedFeature::isSelected( int vertexNr ) const
 {
   return mVertexMap.at( vertexNr )->isSelected();
 }
@@ -229,10 +230,9 @@ QgsGeometry *QgsLockedFeature::geometry()
 
 void QgsLockedFeature::createVertexMap()
 {
-
   if ( !mGeometry )
   {
-    QgsDebugMsg( QStringLiteral( "Loading feature" ) );
+    QgsDebugMsgLevel( u"Loading feature"_s, 2 );
     updateGeometry( nullptr );
   }
 
@@ -293,7 +293,7 @@ void QgsLockedFeature::invertVertexSelection( int vertexNr )
 
   QgsVertexEntry *entry = mVertexMap.at( vertexNr );
 
-  bool selected = !entry->isSelected();
+  const bool selected = !entry->isSelected();
 
   entry->setSelected( selected );
   emit selectionChanged();
@@ -302,7 +302,7 @@ void QgsLockedFeature::invertVertexSelection( int vertexNr )
 void QgsLockedFeature::invertVertexSelection( const QVector<int> &vertexIndices )
 {
   const auto constVertexIndices = vertexIndices;
-  for ( int index : constVertexIndices )
+  for ( const int index : constVertexIndices )
   {
     if ( index < 0 || index >= mVertexMap.size() )
       continue;
@@ -313,7 +313,7 @@ void QgsLockedFeature::invertVertexSelection( const QVector<int> &vertexIndices 
   emit selectionChanged();
 }
 
-QgsFeatureId QgsLockedFeature::featureId()
+QgsFeatureId QgsLockedFeature::featureId() const
 {
   return mFeatureId;
 }

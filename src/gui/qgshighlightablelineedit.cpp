@@ -15,7 +15,10 @@
 
 
 #include "qgshighlightablelineedit.h"
+
 #include <QPainter>
+
+#include "moc_qgshighlightablelineedit.cpp"
 
 QgsHighlightableLineEdit::QgsHighlightableLineEdit( QWidget *parent )
   : QgsFilterLineEdit( parent )
@@ -27,9 +30,9 @@ void QgsHighlightableLineEdit::paintEvent( QPaintEvent *e )
   if ( mHighlight )
   {
     QPainter p( this );
-    int width = 2;  // width of highlight rectangle inside frame
+    const int width = 2; // width of highlight rectangle inside frame
     p.setPen( QPen( palette().highlight(), width ) );
-    QRect r = rect().adjusted( width, width, -width, -width );
+    const QRect r = rect().adjusted( width, width, -width, -width );
     p.drawRect( r );
   }
 }

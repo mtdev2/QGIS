@@ -16,13 +16,18 @@
  ***************************************************************************/
 
 #include "qgsalgorithmpointonsurface.h"
+
 #include "qgsgeometrycollection.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsPointOnSurfaceAlgorithm::name() const
 {
-  return QStringLiteral( "pointonsurface" );
+  return u"pointonsurface"_s;
 }
 
 QString QgsPointOnSurfaceAlgorithm::displayName() const
@@ -42,7 +47,7 @@ QString QgsPointOnSurfaceAlgorithm::group() const
 
 QString QgsPointOnSurfaceAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeometry" );
+  return u"vectorgeometry"_s;
 }
 
 QString QgsPointOnSurfaceAlgorithm::outputName() const
@@ -50,9 +55,27 @@ QString QgsPointOnSurfaceAlgorithm::outputName() const
   return QObject::tr( "Point" );
 }
 
+QgsFeatureSink::SinkFlags QgsPointOnSurfaceAlgorithm::sinkFlags() const
+{
+  if ( mAllParts )
+    return QgsProcessingFeatureBasedAlgorithm::sinkFlags() | QgsFeatureSink::RegeneratePrimaryKey;
+  else
+    return QgsProcessingFeatureBasedAlgorithm::sinkFlags();
+}
+
 QString QgsPointOnSurfaceAlgorithm::shortHelpString() const
 {
+  return QObject::tr( "This algorithm returns a point guaranteed to lie on the surface of a geometry." );
+}
+
+QString QgsPointOnSurfaceAlgorithm::shortDescription() const
+{
   return QObject::tr( "Returns a point guaranteed to lie on the surface of a geometry." );
+}
+
+Qgis::ProcessingAlgorithmDocumentationFlags QgsPointOnSurfaceAlgorithm::documentationFlags() const
+{
+  return Qgis::ProcessingAlgorithmDocumentationFlag::RegeneratesPrimaryKeyInSomeScenarios;
 }
 
 QgsPointOnSurfaceAlgorithm *QgsPointOnSurfaceAlgorithm::createInstance() const
@@ -62,33 +85,32 @@ QgsPointOnSurfaceAlgorithm *QgsPointOnSurfaceAlgorithm::createInstance() const
 
 void QgsPointOnSurfaceAlgorithm::initParameters( const QVariantMap & )
 {
-  std::unique_ptr< QgsProcessingParameterBoolean> allParts = qgis::make_unique< QgsProcessingParameterBoolean >(
-        QStringLiteral( "ALL_PARTS" ),
-        QObject::tr( "Create point on surface for each part" ),
-        false );
+  auto allParts = std::make_unique<QgsProcessingParameterBoolean>( u"ALL_PARTS"_s, QObject::tr( "Create point on surface for each part" ), false );
   allParts->setIsDynamic( true );
-  allParts->setDynamicPropertyDefinition( QgsPropertyDefinition( QStringLiteral( "All parts" ), QObject::tr( "Create point on surface for each part" ), QgsPropertyDefinition::Boolean ) );
-  allParts->setDynamicLayerParameterName( QStringLiteral( "INPUT" ) );
+  allParts->setDynamicPropertyDefinition( QgsPropertyDefinition( u"All parts"_s, QObject::tr( "Create point on surface for each part" ), QgsPropertyDefinition::Boolean ) );
+  allParts->setDynamicLayerParameterName( u"INPUT"_s );
   addParameter( allParts.release() );
 }
 
 bool QgsPointOnSurfaceAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mAllParts = parameterAsBoolean( parameters, QStringLiteral( "ALL_PARTS" ), context );
-  mDynamicAllParts = QgsProcessingParameters::isDynamic( parameters, QStringLiteral( "ALL_PARTS" ) );
+  mAllParts = parameterAsBoolean( parameters, u"ALL_PARTS"_s, context );
+  mDynamicAllParts = QgsProcessingParameters::isDynamic( parameters, u"ALL_PARTS"_s );
   if ( mDynamicAllParts )
-    mAllPartsProperty = parameters.value( QStringLiteral( "ALL_PARTS" ) ).value< QgsProperty >();
+    mAllPartsProperty = parameters.value( u"ALL_PARTS"_s ).value<QgsProperty>();
 
   return true;
 }
 
 QgsFeatureList QgsPointOnSurfaceAlgorithm::processFeature( const QgsFeature &f, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFeatureList list;
   QgsFeature feature = f;
-  if ( feature.hasGeometry() )
+  if ( feature.hasGeometry() && !feature.geometry().isEmpty() )
   {
-    QgsGeometry geom = feature.geometry();
+    const QgsGeometry geom = feature.geometry();
 
     bool allParts = mAllParts;
     if ( mDynamicAllParts )
@@ -98,13 +120,15 @@ QgsFeatureList QgsPointOnSurfaceAlgorithm::processFeature( const QgsFeature &f, 
     {
       const QgsGeometryCollection *geomCollection = static_cast<const QgsGeometryCollection *>( geom.constGet() );
 
-      for ( int i = 0; i < geomCollection->partCount(); ++i )
+      const int partCount = geomCollection->partCount();
+      list.reserve( partCount );
+      for ( int i = 0; i < partCount; ++i )
       {
-        QgsGeometry partGeometry( geomCollection->geometryN( i )->clone() );
-        QgsGeometry outputGeometry = partGeometry.pointOnSurface();
+        const QgsGeometry partGeometry( geomCollection->geometryN( i )->clone() );
+        const QgsGeometry outputGeometry = partGeometry.pointOnSurface();
         if ( outputGeometry.isNull() )
         {
-          feedback->pushInfo( QObject::tr( "Error calculating point on surface for feature %1 part %2: %3" ).arg( feature.id() ).arg( i ).arg( outputGeometry.lastError() ) );
+          feedback->reportError( QObject::tr( "Error calculating point on surface for feature %1 part %2: %3" ).arg( feature.id() ).arg( i ).arg( outputGeometry.lastError() ) );
         }
         feature.setGeometry( outputGeometry );
         list << feature;
@@ -112,10 +136,10 @@ QgsFeatureList QgsPointOnSurfaceAlgorithm::processFeature( const QgsFeature &f, 
     }
     else
     {
-      QgsGeometry outputGeometry = feature.geometry().pointOnSurface();
+      const QgsGeometry outputGeometry = feature.geometry().pointOnSurface();
       if ( outputGeometry.isNull() )
       {
-        feedback->pushInfo( QObject::tr( "Error calculating point on surface for feature %1: %2" ).arg( feature.id() ).arg( outputGeometry.lastError() ) );
+        feedback->reportError( QObject::tr( "Error calculating point on surface for feature %1: %2" ).arg( feature.id() ).arg( outputGeometry.lastError() ) );
       }
       feature.setGeometry( outputGeometry );
       list << feature;

@@ -17,18 +17,19 @@
 #ifndef QGSCREDENTIALS_H
 #define QGSCREDENTIALS_H
 
+#include "qgis_core.h"
+#include "qgis_sip.h"
+
 #include <QMap>
 #include <QMutex>
 #include <QObject>
 #include <QPair>
 #include <QString>
 
-#include "qgis_core.h"
-#include "qgis_sip.h"
-
 /**
  * \ingroup core
- * Interface for requesting credentials in QGIS in GUI independent way.
+ * \brief Interface for requesting credentials in QGIS in GUI independent way.
+ *
  * This class provides abstraction of a dialog for requesting credentials to the user.
  * By default QgsCredentials will be used if not overridden with other
  * credential creator function.
@@ -44,17 +45,13 @@
 class CORE_EXPORT QgsCredentials
 {
   public:
-
-    /**
-     * Destructor.
-     */
     virtual ~QgsCredentials() = default;
 
     /**
      * Requests credentials for the specified \a realm.
      *
      * If existing credentials exist for the given \a realm, these will be returned. Otherwise the credential
-     * handler will prompt for the correct username and password.
+     * handler will prompt for the correct username and password if \a requestCredentials is set to True.
      *
      * The retrieved or user-entered details will be stored in \a username and \a password.
      *
@@ -65,7 +62,7 @@ class CORE_EXPORT QgsCredentials
      *
      * \see put()
      */
-    bool get( const QString &realm, QString &username SIP_INOUT, QString &password SIP_INOUT, const QString &message = QString() );
+    bool get( const QString &realm, QString &username SIP_INOUT, QString &password SIP_INOUT, const QString &message = QString(), bool requestCredentials = true );
 
     /**
      * Stores the correct \a username and \a password for the specified \a realm.
@@ -87,27 +84,20 @@ class CORE_EXPORT QgsCredentials
      * Lock the instance against access from multiple threads. This does not really lock access to get/put methods,
      * it will just prevent other threads to lock the instance and continue the execution. When the class is used
      * from non-GUI threads, they should call lock() before the get/put calls to avoid race conditions.
-     * \since QGIS 2.4
      */
     void lock();
 
     /**
      * Unlock the instance after being locked.
-     * \since QGIS 2.4
      */
     void unlock();
 
     /**
      * Returns pointer to mutex
-     * \since QGIS 2.4
      */
     QMutex *mutex() { return &mAuthMutex; }
 
   protected:
-
-    /**
-     * Constructor for QgsCredentials.
-     */
     QgsCredentials() = default;
 
     //! request a password
@@ -142,9 +132,9 @@ class CORE_EXPORT QgsCredentials
 
 /**
  * \ingroup core
-\brief Default implementation of credentials interface
-
-This class doesn't prompt or return credentials
+ * \brief Default implementation of credentials interface.
+ *
+ * This class doesn't prompt or return credentials
 */
 class CORE_EXPORT QgsCredentialsNone : public QObject, public QgsCredentials
 {
@@ -165,11 +155,11 @@ class CORE_EXPORT QgsCredentialsNone : public QObject, public QgsCredentials
 
 /**
  * \ingroup core
-\brief Implementation of credentials interface for the console
-
-This class outputs message to the standard output and retrieves input from
-standard input. Therefore it won't be the right choice for apps without
-GUI.
+ * \brief Implementation of credentials interface for the console.
+ *
+ * This class outputs message to the standard output and retrieves input from
+ * standard input. Therefore it won't be the right choice for apps without
+ * GUI.
 */
 class CORE_EXPORT QgsCredentialsConsole : public QObject, public QgsCredentials
 {

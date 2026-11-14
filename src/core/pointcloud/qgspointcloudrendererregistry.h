@@ -17,10 +17,12 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgspointcloudclassifiedrenderer.h"
+
+#include <QDomElement>
 #include <QIcon>
 #include <QMap>
 #include <QStringList>
-#include <QDomElement>
 
 class QgsPointCloudRenderer;
 class QgsReadWriteContext;
@@ -35,7 +37,7 @@ class QgsPointCloudDataProvider;
 
 /**
  * \ingroup core
- * Stores metadata about one point cloud renderer class.
+ * \brief Stores metadata about one point cloud renderer class.
  *
  * \note It's necessary to implement createRenderer() function.
  *   In C++ you can use QgsPointCloudRendererMetadata convenience class.
@@ -45,7 +47,6 @@ class QgsPointCloudDataProvider;
 class CORE_EXPORT QgsPointCloudRendererAbstractMetadata
 {
   public:
-
     /**
      * Constructor for QgsPointCloudRendererAbstractMetadata, with the specified \a name.
      *
@@ -102,7 +103,12 @@ class CORE_EXPORT QgsPointCloudRendererAbstractMetadata
      * \note Not available in Python bindings
      */
     virtual QgsPointCloudRendererWidget *createRendererWidget( QgsPointCloudLayer *layer, QgsStyle *style, QgsPointCloudRenderer *oldRenderer ) SIP_FACTORY
-    { Q_UNUSED( layer ) Q_UNUSED( style ); Q_UNUSED( oldRenderer ); return nullptr; }
+    {
+      Q_UNUSED( layer )
+      Q_UNUSED( style );
+      Q_UNUSED( oldRenderer );
+      return nullptr;
+    }
 #endif
 
   protected:
@@ -114,47 +120,43 @@ class CORE_EXPORT QgsPointCloudRendererAbstractMetadata
     QIcon mIcon;
 };
 
-typedef QgsPointCloudRenderer *( *QgsPointCloudRendererCreateFunc )( QDomElement &, const QgsReadWriteContext & ) SIP_SKIP;
+typedef std::unique_ptr<QgsPointCloudRenderer> ( *QgsPointCloudRendererCreateFunc )( QDomElement &, const QgsReadWriteContext & ) SIP_SKIP;
 typedef QgsPointCloudRendererWidget *( *QgsPointCloudRendererWidgetFunc )( QgsPointCloudLayer *, QgsStyle *, QgsPointCloudRenderer * ) SIP_SKIP;
 
 /**
  * \ingroup core
- * Convenience metadata class that uses static functions to create point cloud renderer and its widget.
+ * \brief Convenience metadata class that uses static functions to create point cloud renderer and its widget.
  * \since QGIS 3.18
  */
 class CORE_EXPORT QgsPointCloudRendererMetadata : public QgsPointCloudRendererAbstractMetadata
 {
   public:
-
     /**
      * Construct metadata
      * \note not available in Python bindings
      */
-    QgsPointCloudRendererMetadata( const QString &name,
-                                   const QString &visibleName,
-                                   QgsPointCloudRendererCreateFunc pfCreate,
-                                   const QIcon &icon = QIcon(),
-                                   QgsPointCloudRendererWidgetFunc pfWidget = nullptr ) SIP_SKIP
-  : QgsPointCloudRendererAbstractMetadata( name, visibleName, icon )
-    , mCreateFunc( pfCreate )
-    , mWidgetFunc( pfWidget )
+    QgsPointCloudRendererMetadata( const QString &name, const QString &visibleName, QgsPointCloudRendererCreateFunc pfCreate, const QIcon &icon = QIcon(), QgsPointCloudRendererWidgetFunc pfWidget = nullptr )
+      SIP_SKIP : QgsPointCloudRendererAbstractMetadata( name, visibleName, icon ),
+                 mCreateFunc( pfCreate ),
+                 mWidgetFunc( pfWidget )
     {}
 
-    QgsPointCloudRenderer *createRenderer( QDomElement &elem, const QgsReadWriteContext &context ) override SIP_FACTORY
-    { return mCreateFunc ? mCreateFunc( elem, context ) : nullptr; }
+    QgsPointCloudRenderer *createRenderer( QDomElement &elem, const QgsReadWriteContext &context ) override SIP_FACTORY { return mCreateFunc ? mCreateFunc( elem, context ).release() : nullptr; }
 
 #ifndef SIP_RUN
     QgsPointCloudRendererWidget *createRendererWidget( QgsPointCloudLayer *layer, QgsStyle *style, QgsPointCloudRenderer *renderer ) override SIP_FACTORY
-    { return mWidgetFunc ? mWidgetFunc( layer, style, renderer ) : nullptr; }
+    {
+      return mWidgetFunc ? mWidgetFunc( layer, style, renderer ) : nullptr;
+    }
 #endif
 
     //! \note not available in Python bindings
-    QgsPointCloudRendererCreateFunc createFunction() const { return mCreateFunc; } SIP_SKIP
+    QgsPointCloudRendererCreateFunc createFunction() const SIP_SKIP { return mCreateFunc; }
     //! \note not available in Python bindings
-    QgsPointCloudRendererWidgetFunc widgetFunction() const { return mWidgetFunc; } SIP_SKIP
+    QgsPointCloudRendererWidgetFunc widgetFunction() const SIP_SKIP { return mWidgetFunc; }
 
     //! \note not available in Python bindings
-    void setWidgetFunction( QgsPointCloudRendererWidgetFunc f ) { mWidgetFunc = f; } SIP_SKIP
+    void setWidgetFunction( QgsPointCloudRendererWidgetFunc f ) SIP_SKIP { mWidgetFunc = f; }
 
   protected:
     //! pointer to function that creates an instance of the renderer when loading project / style
@@ -166,7 +168,6 @@ class CORE_EXPORT QgsPointCloudRendererMetadata : public QgsPointCloudRendererAb
 #ifdef SIP_RUN
     QgsPointCloudRendererMetadata();
 #endif
-
 };
 
 
@@ -183,13 +184,10 @@ class CORE_EXPORT QgsPointCloudRendererMetadata : public QgsPointCloudRendererAb
 class CORE_EXPORT QgsPointCloudRendererRegistry
 {
   public:
-
     QgsPointCloudRendererRegistry();
     ~QgsPointCloudRendererRegistry();
 
-    //! QgsPointCloudRendererRegistry cannot be copied.
     QgsPointCloudRendererRegistry( const QgsPointCloudRendererRegistry &rh ) = delete;
-    //! QgsPointCloudRendererRegistry cannot be copied.
     QgsPointCloudRendererRegistry &operator=( const QgsPointCloudRendererRegistry &rh ) = delete;
 
     /**
@@ -220,11 +218,17 @@ class CORE_EXPORT QgsPointCloudRendererRegistry
     QStringList renderersList() const;
 
     /**
-     * Returns a new default point cloud renderer for a layer with the specified \a provider.
+     * Returns a new default point cloud renderer for a specified \a layer.
      *
      * Caller takes ownership of the returned renderer.
      */
-    static QgsPointCloudRenderer *defaultRenderer( const QgsPointCloudDataProvider *provider ) SIP_FACTORY;
+    static std::unique_ptr<QgsPointCloudRenderer> defaultRenderer( const QgsPointCloudLayer *layer );
+
+    /**
+     * Returns a list of categories using the available Classification classes of a specified \a layer, along with
+     * default colors and translated names for the 19 classes (0-18) of point data record formats 6-10
+     */
+    static QgsPointCloudCategoryList classificationAttributeCategories( const QgsPointCloudLayer *layer );
 
   private:
 #ifdef SIP_RUN

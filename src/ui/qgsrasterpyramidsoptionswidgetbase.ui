@@ -44,25 +44,10 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <item>
-      <property name="text">
-       <string>External (GTiff .ovr)</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Internal (if possible)</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>External (Erdas Imagine .aux)</string>
-      </property>
-     </item>
     </widget>
    </item>
    <item row="3" column="0">
-    <widget class="QLabel" name="label_5">
+    <widget class="QLabel" name="labelLevels">
      <property name="text">
       <string>Levels</string>
      </property>
@@ -130,7 +115,7 @@
     <widget class="QgsRasterFormatSaveOptionsWidget" name="mSaveOptionsWidget" native="true"/>
    </item>
    <item row="1" column="0">
-    <widget class="QLabel" name="label_2">
+    <widget class="QLabel" name="labelOverviewFormat">
      <property name="text">
       <string>Overview format</string>
      </property>

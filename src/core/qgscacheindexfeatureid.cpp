@@ -14,15 +14,14 @@
  ***************************************************************************/
 
 #include "qgscacheindexfeatureid.h"
-#include "qgsfeaturerequest.h"
+
 #include "qgscachedfeatureiterator.h"
+#include "qgsfeaturerequest.h"
 #include "qgsvectorlayercache.h"
 
 QgsCacheIndexFeatureId::QgsCacheIndexFeatureId( QgsVectorLayerCache *cachedVectorLayer )
   : C( cachedVectorLayer )
-{
-
-}
+{}
 
 void QgsCacheIndexFeatureId::flushFeature( const QgsFeatureId fid )
 {
@@ -30,8 +29,7 @@ void QgsCacheIndexFeatureId::flushFeature( const QgsFeatureId fid )
 }
 
 void QgsCacheIndexFeatureId::flush()
-{
-}
+{}
 
 void QgsCacheIndexFeatureId::requestCompleted( const QgsFeatureRequest &featureRequest, const QgsFeatureIds &fids )
 {
@@ -43,7 +41,7 @@ bool QgsCacheIndexFeatureId::getCacheIterator( QgsFeatureIterator &featureIterat
 {
   switch ( featureRequest.filterType() )
   {
-    case QgsFeatureRequest::FilterFid:
+    case Qgis::FeatureRequestFilterType::Fid:
     {
       if ( C->isFidCached( featureRequest.filterFid() ) )
       {
@@ -52,7 +50,7 @@ bool QgsCacheIndexFeatureId::getCacheIterator( QgsFeatureIterator &featureIterat
       }
       break;
     }
-    case QgsFeatureRequest::FilterFids:
+    case Qgis::FeatureRequestFilterType::Fids:
     {
       if ( C->cachedFeatureIds().contains( featureRequest.filterFids() ) )
       {
@@ -61,8 +59,8 @@ bool QgsCacheIndexFeatureId::getCacheIterator( QgsFeatureIterator &featureIterat
       }
       break;
     }
-    case QgsFeatureRequest::FilterNone:
-    case QgsFeatureRequest::FilterExpression:
+    case Qgis::FeatureRequestFilterType::NoFilter:
+    case Qgis::FeatureRequestFilterType::Expression:
     {
       if ( C->hasFullCache() )
       {
@@ -75,4 +73,3 @@ bool QgsCacheIndexFeatureId::getCacheIterator( QgsFeatureIterator &featureIterat
 
   return false;
 }
-

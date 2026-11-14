@@ -11,16 +11,22 @@
  ***************************************************************************/
 
 #include "qgsdecorationscalebardialog.h"
+
 #include "qgsdecorationscalebar.h"
-#include "qgslogger.h"
-#include "qgshelp.h"
 #include "qgsgui.h"
+#include "qgshelp.h"
+#include "qgslogger.h"
 
 #include <QColorDialog>
 #include <QDialogButtonBox>
 #include <QPushButton>
+#include <QString>
 
-QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar &deco, int units, QWidget *parent )
+#include "moc_qgsdecorationscalebardialog.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar &deco, Qgis::DistanceUnit units, QWidget *parent )
   : QDialog( parent )
   , mDeco( deco )
 {
@@ -39,17 +45,18 @@ QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar 
   spnSize->setShowClearButton( false );
   switch ( units )
   {
-    case 0:
+    case Qgis::DistanceUnit::Meters:
       spnSize->setSuffix( tr( " meters/km" ) );
       break;
-    case 1:
+    case Qgis::DistanceUnit::Feet:
+    case Qgis::DistanceUnit::Miles:
       spnSize->setSuffix( tr( " feet/miles" ) );
       break;
-    case 2:
+    case Qgis::DistanceUnit::Degrees:
       spnSize->setSuffix( tr( " degrees" ) );
       break;
     default:
-      QgsDebugMsg( QStringLiteral( "Error: not picked up map units - actual value = %1" ).arg( units ) );
+      QgsDebugError( u"Error: not picked up map units - actual value = %1"_s.arg( qgsEnumValueToKey( units ) ) );
   }
   spnSize->setValue( mDeco.mPreferredSize );
 
@@ -62,8 +69,7 @@ QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar 
   cboPlacement->addItem( tr( "Bottom Left" ), QgsDecorationItem::BottomLeft );
   cboPlacement->addItem( tr( "Bottom Center" ), QgsDecorationItem::BottomCenter );
   cboPlacement->addItem( tr( "Bottom Right" ), QgsDecorationItem::BottomRight );
-  connect( cboPlacement, qgis::overload<int>::of( &QComboBox::currentIndexChanged ), this, [ = ]( int )
-  {
+  connect( cboPlacement, qOverload<int>( &QComboBox::currentIndexChanged ), this, [this]( int ) {
     spnHorizontal->setMinimum( cboPlacement->currentData() == QgsDecorationItem::TopCenter || cboPlacement->currentData() == QgsDecorationItem::BottomCenter ? -100 : 0 );
   } );
   cboPlacement->setCurrentIndex( cboPlacement->findData( mDeco.placement() ) );
@@ -71,7 +77,7 @@ QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar 
   spnHorizontal->setClearValue( 0 );
   spnHorizontal->setValue( mDeco.mMarginHorizontal );
   spnVertical->setValue( mDeco.mMarginVertical );
-  wgtUnitSelection->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderPercentage << QgsUnitTypes::RenderPixels );
+  wgtUnitSelection->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::Percentage, Qgis::RenderUnit::Pixels } );
   wgtUnitSelection->setUnit( mDeco.mMarginUnit );
 
   grpEnable->setChecked( mDeco.enabled() );
@@ -84,12 +90,12 @@ QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar 
 
   pbnChangeColor->setAllowOpacity( true );
   pbnChangeColor->setColor( mDeco.mColor );
-  pbnChangeColor->setContext( QStringLiteral( "gui" ) );
+  pbnChangeColor->setContext( u"gui"_s );
   pbnChangeColor->setColorDialogTitle( tr( "Select Scale Bar Fill Color" ) );
 
   pbnChangeOutlineColor->setAllowOpacity( true );
   pbnChangeOutlineColor->setColor( mDeco.mOutlineColor );
-  pbnChangeOutlineColor->setContext( QStringLiteral( "gui" ) );
+  pbnChangeOutlineColor->setContext( u"gui"_s );
   pbnChangeOutlineColor->setColorDialogTitle( tr( "Select Scale Bar Outline Color" ) );
 
   mButtonFontStyle->setMode( QgsFontButton::ModeTextRenderer );
@@ -98,12 +104,12 @@ QgsDecorationScaleBarDialog::QgsDecorationScaleBarDialog( QgsDecorationScaleBar 
 
 void QgsDecorationScaleBarDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "introduction/general_tools.html#scale-bar" ) );
+  QgsHelp::openHelp( u"map_views/map_view.html#scalebar-decoration"_s );
 }
 
 void QgsDecorationScaleBarDialog::apply()
 {
-  mDeco.setPlacement( static_cast< QgsDecorationItem::Placement>( cboPlacement->currentData().toInt() ) );
+  mDeco.setPlacement( static_cast<QgsDecorationItem::Placement>( cboPlacement->currentData().toInt() ) );
   mDeco.mMarginUnit = wgtUnitSelection->unit();
   mDeco.mMarginHorizontal = spnHorizontal->value();
   mDeco.mMarginVertical = spnVertical->value();

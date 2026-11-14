@@ -16,17 +16,21 @@
 #ifndef QGSMESHVARIABLESTROKEWIDTHWIDGET_H
 #define QGSMESHVARIABLESTROKEWIDTHWIDGET_H
 
-#include "qgis_gui.h"
 #include "ui_qgsmeshvariablestrokewidthwidgetbase.h"
-#include "qgspanelwidget.h"
+
+#include "qgis_gui.h"
 #include "qgsmeshlayerrenderer.h"
+#include "qgspanelwidget.h"
 
 SIP_NO_FILE
 
 /**
- * A widget push button that store variable stroke width and call a widget to set parameters
+ * \ingroup gui
+ * \class QgsMeshVariableStrokeWidthButton
+ *
+ * \brief A widget push button that stores variable stroke width and calls a widget to set parameters.
  */
-class QgsMeshVariableStrokeWidthButton: public QPushButton
+class QgsMeshVariableStrokeWidthButton : public QPushButton
 {
     Q_OBJECT
   public:
@@ -57,17 +61,17 @@ class QgsMeshVariableStrokeWidthButton: public QPushButton
 };
 
 /**
- * A widget to set parameters of variable stroke width
+ * \ingroup gui
+ * \class QgsMeshVariableStrokeWidthWidget
+ *
+ * \brief A widget to set parameters of variable stroke width
  */
-class QgsMeshVariableStrokeWidthWidget: public QgsPanelWidget, public Ui::QgsMeshVariableStrokeWidthWidget
+class QgsMeshVariableStrokeWidthWidget : public QgsPanelWidget, public Ui::QgsMeshVariableStrokeWidthWidget
 {
     Q_OBJECT
   public:
     //! Constructor
-    QgsMeshVariableStrokeWidthWidget( const QgsInterpolatedLineWidth &variableStrokeWidth,
-                                      double defaultMinimumvalue,
-                                      double defaultMaximumValue,
-                                      QWidget *parent = nullptr );
+    QgsMeshVariableStrokeWidthWidget( const QgsInterpolatedLineWidth &variableStrokeWidth, double defaultMinimumvalue, double defaultMaximumValue, QWidget *parent = nullptr );
 
     //! Sets the variable stroke width
     void setVariableStrokeWidth( const QgsInterpolatedLineWidth &variableStrokeWidth );
@@ -77,11 +81,12 @@ class QgsMeshVariableStrokeWidthWidget: public QgsPanelWidget, public Ui::QgsMes
 
   private slots:
     void defaultMinMax();
+
   private:
     double mDefaultMinimumValue = 0;
     double mDefaultMaximumValue = 0;
 
-    double lineEditValue( const QLineEdit *lineEdit ) const;
+    double lineEditValue( const QgsDoubleSpinBox *lineEdit ) const;
 };
 
 #endif // QGSMESHVARIABLESTROKEWIDTHWIDGET_H

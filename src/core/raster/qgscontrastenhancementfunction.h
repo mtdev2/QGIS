@@ -1,4 +1,4 @@
-/* **************************************************************************
+/***************************************************************************
               qgscontrastenhancementfunction.h -  description
                        -------------------
 begin                : Fri Nov 16 2007
@@ -7,7 +7,7 @@ email                : ersts@amnh.org
 
 ****************************************************************************/
 
-/* **************************************************************************
+/***************************************************************************
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -19,19 +19,18 @@ email                : ersts@amnh.org
 #ifndef QGSCONTRASTENHANCEMENTFUNCTION_H
 #define QGSCONTRASTENHANCEMENTFUNCTION_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 
 /**
  * \ingroup core
- * A contrast enhancement function is the base class for all raster contrast enhancements.
+ * \brief A contrast enhancement function is the base class for all raster contrast enhancements.
  *
  * The purpose of a contrast enhancement is to enhanceContrast or clip a pixel value into
  * a specified bounding range.
  */
 class CORE_EXPORT QgsContrastEnhancementFunction
 {
-
   public:
     QgsContrastEnhancementFunction( Qgis::DataType, double, double );
     QgsContrastEnhancementFunction( const QgsContrastEnhancementFunction &f );

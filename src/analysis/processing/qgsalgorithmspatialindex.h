@@ -18,10 +18,11 @@
 #ifndef QGSALGORITHMSPATIALINDEX_H
 #define QGSALGORITHMSPATIALINDEX_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -30,9 +31,7 @@
  */
 class QgsSpatialIndexAlgorithm : public QgsProcessingAlgorithm
 {
-
   public:
-
     QgsSpatialIndexAlgorithm() = default;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
     QString name() const override;
@@ -40,14 +39,13 @@ class QgsSpatialIndexAlgorithm : public QgsProcessingAlgorithm
     QStringList tags() const override;
     QString group() const override;
     QString groupId() const override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString shortHelpString() const override;
+    QString shortDescription() const override;
     QgsSpatialIndexAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 };
 
 ///@endcond PRIVATE

@@ -21,14 +21,13 @@
 
 /**
  * \ingroup core
- * A numeric formatter which returns a scientific notation representation of a value.
+ * \brief A numeric formatter which returns a scientific notation representation of a value.
  *
  * \since QGIS 3.12
  */
 class CORE_EXPORT QgsScientificNumericFormat : public QgsBasicNumericFormat
 {
   public:
-
     /**
       * Default constructor
       */
@@ -51,8 +50,6 @@ class CORE_EXPORT QgsScientificNumericFormat : public QgsBasicNumericFormat
      * \see setShowTrailingZeros()
      */
     void setNumberDecimalPlaces( int places ) override;
-
-
 };
 
 #endif // QGSSCIENTIFICNUMERICFORMAT_H

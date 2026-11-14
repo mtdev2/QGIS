@@ -17,22 +17,76 @@ email                : marco.hugentobler at sourcepole dot com
 #define QGSGEOMETRYENGINE_H
 
 #include "qgis_core.h"
-#include "qgslinestring.h"
 #include "qgsgeometry.h"
+#include "qgslinestring.h"
 #include "qgslogger.h"
 
+#include <QString>
 #include <QVector>
 
-class QgsAbstractGeometry;
+using namespace Qt::StringLiterals;
 
-/**
+class QgsAbstractGeometry;
+class QgsFeedback;
+
+#ifdef SIP_RUN
+// clang-format off
+% ModuleHeaderCode
+#include <qgsgeos.h>
+% End
+// clang-format on
+#endif
+
+  /**
  * \ingroup core
  * \class QgsGeometryEngine
- * \brief Contains geometry relation and modification algorithms.
- * \since QGIS 2.10
+ * \brief A geometry engine is a low-level representation of a QgsAbstractGeometry object, optimised for use with external
+ * geometry libraries such as GEOS.
+ *
+ * QgsGeometryEngine objects provide a mechanism for optimized evaluation of geometric algorithms, including spatial relationships
+ * between geometries and operations such as buffers or clipping.
+ *
+ * QgsGeometryEngine objects are not created directly, but are instead created by calling QgsGeometry::createGeometryEngine().
+ *
+ * Many methods available in the QgsGeometryEngine class can benefit from pre-preparing geometries. For instance, whenever
+ * a large number of spatial relationships will be tested (such as calling intersects(), within(), etc) then the
+ * geometry should first be prepared by calling prepareGeometry() before performing the tests.
+ *
+ * ### Example
+ *
+ * \code{.py}
+ *   # polygon_geometry contains a complex polygon, with many vertices
+ *   polygon_geometry = QgsGeometry.fromWkt('Polygon((...))')
+ *
+ *   # create a QgsGeometryEngine representation of the polygon
+ *   polygon_geometry_engine = QgsGeometry.createGeometryEngine(polygon_geometry.constGet())
+ *
+ *   # since we'll be performing many intersects tests, we can speed up these tests considerably
+ *   # by first "preparing" the geometry engine
+ *   polygon_geometry_engine.prepareGeometry()
+ *
+ *   # now we are ready to quickly test intersection against many other objects
+ *   for feature in my_layer.getFeatures():
+ *       feature_geometry = feature.geometry()
+ *       # test whether the feature's geometry intersects our original complex polygon
+ *       if polygon_geometry_engine.intersects(feature_geometry.constGet()):
+ *           print('feature intersects the polygon!')
+ * \endcode
+ *
+ * QgsGeometryEngine operations are backed by the GEOS library (https://trac.osgeo.org/geos/).
+ *
  */
-class CORE_EXPORT QgsGeometryEngine
+  class CORE_EXPORT QgsGeometryEngine
 {
+#ifdef SIP_RUN
+    SIP_CONVERT_TO_SUBCLASS_CODE
+    if ( dynamic_cast< QgsGeos * >( sipCpp ) != NULL )
+      sipType = sipType_QgsGeos;
+    else
+      sipType = NULL;
+  SIP_END
+#endif
+
   public:
 
     /**
@@ -41,13 +95,13 @@ class CORE_EXPORT QgsGeometryEngine
      */
     enum EngineOperationResult
     {
-      Success = 0, //!< Operation succeeded
+      Success = 0,            //!< Operation succeeded
       NothingHappened = 1000, //!< Nothing happened, without any error
-      MethodNotImplemented, //!< Method not implemented in geometry engine
-      EngineError, //!< Error occurred in the geometry engine
-      NodedGeometryError, //!< Error occurred while creating a noded geometry
-      InvalidBaseGeometry, //!< The geometry on which the operation occurs is not valid
-      InvalidInput, //!< The input is not valid
+      MethodNotImplemented,   //!< Method not implemented in geometry engine
+      EngineError,            //!< Error occurred in the geometry engine
+      NodedGeometryError,     //!< Error occurred while creating a noded geometry
+      InvalidBaseGeometry,    //!< The geometry on which the operation occurs is not valid
+      InvalidInput,           //!< The input is not valid
       /* split */
       SplitCannotSplitPoint, //!< Points cannot be split
     };
@@ -74,136 +128,218 @@ class CORE_EXPORT QgsGeometryEngine
     /**
      * Calculate the intersection of this and \a geom.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geom geometry to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the intersection results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
      */
-    virtual QgsAbstractGeometry *intersection( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *intersection(
+      const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr
+    ) const
+      = 0 SIP_FACTORY;
 
     /**
      * Calculate the difference of this and \a geom.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geom geometry to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the difference results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
      */
-    virtual QgsAbstractGeometry *difference( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *difference(
+      const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr
+    ) const
+      = 0 SIP_FACTORY;
 
     /**
      * Calculate the combination of this and \a geom.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geom geometry to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the union results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     *
      */
-    virtual QgsAbstractGeometry *combine( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *combine( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr ) const
+      = 0 SIP_FACTORY;
 
     /**
      * Calculate the combination of this and \a geometries.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geomList list of geometries to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the combination results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     *
      */
-    virtual QgsAbstractGeometry *combine( const QVector<QgsAbstractGeometry *> &geomList, QString *errorMsg ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *combine(
+      const QVector<QgsAbstractGeometry *> &geomList, QString *errorMsg, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr
+    ) const
+      = 0 SIP_FACTORY;
 
+    // clang-format off
     /**
      * Calculate the combination of this and \a geometries.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geometries list of geometries to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the combination results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
      */
-    virtual QgsAbstractGeometry *combine( const QVector< QgsGeometry > &geometries, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *combine( const QVector< QgsGeometry > &geometries, QString *errorMsg = nullptr, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
+    // clang-format on
 
     /**
      * Calculate the symmetric difference of this and \a geom.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * \param geom geometry to perform the operation
+     * \param errorMsg Error message returned by GEOS
+     * \param parameters can be used to specify parameters which control the difference results (since QGIS 3.28)
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     *
      */
-    virtual QgsAbstractGeometry *symDifference( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
-    virtual QgsAbstractGeometry *buffer( double distance, int segments, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
-    virtual QgsAbstractGeometry *buffer( double distance, int segments, int endCapStyle, int joinStyle, double miterLimit, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
-    virtual QgsAbstractGeometry *simplify( double tolerance, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
-    virtual QgsAbstractGeometry *interpolate( double distance, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *symDifference(
+      const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, const QgsGeometryParameters &parameters = QgsGeometryParameters(), QgsFeedback *feedback = nullptr
+    ) const
+      = 0 SIP_FACTORY;
+
+    /**
+     * Buffers the geometry.
+     * \param distance
+     * \param segments
+     * \param errorMsg Error message returned by GEOS
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     */
+    virtual QgsAbstractGeometry *buffer( double distance, int segments, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
+
+    /**
+     * Buffers a geometry.
+     *
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
+     */
+    virtual QgsAbstractGeometry *buffer(
+      double distance, int segments, Qgis::EndCapStyle endCapStyle, Qgis::JoinStyle joinStyle, double miterLimit, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr
+    ) const
+      = 0 SIP_FACTORY;
+
+    /**
+     * Simplifies the geometery.
+     * \param tolerance
+     * \param errorMsg Error message returned by GEOS
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     */
+    virtual QgsAbstractGeometry *simplify( double tolerance, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
+
+    /**
+     * Interpolates a point by distance along the geometry.
+     *
+     * \param distance
+     * \param errorMsg Error message returned by GEOS
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     */
+    virtual QgsAbstractGeometry *interpolate( double distance, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
+
     virtual QgsAbstractGeometry *envelope( QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
 
     /**
      * Calculates the centroid of this.
-     * May return a `NULLPTR`.
+     * May return NULLPTR.
      *
-     * \since QGIS 3.0 the centroid is returned
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
+     *
      */
-    virtual QgsPoint *centroid( QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsPoint *centroid( QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
 
     /**
      * Calculate a point that is guaranteed to be on the surface of this.
-     * May return a `NULLPTR`.
+     * May return NULLPTR.
      *
-     * \since QGIS 3.0 the centroid is returned
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual QgsPoint *pointOnSurface( QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsPoint *pointOnSurface( QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
 
     /**
-     * Calculate the convex hull of this.
+     * Calculate the convex hull of this geometry.
+     *
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual QgsAbstractGeometry *convexHull( QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    virtual QgsAbstractGeometry *convexHull( QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0 SIP_FACTORY;
 
     /**
      * Calculates the distance between this and \a geom.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual double distance( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual double distance( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
+
+    /**
+     * Checks if \a geom is within \a maxdistance distance from this geometry
+     *
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
+     *
+     * \since QGIS 3.22
+     */
+    virtual bool distanceWithin( const QgsAbstractGeometry *geom, double maxdistance, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom intersects this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool intersects( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool intersects( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom touches this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool touches( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool touches( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom crosses this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool crosses( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool crosses( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom is within this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool within( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool within( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom overlaps this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool overlaps( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool overlaps( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom contains this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool contains( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool contains( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Checks if \a geom is disjoint from this.
      *
-     * \since QGIS 3.0 \a geom is a pointer
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool disjoint( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool disjoint( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Returns the Dimensional Extended 9 Intersection Model (DE-9IM) representation of the
      * relationship between the geometries.
      * \param geom geometry to relate to
      * \param errorMsg destination storage for any error message
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     *
      * \returns DE-9IM string for relationship, or an empty string if an error occurred
-     * \since QGIS 2.12
      */
-    virtual QString relate( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual QString relate( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
      * Tests whether two geometries are related by a specified Dimensional Extended 9 Intersection Model (DE-9IM)
@@ -211,10 +347,10 @@ class CORE_EXPORT QgsGeometryEngine
      * \param geom geometry to relate to
      * \param pattern DE-9IM pattern for match
      * \param errorMsg destination storage for any error message
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
      * \returns TRUE if geometry relationship matches with pattern
-     * \since QGIS 2.14
      */
-    virtual bool relatePattern( const QgsAbstractGeometry *geom, const QString &pattern, QString *errorMsg = nullptr ) const = 0;
+    virtual bool relatePattern( const QgsAbstractGeometry *geom, const QString &pattern, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     virtual double area( QString *errorMsg = nullptr ) const = 0;
     virtual double length( QString *errorMsg = nullptr ) const = 0;
@@ -229,39 +365,69 @@ class CORE_EXPORT QgsGeometryEngine
      * validity checks (e.g. ESRI) permit self-touching holes.
      *
      * If \a errorLoc is specified, it will be set to the geometry of the error location.
+     *
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
      */
-    virtual bool isValid( QString *errorMsg = nullptr, bool allowSelfTouchingHoles = false, QgsGeometry *errorLoc = nullptr ) const = 0;
+    virtual bool isValid( QString *errorMsg = nullptr, bool allowSelfTouchingHoles = false, QgsGeometry *errorLoc = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
 
     /**
-     * Checks if this is equal to \a geom.
-     * If both are Null geometries, `FALSE` is returned.
-     *
-     * \since QGIS 3.0 \a geom is a pointer
+     * Check if geometries are topologically equivalent
+     * \param geom other geom to compare with
+     * \param errorMsg will be set to descriptive error string if the operation fails
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     * \return TRUE if topologically equivalent, else FALSE
      */
-    virtual bool isEqual( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr ) const = 0;
+    virtual bool isEqual( const QgsAbstractGeometry *geom, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
+
+    /**
+     * Checks if this is equal to \a geom ie. if each vertex of this is within the distance tolerance of the corresponding vertex in \a geom.
+     * If both are Null geometries, FALSE is returned.
+     * \param geom geometry to compare with
+     * \param epsilon maximum difference for coordinates between the objects. With a near zero epsilon, this function will behave as an exact comparison.
+     * \param errorMsg destination storage for any error message
+     * \param feedback optional feedback object for early cancellation (since QGIS 4.2).
+     * \return TRUE if fuzzy equivalent, else FALSE
+     * \since QGIS 4.2
+     */
+    virtual bool isFuzzyEqual( const QgsAbstractGeometry *geom, double epsilon, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0;
+
     virtual bool isEmpty( QString *errorMsg ) const = 0;
 
     /**
      * Determines whether the geometry is simple (according to OGC definition).
-     * \since QGIS 3.0
      */
     virtual bool isSimple( QString *errorMsg = nullptr ) const = 0;
+
+    /**
+     * Splits this geometry according to a given geometry.
+     * \param splitGeom the geometry that splits this geometry
+     * \param[out] newGeometries list of new geometries that have been created with the split
+     * \param topological TRUE if topological editing is enabled
+     * \param[out] topologyTestPoints points that need to be tested for topological completeness in the dataset. Points from curve geometries are not yet fully supported.
+     * \param[out] errorMsg error messages emitted, if any
+     * \returns EngineOperationResult a result code: success or reason of failure
+     *
+     * \since QGIS 4.4
+     */
+    virtual QgsGeometryEngine::EngineOperationResult splitGeometry(
+      const QgsAbstractGeometry &splitGeom, QVector<QgsGeometry > &newGeometries SIP_OUT, bool topological, QgsPointSequence &topologyTestPoints SIP_OUT, QString *errorMsg SIP_OUT = nullptr
+    ) const
+      = 0;
 
     /**
      * Splits this geometry according to a given line.
      * \param splitLine the line that splits the geometry
      * \param[out] newGeometries list of new geometries that have been created with the split
      * \param topological TRUE if topological editing is enabled
-     * \param[out] topologyTestPoints points that need to be tested for topological completeness in the dataset
+     * \param[out] topologyTestPoints points that need to be tested for topological completeness in the dataset. Points from curve geometries are not yet fully supported.
      * \param[out] errorMsg error messages emitted, if any
      * \param skipIntersectionCheck set to TRUE to skip the potentially expensive initial intersection check. Only set this flag if an intersection
      * test has already been performed by the caller!
      * \returns 0 in case of success, 1 if geometry has not been split, error else
     */
-    virtual QgsGeometryEngine::EngineOperationResult splitGeometry( const QgsLineString &splitLine,
-        QVector<QgsGeometry > &newGeometries SIP_OUT,
-        bool topological,
-        QgsPointSequence &topologyTestPoints, QString *errorMsg = nullptr, bool skipIntersectionCheck = false ) const
+    virtual QgsGeometryEngine::EngineOperationResult splitGeometry(
+      const QgsLineString &splitLine, QVector<QgsGeometry > &newGeometries SIP_OUT, bool topological, QgsPointSequence &topologyTestPoints, QString *errorMsg = nullptr, bool skipIntersectionCheck = false
+    ) const
     {
       Q_UNUSED( splitLine )
       Q_UNUSED( newGeometries )
@@ -272,7 +438,13 @@ class CORE_EXPORT QgsGeometryEngine
       return MethodNotImplemented;
     }
 
-    virtual QgsAbstractGeometry *offsetCurve( double distance, int segments, int joinStyle, double miterLimit, QString *errorMsg = nullptr ) const = 0 SIP_FACTORY;
+    /**
+     * Offsets a curve.
+     *
+     * The optional \a feedback argument allows for early cancellation (since QGIS 4.2).
+     */
+    virtual QgsAbstractGeometry *offsetCurve( double distance, int segments, Qgis::JoinStyle joinStyle, double miterLimit, QString *errorMsg = nullptr, QgsFeedback *feedback = nullptr ) const = 0
+      SIP_FACTORY;
 
     /**
      * Sets whether warnings and errors encountered during the geometry operations should be logged.
@@ -299,7 +471,7 @@ class CORE_EXPORT QgsGeometryEngine
     {
       if ( mLogErrors )
       {
-        QgsDebugMsg( QStringLiteral( "%1 notice: %2" ).arg( engineName, message ) );
+        QgsDebugError( u"%1 notice: %2"_s.arg( engineName, message ) );
         qWarning( "%s exception: %s", engineName.toLocal8Bit().constData(), message.toLocal8Bit().constData() );
       }
     }
@@ -310,4 +482,3 @@ class CORE_EXPORT QgsGeometryEngine
 };
 
 #endif // QGSGEOMETRYENGINE_H
-

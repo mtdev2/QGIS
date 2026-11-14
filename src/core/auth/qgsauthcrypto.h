@@ -17,22 +17,21 @@
 #ifndef QGSAUTHCRYPTO_H
 #define QGSAUTHCRYPTO_H
 
-#define SIP_NO_FILE
+
+#include "qgis_core.h"
 
 #include <QFile>
 #include <QString>
 
-#include "qgis_core.h"
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
- * Functions for hashing/checking master password and encrypt/decrypting data with password
+ * \brief Functions for hashing/checking master password and encrypt/decrypting data with password
  * \note not available in Python bindings
- * \since 2.8
  */
 class CORE_EXPORT QgsAuthCrypto
 {
-
   public:
     //! Whether QCA has the qca-ossl plugin, which a base run-time requirement
     static bool isDisabled();
@@ -44,22 +43,13 @@ class CORE_EXPORT QgsAuthCrypto
     static const QString decrypt( const QString &pass, const QString &cipheriv, const QString &text );
 
     //! Generate SHA256 hash for master password, with iterations and salt
-    static void passwordKeyHash( const QString &pass,
-                                 QString *salt,
-                                 QString *hash,
-                                 QString *cipheriv = nullptr );
+    static void passwordKeyHash( const QString &pass, QString *salt, QString *hash, QString *cipheriv = nullptr );
 
     //! Verify existing master password hash to a re-generated one
-    static bool verifyPasswordKeyHash( const QString &pass,
-                                       const QString &salt,
-                                       const QString &hash,
-                                       QString *hashderived = nullptr );
+    static bool verifyPasswordKeyHash( const QString &pass, const QString &salt, const QString &hash, QString *hashderived = nullptr );
 
   private:
-    static QString encryptdecrypt( const QString &passstr,
-                                   const QString &cipheriv,
-                                   const QString &textstr,
-                                   bool encrypt );
+    static QString encryptdecrypt( const QString &passstr, const QString &cipheriv, const QString &textstr, bool encrypt );
 };
 
-#endif  // QGSAUTHCRYPTO_H
+#endif // QGSAUTHCRYPTO_H

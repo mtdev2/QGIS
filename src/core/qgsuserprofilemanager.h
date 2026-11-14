@@ -15,20 +15,23 @@
 #ifndef QGSUSERPROFILEMANAGER_H
 #define QGSUSERPROFILEMANAGER_H
 
-#include <QSettings>
-#include <QFileSystemWatcher>
+#include <memory>
 
-
-#include "qgis_sip.h"
+#include "qgis.h"
 #include "qgis_core.h"
+#include "qgis_sip.h"
 #include "qgserror.h"
 #include "qgsuserprofile.h"
 
-#include <memory>
+#include <QFileSystemWatcher>
+#include <QSettings>
+
+class QgsSettingsEntryBool;
+class QgsSettingsEntryString;
 
 /**
  * \ingroup core
- * User profile manager is used to manager list, and manage user profiles on the users machine.
+ * \brief A manager for QGIS user profiles.
  *
  * In QGIS 3 all settings, plugins, etc were moved into a %APPDATA%/profiles folder for each platform.
  * This allows for manage different user profiles per machine vs the single default one that was allowed in the
@@ -36,13 +39,15 @@
  *
  * A user profile is all settings and anything that used to be found in .qgis3 in the users home folder.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsUserProfileManager : public QObject
 {
     Q_OBJECT
 
   public:
+    static const QgsSettingsEntryBool *settingsOverrideLocalProfile SIP_SKIP;
+
+    static const QgsSettingsEntryString *settingsDefaultProfile SIP_SKIP;
 
     /**
      * User profile manager used to manage user profiles for the instance of QGIS.
@@ -67,7 +72,7 @@ class CORE_EXPORT QgsUserProfileManager : public QObject
      * \return The user profile
      * \note Returns a new QgsUserProfile. Ownership transferred to caller.
      */
-    QgsUserProfile *getProfile( const QString &defaultProfile = "default", bool createNew = true, bool initSettings = true ) SIP_FACTORY;
+    std::unique_ptr< QgsUserProfile > getProfile( const QString &defaultProfile = "default", bool createNew = true, bool initSettings = true );
 
     /**
      * Set the root profile location for the profile manager. All profiles are loaded from this
@@ -80,7 +85,7 @@ class CORE_EXPORT QgsUserProfileManager : public QObject
      * Returns the path to the root profiles location.
      * \return The root path to the profiles folder.
      */
-    QString rootLocation() { return mRootProfilePath; }
+    QString rootLocation() const { return mRootProfilePath; }
 
     /**
      * Sets whether the manager should watch for the creation of new user profiles and emit
@@ -143,11 +148,36 @@ class CORE_EXPORT QgsUserProfileManager : public QObject
     void setDefaultFromActive();
 
     /**
+     * Returns the name of the most recently closed profile. Empty if it is the first time QGIS is run.
+     * \since QGIS 3.32
+     */
+    QString lastProfileName() const;
+
+    /**
+     * Updates the last closed profile name. Called when QGIS is closed.
+     * \since QGIS 3.32
+     */
+    void updateLastProfileName() SIP_SKIP;
+
+    /**
+     * Returns the user profile selection policy.
+     * \since QGIS 3.32
+     */
+    Qgis::UserProfileSelectionPolicy userProfileSelectionPolicy() const;
+
+    /**
+     * Sets the user profile selection policy.
+     * \param policy The policy to use when selecting a user profile.
+     * \since QGIS 3.32
+     */
+    void setUserProfileSelectionPolicy( Qgis::UserProfileSelectionPolicy policy );
+
+    /**
      * Returns the profile found for a given name.
      * \param name The name of the profile to return.
      * \return A QgsUserprofile pointing to the location of the user profile.
      */
-    QgsUserProfile *profileForName( const QString &name ) const SIP_FACTORY;
+    std::unique_ptr< QgsUserProfile > profileForName( const QString &name ) const;
 
     /**
      * Create a user profile given by the name
@@ -185,6 +215,12 @@ class CORE_EXPORT QgsUserProfileManager : public QObject
      */
     void loadUserProfile( const QString &name );
 
+    /**
+     * Returns the settings for the profile manager.
+     * \since QGIS 3.32
+    */
+    QSettings *settings();
+
   signals:
 
     /**
@@ -199,7 +235,6 @@ class CORE_EXPORT QgsUserProfileManager : public QObject
     void profilesChanged();
 
   private:
-
     bool mWatchProfiles = false;
     std::unique_ptr<QFileSystemWatcher> mWatcher;
 

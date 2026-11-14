@@ -13,11 +13,14 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsdiagram.h"
+
 #include "qgsdiagramrenderer.h"
+#include "qgsrendercontext.h"
 
 #include <QPainter>
 
-QgsDiagram::QgsDiagram( const QgsDiagram & ): mExpressions{}
+QgsDiagram::QgsDiagram( const QgsDiagram & )
+  : mExpressions {}
 {
   // do not copy the cached expression map - the expressions need to be created and prepared with getExpression(...) call
 }
@@ -64,9 +67,9 @@ double QgsDiagram::sizePainterUnits( double l, const QgsDiagramSettings &s, cons
 QFont QgsDiagram::scaledFont( const QgsDiagramSettings &s, const QgsRenderContext &c )
 {
   QFont f = s.font;
-  if ( s.sizeType == QgsUnitTypes::RenderMapUnits )
+  if ( s.sizeType == Qgis::RenderUnit::MapUnits )
   {
-    int pixelsize = s.font.pointSizeF() / c.mapToPixel().mapUnitsPerPixel();
+    const int pixelsize = s.font.pointSizeF() / c.mapToPixel().mapUnitsPerPixel();
     f.setPixelSize( pixelsize > 0 ? pixelsize : 1 );
   }
   else
@@ -92,10 +95,9 @@ QSizeF QgsDiagram::sizeForValue( double value, const QgsDiagramSettings &s, cons
   }
 
   //interpolate size
-  double scaledRatio = ( scaledValue - scaledLowerValue ) / ( scaledUpperValue - scaledLowerValue );
+  const double scaledRatio = ( scaledValue - scaledLowerValue ) / ( scaledUpperValue - scaledLowerValue );
 
-  QSizeF size = QSizeF( is.upperSize.width() * scaledRatio + is.lowerSize.width() * ( 1 - scaledRatio ),
-                        is.upperSize.height() * scaledRatio + is.lowerSize.height() * ( 1 - scaledRatio ) );
+  QSizeF size = QSizeF( is.upperSize.width() * scaledRatio + is.lowerSize.width() * ( 1 - scaledRatio ), is.upperSize.height() * scaledRatio + is.lowerSize.height() * ( 1 - scaledRatio ) );
 
   // Scale, if extension is smaller than the specified minimum
   if ( size.width() <= s.minimumSize && size.height() <= s.minimumSize )

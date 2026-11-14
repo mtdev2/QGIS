@@ -21,16 +21,19 @@
  ***************************************************************************/
 
 #include "qgsmodule.h"
-#include "qgswfsutils.h"
+#include "qgswfsdescribefeaturetype.h"
 #include "qgswfsgetcapabilities.h"
 #include "qgswfsgetcapabilities_1_0_0.h"
 #include "qgswfsgetfeature.h"
-#include "qgswfsdescribefeaturetype.h"
 #include "qgswfstransaction.h"
 #include "qgswfstransaction_1_0_0.h"
+#include "qgswfsutils.h"
 
-#define QSTR_COMPARE( str, lit )\
-  (str.compare( QLatin1String( lit ), Qt::CaseInsensitive ) == 0)
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+#define QSTR_COMPARE( str, lit ) ( str.compare( QLatin1String( lit ), Qt::CaseInsensitive ) == 0 )
 
 namespace QgsWfs
 {
@@ -41,23 +44,23 @@ namespace QgsWfs
    * \brief OGC web service specialized for WFS
    * \since QGIS 3.0
    */
-  class Service: public QgsService
+  class Service : public QgsService
   {
     public:
-
       /**
        * Constructor for WFS service.
+       * \param version Version of the WFS service. (since QGIS 3.22.12)
        * \param serverIface Interface for plugins.
        */
-      Service( QgsServerInterface *serverIface )
-        : mServerIface( serverIface )
+      Service( const QString &version, QgsServerInterface *serverIface )
+        : mVersion( version )
+        , mServerIface( serverIface )
       {}
 
-      QString name()    const override { return QStringLiteral( "WFS" ); }
-      QString version() const override { return implementationVersion(); }
+      QString name() const override { return u"WFS"_s; }
+      QString version() const override { return mVersion; }
 
-      void executeRequest( const QgsServerRequest &request, QgsServerResponse &response,
-                           const QgsProject *project ) override
+      void executeRequest( const QgsServerRequest &request, QgsServerResponse &response, const QgsProject *project ) override
       {
         const QgsWfsParameters params( QUrlQuery( request.url() ) );
 
@@ -72,8 +75,7 @@ namespace QgsWfs
         const QString req = params.request();
         if ( req.isEmpty() )
         {
-          throw QgsServiceException( QStringLiteral( "OperationNotSupported" ),
-                                     QStringLiteral( "Please add or check the value of the REQUEST parameter" ), 501 );
+          throw QgsServiceException( u"OperationNotSupported"_s, u"Please add or check the value of the REQUEST parameter"_s, 501 );
         }
 
         if ( QSTR_COMPARE( req, "GetCapabilities" ) )
@@ -111,12 +113,12 @@ namespace QgsWfs
         else
         {
           // Operation not supported
-          throw QgsServiceException( QStringLiteral( "OperationNotSupported" ),
-                                     QStringLiteral( "Request %1 is not supported" ).arg( req ), 501 );
+          throw QgsServiceException( u"OperationNotSupported"_s, u"Request %1 is not supported"_s.arg( req ), 501 );
         }
       }
 
     private:
+      QString mVersion;
       QgsServerInterface *mServerIface = nullptr;
   };
 
@@ -129,13 +131,14 @@ namespace QgsWfs
  * \brief Module specialized for WFS service
  * \since QGIS 3.0
  */
-class QgsWfsModule: public QgsServiceModule
+class QgsWfsModule : public QgsServiceModule
 {
   public:
     void registerSelf( QgsServiceRegistry &registry, QgsServerInterface *serverIface ) override
     {
-      QgsDebugMsg( QStringLiteral( "WFSModule::registerSelf called" ) );
-      registry.registerService( new  QgsWfs::Service( serverIface ) );
+      QgsDebugMsgLevel( u"WFSModule::registerSelf called"_s, 2 );
+      registry.registerService( new QgsWfs::Service( QgsWfs::implementationVersion(), serverIface ) ); // 1.1.0 default version
+      registry.registerService( new QgsWfs::Service( u"1.0.0"_s, serverIface ) );                      // second version
     }
 };
 

@@ -19,7 +19,11 @@
 #include "qgis_core.h"
 #include "qgis_sip.h"
 #include "qgsreferencedgeometry.h"
+
 #include <QObject>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsProject;
 
@@ -36,9 +40,7 @@ class QgsProject;
  */
 class CORE_EXPORT QgsBookmark
 {
-
   public:
-
     /**
      * Default constructor, creates an empty bookmark.
      */
@@ -96,6 +98,23 @@ class CORE_EXPORT QgsBookmark
      */
     void setExtent( const QgsReferencedRectangle &extent );
 
+
+    /**
+     * Returns the bookmark's map rotation.
+     * \see setRotation()
+     *
+     * \since QGIS 3.32
+     */
+    double rotation() const;
+
+    /**
+     * Sets the bookmark's spatial map \a rotation.
+     * \see rotation()
+     *
+     * \since QGIS 3.32
+     */
+    void setRotation( double rotation );
+
     /**
      * Creates a bookmark using the properties from a DOM \a element.
      * \see writeXml()
@@ -109,23 +128,32 @@ class CORE_EXPORT QgsBookmark
     QDomElement writeXml( QDomDocument &doc ) const;
 
 #ifdef SIP_RUN
+    // clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsBookmark: '%1' (%2 - %3)>" ).arg( sipCpp->name(), sipCpp->extent().asWktCoordinates(), sipCpp->extent().crs().authid() );
+    QString str = u"<QgsBookmark: '%1' (%2)>"_s
+                  .arg( sipCpp->name() )
+                  .arg(
+                    sipCpp->extent().isNull() ?
+                    u"EMPTY"_s :
+                    u"%1 - %2"_s
+                    .arg( sipCpp->extent().asWktCoordinates(), sipCpp->extent().crs().authid() )
+                  );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
-    bool operator==( const QgsBookmark &other );
-    bool operator!=( const QgsBookmark &other );
+      // TODO c++20 - replace with = default
+      bool operator==( const QgsBookmark &other ) const;
+    bool operator!=( const QgsBookmark &other ) const;
 
   private:
-
     QString mId;
     QString mName;
     QString mGroup;
     QgsReferencedRectangle mExtent;
-
+    double mRotation = 0;
 };
 
 /**
@@ -146,7 +174,6 @@ class CORE_EXPORT QgsBookmarkManager : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * Returns a newly created QgsBookmarkManager using a project-based bookmark store, linked to the specified \a project.
      *
@@ -302,7 +329,6 @@ class CORE_EXPORT QgsBookmarkManager : public QObject
     void bookmarkChanged( const QString &id );
 
   private:
-
     QgsProject *mProject = nullptr;
     QString mFilePath;
     QList< QgsBookmark > mBookmarks;
@@ -310,7 +336,6 @@ class CORE_EXPORT QgsBookmarkManager : public QObject
 
     void store();
     bool mInitialized = false;
-
 };
 
 #endif // QGSBOOKMARKMANAGER_H

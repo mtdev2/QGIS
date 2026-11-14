@@ -16,17 +16,20 @@
  ***************************************************************************/
 
 #include "qgsalgorithmbatchgeocode.h"
+
 #include "qgsgeocoder.h"
-#include "qgsgeocoderresult.h"
 #include "qgsgeocodercontext.h"
+#include "qgsgeocoderresult.h"
 #include "qgsvectorlayer.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsBatchGeocodeAlgorithm::QgsBatchGeocodeAlgorithm( QgsGeocoderInterface *geocoder )
   : QgsProcessingFeatureBasedAlgorithm()
   , mGeocoder( geocoder )
-{
-
-}
+{}
 
 QStringList QgsBatchGeocodeAlgorithm::tags() const
 {
@@ -40,33 +43,35 @@ QString QgsBatchGeocodeAlgorithm::group() const
 
 QString QgsBatchGeocodeAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeneral" );
+  return u"vectorgeneral"_s;
 }
 
 void QgsBatchGeocodeAlgorithm::initParameters( const QVariantMap &configuration )
 {
-  mIsInPlace = configuration.value( QStringLiteral( "IN_PLACE" ) ).toBool();
+  mIsInPlace = configuration.value( u"IN_PLACE"_s ).toBool();
 
-  addParameter( new QgsProcessingParameterField( QStringLiteral( "FIELD" ), QObject::tr( "Address field" ), QVariant(), QStringLiteral( "INPUT" ), QgsProcessingParameterField::String ) );
+  addParameter( new QgsProcessingParameterField( u"FIELD"_s, QObject::tr( "Address field" ), QVariant(), u"INPUT"_s, Qgis::ProcessingFieldParameterDataType::String ) );
 
   if ( mIsInPlace )
   {
     const QgsFields newFields = mGeocoder->appendedFields();
     for ( const QgsField &newField : newFields )
-      addParameter( new QgsProcessingParameterField( newField.name(), QObject::tr( "%1 field" ).arg( newField.name() ), newField.name(), QStringLiteral( "INPUT" ), QgsProcessingParameterField::Any, false, true ) );
+      addParameter(
+        new QgsProcessingParameterField( newField.name(), QObject::tr( "%1 field" ).arg( newField.name() ), newField.name(), u"INPUT"_s, Qgis::ProcessingFieldParameterDataType::Any, false, true )
+      );
   }
 }
 
 QList<int> QgsBatchGeocodeAlgorithm::inputLayerTypes() const
 {
-  return QList<int>() << QgsProcessing::TypeVector;
+  return QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::Vector );
 }
 
 bool QgsBatchGeocodeAlgorithm::supportInPlaceEdit( const QgsMapLayer *layer ) const
 {
-  if ( const QgsVectorLayer *vl = qobject_cast< const QgsVectorLayer * >( layer ) )
+  if ( const QgsVectorLayer *vl = qobject_cast<const QgsVectorLayer *>( layer ) )
   {
-    return vl->geometryType() == QgsWkbTypes::PointGeometry;
+    return vl->geometryType() == Qgis::GeometryType::Point;
   }
   return false;
 }
@@ -78,7 +83,7 @@ QString QgsBatchGeocodeAlgorithm::outputName() const
 
 bool QgsBatchGeocodeAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mAddressField = parameterAsString( parameters, QStringLiteral( "FIELD" ), context );
+  mAddressField = parameterAsString( parameters, u"FIELD"_s, context );
 
   if ( mIsInPlace )
   {
@@ -90,9 +95,9 @@ bool QgsBatchGeocodeAlgorithm::prepareAlgorithm( const QVariantMap &parameters, 
   return true;
 }
 
-QgsWkbTypes::Type QgsBatchGeocodeAlgorithm::outputWkbType( QgsWkbTypes::Type ) const
+Qgis::WkbType QgsBatchGeocodeAlgorithm::outputWkbType( Qgis::WkbType ) const
 {
-  return QgsWkbTypes::Point;
+  return Qgis::WkbType::Point;
 }
 
 QgsCoordinateReferenceSystem QgsBatchGeocodeAlgorithm::outputCrs( const QgsCoordinateReferenceSystem &inputCrs ) const
@@ -119,6 +124,8 @@ QgsFields QgsBatchGeocodeAlgorithm::outputFields( const QgsFields &inputFields )
 
 QgsFeatureList QgsBatchGeocodeAlgorithm::processFeature( const QgsFeature &feature, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFeature f = feature;
 
   const QString address = f.attribute( mAddressField ).toString();
@@ -129,8 +136,8 @@ QgsFeatureList QgsBatchGeocodeAlgorithm::processFeature( const QgsFeature &featu
     return QgsFeatureList() << f;
   }
 
-  QgsGeocoderContext geocodeContext( context.transformContext() );
-  const QList< QgsGeocoderResult > results = mGeocoder->geocodeString( address, geocodeContext, feedback );
+  const QgsGeocoderContext geocodeContext( context.transformContext() );
+  const QList<QgsGeocoderResult> results = mGeocoder->geocodeString( address, geocodeContext, feedback );
   if ( results.empty() )
   {
     f.padAttributes( mAdditionalFields.count() );
@@ -166,7 +173,7 @@ QgsFeatureList QgsBatchGeocodeAlgorithm::processFeature( const QgsFeature &featu
     }
   }
 
-  QgsCoordinateTransform transform = QgsCoordinateTransform( results.at( 0 ).crs(), mOutputCrs, context.transformContext() );
+  const QgsCoordinateTransform transform = QgsCoordinateTransform( results.at( 0 ).crs(), mOutputCrs, context.transformContext() );
   QgsGeometry g = results.at( 0 ).geometry();
   try
   {

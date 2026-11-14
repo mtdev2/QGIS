@@ -16,9 +16,9 @@
 #ifndef QGSMAPCLIPPINGUTILS_H
 #define QGSMAPCLIPPINGUTILS_H
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsmaplayer.h"
 
 #include <QList>
 #include <QPainterPath>
@@ -32,14 +32,13 @@ class QgsMapClippingRegion;
  * \class QgsMapClippingUtils
  * \ingroup core
  *
- * Utility functions for use when clipping map renders.
+ * \brief Utility functions for use when clipping map renders.
  *
  * \since QGIS 3.16
 */
 class CORE_EXPORT QgsMapClippingUtils
 {
   public:
-
     /**
      * Collects the list of map clipping regions from a \a context which apply to a map \a layer.
      */
@@ -86,7 +85,7 @@ class CORE_EXPORT QgsMapClippingUtils
      *
      * \returns combined painter clipping region for use when rendering maps
      */
-    static QPainterPath calculatePainterClipRegion( const QList< QgsMapClippingRegion > &regions, const QgsRenderContext &context, QgsMapLayerType layerType, bool &shouldClip );
+    static QPainterPath calculatePainterClipRegion( const QList< QgsMapClippingRegion > &regions, const QgsRenderContext &context, Qgis::LayerType layerType, bool &shouldClip );
 
     /**
      * Returns the geometry representing the intersection of clipping \a regions from \a context which should be used to clip individual

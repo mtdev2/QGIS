@@ -14,32 +14,35 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsstyleexportimportdialog.h"
 #include "ui_qgsstyleexportimportdialogbase.h"
+#include "qgsstyleexportimportdialog.h"
 
 #include "qgsapplication.h"
-#include "qgsstyle.h"
-#include "qgssymbol.h"
-#include "qgssymbollayerutils.h"
-#include "qgscolorramp.h"
-#include "qgslogger.h"
-#include "qgsnetworkcontentfetchertask.h"
-#include "qgsstylegroupselectiondialog.h"
-#include "qgsguiutils.h"
-#include "qgssettings.h"
 #include "qgsgui.h"
-#include "qgsstylemodel.h"
+#include "qgsguiutils.h"
+#include "qgsnetworkcontentfetchertask.h"
+#include "qgssettings.h"
+#include "qgsstyle.h"
+#include "qgsstylegroupselectiondialog.h"
 #include "qgsstylemanagerdialog.h"
+#include "qgsstylemodel.h"
+#include "qgssymbol.h"
 
-#include <QInputDialog>
 #include <QCloseEvent>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QNetworkReply>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QStandardItemModel>
+#include <QString>
+#include <QTemporaryFile>
+#include <QUrl>
 
+#include "moc_qgsstyleexportimportdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsStyleExportImportDialog::QgsStyleExportImportDialog( QgsStyle *style, QWidget *parent, Mode mode )
   : QDialog( parent )
@@ -59,12 +62,10 @@ QgsStyleExportImportDialog::QgsStyleExportImportDialog( QgsStyle *style, QWidget
   buttonBox->addButton( pb, QDialogButtonBox::ActionRole );
   connect( pb, &QAbstractButton::clicked, this, &QgsStyleExportImportDialog::clearSelection );
 
-  mTempStyle = qgis::make_unique< QgsStyle >();
+  mTempStyle = std::make_unique<QgsStyle>();
   mTempStyle->createMemoryDatabase();
 
   // TODO validate
-  mGroupSelectionDlg = nullptr;
-  mTempFile = nullptr;
 
   QgsStyle *dialogStyle = nullptr;
   if ( mDialogMode == Import )
@@ -77,7 +78,7 @@ QgsStyleExportImportDialog::QgsStyleExportImportDialog( QgsStyle *style, QWidget
     connect( importTypeCombo, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsStyleExportImportDialog::importTypeChanged );
     importTypeChanged( 0 );
 
-    mSymbolTags->setText( QStringLiteral( "imported" ) );
+    mSymbolTags->setText( u"imported"_s );
 
     connect( mButtonFetch, &QAbstractButton::clicked, this, &QgsStyleExportImportDialog::fetch );
 
@@ -85,8 +86,8 @@ QgsStyleExportImportDialog::QgsStyleExportImportDialog( QgsStyle *style, QWidget
     mImportFileWidget->setDialogTitle( tr( "Load Styles" ) );
     mImportFileWidget->setFilter( tr( "XML files (*.xml *.XML)" ) );
 
-    QgsSettings settings;
-    mImportFileWidget->setDefaultRoot( settings.value( QStringLiteral( "StyleManager/lastImportDir" ), QDir::homePath(), QgsSettings::Gui ).toString() );
+    const QgsSettings settings;
+    mImportFileWidget->setDefaultRoot( settings.value( u"StyleManager/lastImportDir"_s, QDir::homePath(), QgsSettings::Gui ).toString() );
     connect( mImportFileWidget, &QgsFileWidget::fileChanged, this, &QgsStyleExportImportDialog::importFileChanged );
 
     label->setText( tr( "Select items to import" ) );
@@ -118,21 +119,20 @@ QgsStyleExportImportDialog::QgsStyleExportImportDialog( QgsStyle *style, QWidget
     dialogStyle = mStyle;
   }
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-  double iconSize = Qgis::UI_SCALE_FACTOR * fontMetrics().width( 'X' ) * 10;
-#else
-  double iconSize = Qgis::UI_SCALE_FACTOR * fontMetrics().horizontalAdvance( 'X' ) * 10;
-#endif
-  listItems->setIconSize( QSize( static_cast< int >( iconSize ), static_cast< int >( iconSize * 0.9 ) ) );  // ~100, 90 on low dpi
+  const double iconSize = Qgis::UI_SCALE_FACTOR * fontMetrics().horizontalAdvance( 'X' ) * 10;
+  listItems->setIconSize( QSize( static_cast<int>( iconSize ), static_cast<int>( iconSize * 0.9 ) ) ); // ~100, 90 on low dpi
+  // set a grid size which allows sufficient vertical spacing to fit reasonably sized entity names
+  listItems->setGridSize( QSize( static_cast<int>( listItems->iconSize().width() * 1.4 ), static_cast<int>( listItems->iconSize().height() * 1.7 ) ) );
+  listItems->setTextElideMode( Qt::TextElideMode::ElideRight );
 
   mModel = new QgsStyleProxyModel( dialogStyle, this );
 
   mModel->addDesiredIconSize( listItems->iconSize() );
+  mModel->addTargetScreenProperties( QgsScreenProperties( screen() ) );
 
   listItems->setModel( mModel );
 
-  connect( listItems->selectionModel(), &QItemSelectionModel::selectionChanged,
-           this, &QgsStyleExportImportDialog::selectionChanged );
+  connect( listItems->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsStyleExportImportDialog::selectionChanged );
 
   // use Ok button for starting import and export operations
   disconnect( buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept );
@@ -147,49 +147,49 @@ void QgsStyleExportImportDialog::doExportImport()
   QModelIndexList selection = listItems->selectionModel()->selectedIndexes();
   if ( selection.isEmpty() )
   {
-    QMessageBox::warning( this, tr( "Export/import Item(s)" ),
-                          tr( "You should select at least one symbol/color ramp." ) );
+    QMessageBox::warning( this, tr( "Export/import Item(s)" ), tr( "You should select at least one symbol/color ramp." ) );
     return;
   }
 
   if ( mDialogMode == Export )
   {
-    QString fileName = QFileDialog::getSaveFileName( this, tr( "Save Styles" ), QDir::homePath(),
-                       tr( "XML files (*.xml *.XML)" ) );
+    QgsSettings settings;
+    const QString lastUsedDir = settings.value( u"StyleManager/lastExportDir"_s, QDir::homePath(), QgsSettings::Gui ).toString();
+    QString fileName = QFileDialog::getSaveFileName( this, tr( "Save Styles" ), lastUsedDir, tr( "XML files (*.xml *.XML)" ) );
+    // return dialog focus on Mac
+    activateWindow();
+    raise();
     if ( fileName.isEmpty() )
     {
       return;
     }
+    settings.setValue( u"StyleManager/lastExportDir"_s, QFileInfo( fileName ).absolutePath(), QgsSettings::Gui );
 
     // ensure the user never omitted the extension from the file name
-    if ( !fileName.endsWith( QLatin1String( ".xml" ), Qt::CaseInsensitive ) )
+    if ( !fileName.endsWith( ".xml"_L1, Qt::CaseInsensitive ) )
     {
-      fileName += QLatin1String( ".xml" );
+      fileName += ".xml"_L1;
     }
 
     mFileName = fileName;
 
-    mCursorOverride = qgis::make_unique< QgsTemporaryCursorOverride >( Qt::WaitCursor );
+    mCursorOverride = std::make_unique<QgsTemporaryCursorOverride>( Qt::WaitCursor );
     moveStyles( &selection, mStyle, mTempStyle.get() );
     if ( !mTempStyle->exportXml( mFileName ) )
     {
       mCursorOverride.reset();
-      QMessageBox::warning( this, tr( "Export Symbols" ),
-                            tr( "Error when saving selected symbols to file:\n%1" )
-                            .arg( mTempStyle->errorString() ) );
+      QMessageBox::warning( this, tr( "Export Symbols" ), tr( "Error when saving selected symbols to file:\n%1" ).arg( mTempStyle->errorString() ) );
       return;
     }
     else
     {
       mCursorOverride.reset();
-      QMessageBox::information( this, tr( "Export Symbols" ),
-                                tr( "The selected symbols were successfully exported to file:\n%1" )
-                                .arg( mFileName ) );
+      QMessageBox::information( this, tr( "Export Symbols" ), tr( "The selected symbols were successfully exported to file:\n%1" ).arg( mFileName ) );
     }
   }
   else // import
   {
-    mCursorOverride = qgis::make_unique< QgsTemporaryCursorOverride >( Qt::WaitCursor );
+    mCursorOverride = std::make_unique<QgsTemporaryCursorOverride>( Qt::WaitCursor );
     moveStyles( &selection, mTempStyle.get(), mStyle );
 
     accept();
@@ -210,8 +210,7 @@ bool QgsStyleExportImportDialog::populateStyles()
   if ( !mTempStyle->importXml( mFileName ) )
   {
     override.release();
-    QMessageBox::warning( this, tr( "Import Symbols or Color Ramps" ),
-                          tr( "An error occurred during import:\n%1" ).arg( mTempStyle->errorString() ) );
+    QMessageBox::warning( this, tr( "Import Symbols or Color Ramps" ), tr( "An error occurred during import:\n%1" ).arg( mTempStyle->errorString() ) );
     return false;
   }
   return true;
@@ -219,29 +218,25 @@ bool QgsStyleExportImportDialog::populateStyles()
 
 void QgsStyleExportImportDialog::moveStyles( QModelIndexList *selection, QgsStyle *src, QgsStyle *dst )
 {
-  QList< QgsStyleManagerDialog::ItemDetails > items;
+  QList<QgsStyleManagerDialog::ItemDetails> items;
   items.reserve( selection->size() );
   for ( int i = 0; i < selection->size(); ++i )
   {
-    QModelIndex index = selection->at( i );
+    const QModelIndex index = selection->at( i );
 
     QgsStyleManagerDialog::ItemDetails details;
-    details.entityType = static_cast< QgsStyle::StyleEntity >( mModel->data( index, QgsStyleModel::TypeRole ).toInt() );
+    details.entityType = static_cast<QgsStyle::StyleEntity>( mModel->data( index, static_cast<int>( QgsStyleModel::CustomRole::Type ) ).toInt() );
     if ( details.entityType == QgsStyle::SymbolEntity )
-      details.symbolType = static_cast< QgsSymbol::SymbolType >( mModel->data( index, QgsStyleModel::SymbolTypeRole ).toInt() );
+      details.symbolType = static_cast<Qgis::SymbolType>( mModel->data( index, static_cast<int>( QgsStyleModel::CustomRole::SymbolType ) ).toInt() );
     details.name = mModel->data( mModel->index( index.row(), QgsStyleModel::Name, index.parent() ), Qt::DisplayRole ).toString();
 
     items << details;
   }
-  QgsStyleManagerDialog::copyItems( items, src, dst, this, mCursorOverride, mDialogMode == Import,
-                                    mSymbolTags->text().split( ',' ), mFavorite->isChecked(), mIgnoreXMLTags->isChecked() );
+  QgsStyleManagerDialog::copyItems( items, src, dst, this, mCursorOverride, mDialogMode == Import, mSymbolTags->text().split( ',' ), mFavorite->isChecked(), mIgnoreXMLTags->isChecked() );
 }
 
 QgsStyleExportImportDialog::~QgsStyleExportImportDialog()
-{
-  delete mTempFile;
-  delete mGroupSelectionDlg;
-}
+{}
 
 void QgsStyleExportImportDialog::setImportFilePath( const QString &path )
 {
@@ -260,14 +255,27 @@ void QgsStyleExportImportDialog::clearSelection()
 
 void QgsStyleExportImportDialog::selectFavorites()
 {
-  QStringList symbolNames = mStyle->symbolsOfFavorite( QgsStyle::SymbolEntity );
-  selectSymbols( symbolNames );
+  for ( int row = 0; row < listItems->model()->rowCount(); ++row )
+  {
+    const QModelIndex index = listItems->model()->index( row, 0 );
+    if ( index.data( static_cast<int>( QgsStyleModel::CustomRole::IsFavorite ) ).toBool() )
+    {
+      listItems->selectionModel()->select( index, QItemSelectionModel::Select );
+    }
+  }
 }
 
 void QgsStyleExportImportDialog::deselectFavorites()
 {
-  QStringList symbolNames = mStyle->symbolsOfFavorite( QgsStyle::SymbolEntity );
-  deselectSymbols( symbolNames );
+  for ( int row = 0; row < listItems->model()->rowCount(); ++row )
+  {
+    const QModelIndex index = listItems->model()->index( row, 0 );
+    if ( index.data( static_cast<int>( QgsStyleModel::CustomRole::IsFavorite ) ).toBool() )
+    {
+      const QItemSelection deselection( index, index );
+      listItems->selectionModel()->select( deselection, QItemSelectionModel::Deselect );
+    }
+  }
 }
 
 void QgsStyleExportImportDialog::selectSymbols( const QStringList &symbolNames )
@@ -275,7 +283,7 @@ void QgsStyleExportImportDialog::selectSymbols( const QStringList &symbolNames )
   const auto constSymbolNames = symbolNames;
   for ( const QString &symbolName : constSymbolNames )
   {
-    QModelIndexList indexes = listItems->model()->match( listItems->model()->index( 0, QgsStyleModel::Name ), Qt::DisplayRole, symbolName, 1, Qt::MatchFixedString | Qt::MatchCaseSensitive );
+    const QModelIndexList indexes = listItems->model()->match( listItems->model()->index( 0, QgsStyleModel::Name ), Qt::DisplayRole, symbolName, 1, Qt::MatchFixedString | Qt::MatchCaseSensitive );
     const auto constIndexes = indexes;
     for ( const QModelIndex &index : constIndexes )
     {
@@ -289,11 +297,11 @@ void QgsStyleExportImportDialog::deselectSymbols( const QStringList &symbolNames
   const auto constSymbolNames = symbolNames;
   for ( const QString &symbolName : constSymbolNames )
   {
-    QModelIndexList indexes = listItems->model()->match( listItems->model()->index( 0, QgsStyleModel::Name ), Qt::DisplayRole, symbolName, 1, Qt::MatchFixedString | Qt::MatchCaseSensitive );
+    const QModelIndexList indexes = listItems->model()->match( listItems->model()->index( 0, QgsStyleModel::Name ), Qt::DisplayRole, symbolName, 1, Qt::MatchFixedString | Qt::MatchCaseSensitive );
     const auto constIndexes = indexes;
     for ( const QModelIndex &index : constIndexes )
     {
-      QItemSelection deselection( index, index );
+      const QItemSelection deselection( index, index );
       listItems->selectionModel()->select( deselection, QItemSelectionModel::Deselect );
     }
   }
@@ -301,14 +309,27 @@ void QgsStyleExportImportDialog::deselectSymbols( const QStringList &symbolNames
 
 void QgsStyleExportImportDialog::selectTag( const QString &tagName )
 {
-  QStringList symbolNames = mStyle->symbolsWithTag( QgsStyle::SymbolEntity, mStyle->tagId( tagName ) );
-  selectSymbols( symbolNames );
+  for ( int row = 0; row < listItems->model()->rowCount(); ++row )
+  {
+    const QModelIndex index = listItems->model()->index( row, 0 );
+    if ( index.data( static_cast<int>( QgsStyleModel::CustomRole::Tag ) ).toStringList().contains( tagName, Qt::CaseInsensitive ) )
+    {
+      listItems->selectionModel()->select( index, QItemSelectionModel::Select );
+    }
+  }
 }
 
 void QgsStyleExportImportDialog::deselectTag( const QString &tagName )
 {
-  QStringList symbolNames = mStyle->symbolsWithTag( QgsStyle::SymbolEntity, mStyle->tagId( tagName ) );
-  deselectSymbols( symbolNames );
+  for ( int row = 0; row < listItems->model()->rowCount(); ++row )
+  {
+    const QModelIndex index = listItems->model()->index( row, 0 );
+    if ( index.data( static_cast<int>( QgsStyleModel::CustomRole::Tag ) ).toStringList().contains( tagName, Qt::CaseInsensitive ) )
+    {
+      const QItemSelection deselection( index, index );
+      listItems->selectionModel()->select( deselection, QItemSelectionModel::Deselect );
+    }
+  }
 }
 
 void QgsStyleExportImportDialog::selectSmartgroup( const QString &groupName )
@@ -333,7 +354,7 @@ void QgsStyleExportImportDialog::deselectSmartgroup( const QString &groupName )
 
 void QgsStyleExportImportDialog::selectByGroup()
 {
-  if ( ! mGroupSelectionDlg )
+  if ( !mGroupSelectionDlg )
   {
     mGroupSelectionDlg = new QgsStyleGroupSelectionDialog( mStyle, this );
     mGroupSelectionDlg->setWindowTitle( tr( "Select Item(s) by Group" ) );
@@ -353,7 +374,7 @@ void QgsStyleExportImportDialog::selectByGroup()
 
 void QgsStyleExportImportDialog::importTypeChanged( int index )
 {
-  ImportSource source = static_cast< ImportSource >( importTypeCombo->itemData( index ).toInt() );
+  const ImportSource source = static_cast<ImportSource>( importTypeCombo->itemData( index ).toInt() );
 
   switch ( source )
   {
@@ -366,7 +387,7 @@ void QgsStyleExportImportDialog::importTypeChanged( int index )
 #if 0
     case ImportSource::Official:
     {
-      btnBrowse->setText( QStringLiteral( "Fetch Items" ) );
+      btnBrowse->setText( u"Fetch Items"_s );
       locationLineEdit->setEnabled( false );
       break;
     }
@@ -391,8 +412,8 @@ void QgsStyleExportImportDialog::importFileChanged( const QString &path )
     return;
 
   mFileName = path;
-  QFileInfo pathInfo( mFileName );
-  QString tag = pathInfo.fileName().remove( QStringLiteral( ".xml" ) );
+  const QFileInfo pathInfo( mFileName );
+  const QString tag = pathInfo.fileName().remove( u".xml"_s );
   mSymbolTags->setText( tag );
   if ( QFileInfo::exists( mFileName ) )
   {
@@ -400,13 +421,13 @@ void QgsStyleExportImportDialog::importFileChanged( const QString &path )
     populateStyles();
     mImportFileWidget->setDefaultRoot( pathInfo.absolutePath() );
     QgsSettings settings;
-    settings.setValue( QStringLiteral( "StyleManager/lastImportDir" ), pathInfo.absolutePath(), QgsSettings::Gui );
+    settings.setValue( u"StyleManager/lastImportDir"_s, pathInfo.absolutePath(), QgsSettings::Gui );
   }
 }
 
 void QgsStyleExportImportDialog::downloadStyleXml( const QUrl &url )
 {
-  mTempFile = new QTemporaryFile();
+  mTempFile = std::make_unique<QTemporaryFile>();
   if ( mTempFile->open() )
   {
     mFileName = mTempFile->fileName();
@@ -420,16 +441,14 @@ void QgsStyleExportImportDialog::downloadStyleXml( const QUrl &url )
     fetcher->setDescription( tr( "Downloading style" ) );
     connect( progressDlg, &QProgressDialog::canceled, fetcher, &QgsNetworkContentFetcherTask::cancel );
     connect( fetcher, &QgsNetworkContentFetcherTask::progressChanged, progressDlg, &QProgressDialog::setValue );
-    connect( fetcher, &QgsNetworkContentFetcherTask::fetched, this, [this, fetcher, progressDlg]
-    {
+    connect( fetcher, &QgsNetworkContentFetcherTask::fetched, this, [this, fetcher, progressDlg] {
       QNetworkReply *reply = fetcher->reply();
       if ( !reply || reply->error() != QNetworkReply::NoError )
       {
         mTempFile->remove();
         mFileName.clear();
         if ( reply )
-          QMessageBox::information( this, tr( "Import from URL" ),
-                                    tr( "HTTP Error! Download failed: %1." ).arg( reply->errorString() ) );
+          QMessageBox::information( this, tr( "Import from URL" ), tr( "HTTP Error! Download failed: %1." ).arg( reply->errorString() ) );
       }
       else
       {
@@ -449,11 +468,11 @@ void QgsStyleExportImportDialog::selectionChanged( const QItemSelection &selecte
 {
   Q_UNUSED( selected )
   Q_UNUSED( deselected )
-  bool nothingSelected = listItems->selectionModel()->selectedIndexes().empty();
+  const bool nothingSelected = listItems->selectionModel()->selectedIndexes().empty();
   buttonBox->button( QDialogButtonBox::Ok )->setDisabled( nothingSelected );
 }
 
 void QgsStyleExportImportDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "style_library/style_manager.html#sharing-style-items" ) );
+  QgsHelp::openHelp( u"style_library/style_manager.html#sharing-style-items"_s );
 }

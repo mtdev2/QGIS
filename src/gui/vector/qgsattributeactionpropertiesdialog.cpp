@@ -15,29 +15,48 @@
  ***************************************************************************/
 
 #include "qgsattributeactionpropertiesdialog.h"
+
+#include "qgsactionscope.h"
+#include "qgsactionscoperegistry.h"
+#include "qgsapplication.h"
+#include "qgsexpressioncontextutils.h"
 #include "qgsfieldexpressionwidget.h"
-#include "qgsmapcanvas.h"
 #include "qgsproject.h"
 #include "qgsvectorlayer.h"
-#include "qgsapplication.h"
-#include "qgsactionscoperegistry.h"
-#include "qgsactionscope.h"
-#include "qgsexpressioncontextutils.h"
 
-#include <QComboBox>
-#include <QLineEdit>
-#include <QPlainTextEdit>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFileDialog>
 #include <QImageWriter>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QString>
 
-QgsAttributeActionPropertiesDialog::QgsAttributeActionPropertiesDialog( QgsAction::ActionType type, const QString &description, const QString &shortTitle, const QString &iconPath, const QString &actionText, bool capture, const QSet<QString> &actionScopes, const QString &notificationMessage, bool isEnabledOnlyWhenEditable, QgsVectorLayer *layer, QWidget *parent )
+#include "moc_qgsattributeactionpropertiesdialog.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsAttributeActionPropertiesDialog::QgsAttributeActionPropertiesDialog(
+  Qgis::AttributeActionType type,
+  const QString &description,
+  const QString &shortTitle,
+  const QString &iconPath,
+  const QString &actionText,
+  bool capture,
+  const QSet<QString> &actionScopes,
+  const QString &notificationMessage,
+  bool isEnabledOnlyWhenEditable,
+  QgsVectorLayer *layer,
+  QWidget *parent
+)
   : QDialog( parent )
   , mLayer( layer )
 {
   setupUi( this );
 
-  mActionType->setCurrentIndex( type );
+  populateActionTypes();
+
+  mActionType->setCurrentIndex( mActionType->findData( static_cast<int>( type ) ) );
   mActionName->setText( description );
   mShortTitle->setText( shortTitle );
   mActionIcon->setText( iconPath );
@@ -56,18 +75,17 @@ QgsAttributeActionPropertiesDialog::QgsAttributeActionPropertiesDialog( QgsVecto
 {
   setupUi( this );
 
+  populateActionTypes();
+
   QSet<QString> defaultActionScopes;
-  defaultActionScopes << QStringLiteral( "Canvas" )
-                      << QStringLiteral( "FieldSpecific" )
-                      << QStringLiteral( "Feature" )
-                      << QStringLiteral( "FeatureForm" );
+  defaultActionScopes << u"Canvas"_s << u"FieldSpecific"_s << u"Feature"_s << u"FeatureForm"_s;
 
   init( defaultActionScopes );
 }
 
-QgsAction::ActionType QgsAttributeActionPropertiesDialog::type() const
+Qgis::AttributeActionType QgsAttributeActionPropertiesDialog::type() const
 {
-  return static_cast<QgsAction::ActionType>( mActionType->currentIndex() );
+  return static_cast<Qgis::AttributeActionType>( mActionType->currentData().toInt() );
 }
 
 QString QgsAttributeActionPropertiesDialog::description() const
@@ -128,7 +146,7 @@ QgsExpressionContext QgsAttributeActionPropertiesDialog::createExpressionContext
   {
     if ( cb->isChecked() )
     {
-      QgsActionScope actionScope = QgsApplication::actionScopeRegistry()->actionScope( cb->property( "ActionScopeName" ).toString() );
+      const QgsActionScope actionScope = QgsApplication::actionScopeRegistry()->actionScope( cb->property( "ActionScopeName" ).toString() );
       context.appendScope( new QgsExpressionContextScope( actionScope.expressionContextScope() ) );
     }
   }
@@ -141,8 +159,7 @@ QgsExpressionContext QgsAttributeActionPropertiesDialog::createExpressionContext
 void QgsAttributeActionPropertiesDialog::browse()
 {
   // Popup a file browser and place the results into the action widget
-  QString action = QFileDialog::getOpenFileName(
-                     this, tr( "Select an action", "File dialog window title" ), QDir::homePath() );
+  const QString action = QFileDialog::getOpenFileName( this, tr( "Select an action", "File dialog window title" ), QDir::homePath() );
 
   if ( !action.isNull() )
     mActionText->insertText( action );
@@ -153,7 +170,7 @@ void QgsAttributeActionPropertiesDialog::insertExpressionOrField()
   QString selText = mActionText->selectedText();
 
   // edit the selected expression if there's one
-  if ( selText.startsWith( QLatin1String( "[%" ) ) && selText.endsWith( QLatin1String( "%]" ) ) )
+  if ( selText.startsWith( "[%"_L1 ) && selText.endsWith( "%]"_L1 ) )
     selText = selText.mid( 2, selText.size() - 4 );
 
   mActionText->insertText( "[%" + mFieldExpression->currentField() + "%]" );
@@ -161,14 +178,14 @@ void QgsAttributeActionPropertiesDialog::insertExpressionOrField()
 
 void QgsAttributeActionPropertiesDialog::chooseIcon()
 {
-  QList<QByteArray> list = QImageWriter::supportedImageFormats();
+  const QList<QByteArray> list = QImageWriter::supportedImageFormats();
   QStringList formatList;
   const auto constList = list;
   for ( const QByteArray &format : constList )
-    formatList << QStringLiteral( "*.%1" ).arg( QString( format ) );
+    formatList << u"*.%1"_s.arg( QString( format ) );
 
-  QString filter = tr( "Images( %1 ); All( *.* )" ).arg( formatList.join( QLatin1Char( ' ' ) ) );
-  QString icon = QFileDialog::getOpenFileName( this, tr( "Choose Icon…" ), mActionIcon->text(), filter );
+  const QString filter = tr( "Images( %1 ); All( *.* )" ).arg( formatList.join( ' '_L1 ) );
+  const QString icon = QFileDialog::getOpenFileName( this, tr( "Choose Icon…" ), mActionIcon->text(), filter );
 
   if ( !icon.isNull() )
   {
@@ -191,7 +208,7 @@ void QgsAttributeActionPropertiesDialog::updateButtons()
 
 void QgsAttributeActionPropertiesDialog::init( const QSet<QString> &actionScopes )
 {
-  QSet<QgsActionScope> availableActionScopes = QgsApplication::actionScopeRegistry()->actionScopes();
+  const QSet<QgsActionScope> availableActionScopes = QgsApplication::actionScopeRegistry()->actionScopes();
 
   const auto constAvailableActionScopes = availableActionScopes;
   for ( const QgsActionScope &scope : constAvailableActionScopes )
@@ -199,16 +216,16 @@ void QgsAttributeActionPropertiesDialog::init( const QSet<QString> &actionScopes
     QCheckBox *actionScopeCheckBox = new QCheckBox( scope.title() );
     if ( actionScopes.contains( scope.id() ) )
       actionScopeCheckBox->setChecked( true );
-    QStringList variables = scope.expressionContextScope().variableNames();
+    const QStringList variables = scope.expressionContextScope().variableNames();
 
     QString tooltip = scope.description();
     if ( !variables.empty() )
     {
-      tooltip += QLatin1String( "<br><br>" );
+      tooltip += "<br><br>"_L1;
       tooltip += tr( "Additional variables" );
-      tooltip += QLatin1String( "<ul><li>" );
-      tooltip += variables.join( QLatin1String( "</li><li>" ) );
-      tooltip += QLatin1String( "</ul></li>" );
+      tooltip += "<ul><li>"_L1;
+      tooltip += variables.join( "</li><li>"_L1 );
+      tooltip += "</ul></li>"_L1;
     }
     actionScopeCheckBox->setToolTip( tooltip );
     actionScopeCheckBox->setProperty( "ActionScopeName", scope.id() );
@@ -237,5 +254,17 @@ void QgsAttributeActionPropertiesDialog::init( const QSet<QString> &actionScopes
 
 void QgsAttributeActionPropertiesDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "working_with_vector/vector_properties.html#actions-properties" ) );
+  QgsHelp::openHelp( u"working_with_vector/vector_properties.html#actions-properties"_s );
+}
+
+void QgsAttributeActionPropertiesDialog::populateActionTypes()
+{
+  mActionType->addItem( tr( "Generic" ), static_cast<int>( Qgis::AttributeActionType::Generic ) );
+  mActionType->addItem( tr( "Python" ), static_cast<int>( Qgis::AttributeActionType::GenericPython ) );
+  mActionType->addItem( tr( "macOS" ), static_cast<int>( Qgis::AttributeActionType::Mac ) );
+  mActionType->addItem( tr( "Windows" ), static_cast<int>( Qgis::AttributeActionType::Windows ) );
+  mActionType->addItem( tr( "Unix" ), static_cast<int>( Qgis::AttributeActionType::Unix ) );
+  mActionType->addItem( tr( "Open URL" ), static_cast<int>( Qgis::AttributeActionType::OpenUrl ) );
+  mActionType->addItem( tr( "Submit URL (urlencoded or JSON)" ), static_cast<int>( Qgis::AttributeActionType::SubmitUrlEncoded ) );
+  mActionType->addItem( tr( "Submit URL (multipart)" ), static_cast<int>( Qgis::AttributeActionType::SubmitUrlMultipart ) );
 }

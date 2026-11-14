@@ -14,12 +14,18 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgslistfieldformatter.h"
+
 #include "qgsapplication.h"
+#include "qgsvariantutils.h"
+
 #include <QSettings>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QString QgsListFieldFormatter::id() const
 {
-  return QStringLiteral( "List" );
+  return u"List"_s;
 }
 
 QString QgsListFieldFormatter::representValue( QgsVectorLayer *layer, int fieldIndex, const QVariantMap &config, const QVariant &cache, const QVariant &value ) const
@@ -29,7 +35,7 @@ QString QgsListFieldFormatter::representValue( QgsVectorLayer *layer, int fieldI
   Q_UNUSED( config )
   Q_UNUSED( cache )
 
-  if ( value.isNull() )
+  if ( QgsVariantUtils::isNull( value ) )
   {
     return QgsApplication::nullRepresentation();
   }

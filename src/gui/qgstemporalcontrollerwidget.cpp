@@ -15,19 +15,29 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
 #include "qgstemporalcontrollerwidget.h"
-#include "qgsgui.h"
+
+#include <memory>
+
+#include "qgsapplication.h"
 #include "qgsmaplayermodel.h"
-#include "qgsproject.h"
-#include "qgsprojecttimesettings.h"
-#include "qgstemporalmapsettingswidget.h"
-#include "qgstemporalutils.h"
 #include "qgsmaplayertemporalproperties.h"
 #include "qgsmeshlayer.h"
+#include "qgsproject.h"
+#include "qgsprojecttimesettings.h"
+#include "qgsrasterlayer.h"
+#include "qgstemporalmapsettingswidget.h"
+#include "qgstemporalutils.h"
+#include "qgsunittypes.h"
 
 #include <QAction>
 #include <QMenu>
+#include <QRegularExpression>
+#include <QString>
+
+#include "moc_qgstemporalcontrollerwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   : QgsPanelWidget( parent )
@@ -41,20 +51,54 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   mFixedRangeStartDateTime->setDateTimeRange( QDateTime( QDate( 1, 1, 1 ), QTime( 0, 0, 0 ) ), mStartDateTime->maximumDateTime() );
   mFixedRangeEndDateTime->setDateTimeRange( QDateTime( QDate( 1, 1, 1 ), QTime( 0, 0, 0 ) ), mStartDateTime->maximumDateTime() );
 
-  connect( mForwardButton, &QPushButton::clicked, this, &QgsTemporalControllerWidget::togglePlayForward );
-  connect( mBackButton, &QPushButton::clicked, this, &QgsTemporalControllerWidget::togglePlayBackward );
-  connect( mStopButton, &QPushButton::clicked, this, &QgsTemporalControllerWidget::togglePause );
-  connect( mNextButton, &QPushButton::clicked, mNavigationObject, &QgsTemporalNavigationObject::next );
-  connect( mPreviousButton, &QPushButton::clicked, mNavigationObject, &QgsTemporalNavigationObject::previous );
-  connect( mFastForwardButton, &QPushButton::clicked, mNavigationObject, &QgsTemporalNavigationObject::skipToEnd );
-  connect( mRewindButton, &QPushButton::clicked, mNavigationObject, &QgsTemporalNavigationObject::rewindToStart );
-  connect( mLoopingCheckBox, &QCheckBox::toggled, this, [ = ]( bool state ) { mNavigationObject->setLooping( state ); } );
+  auto handleOperation = [this]( Qgis::PlaybackOperation operation ) {
+    switch ( operation )
+    {
+      case Qgis::PlaybackOperation::SkipToStart:
+        mNavigationObject->rewindToStart();
+        break;
+
+      case Qgis::PlaybackOperation::PreviousFrame:
+        mNavigationObject->previous();
+        break;
+
+      case Qgis::PlaybackOperation::PlayReverse:
+        mNavigationObject->playBackward();
+        break;
+
+      case Qgis::PlaybackOperation::Pause:
+        mNavigationObject->pause();
+        break;
+
+      case Qgis::PlaybackOperation::PlayForward:
+        mNavigationObject->playForward();
+        break;
+
+      case Qgis::PlaybackOperation::NextFrame:
+        mNavigationObject->next();
+        break;
+
+      case Qgis::PlaybackOperation::SkipToEnd:
+        mNavigationObject->skipToEnd();
+        break;
+    }
+  };
+  connect( mAnimationController, &QgsPlaybackControllerWidget::operationTriggered, this, handleOperation );
+  connect( mMovieController, &QgsPlaybackControllerWidget::operationTriggered, this, handleOperation );
+
+  connect( mAnimationLoopingCheckBox, &QCheckBox::toggled, this, [this]( bool state ) {
+    mNavigationObject->setLooping( state );
+    mMovieLoopingCheckBox->setChecked( state );
+  } );
+  connect( mMovieLoopingCheckBox, &QCheckBox::toggled, this, [this]( bool state ) {
+    mNavigationObject->setLooping( state );
+    mAnimationLoopingCheckBox->setChecked( state );
+  } );
 
   setWidgetStateFromNavigationMode( mNavigationObject->navigationMode() );
   connect( mNavigationObject, &QgsTemporalNavigationObject::navigationModeChanged, this, &QgsTemporalControllerWidget::setWidgetStateFromNavigationMode );
   connect( mNavigationObject, &QgsTemporalNavigationObject::temporalExtentsChanged, this, &QgsTemporalControllerWidget::setDates );
-  connect( mNavigationObject, &QgsTemporalNavigationObject::temporalFrameDurationChanged, this, [ = ]( const QgsInterval & timeStep )
-  {
+  connect( mNavigationObject, &QgsTemporalNavigationObject::temporalFrameDurationChanged, this, [this]( const QgsInterval &timeStep ) {
     if ( mBlockFrameDurationUpdates )
       return;
 
@@ -65,34 +109,37 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   connect( mNavigationOff, &QPushButton::clicked, this, &QgsTemporalControllerWidget::mNavigationOff_clicked );
   connect( mNavigationFixedRange, &QPushButton::clicked, this, &QgsTemporalControllerWidget::mNavigationFixedRange_clicked );
   connect( mNavigationAnimated, &QPushButton::clicked, this, &QgsTemporalControllerWidget::mNavigationAnimated_clicked );
+  connect( mNavigationMovie, &QPushButton::clicked, this, &QgsTemporalControllerWidget::mNavigationMovie_clicked );
 
-  connect( mNavigationObject, &QgsTemporalNavigationObject::stateChanged, this, [ = ]( QgsTemporalNavigationObject::AnimationState state )
-  {
-    mForwardButton->setChecked( state == QgsTemporalNavigationObject::Forward );
-    mBackButton->setChecked( state == QgsTemporalNavigationObject::Reverse );
-    mStopButton->setChecked( state == QgsTemporalNavigationObject::Idle );
+  connect( mNavigationObject, &QgsTemporalNavigationObject::stateChanged, this, [this]( Qgis::AnimationState state ) {
+    mAnimationController->setState( state );
+    mMovieController->setState( state );
   } );
 
   connect( mStartDateTime, &QDateTimeEdit::dateTimeChanged, this, &QgsTemporalControllerWidget::startEndDateTime_changed );
   connect( mEndDateTime, &QDateTimeEdit::dateTimeChanged, this, &QgsTemporalControllerWidget::startEndDateTime_changed );
   connect( mFixedRangeStartDateTime, &QDateTimeEdit::dateTimeChanged, this, &QgsTemporalControllerWidget::fixedRangeStartEndDateTime_changed );
   connect( mFixedRangeEndDateTime, &QDateTimeEdit::dateTimeChanged, this, &QgsTemporalControllerWidget::fixedRangeStartEndDateTime_changed );
-  connect( mStepSpinBox, qgis::overload<double>::of( &QDoubleSpinBox::valueChanged ), this, &QgsTemporalControllerWidget::updateFrameDuration );
-  connect( mTimeStepsComboBox, qgis::overload<int>::of( &QComboBox::currentIndexChanged ), this, &QgsTemporalControllerWidget::updateFrameDuration );
-  connect( mSlider, &QSlider::valueChanged, this, &QgsTemporalControllerWidget::timeSlider_valueChanged );
+  connect( mStepSpinBox, qOverload<double>( &QDoubleSpinBox::valueChanged ), this, &QgsTemporalControllerWidget::updateFrameDuration );
+  connect( mTimeStepsComboBox, qOverload<int>( &QComboBox::currentIndexChanged ), this, &QgsTemporalControllerWidget::updateFrameDuration );
+  connect( mAnimationSlider, &QSlider::valueChanged, this, &QgsTemporalControllerWidget::timeSlider_valueChanged );
+  connect( mMovieSlider, &QSlider::valueChanged, this, &QgsTemporalControllerWidget::timeSlider_valueChanged );
+
+  connect( mTotalFramesSpinBox, qOverload<int>( &QSpinBox::valueChanged ), this, [this]( int frames ) { mNavigationObject->setTotalMovieFrames( frames ); } );
 
   mStepSpinBox->setClearValue( 1 );
 
   connect( mNavigationObject, &QgsTemporalNavigationObject::updateTemporalRange, this, &QgsTemporalControllerWidget::updateSlider );
+  connect( mNavigationObject, &QgsTemporalNavigationObject::totalMovieFramesChanged, this, &QgsTemporalControllerWidget::totalMovieFramesChanged );
 
   connect( mSettings, &QPushButton::clicked, this, &QgsTemporalControllerWidget::settings_clicked );
 
-  mMapLayerModel = new QgsMapLayerModel( this );
+  mMapLayerModel = new QgsMapLayerModel( QgsProject::instance(), this );
 
-  mRangeMenu.reset( new QMenu( this ) );
+  mRangeMenu = std::make_unique<QMenu>( this );
 
   mRangeSetToAllLayersAction = new QAction( tr( "Set to Full Range" ), mRangeMenu.get() );
-  mRangeSetToAllLayersAction->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionRefresh.svg" ) ) );
+  mRangeSetToAllLayersAction->setIcon( QgsApplication::getThemeIcon( u"/mActionRefresh.svg"_s ) );
   connect( mRangeSetToAllLayersAction, &QAction::triggered, this, &QgsTemporalControllerWidget::mRangeSetToAllLayersAction_triggered );
   mRangeMenu->addAction( mRangeSetToAllLayersAction );
 
@@ -102,7 +149,7 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
 
   mRangeMenu->addSeparator();
 
-  mRangeLayersSubMenu.reset( new QMenu( tr( "Set to Single Layer's Range" ), mRangeMenu.get() ) );
+  mRangeLayersSubMenu = std::make_unique<QMenu>( tr( "Set to Single Layer's Range" ), mRangeMenu.get() );
   mRangeLayersSubMenu->setEnabled( false );
   mRangeMenu->addMenu( mRangeLayersSubMenu.get() );
   connect( mRangeMenu.get(), &QMenu::aboutToShow, this, &QgsTemporalControllerWidget::aboutToShowRangeMenu );
@@ -115,6 +162,7 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   mFixedRangeSetRangeButton->setDefaultAction( mRangeSetToAllLayersAction );
 
   connect( mExportAnimationButton, &QPushButton::clicked, this, &QgsTemporalControllerWidget::exportAnimation );
+  connect( mExportMovieButton, &QPushButton::clicked, this, &QgsTemporalControllerWidget::exportAnimation );
 
   QgsDateTimeRange range;
 
@@ -129,25 +177,25 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
     whileBlocking( mFixedRangeEndDateTime )->setDateTime( range.end() );
   }
 
-  for ( QgsUnitTypes::TemporalUnit u :
-        {
-          QgsUnitTypes::TemporalMilliseconds,
-          QgsUnitTypes::TemporalSeconds,
-          QgsUnitTypes::TemporalMinutes,
-          QgsUnitTypes::TemporalHours,
-          QgsUnitTypes::TemporalDays,
-          QgsUnitTypes::TemporalWeeks,
-          QgsUnitTypes::TemporalMonths,
-          QgsUnitTypes::TemporalYears,
-          QgsUnitTypes::TemporalDecades,
-          QgsUnitTypes::TemporalCenturies
+  for ( const Qgis::TemporalUnit u : {
+          Qgis::TemporalUnit::Milliseconds,
+          Qgis::TemporalUnit::Seconds,
+          Qgis::TemporalUnit::Minutes,
+          Qgis::TemporalUnit::Hours,
+          Qgis::TemporalUnit::Days,
+          Qgis::TemporalUnit::Weeks,
+          Qgis::TemporalUnit::Months,
+          Qgis::TemporalUnit::Years,
+          Qgis::TemporalUnit::Decades,
+          Qgis::TemporalUnit::Centuries,
+          Qgis::TemporalUnit::IrregularStep,
         } )
   {
-    mTimeStepsComboBox->addItem( QgsUnitTypes::toString( u ), u );
+    mTimeStepsComboBox->addItem( u != Qgis::TemporalUnit::IrregularStep ? QgsUnitTypes::toString( u ) : tr( "source timestamps" ), static_cast<int>( u ) );
   }
 
   // TODO: might want to choose an appropriate default unit based on the range
-  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( QgsUnitTypes::TemporalHours ) );
+  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( static_cast<int>( Qgis::TemporalUnit::Hours ) ) );
 
   // NOTE 'minimum' and 'decimals' should be in sync with the 'decimals' in qgstemporalcontrollerwidgetbase.ui
   mStepSpinBox->setDecimals( 3 );
@@ -157,14 +205,6 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   mStepSpinBox->setSingleStep( 1 );
   mStepSpinBox->setValue( 1 );
 
-  mForwardButton->setToolTip( tr( "Play" ) );
-  mBackButton->setToolTip( tr( "Reverse" ) );
-  mNextButton->setToolTip( tr( "Go to next frame" ) );
-  mPreviousButton->setToolTip( tr( "Go to previous frame" ) );
-  mStopButton->setToolTip( tr( "Pause" ) );
-  mRewindButton->setToolTip( tr( "Rewind to start" ) );
-  mFastForwardButton->setToolTip( tr( "Fast forward to end" ) );
-
   updateFrameDuration();
 
   connect( QgsProject::instance(), &QgsProject::readProject, this, &QgsTemporalControllerWidget::setWidgetStateFromProject );
@@ -172,13 +212,19 @@ QgsTemporalControllerWidget::QgsTemporalControllerWidget( QWidget *parent )
   connect( QgsProject::instance(), &QgsProject::cleared, this, &QgsTemporalControllerWidget::onProjectCleared );
 }
 
+bool QgsTemporalControllerWidget::applySizeConstraintsToStack() const
+{
+  return true;
+}
+
 void QgsTemporalControllerWidget::keyPressEvent( QKeyEvent *e )
 {
-  if ( mSlider->hasFocus() && e->key() == Qt::Key_Space )
+  if ( ( mAnimationSlider->hasFocus() || mMovieSlider->hasFocus() ) && e->key() == Qt::Key_Space )
   {
-    togglePause();
+    mAnimationController->togglePause();
+    // connections will auto-sync mMovieController state!
   }
-  QWidget::keyPressEvent( e );
+  QgsPanelWidget::keyPressEvent( e );
 }
 
 void QgsTemporalControllerWidget::aboutToShowRangeMenu()
@@ -191,19 +237,18 @@ void QgsTemporalControllerWidget::aboutToShowRangeMenu()
   mRangeLayersSubMenu->clear();
   for ( int i = 0; i < mMapLayerModel->rowCount(); ++i )
   {
-    QModelIndex index = mMapLayerModel->index( i, 0 );
-    QgsMapLayer *currentLayer = mMapLayerModel->data( index, QgsMapLayerModel::LayerRole ).value<QgsMapLayer *>();
+    const QModelIndex index = mMapLayerModel->index( i, 0 );
+    QgsMapLayer *currentLayer = mMapLayerModel->data( index, static_cast<int>( QgsMapLayerModel::CustomRole::Layer ) ).value<QgsMapLayer *>();
     if ( !currentLayer->temporalProperties() || !currentLayer->temporalProperties()->isActive() )
       continue;
 
-    QIcon icon = qvariant_cast<QIcon>( mMapLayerModel->data( index, Qt::DecorationRole ) );
-    QString text = mMapLayerModel->data( index, Qt::DisplayRole ).toString();
-    QgsDateTimeRange range = currentLayer->temporalProperties()->calculateTemporalExtent( currentLayer );
+    const QIcon icon = qvariant_cast<QIcon>( mMapLayerModel->data( index, Qt::DecorationRole ) );
+    const QString text = mMapLayerModel->data( index, Qt::DisplayRole ).toString();
+    const QgsDateTimeRange range = currentLayer->temporalProperties()->calculateTemporalExtent( currentLayer );
     if ( range.begin().isValid() && range.end().isValid() )
     {
       QAction *action = new QAction( icon, text, mRangeLayersSubMenu.get() );
-      connect( action, &QAction::triggered, this, [ = ]
-      {
+      connect( action, &QAction::triggered, this, [this, range] {
         setDates( range );
         saveRangeToProject();
       } );
@@ -213,75 +258,19 @@ void QgsTemporalControllerWidget::aboutToShowRangeMenu()
   mRangeLayersSubMenu->setEnabled( !mRangeLayersSubMenu->actions().isEmpty() );
 }
 
-void QgsTemporalControllerWidget::togglePlayForward()
-{
-  mPlayingForward = true;
-
-  if ( mNavigationObject->animationState() != QgsTemporalNavigationObject::Forward )
-  {
-    mStopButton->setChecked( false );
-    mBackButton->setChecked( false );
-    mForwardButton->setChecked( true );
-    mNavigationObject->playForward();
-  }
-  else
-  {
-    mBackButton->setChecked( true );
-    mForwardButton->setChecked( false );
-    mNavigationObject->pause();
-  }
-}
-
-void QgsTemporalControllerWidget::togglePlayBackward()
-{
-  mPlayingForward = false;
-
-  if ( mNavigationObject->animationState() != QgsTemporalNavigationObject::Reverse )
-  {
-    mStopButton->setChecked( false );
-    mBackButton->setChecked( true );
-    mForwardButton->setChecked( false );
-    mNavigationObject->playBackward();
-  }
-  else
-  {
-    mBackButton->setChecked( true );
-    mBackButton->setChecked( false );
-    mNavigationObject->pause();
-  }
-}
-
-void QgsTemporalControllerWidget::togglePause()
-{
-  if ( mNavigationObject->animationState() != QgsTemporalNavigationObject::Idle )
-  {
-    mStopButton->setChecked( true );
-    mBackButton->setChecked( false );
-    mForwardButton->setChecked( false );
-    mNavigationObject->pause();
-  }
-  else
-  {
-    mBackButton->setChecked( mPlayingForward ? false : true );
-    mForwardButton->setChecked( mPlayingForward ? false : true );
-    if ( mPlayingForward )
-    {
-      mNavigationObject->playForward();
-    }
-    else
-    {
-      mNavigationObject->playBackward();
-    }
-  }
-}
-
 void QgsTemporalControllerWidget::updateTemporalExtent()
 {
-  QgsDateTimeRange temporalExtent = QgsDateTimeRange( mStartDateTime->dateTime(),
-                                    mEndDateTime->dateTime() );
+  // TODO - consider whether the overall time range set for animations should include the end date time or not.
+  // (currently it DOES include the end date time).
+  const QDateTime start = mStartDateTime->dateTime();
+  const QDateTime end = mEndDateTime->dateTime();
+  const bool isTimeInstant = start == end;
+  const QgsDateTimeRange temporalExtent = QgsDateTimeRange( start, end, true, !isTimeInstant && mNavigationObject->navigationMode() == Qgis::TemporalNavigationMode::FixedRange ? false : true );
   mNavigationObject->setTemporalExtents( temporalExtent );
-  mSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
-  mSlider->setValue( mNavigationObject->currentFrameNumber() );
+  mAnimationSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
+  mAnimationSlider->setValue( mNavigationObject->currentFrameNumber() );
+  mMovieSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
+  mMovieSlider->setValue( mNavigationObject->currentFrameNumber() );
 }
 
 void QgsTemporalControllerWidget::updateFrameDuration()
@@ -290,30 +279,44 @@ void QgsTemporalControllerWidget::updateFrameDuration()
     return;
 
   // save new settings into project
-  QgsProject::instance()->timeSettings()->setTimeStepUnit( static_cast< QgsUnitTypes::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) );
-  QgsProject::instance()->timeSettings()->setTimeStep( mStepSpinBox->value() );
+  const Qgis::TemporalUnit unit = static_cast<Qgis::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() );
+  QgsProject::instance()->timeSettings()->setTimeStepUnit( unit );
+  QgsProject::instance()->timeSettings()->setTimeStep( unit == Qgis::TemporalUnit::IrregularStep ? 1 : mStepSpinBox->value() );
 
   if ( !mBlockFrameDurationUpdates )
   {
-    mNavigationObject->setFrameDuration(
-      QgsInterval( QgsProject::instance()->timeSettings()->timeStep(),
-                   QgsProject::instance()->timeSettings()->timeStepUnit() ) );
-    mSlider->setValue( mNavigationObject->currentFrameNumber() );
+    mNavigationObject->setFrameDuration( QgsInterval( QgsProject::instance()->timeSettings()->timeStep(), QgsProject::instance()->timeSettings()->timeStepUnit() ) );
+    mAnimationSlider->setValue( mNavigationObject->currentFrameNumber() );
   }
-  mSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
-  mSlider->setValue( mNavigationObject->currentFrameNumber() );
+  mAnimationSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
+  mAnimationSlider->setValue( mNavigationObject->currentFrameNumber() );
+  mMovieSlider->setRange( 0, mNavigationObject->totalFrameCount() - 1 );
+  mMovieSlider->setValue( mNavigationObject->currentFrameNumber() );
+
+  if ( unit == Qgis::TemporalUnit::IrregularStep )
+  {
+    mStepSpinBox->setEnabled( false );
+    mStepSpinBox->setValue( 1 );
+    mAnimationSlider->setTickInterval( 1 );
+    mAnimationSlider->setTickPosition( QSlider::TicksBothSides );
+  }
+  else
+  {
+    mStepSpinBox->setEnabled( true );
+    mAnimationSlider->setTickInterval( 0 );
+    mAnimationSlider->setTickPosition( QSlider::NoTicks );
+  }
 }
 
 void QgsTemporalControllerWidget::setWidgetStateFromProject()
 {
   mBlockSettingUpdates++;
-  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( QgsProject::instance()->timeSettings()->timeStepUnit() ) );
+  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( static_cast<int>( QgsProject::instance()->timeSettings()->timeStepUnit() ) ) );
   mStepSpinBox->setValue( QgsProject::instance()->timeSettings()->timeStep() );
   mBlockSettingUpdates--;
 
   bool ok = false;
-  QgsTemporalNavigationObject::NavigationMode mode = static_cast< QgsTemporalNavigationObject::NavigationMode>( QgsProject::instance()->readNumEntry( QStringLiteral( "TemporalControllerWidget" ),
-      QStringLiteral( "/NavigationMode" ), 0, &ok ) );
+  const Qgis::TemporalNavigationMode mode = static_cast<Qgis::TemporalNavigationMode>( QgsProject::instance()->readNumEntry( u"TemporalControllerWidget"_s, u"/NavigationMode"_s, 0, &ok ) );
   if ( ok )
   {
     mNavigationObject->setNavigationMode( mode );
@@ -321,12 +324,15 @@ void QgsTemporalControllerWidget::setWidgetStateFromProject()
   }
   else
   {
-    mNavigationObject->setNavigationMode( QgsTemporalNavigationObject::NavigationOff );
-    setWidgetStateFromNavigationMode( QgsTemporalNavigationObject::NavigationOff );
+    mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::Disabled );
+    setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::Disabled );
   }
 
-  const QString startString = QgsProject::instance()->readEntry( QStringLiteral( "TemporalControllerWidget" ), QStringLiteral( "/StartDateTime" ) );
-  const QString endString = QgsProject::instance()->readEntry( QStringLiteral( "TemporalControllerWidget" ), QStringLiteral( "/EndDateTime" ) );
+  mNavigationObject->setTotalMovieFrames( QgsProject::instance()->timeSettings()->totalMovieFrames() );
+  mTotalFramesSpinBox->setValue( QgsProject::instance()->timeSettings()->totalMovieFrames() );
+
+  const QString startString = QgsProject::instance()->readEntry( u"TemporalControllerWidget"_s, u"/StartDateTime"_s );
+  const QString endString = QgsProject::instance()->readEntry( u"TemporalControllerWidget"_s, u"/EndDateTime"_s );
   if ( !startString.isEmpty() && !endString.isEmpty() )
   {
     whileBlocking( mStartDateTime )->setDateTime( QDateTime::fromString( startString, Qt::ISODateWithMs ) );
@@ -336,7 +342,7 @@ void QgsTemporalControllerWidget::setWidgetStateFromProject()
   }
   else
   {
-    setDatesToProjectTime();
+    setDatesToProjectTime( false );
   }
   updateTemporalExtent();
   updateFrameDuration();
@@ -347,47 +353,56 @@ void QgsTemporalControllerWidget::setWidgetStateFromProject()
 
 void QgsTemporalControllerWidget::mNavigationOff_clicked()
 {
-  QgsProject::instance()->writeEntry( QStringLiteral( "TemporalControllerWidget" ), QStringLiteral( "/NavigationMode" ),
-                                      static_cast<int>( QgsTemporalNavigationObject::NavigationOff ) );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/NavigationMode"_s, static_cast<int>( Qgis::TemporalNavigationMode::Disabled ) );
 
-  mNavigationObject->setNavigationMode( QgsTemporalNavigationObject::NavigationOff );
-  setWidgetStateFromNavigationMode( QgsTemporalNavigationObject::NavigationOff );
+  mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::Disabled );
+  setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::Disabled );
 }
 
 void QgsTemporalControllerWidget::mNavigationFixedRange_clicked()
 {
-  QgsProject::instance()->writeEntry( QStringLiteral( "TemporalControllerWidget" ), QStringLiteral( "/NavigationMode" ),
-                                      static_cast<int>( QgsTemporalNavigationObject::FixedRange ) );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/NavigationMode"_s, static_cast<int>( Qgis::TemporalNavigationMode::FixedRange ) );
 
-  mNavigationObject->setNavigationMode( QgsTemporalNavigationObject::FixedRange );
-  setWidgetStateFromNavigationMode( QgsTemporalNavigationObject::FixedRange );
+  mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::FixedRange );
+  setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::FixedRange );
 }
 
 void QgsTemporalControllerWidget::mNavigationAnimated_clicked()
 {
-  QgsProject::instance()->writeEntry( QStringLiteral( "TemporalControllerWidget" ), QStringLiteral( "/NavigationMode" ),
-                                      static_cast<int>( QgsTemporalNavigationObject::Animated ) );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/NavigationMode"_s, static_cast<int>( Qgis::TemporalNavigationMode::Animated ) );
 
-  mNavigationObject->setNavigationMode( QgsTemporalNavigationObject::Animated );
-  setWidgetStateFromNavigationMode( QgsTemporalNavigationObject::Animated );
+  mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::Animated );
+  setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::Animated );
 }
 
-void QgsTemporalControllerWidget::setWidgetStateFromNavigationMode( const QgsTemporalNavigationObject::NavigationMode mode )
+void QgsTemporalControllerWidget::mNavigationMovie_clicked()
 {
-  mNavigationOff->setChecked( mode == QgsTemporalNavigationObject::NavigationOff );
-  mNavigationFixedRange->setChecked( mode  == QgsTemporalNavigationObject::FixedRange );
-  mNavigationAnimated->setChecked( mode  == QgsTemporalNavigationObject::Animated );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/NavigationMode"_s, static_cast<int>( Qgis::TemporalNavigationMode::Movie ) );
+
+  mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::Movie );
+  setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::Movie );
+}
+
+void QgsTemporalControllerWidget::setWidgetStateFromNavigationMode( const Qgis::TemporalNavigationMode mode )
+{
+  mNavigationOff->setChecked( mode == Qgis::TemporalNavigationMode::Disabled );
+  mNavigationFixedRange->setChecked( mode == Qgis::TemporalNavigationMode::FixedRange );
+  mNavigationAnimated->setChecked( mode == Qgis::TemporalNavigationMode::Animated );
+  mNavigationMovie->setChecked( mode == Qgis::TemporalNavigationMode::Movie );
 
   switch ( mode )
   {
-    case QgsTemporalNavigationObject::NavigationOff:
+    case Qgis::TemporalNavigationMode::Disabled:
       mNavigationModeStackedWidget->setCurrentIndex( 0 );
       break;
-    case QgsTemporalNavigationObject::FixedRange:
+    case Qgis::TemporalNavigationMode::FixedRange:
       mNavigationModeStackedWidget->setCurrentIndex( 1 );
       break;
-    case QgsTemporalNavigationObject::Animated:
+    case Qgis::TemporalNavigationMode::Animated:
       mNavigationModeStackedWidget->setCurrentIndex( 2 );
+      break;
+    case Qgis::TemporalNavigationMode::Movie:
+      mNavigationModeStackedWidget->setCurrentIndex( 3 );
       break;
   }
 }
@@ -404,12 +419,12 @@ void QgsTemporalControllerWidget::onLayersAdded( const QList<QgsMapLayer *> &lay
 
         if ( !mHasTemporalLayersLoaded )
         {
-          connect( layer, &QgsMapLayer::dataSourceChanged, this, [ this, layer ]
-          {
+          connect( layer, &QgsMapLayer::dataSourceChanged, this, [this, layer] {
             if ( layer->isValid() && layer->temporalProperties()->isActive() && !mHasTemporalLayersLoaded )
             {
               mHasTemporalLayersLoaded = true;
               firstTemporalLayerLoaded( layer );
+              mNavigationObject->setAvailableTemporalRanges( QgsTemporalUtils::usedTemporalRangesForProject( QgsProject::instance() ) );
             }
           } );
         }
@@ -418,19 +433,30 @@ void QgsTemporalControllerWidget::onLayersAdded( const QList<QgsMapLayer *> &lay
       }
     }
   }
+
+  mNavigationObject->setAvailableTemporalRanges( QgsTemporalUtils::usedTemporalRangesForProject( QgsProject::instance() ) );
 }
 
 void QgsTemporalControllerWidget::firstTemporalLayerLoaded( QgsMapLayer *layer )
 {
-  setDatesToProjectTime();
+  setDatesToProjectTime( true );
 
-  QgsMeshLayer *meshLayer = qobject_cast<QgsMeshLayer *>( layer );
-  if ( meshLayer )
+  if ( QgsMeshLayer *meshLayer = qobject_cast<QgsMeshLayer *>( layer ) )
   {
     mBlockFrameDurationUpdates++;
     setTimeStep( meshLayer->firstValidTimeStep() );
     mBlockFrameDurationUpdates--;
     updateFrameDuration();
+  }
+  else if ( QgsRasterLayer *rasterLayer = qobject_cast<QgsRasterLayer *>( layer ) )
+  {
+    if ( rasterLayer->dataProvider() && rasterLayer->dataProvider()->temporalCapabilities() )
+    {
+      mBlockFrameDurationUpdates++;
+      setTimeStep( rasterLayer->dataProvider()->temporalCapabilities()->defaultInterval() );
+      mBlockFrameDurationUpdates--;
+      updateFrameDuration();
+    }
   }
 }
 
@@ -438,49 +464,63 @@ void QgsTemporalControllerWidget::onProjectCleared()
 {
   mHasTemporalLayersLoaded = false;
 
-  mNavigationObject->setNavigationMode( QgsTemporalNavigationObject::NavigationOff );
-  setWidgetStateFromNavigationMode( QgsTemporalNavigationObject::NavigationOff );
+  mNavigationObject->setNavigationMode( Qgis::TemporalNavigationMode::Disabled );
+  setWidgetStateFromNavigationMode( Qgis::TemporalNavigationMode::Disabled );
 
-  whileBlocking( mStartDateTime )->setDateTime( QDateTime( QDate::currentDate(), QTime( 0, 0, 0 ), Qt::UTC ) );
-  whileBlocking( mEndDateTime )->setDateTime( mStartDateTime->dateTime() );
-  whileBlocking( mFixedRangeStartDateTime )->setDateTime( QDateTime( QDate::currentDate(), QTime( 0, 0, 0 ), Qt::UTC ) );
-  whileBlocking( mFixedRangeEndDateTime )->setDateTime( mStartDateTime->dateTime() );
+  // default to showing the last 24 hours, ending at the current date's hour, in one hour blocks...
+  // it's COMPLETELY arbitrary, but better than starting with a "zero length" duration!
+  const QTime startOfCurrentHour = QTime( QTime::currentTime().hour(), 0, 0 );
+  const QDateTime end = QDateTime( QDate::currentDate(), startOfCurrentHour, Qt::UTC );
+  const QDateTime start = end.addSecs( -24 * 60 * 60 );
+
+  whileBlocking( mStartDateTime )->setDateTime( start );
+  whileBlocking( mEndDateTime )->setDateTime( end );
+  whileBlocking( mFixedRangeStartDateTime )->setDateTime( start );
+  whileBlocking( mFixedRangeEndDateTime )->setDateTime( end );
+
   updateTemporalExtent();
-  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( QgsUnitTypes::TemporalHours ) );
+  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( static_cast<int>( Qgis::TemporalUnit::Hours ) ) );
   mStepSpinBox->setValue( 1 );
 }
 
 void QgsTemporalControllerWidget::updateSlider( const QgsDateTimeRange &range )
 {
-  whileBlocking( mSlider )->setValue( mNavigationObject->currentFrameNumber() );
+  whileBlocking( mAnimationSlider )->setValue( mNavigationObject->currentFrameNumber() );
+  whileBlocking( mMovieSlider )->setValue( mNavigationObject->currentFrameNumber() );
   updateRangeLabel( range );
+}
+
+void QgsTemporalControllerWidget::totalMovieFramesChanged( long long frames )
+{
+  QgsProject::instance()->timeSettings()->setTotalMovieFrames( frames );
+  mTotalFramesSpinBox->setValue( frames );
+  mCurrentRangeLabel->setText( tr( "Current frame: %1/%2" ).arg( mNavigationObject->currentFrameNumber() ).arg( frames ) );
 }
 
 void QgsTemporalControllerWidget::updateRangeLabel( const QgsDateTimeRange &range )
 {
-  QString timeFrameFormat = "yyyy-MM-dd HH:mm:ss";
+  QString timeFrameFormat = u"yyyy-MM-dd HH:mm:ss"_s;
   // but if timesteps are < 1 second (as: in milliseconds), add milliseconds to the format
-  if ( mTimeStepsComboBox->currentIndex() == mTimeStepsComboBox->findData( QgsUnitTypes::TemporalMilliseconds ) )
-    timeFrameFormat = "yyyy-MM-dd HH:mm:ss.zzz";
+  if ( static_cast<Qgis::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) == Qgis::TemporalUnit::Milliseconds )
+    timeFrameFormat = u"yyyy-MM-dd HH:mm:ss.zzz"_s;
   switch ( mNavigationObject->navigationMode() )
   {
-    case QgsTemporalNavigationObject::Animated:
-      mCurrentRangeLabel->setText( tr( "Frame: %1 to %2" ).arg(
-                                     range.begin().toString( timeFrameFormat ),
-                                     range.end().toString( timeFrameFormat ) ) );
+    case Qgis::TemporalNavigationMode::Animated:
+      mCurrentRangeLabel->setText( tr( "Current frame: %1 ≤ <i>t</i> &lt; %2" ).arg( range.begin().toString( timeFrameFormat ), range.end().toString( timeFrameFormat ) ) );
       break;
-    case QgsTemporalNavigationObject::FixedRange:
-      mCurrentRangeLabel->setText( tr( "Range: %1 to %2" ).arg(
-                                     range.begin().toString( timeFrameFormat ),
-                                     range.end().toString( timeFrameFormat ) ) );
+    case Qgis::TemporalNavigationMode::FixedRange:
+      mCurrentRangeLabel->setText( tr( "Range: %1 ≤ <i>t</i> &lt; %2" ).arg( range.begin().toString( timeFrameFormat ), range.end().toString( timeFrameFormat ) ) );
       break;
-    case QgsTemporalNavigationObject::NavigationOff:
+    case Qgis::TemporalNavigationMode::Disabled:
       mCurrentRangeLabel->setText( tr( "Temporal navigation disabled" ) );
+      break;
+    case Qgis::TemporalNavigationMode::Movie:
+      mCurrentRangeLabel->setText( tr( "Current frame: %1/%2" ).arg( mNavigationObject->currentFrameNumber() ).arg( mNavigationObject->totalMovieFrames() ) );
       break;
   }
 }
 
-QgsTemporalController *QgsTemporalControllerWidget::temporalController()
+QgsTemporalNavigationObject *QgsTemporalControllerWidget::temporalController()
 {
   return mNavigationObject;
 }
@@ -491,15 +531,13 @@ void QgsTemporalControllerWidget::settings_clicked()
   settingsWidget->setFrameRateValue( mNavigationObject->framesPerSecond() );
   settingsWidget->setIsTemporalRangeCumulative( mNavigationObject->temporalRangeCumulative() );
 
-  connect( settingsWidget, &QgsTemporalMapSettingsWidget::frameRateChanged, this, [ = ]( double rate )
-  {
+  connect( settingsWidget, &QgsTemporalMapSettingsWidget::frameRateChanged, this, [this]( double rate ) {
     // save new settings into project
     QgsProject::instance()->timeSettings()->setFramesPerSecond( rate );
     mNavigationObject->setFramesPerSecond( rate );
   } );
 
-  connect( settingsWidget, &QgsTemporalMapSettingsWidget::temporalRangeCumulativeChanged, this, [ = ]( bool state )
-  {
+  connect( settingsWidget, &QgsTemporalMapSettingsWidget::temporalRangeCumulativeChanged, this, [this]( bool state ) {
     // save new settings into project
     QgsProject::instance()->timeSettings()->setIsTemporalRangeCumulative( state );
     mNavigationObject->setTemporalRangeCumulative( state );
@@ -538,40 +576,54 @@ void QgsTemporalControllerWidget::mRangeSetToAllLayersAction_triggered()
 
 void QgsTemporalControllerWidget::setTimeStep( const QgsInterval &timeStep )
 {
-  if ( ! timeStep.isValid() || timeStep.seconds() <= 0 )
+  if ( !timeStep.isValid() || timeStep.seconds() <= 0 )
     return;
 
-  // Search the time unit the most appropriate :
-  // the one that gives the smallest time step value for double spin box with round value (if possible) and/or the less signifiant digits
-
   int selectedUnit = -1;
-  int stringSize = std::numeric_limits<int>::max();
-  int precision = mStepSpinBox->decimals();
   double selectedValue = std::numeric_limits<double>::max();
-  for ( int i = 0; i < mTimeStepsComboBox->count(); ++i )
+  if ( timeStep.originalUnit() != Qgis::TemporalUnit::IrregularStep )
   {
-    QgsUnitTypes::TemporalUnit unit = static_cast<QgsUnitTypes::TemporalUnit>( mTimeStepsComboBox->itemData( i ).toInt() );
-    double value = timeStep.seconds() * QgsUnitTypes::fromUnitToUnitFactor( QgsUnitTypes::TemporalSeconds, unit );
-    QString string = QString::number( value, 'f', precision );
-    string.remove( QRegExp( "0+$" ) ); //remove trailing zero
-    string.remove( QRegExp( "[.]+$" ) ); //remove last point if present
+    // Search the time unit the most appropriate :
+    // the one that gives the smallest time step value for double spin box with round value (if possible) and/or the less signifiant digits
 
-    if ( value >= 1
-         && string.size() <= stringSize // less significant digit than currently selected
-         && value < selectedValue ) // less than currently selected
+    int stringSize = std::numeric_limits<int>::max();
+    const int precision = mStepSpinBox->decimals();
+    for ( int i = 0; i < mTimeStepsComboBox->count(); ++i )
     {
-      selectedUnit = i;
-      selectedValue = value;
-      stringSize = string.size();
+      const Qgis::TemporalUnit unit = static_cast<Qgis::TemporalUnit>( mTimeStepsComboBox->itemData( i ).toInt() );
+      const double value = timeStep.seconds() * QgsUnitTypes::fromUnitToUnitFactor( Qgis::TemporalUnit::Seconds, unit );
+      QString string = QString::number( value, 'f', precision );
+
+      const thread_local QRegularExpression trailingZeroRegEx = QRegularExpression( u"0+$"_s );
+      //remove trailing zero
+      string.remove( trailingZeroRegEx );
+
+      const thread_local QRegularExpression trailingPointRegEx = QRegularExpression( u"[.]+$"_s );
+      //remove last point if present
+      string.remove( trailingPointRegEx );
+
+      if ( value >= 1
+           && string.size() <= stringSize // less significant digit than currently selected
+           && value < selectedValue )     // less than currently selected
+      {
+        selectedUnit = i;
+        selectedValue = value;
+        stringSize = string.size();
+      }
+      else if ( string != '0'
+                && string.size() < precision + 2 //round value (ex: 0.xx with precision=3)
+                && string.size() < stringSize )  //less significant digit than currently selected
+      {
+        selectedUnit = i;
+        selectedValue = value;
+        stringSize = string.size();
+      }
     }
-    else if ( string != '0'
-              && string.size() < precision + 2 //round value (ex: 0.xx with precision=3)
-              && string.size() < stringSize ) //less significant digit than currently selected
-    {
-      selectedUnit = i ;
-      selectedValue = value ;
-      stringSize = string.size();
-    }
+  }
+  else
+  {
+    selectedUnit = mTimeStepsComboBox->findData( static_cast<int>( timeStep.originalUnit() ) );
+    selectedValue = 1;
   }
 
   if ( selectedUnit >= 0 )
@@ -585,13 +637,13 @@ void QgsTemporalControllerWidget::setTimeStep( const QgsInterval &timeStep )
 
 void QgsTemporalControllerWidget::updateTimeStepInputs( const QgsInterval &timeStep )
 {
-  if ( ! timeStep.isValid() || timeStep.seconds() <= 0.0001 )
+  if ( !timeStep.isValid() || timeStep.seconds() <= 0.0001 )
     return;
 
-  QString timeDisplayFormat = "yyyy-MM-dd HH:mm:ss";
-  if ( QgsUnitTypes::TemporalMilliseconds == timeStep.originalUnit() )
+  QString timeDisplayFormat = u"yyyy-MM-dd HH:mm:ss"_s;
+  if ( Qgis::TemporalUnit::Milliseconds == timeStep.originalUnit() )
   {
-    timeDisplayFormat = "yyyy-MM-dd HH:mm:ss.zzz";
+    timeDisplayFormat = u"yyyy-MM-dd HH:mm:ss.zzz"_s;
     // very big change that you have to update the range too, as defaulting to NOT handling millis
     updateTemporalExtent();
   }
@@ -601,14 +653,13 @@ void QgsTemporalControllerWidget::updateTimeStepInputs( const QgsInterval &timeS
   mFixedRangeEndDateTime->setDisplayFormat( timeDisplayFormat );
 
   // Only update ui when the intervals are different
-  if ( timeStep == QgsInterval( mStepSpinBox->value(),
-                                static_cast< QgsUnitTypes::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) ) )
+  if ( timeStep == QgsInterval( mStepSpinBox->value(), static_cast<Qgis::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) ) )
     return;
 
-  if ( timeStep.originalUnit() != QgsUnitTypes::TemporalUnknownUnit )
+  if ( timeStep.originalUnit() != Qgis::TemporalUnit::Unknown )
   {
     mStepSpinBox->setValue( timeStep.originalDuration() );
-    mTimeStepsComboBox->setCurrentIndex( timeStep.originalUnit() );
+    mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( static_cast<int>( timeStep.originalUnit() ) ) );
   }
 
   updateFrameDuration();
@@ -616,7 +667,7 @@ void QgsTemporalControllerWidget::updateTimeStepInputs( const QgsInterval &timeS
 
 void QgsTemporalControllerWidget::mRangeSetToProjectAction_triggered()
 {
-  setDatesToProjectTime();
+  setDatesToProjectTime( false );
   saveRangeToProject();
 }
 
@@ -636,15 +687,27 @@ void QgsTemporalControllerWidget::setDatesToAllLayers()
 {
   QgsDateTimeRange range;
   range = QgsTemporalUtils::calculateTemporalRangeForProject( QgsProject::instance() );
+  mNavigationObject->setAvailableTemporalRanges( QgsTemporalUtils::usedTemporalRangesForProject( QgsProject::instance() ) );
+
   setDates( range );
 }
 
-void QgsTemporalControllerWidget::setDatesToProjectTime()
+void QgsTemporalControllerWidget::setDatesToProjectTime( bool tryLastStoredRange )
 {
   QgsDateTimeRange range;
 
+  if ( tryLastStoredRange )
+  {
+    const QString startString = QgsProject::instance()->readEntry( u"TemporalControllerWidget"_s, u"/StartDateTime"_s );
+    const QString endString = QgsProject::instance()->readEntry( u"TemporalControllerWidget"_s, u"/EndDateTime"_s );
+    if ( !startString.isEmpty() && !endString.isEmpty() )
+    {
+      range = QgsDateTimeRange( QDateTime::fromString( startString, Qt::ISODateWithMs ), QDateTime::fromString( endString, Qt::ISODateWithMs ) );
+    }
+  }
+
   // by default try taking the project's fixed temporal extent
-  if ( QgsProject::instance()->timeSettings() )
+  if ( ( !range.begin().isValid() || !range.end().isValid() ) && QgsProject::instance()->timeSettings() )
     range = QgsProject::instance()->timeSettings()->temporalRange();
 
   // if that's not set, calculate the extent from the project's layers
@@ -653,13 +716,13 @@ void QgsTemporalControllerWidget::setDatesToProjectTime()
     range = QgsTemporalUtils::calculateTemporalRangeForProject( QgsProject::instance() );
   }
 
+  mNavigationObject->setAvailableTemporalRanges( QgsTemporalUtils::usedTemporalRangesForProject( QgsProject::instance() ) );
+
   setDates( range );
 }
 
 void QgsTemporalControllerWidget::saveRangeToProject()
 {
-  QgsProject::instance()->writeEntry( QStringLiteral( "TemporalControllerWidget" ),
-                                      QStringLiteral( "/StartDateTime" ), mStartDateTime->dateTime().toTimeSpec( Qt::OffsetFromUTC ).toString( Qt::ISODateWithMs ) );
-  QgsProject::instance()->writeEntry( QStringLiteral( "TemporalControllerWidget" ),
-                                      QStringLiteral( "/EndDateTime" ), mEndDateTime->dateTime().toTimeSpec( Qt::OffsetFromUTC ).toString( Qt::ISODateWithMs ) );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/StartDateTime"_s, mStartDateTime->dateTime().toTimeSpec( Qt::OffsetFromUTC ).toString( Qt::ISODateWithMs ) );
+  QgsProject::instance()->writeEntry( u"TemporalControllerWidget"_s, u"/EndDateTime"_s, mEndDateTime->dateTime().toTimeSpec( Qt::OffsetFromUTC ).toString( Qt::ISODateWithMs ) );
 }

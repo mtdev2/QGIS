@@ -23,20 +23,19 @@ class QHBoxLayout;
 class QToolButton;
 class QgsDoubleSpinBox;
 
-#include <QWidget>
 #include "qgis_app.h"
+
+#include <QWidget>
 
 /**
   * A widget which lets the user select the current level of magnification to
   * apply to the canvas.
-  * \since QGIS 2.16
   */
 class APP_EXPORT QgsStatusBarMagnifierWidget : public QWidget
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor
       * \param parent is the parent widget
@@ -56,6 +55,12 @@ class APP_EXPORT QgsStatusBarMagnifierWidget : public QWidget
     //! will be triggered from map canvas changes (from mouse wheel, zoom)
     void updateMagnification( double factor );
 
+    /**
+     * Will be triggered from map canvas API changes
+     * \param locked true if the scale is locked
+     * \since QGIS 3.18
+     */
+    void updateScaleLock( bool locked );
 
   private slots:
     //! will be triggered form user input in spin box

@@ -16,12 +16,15 @@
 #define QGSLAYERDEFINITION_H
 
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgslayertreeregistrybridge.h"
 
+#include <QDomNode>
+#include <QSet>
 #include <QString>
 #include <QVector>
-#include <QDomNode>
 
 class QDomDocument;
 
@@ -33,7 +36,7 @@ class QgsProject;
 
 /**
  * \ingroup core
- * \brief The QgsLayerDefinition class holds generic methods for loading/exporting QLR files.
+ * \brief Holds generic methods for loading/exporting QLR files.
  *
  * QLR files are an export of the layer xml including the style and datasource location.  There is no link
  * to the QLR file once loaded.  Consider the QLR file a mini project file for layers and styles.  QLR
@@ -42,13 +45,81 @@ class QgsProject;
 class CORE_EXPORT QgsLayerDefinition
 {
   public:
-    //! Loads the QLR at path into QGIS.  New layers are added to given project into layer tree specified by rootGroup
-    static bool loadLayerDefinition( const QString &path, QgsProject *project, QgsLayerTreeGroup *rootGroup, QString &errorMessage SIP_OUT );
-    //! Loads the QLR from the XML document.  New layers are added to given project into layer tree specified by rootGroup
-    static bool loadLayerDefinition( QDomDocument doc,  QgsProject *project, QgsLayerTreeGroup *rootGroup, QString &errorMessage SIP_OUT, QgsReadWriteContext &context );
-    //! Export the selected layer tree nodes to a QLR file
-    static bool exportLayerDefinition( QString path, const QList<QgsLayerTreeNode *> &selectedTreeNodes, QString &errorMessage SIP_OUT );
-    //! Export the selected layer tree nodes to a QLR-XML document
+    /**
+     * Loads the QLR at path into QGIS.  New layers are added to given project into layer tree specified by rootGroup
+     * \param path file path to the qlr
+     * \param project the current project
+     * \param rootGroup the layer tree group to insert the qlr content
+     * \param errorMessage the returned error message
+     * \param insertMethod method for layer tree (since QGIS 3.38)
+     * \param insertPoint describes where in rootGroup the qlr layers/groups shall be inserted (since QGIS 3.38)
+     * \return true in case of success
+    */
+    static bool loadLayerDefinition(
+      const QString &path,
+      QgsProject *project,
+      QgsLayerTreeGroup *rootGroup,
+      QString &errorMessage SIP_OUT,
+      Qgis::LayerTreeInsertionMethod insertMethod = Qgis::LayerTreeInsertionMethod::OptimalInInsertionGroup,
+      const QgsLayerTreeRegistryBridge::InsertionPoint *insertPoint = nullptr
+    );
+
+    /**
+     * Loads the QLR from the XML document.  New layers are added to given project into layer tree specified by rootGroup
+     *  \param doc the xml document
+     *  \param project the current project
+     *  \param rootGroup the layer tree group to insert the qlr content
+     *  \param errorMessage the returned error message
+     *  \param context the read write context
+     *  \param insertMethod method for layer tree (since QGIS 3.38)
+     *  \param insertPoint describes where in rootGroup the qlr layers/groups shall be inserted (since QGIS 3.38)
+     *  \return true in case of success
+     */
+    static bool loadLayerDefinition(
+      QDomDocument doc,
+      QgsProject *project,
+      QgsLayerTreeGroup *rootGroup,
+      QString &errorMessage SIP_OUT,
+      QgsReadWriteContext &context,
+      Qgis::LayerTreeInsertionMethod insertMethod = Qgis::LayerTreeInsertionMethod::OptimalInInsertionGroup,
+      const QgsLayerTreeRegistryBridge::InsertionPoint *insertPoint = nullptr
+    );
+
+    // TODO QGIS 5.0 -- remove this in favour of the version with explicit Qgis::FilePathType parameter
+    /**
+     * Exports the selected layer tree nodes to a QLR file.
+     *
+     * This method uses the QgsProject.instance()'s file path setting to determine whether absolute
+     * or relative paths are written. Use the variant with an explicit argument for file path type
+     * for control over this setting.
+     *
+     * \param path file path for exported QLR file
+     * \param selectedTreeNodes layer tree nodes to include in the QLR file
+     * \param errorMessage will be set to any error messages generated during the export
+     *
+     * \returns TRUE if the export was successful
+     *
+     * \deprecated QGIS 4.4. Use the variant with explicit Qgis::FilePathType parameter instead.
+     */
+    Q_DECL_DEPRECATED static bool exportLayerDefinition( const QString &path, const QList<QgsLayerTreeNode *> &selectedTreeNodes, QString &errorMessage SIP_OUT ) SIP_DEPRECATED;
+
+    /**
+     * Exports the selected layer tree nodes to a QLR file.
+     *
+     * \param path file path for exported QLR file
+     * \param selectedTreeNodes layer tree nodes to include in the QLR file
+     * \param pathType specifies whether absolute or relative file paths should be used.
+     * \param errorMessage will be set to any error messages generated during the export
+     *
+     * \returns TRUE if the export was successful
+     *
+     * \since QGIS 3.22
+     */
+    static bool exportLayerDefinition( const QString &path, const QList<QgsLayerTreeNode *> &selectedTreeNodes, Qgis::FilePathType pathType, QString &errorMessage SIP_OUT );
+
+    /**
+     * Exports the selected layer tree nodes to a QLR XML document.
+     */
     static bool exportLayerDefinition( QDomDocument doc, const QList<QgsLayerTreeNode *> &selectedTreeNodes, QString &errorMessage SIP_OUT, const QgsReadWriteContext &context );
 
     /**
@@ -78,23 +149,22 @@ class CORE_EXPORT QgsLayerDefinition
 
     /**
      * \ingroup core
-     * Class used to work with layer dependencies stored in a XML project or layer definition file
+     * \brief Handles sorting of dependencies stored in a XML project or layer definition file.
      */
     class CORE_EXPORT DependencySorter
     {
       public:
-
         /**
          * Constructor
          * \param doc The XML document containing maplayer elements
          */
-        DependencySorter( const QDomDocument &doc );
+        explicit DependencySorter( const QDomDocument &doc );
 
         /**
          * Constructor
          * \param fileName The filename where the XML document is stored
          */
-        DependencySorter( const QString &fileName );
+        explicit DependencySorter( const QString &fileName );
 
         //! Gets the layer nodes in an order where they can be loaded incrementally without dependency break
         QVector<QDomNode> sortedLayerNodes() const { return mSortedLayerNodes; }
@@ -108,13 +178,24 @@ class CORE_EXPORT QgsLayerDefinition
         //! Whether some dependency is missing
         bool hasMissingDependency() const { return mHasMissingDependency; }
 
+        /**
+         * Returns whether the layer associated with the\a layerId is dependent from another layer
+         *
+         * \since QGIS 3.32
+         */
+        bool isLayerDependent( const QString &layerId ) const;
+
       private:
         QVector<QDomNode> mSortedLayerNodes;
         QStringList mSortedLayerIds;
+        QSet<QString> mDependentLayerIds;
         bool mHasCycle;
         bool mHasMissingDependency;
         void init( const QDomDocument &doc );
     };
+
+  private:
+    static QList<QgsMapLayer *> loadLayerDefinitionLayersInternal( QDomDocument &document, QgsReadWriteContext &context, QString &errorMessage );
 };
 
 #endif // QGSLAYERDEFINITION_H

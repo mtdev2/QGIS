@@ -16,21 +16,21 @@
  ***************************************************************************/
 
 #include "qgstemporalcontrollerdockwidget.h"
-#include "qgstemporalcontrollerwidget.h"
-#include "qgspanelwidgetstack.h"
+
 #include "qgsanimationexportdialog.h"
-#include "qgsdecorationitem.h"
 #include "qgsmapcanvas.h"
 #include "qgsmapdecoration.h"
-
-#include "qgstemporalutils.h"
-#include "qgstaskmanager.h"
-#include "qgsproxyprogresstask.h"
 #include "qgsmessagebar.h"
+#include "qgspanelwidgetstack.h"
+#include "qgsproxyprogresstask.h"
+#include "qgstemporalcontrollerwidget.h"
+#include "qgstemporalutils.h"
 
-#include <QProgressDialog>
 #include <QMessageBox>
+#include <QProgressDialog>
+#include <QUrl>
 
+#include "moc_qgstemporalcontrollerdockwidget.cpp"
 
 QgsTemporalControllerDockWidget::QgsTemporalControllerDockWidget( const QString &name, QWidget *parent )
   : QgsDockWidget( parent )
@@ -51,16 +51,38 @@ QgsTemporalController *QgsTemporalControllerDockWidget::temporalController()
   return mControllerWidget->temporalController();
 }
 
+void QgsTemporalControllerDockWidget::setMapCanvas( QgsMapCanvas *canvas )
+{
+  if ( canvas && canvas->viewport() )
+    canvas->viewport()->installEventFilter( this );
+}
+
+bool QgsTemporalControllerDockWidget::eventFilter( QObject *object, QEvent *event )
+{
+  if ( event->type() == QEvent::Wheel )
+  {
+    QWheelEvent *wheelEvent = qgis::down_cast<QWheelEvent *>( event );
+    // handle horizontal wheel events by scrubbing timeline
+    if ( wheelEvent->angleDelta().x() != 0 )
+    {
+      const int step = -wheelEvent->angleDelta().x() / 120.0;
+      mControllerWidget->temporalController()->setCurrentFrameNumber( mControllerWidget->temporalController()->currentFrameNumber() + step );
+      return true;
+    }
+  }
+  return QgsDockWidget::eventFilter( object, event );
+}
+
 void QgsTemporalControllerDockWidget::exportAnimation()
 {
   QgsAnimationExportDialog *dlg = new QgsAnimationExportDialog( this, QgisApp::instance()->mapCanvas(), QgisApp::instance()->activeDecorations() );
-  connect( dlg, &QgsAnimationExportDialog::startExport, this, [ = ]
-  {
+  connect( dlg, &QgsAnimationExportDialog::startExport, this, [this, dlg] {
     QgsMapSettings s = QgisApp::instance()->mapCanvas()->mapSettings();
     dlg->applyMapSettings( s );
 
     const QgsDateTimeRange animationRange = dlg->animationRange();
     const QgsInterval frameDuration = dlg->frameInterval();
+    const bool temporalRangeCumulative = dlg->temporalRangeCumulative();
     const QString outputDir = dlg->outputDirectory();
     const QString fileNameExpression = dlg->fileNameExpression();
 
@@ -74,9 +96,7 @@ void QgsTemporalControllerDockWidget::exportAnimation()
     progressDialog.setWindowModality( Qt::WindowModal );
     QString error;
 
-    connect( &progressFeedback, &QgsFeedback::progressChanged, this,
-             [&progressDialog, &progressFeedback, &task]
-    {
+    connect( &progressFeedback, &QgsFeedback::progressChanged, this, [&progressDialog, &progressFeedback, &task] {
       progressDialog.setValue( static_cast<int>( progressFeedback.progress() ) );
       task.setProgress( progressFeedback.progress() );
       QCoreApplication::processEvents();
@@ -89,24 +109,29 @@ void QgsTemporalControllerDockWidget::exportAnimation()
       decorations = QgisApp::instance()->activeDecorations();
 
     QgsTemporalUtils::AnimationExportSettings animationSettings;
+    animationSettings.animationMode = dlg->mode();
     animationSettings.frameDuration = frameDuration;
+    animationSettings.temporalRangeCumulative = temporalRangeCumulative;
     animationSettings.animationRange = animationRange;
     animationSettings.outputDirectory = outputDir;
     animationSettings.fileNameTemplate = fileNameExpression;
     animationSettings.decorations = decorations;
+    animationSettings.totalMovieFrames = dlg->totalMovieFrames();
+    if ( frameDuration.originalUnit() == Qgis::TemporalUnit::IrregularStep )
+      animationSettings.availableTemporalRanges = QgsTemporalUtils::usedTemporalRangesForProject( QgsProject::instance() );
 
-    bool success = QgsTemporalUtils::exportAnimation( s, animationSettings, error, &progressFeedback );
+    const bool success = QgsTemporalUtils::exportAnimation( s, animationSettings, error, &progressFeedback );
 
     progressDialog.hide();
     if ( !success )
     {
-      QgisApp::instance()->messageBar()->pushMessage( tr( "Export Animation" ), error, Qgis::Critical );
+      QgisApp::instance()->messageBar()->pushMessage( tr( "Export Animation" ), error, Qgis::MessageLevel::Critical );
     }
     else
     {
-      QgisApp::instance()->messageBar()->pushMessage( tr( "Export Animation" ),
-          tr( "Successfully exported animation to <a href=\"%1\">%2</a>" ).arg( QUrl::fromLocalFile( outputDir ).toString(), QDir::toNativeSeparators( outputDir ) ),
-          Qgis::Success, 0 );
+      QgisApp::instance()
+        ->messageBar()
+        ->pushMessage( tr( "Export Animation" ), tr( "Successfully exported animation to <a href=\"%1\">%2</a>" ).arg( QUrl::fromLocalFile( outputDir ).toString(), QDir::toNativeSeparators( outputDir ) ), Qgis::MessageLevel::Success, 0 );
     }
   } );
   dlg->setAttribute( Qt::WA_DeleteOnClose );

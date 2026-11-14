@@ -16,23 +16,24 @@
 #ifndef QGSTEXTMASKSETTINGS_H
 #define QGSTEXTMASKSETTINGS_H
 
-#include "qgis_sip.h"
+#include "qgis.h"
 #include "qgis_core.h"
-#include "qgssymbollayerreference.h"
-#include "qgsunittypes.h"
+#include "qgis_sip.h"
 #include "qgsmapunitscale.h"
 
-#include <QSharedDataPointer>
 #include <QDomElement>
+#include <QSharedDataPointer>
 
 class QgsTextMaskSettingsPrivate;
 class QgsPaintEffect;
 class QgsPropertyCollection;
+class QgsSymbolLayerReference;
 
 /**
  * \class QgsTextMaskSettings
   * \ingroup core
-  * Container for settings relating to a selective masking around a text.
+  * \brief Container for settings relating to a selective masking around a text.
+  *
   * A selective masking only makes sense in contexts where the text is rendered over some other map layers, especially for labeling.
   * \note QgsTextMaskSettings objects are implicitly shared.
   * \since QGIS 3.12
@@ -41,7 +42,6 @@ class QgsPropertyCollection;
 class CORE_EXPORT QgsTextMaskSettings
 {
   public:
-
     /**
      * Mask shape types.
      */
@@ -52,17 +52,10 @@ class CORE_EXPORT QgsTextMaskSettings
 
     QgsTextMaskSettings();
 
-    /**
-     * Copy constructor.
-     * \param other source settings
-     */
     QgsTextMaskSettings( const QgsTextMaskSettings &other );
-
-    /**
-     * Copy constructor.
-     * \param other source QgsTextMaskSettings
-     */
+    SIP_SKIP QgsTextMaskSettings( QgsTextMaskSettings &&other );
     QgsTextMaskSettings &operator=( const QgsTextMaskSettings &other );
+    QgsTextMaskSettings &operator=( QgsTextMaskSettings &&other );
 
     ~QgsTextMaskSettings();
 
@@ -112,7 +105,7 @@ class CORE_EXPORT QgsTextMaskSettings
      * \see size()
      * \see setSizeUnit()
      */
-    QgsUnitTypes::RenderUnit sizeUnit() const;
+    Qgis::RenderUnit sizeUnit() const;
 
     /**
      * Sets the units used for the buffer size.
@@ -120,7 +113,7 @@ class CORE_EXPORT QgsTextMaskSettings
      * \see setSize()
      * \see sizeUnit()
      */
-    void setSizeUnit( QgsUnitTypes::RenderUnit unit );
+    void setSizeUnit( Qgis::RenderUnit unit );
 
     /**
      * Returns the map unit scale object for the buffer size. This is only used if the
@@ -196,16 +189,16 @@ class CORE_EXPORT QgsTextMaskSettings
     /**
      * Returns a list of references to symbol layers that are masked by this buffer.
      * \returns a list of references to masked symbol layers
-     * \see setMaskedSymbolLayers
+     * \see setMaskedSymbolLayers()
      */
-    QgsSymbolLayerReferenceList maskedSymbolLayers() const;
+    QList<QgsSymbolLayerReference> maskedSymbolLayers() const;
 
     /**
      * Sets the symbol layers that will be masked by this buffer.
      * \param maskedLayers list of references to symbol layers
-     * \see setMaskedSymbolLayers
+     * \see setMaskedSymbolLayers()
      */
-    void setMaskedSymbolLayers( QgsSymbolLayerReferenceList maskedLayers );
+    void setMaskedSymbolLayers( const QList<QgsSymbolLayerReference> &maskedLayers );
 
     /**
      * Updates the format by evaluating current values of data defined properties.
@@ -219,7 +212,6 @@ class CORE_EXPORT QgsTextMaskSettings
     QSet<QString> referencedFields( const QgsRenderContext &context ) const;
 
   private:
-
     QSharedDataPointer<QgsTextMaskSettingsPrivate> d;
 };
 

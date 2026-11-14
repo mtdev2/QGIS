@@ -17,23 +17,26 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <limits>
-#include <QRegExpValidator>
-#include <QLocale>
-#include "qgis_gui.h"
-
 #include "qgsdoublevalidator.h"
 
-const QString PERMISSIVE_DOUBLE = R"(-?[\d]{0,1000}([\.%1][\d]{0,1000})?(e[+-]?[\d]{0,%2})?)";
+#include <limits>
+
+#include "qgis_gui.h"
+
+#include <QLocale>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+
+#include "moc_qgsdoublevalidator.cpp"
+
+const QString PERMISSIVE_DOUBLE = R"(^\s*[+\-%3]?[\d]{0,1000}([\.%1][\d]{0,1000})?([eE%4][+\-%3]?[\d]{0,%2})?\s*$)";
 
 QgsDoubleValidator::QgsDoubleValidator( QObject *parent )
   : QRegularExpressionValidator( parent )
   , mMinimum( std::numeric_limits<qreal>::lowest() )
   , mMaximum( std::numeric_limits<qreal>::max() )
 {
-  // The regular expression accept double with point as decimal point but also the locale decimal point
-  QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( 1000 ) );
-  setRegularExpression( reg );
+  setRegularExpression( createExpression( 1000 ) );
 }
 
 QgsDoubleValidator::QgsDoubleValidator( const QRegularExpression &expression, double bottom, double top, QObject *parent )
@@ -49,9 +52,7 @@ QgsDoubleValidator::QgsDoubleValidator( double bottom, double top, QObject *pare
   , mMinimum( bottom )
   , mMaximum( top )
 {
-  // The regular expression accept double with point as decimal point but also the locale decimal point
-  QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( 1000 ) );
-  setRegularExpression( reg );
+  setRegularExpression( createExpression( 1000 ) );
 }
 
 QgsDoubleValidator::QgsDoubleValidator( double bottom, double top, int decimal, QObject *parent )
@@ -59,9 +60,7 @@ QgsDoubleValidator::QgsDoubleValidator( double bottom, double top, int decimal, 
   , mMinimum( bottom )
   , mMaximum( top )
 {
-  // The regular expression accept double with point as decimal point but also the locale decimal point
-  QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( QString::number( decimal ) ) );
-  setRegularExpression( reg );
+  setRegularExpression( createExpression( decimal ) );
 }
 
 QgsDoubleValidator::QgsDoubleValidator( int decimal, QObject *parent )
@@ -70,8 +69,12 @@ QgsDoubleValidator::QgsDoubleValidator( int decimal, QObject *parent )
   , mMaximum( std::numeric_limits<qreal>::max() )
 {
   // The regular expression accept double with point as decimal point but also the locale decimal point
-  QRegularExpression reg( PERMISSIVE_DOUBLE.arg( locale().decimalPoint() ).arg( QString::number( decimal ) ) );
-  setRegularExpression( reg );
+  setRegularExpression( createExpression( decimal ) );
+}
+
+void QgsDoubleValidator::setMaxDecimals( int maxDecimals )
+{
+  setRegularExpression( createExpression( maxDecimals ) );
 }
 
 QValidator::State QgsDoubleValidator::validate( QString &input, int & ) const
@@ -82,7 +85,7 @@ QValidator::State QgsDoubleValidator::validate( QString &input, int & ) const
 
   bool ok = false;
   const double entered = QgsDoubleValidator::toDouble( input, &ok );
-  if ( ! ok )
+  if ( !ok )
   {
     if ( regularExpression().match( input ).captured( 0 ) == input )
       return Intermediate;
@@ -104,7 +107,7 @@ QValidator::State QgsDoubleValidator::validate( QString &input ) const
 
   bool ok = false;
   const double entered = QgsDoubleValidator::toDouble( input, &ok );
-  if ( ! ok )
+  if ( !ok )
   {
     if ( regularExpression().match( input ).captured( 0 ) == input )
       return Intermediate;
@@ -121,21 +124,34 @@ QValidator::State QgsDoubleValidator::validate( QString &input ) const
 double QgsDoubleValidator::toDouble( const QString &input )
 {
   bool ok = false;
-  double value = QLocale().toDouble( input, &ok );
-  if ( ! ok )
-  {
-    value = QLocale( QLocale::C ).toDouble( input, &ok );
-  }
-  return value;
+  return toDouble( input, &ok );
+}
+
+QRegularExpression QgsDoubleValidator::createExpression( int decimals )
+{
+  const QString localeDecimalPoint = QLocale().decimalPoint();
+  const QString localeNegativeSign = QLocale().negativeSign();
+  const QString localeExponential = QLocale().exponential();
+  return QRegularExpression( PERMISSIVE_DOUBLE.arg(
+    localeDecimalPoint == '.' ? QString() : QRegularExpression::escape( localeDecimalPoint ),
+    QString::number( decimals ),
+    localeNegativeSign == '-' ? QString() : QRegularExpression::escape( localeNegativeSign ),
+    localeExponential == 'E' ? QString() : localeExponential
+  ) );
 }
 
 double QgsDoubleValidator::toDouble( const QString &input, bool *ok )
 {
   double value = QLocale().toDouble( input, ok );
 
-  if ( ! *ok )
+  if ( !*ok )
   {
     value = QLocale( QLocale::C ).toDouble( input, ok );
   }
-  return value ;
+  // Still non ok? Try without locale's group separator
+  if ( !*ok && !( QLocale().numberOptions() & QLocale::NumberOption::OmitGroupSeparator ) )
+  {
+    value = QLocale().toDouble( QString( input ).replace( QLocale().groupSeparator(), QString() ), ok );
+  }
+  return value;
 }

@@ -14,58 +14,59 @@
  ***************************************************************************/
 
 
-#include <QMenu>
-#include <QWindow>
-#include <QScreen>
-#include <QImageWriter>
-#include <QIcon>
-#include <QImage>
-
 #include "qgsappscreenshots.h"
 
-#include "qgsvectorlayerproperties.h"
-#include "qgsvectorlayer.h"
-#include "qgsproject.h"
-#include "qgsmessagelog.h"
+#include "options/qgsoptions.h"
 #include "qgisapp.h"
-#include "qgsrendererpropertiesdialog.h"
 #include "qgs25drendererwidget.h"
 #include "qgsapplication.h"
-#include "options/qgsoptions.h"
 #include "qgsguiutils.h"
-#include "qgsvectorlayerjoininfo.h"
+#include "qgsmessagelog.h"
+#include "qgsproject.h"
 #include "qgsrasterlayer.h"
 #include "qgsrasterlayerproperties.h"
+#include "qgsrendererpropertiesdialog.h"
+#include "qgsvectorlayer.h"
+#include "qgsvectorlayerjoininfo.h"
+#include "qgsvectorlayerproperties.h"
 
+#include <QIcon>
+#include <QImage>
+#include <QImageWriter>
+#include <QMenu>
+#include <QScreen>
+#include <QString>
+#include <QWindow>
+
+#include "moc_qgsappscreenshots.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsAppScreenShots::QgsAppScreenShots( const QString &saveDirectory )
   : mSaveDirectory( saveDirectory )
 {
-  QString layerDef = QStringLiteral( "Point?crs=epsg:4326&field=pk:integer&field=my_text:string&field=fk_polygon:integer&field=my_double:double&key=pk" );
+  QString layerDef = u"Point?crs=epsg:4326&field=pk:integer&field=my_text:string&field=fk_polygon:integer&field=my_double:double&key=pk"_s;
   const QgsVectorLayer::LayerOptions options { QgsProject::instance()->transformContext() };
-  mLineLayer = new QgsVectorLayer( layerDef, QStringLiteral( "Line Layer" ), QStringLiteral( "memory" ), options );
-  layerDef = QStringLiteral( "Polygon?crs=epsg:2056&field=pk:integer&field=my_text:string&field=my_integer:integer&field=height:double&key=pk" );
-  mPolygonLayer = new QgsVectorLayer( layerDef, QStringLiteral( "Polygon Layer" ), QStringLiteral( "memory" ), options );
+  mLineLayer = new QgsVectorLayer( layerDef, u"Line Layer"_s, u"memory"_s, options );
+  layerDef = u"Polygon?crs=epsg:2056&field=pk:integer&field=my_text:string&field=my_integer:integer&field=height:double&key=pk"_s;
+  mPolygonLayer = new QgsVectorLayer( layerDef, u"Polygon Layer"_s, u"memory"_s, options );
 
-  QString dataPath( TEST_DATA_DIR ); //defined in CmakeLists.txt
-  mRasterLayer = new QgsRasterLayer( dataPath + "/raster/with_color_table.tif", QStringLiteral( "raster" ), QStringLiteral( "gdal" ) );
+  const QString dataPath( TEST_DATA_DIR ); //defined in CmakeLists.txt
+  mRasterLayer = new QgsRasterLayer( dataPath + "/raster/with_color_table.tif", u"raster"_s, u"gdal"_s );
   Q_ASSERT( mRasterLayer->isValid() );
 
   // add join
   QgsVectorLayerJoinInfo join;
-  join.setTargetFieldName( QStringLiteral( "fk_polygon" ) );
+  join.setTargetFieldName( u"fk_polygon"_s );
   join.setJoinLayer( mPolygonLayer );
-  join.setJoinFieldName( QStringLiteral( "pk" ) );
+  join.setJoinFieldName( u"pk"_s );
   join.setUsingMemoryCache( true );
   join.setEditable( true );
   join.setCascadedDelete( true );
   mLineLayer->addJoin( join );
 
   // add layers to project
-  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>()
-                                        << mLineLayer
-                                        << mPolygonLayer
-                                        << mRasterLayer );
+  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mLineLayer << mPolygonLayer << mRasterLayer );
 }
 
 QPixmap QgsAppScreenShots::takeScreenshot( QWidget *widget, GrabMode mode, QRect crop, bool gradient )
@@ -88,15 +89,12 @@ QPixmap QgsAppScreenShots::takeScreenshot( QWidget *widget, GrabMode mode, QRect
   }
   if ( !widget || mode != GrabWidget )
   {
-    WId wid = widget ? widget->winId() : 0;
+    const WId wid = widget ? widget->winId() : 0;
     pixmap = scr->grabWindow( wid );
     if ( !geom.isEmpty() )
     {
-      qreal dpr = scr->devicePixelRatio();
-      pixmap = pixmap.copy( static_cast<int>( geom.x() * dpr ),
-                            static_cast<int>( geom.y() * dpr ),
-                            static_cast<int>( geom.width() * dpr ),
-                            static_cast<int>( geom.height() * dpr ) );
+      const qreal dpr = scr->devicePixelRatio();
+      pixmap = pixmap.copy( static_cast<int>( geom.x() * dpr ), static_cast<int>( geom.y() * dpr ), static_cast<int>( geom.width() * dpr ), static_cast<int>( geom.height() * dpr ) );
     }
   }
 
@@ -104,7 +102,7 @@ QPixmap QgsAppScreenShots::takeScreenshot( QWidget *widget, GrabMode mode, QRect
 
   if ( !crop.isNull() )
   {
-    qreal dpr = scr->devicePixelRatio();
+    const qreal dpr = scr->devicePixelRatio();
     if ( crop.height() == 0 )
       crop.setHeight( static_cast<int>( pixmap.height() / dpr ) );
     if ( crop.width() == 0 )
@@ -113,11 +111,8 @@ QPixmap QgsAppScreenShots::takeScreenshot( QWidget *widget, GrabMode mode, QRect
 
   if ( !crop.isEmpty() )
   {
-    qreal dpr = scr->devicePixelRatio();
-    crop = QRect( static_cast<int>( crop.x() * dpr ),
-                  static_cast<int>( crop.y() * dpr ),
-                  static_cast<int>( crop.width() * dpr ),
-                  static_cast<int>( crop.height() * dpr ) );
+    const qreal dpr = scr->devicePixelRatio();
+    crop = QRect( static_cast<int>( crop.x() * dpr ), static_cast<int>( crop.y() * dpr ), static_cast<int>( crop.width() * dpr ), static_cast<int>( crop.height() * dpr ) );
     pixmap = pixmap.copy( crop );
   }
 
@@ -148,24 +143,24 @@ void QgsAppScreenShots::saveScreenshot( QPixmap &pixmap, const QString &name, co
   const QDir topDirectory( mSaveDirectory );
   if ( !topDirectory.exists() )
   {
-    QgsMessageLog::logMessage( QStringLiteral( "Directory does not exist: %1" ).arg( mSaveDirectory ), QString(), Qgis::Critical );
+    QgsMessageLog::logMessage( u"Directory does not exist: %1"_s.arg( mSaveDirectory ), QString(), Qgis::MessageLevel::Critical );
     return;
   }
 
   const QDir directory( topDirectory.absolutePath() + "/" + folder );
-  const QString fileName =  directory.absolutePath() + "/" + name + ".png";
+  const QString fileName = directory.absolutePath() + "/" + name + ".png";
   if ( !directory.exists() )
   {
     if ( !topDirectory.mkpath( folder ) )
     {
-      QgsMessageLog::logMessage( QStringLiteral( "Could not create directory %1 in %2" ).arg( folder, mSaveDirectory ), QString(), Qgis::Critical );
+      QgsMessageLog::logMessage( u"Could not create directory %1 in %2"_s.arg( folder, mSaveDirectory ), QString(), Qgis::MessageLevel::Critical );
       return;
     }
   }
   if ( pixmap.save( fileName ) )
-    QgsMessageLog::logMessage( QStringLiteral( "Screenshot saved: %1" ).arg( fileName ) );
+    QgsMessageLog::logMessage( u"Screenshot saved: %1"_s.arg( fileName ) );
   else
-    QgsMessageLog::logMessage( QStringLiteral( "Failed to save screenshot: %1" ).arg( fileName ), QString(), Qgis::Critical );
+    QgsMessageLog::logMessage( u"Failed to save screenshot: %1"_s.arg( fileName ), QString(), Qgis::MessageLevel::Critical );
 }
 
 void QgsAppScreenShots::moveWidgetTo( QWidget *widget, Qt::Corner corner, Reference reference )
@@ -235,7 +230,7 @@ void QgsAppScreenShots::setGradientSize( int size )
 
 void QgsAppScreenShots::takeVectorLayerProperties()
 {
-  QString folder = QStringLiteral( "working_with_vector/img/auto_generated/vector_layer_properties" );
+  const QString folder = u"working_with_vector/img/auto_generated/vector_layer_properties"_s;
   QgsVectorLayerProperties *dlg = new QgsVectorLayerProperties( QgisApp::instance()->mapCanvas(), QgisApp::instance()->visibleMessageBar(), mLineLayer, QgisApp::instance() );
   dlg->show();
   dlg->mJoinTreeWidget->expandAll(); // expand join tree
@@ -247,7 +242,7 @@ void QgsAppScreenShots::takeVectorLayerProperties()
     dlg->adjustSize();
     QCoreApplication::processEvents();
     QString name = dlg->mOptionsListWidget->item( row )[0].text().toLower();
-    name.replace( QLatin1String( " " ), QLatin1String( "_" ) ).replace( QLatin1String( "&" ), QLatin1String( "and" ) );
+    name.replace( " "_L1, "_"_L1 ).replace( "&"_L1, "and"_L1 );
     takeScreenshot( name, folder, dlg );
   }
   // ------------------
@@ -258,7 +253,7 @@ void QgsAppScreenShots::takeVectorLayerProperties()
   QCoreApplication::processEvents();
   dlg->mBtnStyle->click();
   QCoreApplication::processEvents();
-  takeScreenshot( QStringLiteral( "style_menu" ), folder, dlg );
+  takeScreenshot( u"style_menu"_s, folder, dlg );
   QCoreApplication::processEvents();
   dlg->mBtnStyle->menu()->hide();
   QCoreApplication::processEvents();
@@ -272,25 +267,24 @@ void QgsAppScreenShots::takeVectorLayerProperties()
 
 void QgsAppScreenShots::takeVectorLayerProperties25DSymbol()
 {
-  QString folder = QStringLiteral( "working_with_vector/img/auto_generated/vector_layer_properties/" );
+  const QString folder = u"working_with_vector/img/auto_generated/vector_layer_properties/"_s;
   QgsVectorLayerProperties *dlg = new QgsVectorLayerProperties( QgisApp::instance()->mapCanvas(), QgisApp::instance()->visibleMessageBar(), mPolygonLayer, QgisApp::instance() );
   dlg->show();
   dlg->mOptionsListWidget->setCurrentRow( 2 );
-  Q_ASSERT( dlg->mOptionsListWidget->currentItem()->icon().pixmap( 24, 24 ).toImage()
-            == QgsApplication::getThemeIcon( QStringLiteral( "/propertyicons/symbology.svg" ) ).pixmap( 24, 24 ).toImage() );
-  int idx = dlg->mRendererDialog->cboRenderers->findData( QLatin1String( "25dRenderer" ) );
+  Q_ASSERT( dlg->mOptionsListWidget->currentItem()->icon().pixmap( 24, 24 ).toImage() == QgsApplication::getThemeIcon( u"/propertyicons/symbology.svg"_s ).pixmap( 24, 24 ).toImage() );
+  const int idx = dlg->mRendererDialog->cboRenderers->findData( "25dRenderer"_L1 );
   Q_ASSERT( idx >= 0 );
   dlg->mRendererDialog->cboRenderers->setCurrentIndex( idx );
   QCoreApplication::processEvents();
   Qgs25DRendererWidget *w = qobject_cast<Qgs25DRendererWidget *>( dlg->mRendererDialog->mActiveWidget );
-  w->mHeightWidget->setField( QStringLiteral( "height" ) );
-  Q_ASSERT( w->mHeightWidget->expression() == QLatin1String( "\"height\"" ) );
+  w->mHeightWidget->setField( u"height"_s );
+  Q_ASSERT( w->mHeightWidget->expression() == "\"height\""_L1 );
   QCoreApplication::processEvents();
   dlg->adjustSize();
   QCoreApplication::processEvents();
-  int cropHeight = w->mAdvancedConfigurationBox->mapTo( dlg, w->mAdvancedConfigurationBox->frameGeometry().bottomLeft() ).y();
+  const int cropHeight = w->mAdvancedConfigurationBox->mapTo( dlg, w->mAdvancedConfigurationBox->frameGeometry().bottomLeft() ).y();
   QPixmap pixmap = takeScreenshot( dlg, GrabWidgetAndFrame, QRect( 0, 0, 0, cropHeight ), true );
-  saveScreenshot( pixmap, QStringLiteral( "25dsymbol" ), folder );
+  saveScreenshot( pixmap, u"25dsymbol"_s, folder );
 
   // exit properly
   dlg->close();
@@ -301,32 +295,32 @@ void QgsAppScreenShots::takeVectorLayerProperties25DSymbol()
 
 void QgsAppScreenShots::takeGlobalOptions()
 {
-  QString folder = QStringLiteral( "introduction/img/auto_generated/global_options/" );
+  const QString folder = u"introduction/img/auto_generated/global_options/"_s;
   QgsOptions *dlg = QgisApp::instance()->createOptionsDialog();
   dlg->setMinimumHeight( 600 );
   dlg->show();
   QCoreApplication::processEvents();
-  for ( int row = 0; row < dlg->mOptionsListWidget->count(); ++row )
+
+  for ( int page = 0; page < dlg->mOptionsStackedWidget->count(); ++page )
   {
-    dlg->mOptionsListWidget->setCurrentRow( row );
+    dlg->mOptionsStackedWidget->setCurrentIndex( page );
     dlg->adjustSize();
     QCoreApplication::processEvents();
-    QString name = dlg->mOptionsListWidget->item( row )[0].text().toLower();
-    name.replace( QLatin1String( " " ), QLatin1String( "_" ) ).replace( QLatin1String( "&" ), QLatin1String( "and" ) );
+    QString name = dlg->mOptTreeView->currentIndex().data( Qt::DisplayRole ).toString().toLower();
+    name.replace( " "_L1, "_"_L1 ).replace( "&"_L1, "and"_L1 );
     takeScreenshot( name, folder, dlg );
   }
   // -----------------
   // advanced settings
-  dlg->mOptionsListWidget->setCurrentRow( dlg->mOptionsListWidget->count() - 1 );
+  dlg->mOptionsStackedWidget->setCurrentIndex( dlg->mOptionsStackedWidget->count() - 1 );
   QCoreApplication::processEvents();
-  Q_ASSERT( dlg->mOptionsListWidget->currentItem()->icon().pixmap( 24, 24 ).toImage()
-            == QgsApplication::getThemeIcon( QStringLiteral( "/mIconWarning.svg" ) ).pixmap( 24, 24 ).toImage() );
-  QWidget *editor = dlg->findChild< QWidget * >( QStringLiteral( "mAdvancedSettingsEditor" ) );
+  Q_ASSERT( dlg->mOptTreeView->currentIndex().data( Qt::DecorationRole ).value<QIcon>().pixmap( 24, 24 ).toImage() == QgsApplication::getThemeIcon( u"/mIconWarning.svg"_s ).pixmap( 24, 24 ).toImage() );
+  QWidget *editor = dlg->findChild<QWidget *>( u"mAdvancedSettingsEditor"_s );
   if ( editor )
     editor->show();
   QCoreApplication::processEvents();
   QCoreApplication::processEvents(); // seems a second call is needed, the tabble might not be fully displayed otherwise
-  takeScreenshot( QStringLiteral( "advanced_with_settings_shown" ), folder, dlg );
+  takeScreenshot( u"advanced_with_settings_shown"_s, folder, dlg );
 
   // exit properly
   dlg->close();
@@ -337,7 +331,7 @@ void QgsAppScreenShots::takeGlobalOptions()
 
 void QgsAppScreenShots::takeRasterLayerProperties()
 {
-  QString folder = QStringLiteral( "working_with_raster/img/auto_generated/raster_layer_properties" );
+  const QString folder = u"working_with_raster/img/auto_generated/raster_layer_properties"_s;
   QgsRasterLayerProperties *dlg = new QgsRasterLayerProperties( mRasterLayer, QgisApp::instance()->mapCanvas() );
   dlg->show();
   // ----------------
@@ -348,7 +342,7 @@ void QgsAppScreenShots::takeRasterLayerProperties()
     dlg->adjustSize();
     QCoreApplication::processEvents();
     QString name = dlg->mOptionsListWidget->item( row )[0].text().toLower();
-    name.replace( QLatin1String( " " ), QLatin1String( "_" ) ).replace( QLatin1String( "&" ), QLatin1String( "and" ) );
+    name.replace( " "_L1, "_"_L1 ).replace( "&"_L1, "and"_L1 );
     takeScreenshot( name, folder, dlg );
   }
   // exit properly

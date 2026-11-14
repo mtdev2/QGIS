@@ -12,17 +12,20 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgstest.h"
+#include "qgis.h"
 #include "qgsapplication.h"
-#include "qgsmeshlayer.h"
+#include "qgsfeedback.h"
+#include "qgsmapcanvas.h"
 #include "qgsmeshdataprovider.h"
+#include "qgsmeshlayer.h"
 #include "qgsmeshlayerproperties.h"
 #include "qgsmeshrendereractivedatasetwidget.h"
-#include "qgsfeedback.h"
-#include "qgis.h"
-#include "qgsmapcanvas.h"
+#include "qgstest.h"
 
+#include <QString>
 #include <QTemporaryFile>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup UnitTests
@@ -35,10 +38,10 @@ class TestQgsMeshLayerPropertiesDialog : public QObject
     TestQgsMeshLayerPropertiesDialog();
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init() {} // will be called before each testfunction is executed.
-    void cleanup() {} // will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
+    void init() {}          // will be called before each testfunction is executed.
+    void cleanup() {}       // will be called after every testfunction.
 
     void testInvalidLayer();
     void testCrs();
@@ -53,17 +56,16 @@ TestQgsMeshLayerPropertiesDialog::TestQgsMeshLayerPropertiesDialog() = default;
 //runs before all tests
 void TestQgsMeshLayerPropertiesDialog::initTestCase()
 {
-  qDebug() << "TestQgisAppClipboard::initTestCase()";
+  qDebug() << "TestQgsMeshLayerPropertiesDialog::initTestCase()";
   // init QGIS's paths - true means that all path will be inited from prefix
   QgsApplication::init();
   QgsApplication::initQgis();
 
-  QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + QStringLiteral( "/mesh/" );
-  QString uri( testDataDir + "/quad_and_triangle.2dm" );
+  const QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + u"/mesh/"_s;
+  const QString uri( testDataDir + "/quad_and_triangle.2dm" );
   mpMeshLayer = new QgsMeshLayer( uri, "Triangle and Quad MDAL", "mdal" );
 
-  QgsProject::instance()->addMapLayers(
-    QList<QgsMapLayer *>() << mpMeshLayer );
+  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mpMeshLayer );
 }
 
 //runs after all tests
@@ -76,8 +78,7 @@ void TestQgsMeshLayerPropertiesDialog::testInvalidLayer()
 {
   QgsMeshLayer invalidLayer;
   QgsMapCanvas mapCanvas;
-  std::unique_ptr< QgsMeshLayerProperties > dialog = qgis::make_unique< QgsMeshLayerProperties > ( &invalidLayer,
-      &mapCanvas );
+  const std::unique_ptr<QgsMeshLayerProperties> dialog = std::make_unique<QgsMeshLayerProperties>( &invalidLayer, &mapCanvas );
 
   QVERIFY( dialog );
 }
@@ -85,18 +86,17 @@ void TestQgsMeshLayerPropertiesDialog::testInvalidLayer()
 void TestQgsMeshLayerPropertiesDialog::testCrs()
 {
   QgsMapCanvas mapCanvas;
-  std::unique_ptr< QgsMeshLayerProperties > dialog = qgis::make_unique< QgsMeshLayerProperties > ( mpMeshLayer,
-      &mapCanvas );
+  auto dialog = std::make_unique<QgsMeshLayerProperties>( mpMeshLayer, &mapCanvas );
   QCOMPARE( dialog->mCrsSelector->crs(), mpMeshLayer->crs() );
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem::fromEpsgId( 27700 );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem::fromEpsgId( 27700 );
   dialog->mCrsSelector->setCrs( crs );
   QCOMPARE( crs, mpMeshLayer->crs() );
 }
 
 void TestQgsMeshLayerPropertiesDialog::testDatasetGroupTree()
 {
-  QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + QStringLiteral( "/mesh/" );
-  QString uri( testDataDir + "/trap_steady_05_3D.nc" );
+  const QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + u"/mesh/"_s;
+  const QString uri( testDataDir + "/trap_steady_05_3D.nc" );
   QgsMeshLayer meshLayer( uri, "", "mdal" );
 
   QgsMeshRendererSettings rendererSettings = meshLayer.rendererSettings();
@@ -115,7 +115,6 @@ void TestQgsMeshLayerPropertiesDialog::testDatasetGroupTree()
   meshLayer.setDatasetGroupTreeRootItem( rootItem.get() );
 
   QCOMPARE( activeDatasetWidget.activeScalarDatasetGroup(), 0 );
-
 }
 
 QGSTEST_MAIN( TestQgsMeshLayerPropertiesDialog )

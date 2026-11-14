@@ -15,28 +15,23 @@
 #ifndef QGSVECTORLAYERJOININFO_H
 #define QGSVECTORLAYERJOININFO_H
 
+#include "qgsfeature.h"
+#include "qgsvectorlayerref.h"
+
 #include <QHash>
 #include <QString>
 #include <QStringList>
 
-#include "qgsfeature.h"
-
-#include "qgsvectorlayerref.h"
-
 /**
  * \ingroup core
- * Defines left outer join from our vector layer to some other vector layer.
+ * \brief Defines left outer join from our vector layer to some other vector layer.
+ *
  * The join is done based on [our layer].targetField = [join layer].joinField
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsVectorLayerJoinInfo
 {
   public:
-
-    /**
-     * Constructor for QgsVectorLayerJoinInfo.
-     */
     QgsVectorLayerJoinInfo() = default;
 
     //! Sets weak reference to the joined layer
@@ -76,55 +71,47 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
     /**
      * Returns whether the form has to be dynamically updated with joined fields
      *  when  a feature is being created in the target layer.
-     * \since QGIS 3.0
      */
     bool isDynamicFormEnabled() const { return mDynamicForm; }
 
     /**
      * Sets whether the form has to be dynamically updated with joined fields
      *  when a feature is being created in the target layer.
-     * \since QGIS 3.0
      */
     void setDynamicFormEnabled( bool enabled ) { mDynamicForm = enabled; }
 
     /**
      * Returns whether joined fields may be edited through the form of
      *  the target layer.
-     * \since QGIS 3.0
      */
     bool isEditable() const { return mEditable; }
 
     /**
      * Sets whether the form of the target layer allows editing joined fields.
-     * \since QGIS 3.0
      */
     void setEditable( bool enabled );
 
     /**
      * Returns whether a feature created on the target layer has to impact
      *  the joined layer by creating a new feature if necessary.
-     * \since QGIS 3.0
      */
     bool hasUpsertOnEdit() const { return mUpsertOnEdit; }
 
     /**
      * Sets whether a feature created on the target layer has to impact
      *  the joined layer by creating a new feature if necessary.
-     * \since QGIS 3.0
      */
     void setUpsertOnEdit( bool enabled ) { mUpsertOnEdit = enabled; }
 
     /**
      * Returns whether a feature deleted on the target layer has to impact the
      *  joined layer by deleting the corresponding joined feature.
-     * \since QGIS 3.0
      */
     bool hasCascadedDelete() const { return mCascadedDelete; }
 
     /**
      * Sets whether a feature deleted on the target layer has to impact the
      *  joined layer by deleting the corresponding joined feature.
-     * \since QGIS 3.0
      */
     void setCascadedDelete( bool enabled ) { mCascadedDelete = enabled; }
 
@@ -132,7 +119,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      * Returns the prefixed name of the field.
      * \param field the field
      * \returns the prefixed name of the field
-     * \since QGIS 3.0
      */
     QString prefixedFieldName( const QgsField &field ) const;
 
@@ -141,21 +127,20 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      *  join layer information.
      * \param feature A feature from the target layer
      * \returns the corresponding joined feature
-     * \since QGIS 3.0
      */
     QgsFeature extractJoinedFeature( const QgsFeature &feature ) const;
 
     /**
      * Sets a list of fields to ignore whatever happens.
      *
-     * \deprecated use setJoinFieldNamesBlockList() instead
+     * \deprecated QGIS 3.40. Use setJoinFieldNamesBlockList() instead.
      */
     Q_DECL_DEPRECATED void setJoinFieldNamesBlackList( const QStringList &blackList ) SIP_DEPRECATED { mBlockList = blackList; }
 
     /**
      * Returns the list of fields to ignore.
      *
-     * \deprecated use joinFieldNamesBlockList() instead
+     * \deprecated QGIS 3.40. Use joinFieldNamesBlockList() instead.
      */
     Q_DECL_DEPRECATED QStringList joinFieldNamesBlackList() const SIP_DEPRECATED { return mBlockList; }
 
@@ -179,7 +164,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      * Returns TRUE if blocklisted fields is not empty or if a subset of names
      * has been set.
      *
-     * \since QGIS 3.0
      */
     bool hasSubset( bool blocklisted = true ) const;
 
@@ -187,18 +171,30 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      * Returns the list of field names to use for joining considering
      * blocklisted fields and subset.
      *
-     * \since QGIS 3.0
+     * \warning This method is NOT thread safe, and MUST be called from the thread where the vector layers
+     * participating in the join reside. See variant which accepts a QgsFields argument for a thread safe alternative.
+     *
      */
     static QStringList joinFieldNamesSubset( const QgsVectorLayerJoinInfo &info, bool blocklisted = true );
 
+    /**
+     * Returns the list of field names to use for joining considering
+     * blocklisted fields and subset.
+     *
+     * This method is thread safe.
+     *
+     * \since QGIS 3.30
+     */
+    static QStringList joinFieldNamesSubset( const QgsVectorLayerJoinInfo &info, const QgsFields &joinLayerFields, bool blocklisted = true );
+
     bool operator==( const QgsVectorLayerJoinInfo &other ) const
     {
-      return mTargetFieldName == other.mTargetFieldName &&
-             mJoinLayerRef.layerId == other.mJoinLayerRef.layerId &&
-             mJoinFieldName == other.mJoinFieldName &&
-             mJoinFieldsSubset == other.mJoinFieldsSubset &&
-             mMemoryCache == other.mMemoryCache &&
-             mPrefix == other.mPrefix;
+      return mTargetFieldName == other.mTargetFieldName
+             && mJoinLayerRef.layerId == other.mJoinLayerRef.layerId
+             && mJoinFieldName == other.mJoinFieldName
+             && mJoinFieldsSubset == other.mJoinFieldsSubset
+             && mMemoryCache == other.mMemoryCache
+             && mPrefix == other.mPrefix;
     }
 
     /**
@@ -207,7 +203,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      * Ownership of \a fileNamesSubset is transferred. A \a fieldNameSubset of NULLPTR indicates that all fields should be used.
      *
      * \see joinFieldNamesSubset()
-     * \since QGIS 2.6
     */
     void setJoinFieldNamesSubset( QStringList *fieldNamesSubset SIP_TRANSFER ) { mJoinFieldsSubset = std::shared_ptr<QStringList>( fieldNamesSubset ); }
 
@@ -218,7 +213,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
      *
      * \see setJoinFieldNamesSubset()
      *
-     * \since QGIS 2.6
     */
     QStringList *joinFieldNamesSubset() const { return mJoinFieldsSubset.get(); }
 
@@ -232,7 +226,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
 
     /**
      * An optional prefix. If it is a Null string "{layername}_" will be used
-     * \since QGIS 2.8
      */
     QString mPrefix;
 
@@ -246,6 +239,7 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
 
     friend class QgsVectorLayerJoinBuffer;
     friend class QgsVectorLayerFeatureIterator;
+    friend class TestVectorLayerJoinBuffer;
 
     //! True if the cached join attributes need to be updated
     bool cacheDirty = true;
@@ -262,7 +256,6 @@ class CORE_EXPORT QgsVectorLayerJoinInfo
 
     //! Cache for joined attributes to provide fast lookup (size is 0 if no memory caching)
     QHash< QString, QgsAttributes> cachedAttributes;
-
 };
 
 

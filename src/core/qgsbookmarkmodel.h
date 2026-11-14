@@ -18,6 +18,7 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+
 #include <QAbstractTableModel>
 #include <QSortFilterProxyModel>
 
@@ -38,32 +39,42 @@ class QgsBookmark;
  *
  * \since QGIS 3.10
  */
-class CORE_EXPORT QgsBookmarkManagerModel: public QAbstractTableModel
+class CORE_EXPORT QgsBookmarkManagerModel : public QAbstractTableModel
 {
     Q_OBJECT
 
   public:
+    // *INDENT-OFF*
 
-    //! Custom model roles
-    enum CustomRoles
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsBookmarkManagerModel::CustomRoles
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsBookmarkManagerModel, CustomRoles ) : int
     {
-      RoleExtent = Qt::UserRole, //!< Bookmark extent as a QgsReferencedRectangle
-      RoleName, //!< Bookmark name
-      RoleId, //!< Bookmark ID
-      RoleGroup, //!< Bookmark group
+      Extent SIP_MONKEYPATCH_COMPAT_NAME( RoleExtent ) = Qt::UserRole, //!< Bookmark extent as a QgsReferencedRectangle
+      Name SIP_MONKEYPATCH_COMPAT_NAME( RoleName ),                    //!< Bookmark name
+      Id SIP_MONKEYPATCH_COMPAT_NAME( RoleId ),                        //!< Bookmark ID
+      Group SIP_MONKEYPATCH_COMPAT_NAME( RoleGroup ),                  //!< Bookmark group
+      Rotation SIP_MONKEYPATCH_COMPAT_NAME( RoleRotation ),            //!< Bookmark map rotation
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     //! Model columns
     enum Columns
     {
-      ColumnName, //!< Name column
-      ColumnGroup, //!< Group column
-      ColumnXMin, //!< Extent x-minimum
-      ColumnYMin, //!< Extent y-minimum
-      ColumnXMax, //!< Extent x-maximum
-      ColumnYMax, //!< Extent y-maxnimum
-      ColumnCrs, //!< CRS of extent
-      ColumnStore, //!< Manager storing the bookmark (TRUE if stored in project bookmark manager)
+      ColumnName,     //!< Name column
+      ColumnGroup,    //!< Group column
+      ColumnXMin,     //!< Extent x-minimum
+      ColumnYMin,     //!< Extent y-minimum
+      ColumnXMax,     //!< Extent x-maximum
+      ColumnYMax,     //!< Extent y-maximum
+      ColumnRotation, //!< Rotation of the map
+      ColumnCrs,      //!< CRS of extent
+      ColumnStore,    //!< Manager storing the bookmark (TRUE if stored in project bookmark manager)
     };
 
     /**
@@ -94,7 +105,6 @@ class CORE_EXPORT QgsBookmarkManagerModel: public QAbstractTableModel
     QgsBookmarkManager *mManager = nullptr;
     QgsBookmarkManager *mProjectManager = nullptr;
     QgsBookmark bookmarkForIndex( const QModelIndex &index ) const;
-
 };
 
 /**
@@ -110,7 +120,6 @@ class CORE_EXPORT QgsBookmarkManagerProxyModel : public QSortFilterProxyModel
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsBookmarkManagerProxyModel, associated with a main \a manager
      * (usually the application bookmark manager, accessed via QgsApplication::bookmarkManager())
@@ -119,7 +128,6 @@ class CORE_EXPORT QgsBookmarkManagerProxyModel : public QSortFilterProxyModel
     QgsBookmarkManagerProxyModel( QgsBookmarkManager *manager, QgsBookmarkManager *projectManager = nullptr, QObject *parent SIP_TRANSFERTHIS = nullptr );
 
   private:
-
     QgsBookmarkManagerModel *mModel = nullptr;
 };
 

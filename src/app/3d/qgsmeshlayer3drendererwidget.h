@@ -19,12 +19,12 @@
 #include <memory>
 
 #include "qgsmaplayerconfigwidget.h"
-#include "qgsmeshlayer3drenderer.h"
 #include "qgsmaplayerconfigwidgetfactory.h"
+#include "qgsmeshlayer3drenderer.h"
 
 class QCheckBox;
 
-class QgsMesh3dSymbolWidget;
+class QgsMesh3DSymbolWidget;
 class QgsMeshLayer;
 class QgsMapCanvas;
 
@@ -36,7 +36,7 @@ class QgsMeshLayer3DRendererWidget : public QgsMapLayerConfigWidget
   public:
     explicit QgsMeshLayer3DRendererWidget( QgsMeshLayer *layer, QgsMapCanvas *canvas, QWidget *parent = nullptr );
 
-    void syncToLayer( QgsMapLayer *layer ) override;
+    void syncToLayer( QgsMapLayer *layer ) final;
 
     //! no transfer of ownership
     void setRenderer( const QgsMeshLayer3DRenderer *renderer );
@@ -51,7 +51,7 @@ class QgsMeshLayer3DRendererWidget : public QgsMapLayerConfigWidget
 
   private:
     QCheckBox *mChkEnabled = nullptr;
-    QgsMesh3dSymbolWidget *mWidgetMesh = nullptr;
+    QgsMesh3DSymbolWidget *mWidgetMesh = nullptr;
     std::unique_ptr<QgsMeshLayer3DRenderer> mRenderer;
 };
 

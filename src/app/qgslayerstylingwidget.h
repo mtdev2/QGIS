@@ -15,24 +15,27 @@
 #ifndef QGSLAYERSTYLESDOCK_H
 #define QGSLAYERSTYLESDOCK_H
 
-#include <QToolButton>
-#include <QWidget>
-#include <QLabel>
-#include <QTabWidget>
-#include <QStackedWidget>
-#include <QDialogButtonBox>
+#include "ui_qgsmapstylingwidgetbase.h"
+
+#include "qgis_app.h"
+#include "qgsmaplayerconfigwidget.h"
+#include "qgsmaplayerconfigwidgetfactory.h"
+
 #include <QCheckBox>
-#include <QUndoCommand>
+#include <QDialogButtonBox>
 #include <QDomNode>
+#include <QLabel>
+#include <QStackedWidget>
+#include <QTabWidget>
 #include <QTime>
 #include <QTimer>
-
-#include "ui_qgsmapstylingwidgetbase.h"
-#include "qgsmaplayerconfigwidgetfactory.h"
-#include "qgis_app.h"
+#include <QToolButton>
+#include <QUndoCommand>
+#include <QWidget>
 
 class QgsLabelingWidget;
 class QgsMaskingWidget;
+class QgsDiagramWidget;
 class QgsMapLayer;
 class QgsMapCanvas;
 class QgsRendererPropertiesDialog;
@@ -40,26 +43,25 @@ class QgsRendererRasterPropertiesWidget;
 class QgsRendererMeshPropertiesWidget;
 class QgsUndoWidget;
 class QgsRasterHistogramWidget;
+class QgsRasterAttributeTableWidget;
 class QgsMapLayerStyleManagerWidget;
 class QgsVectorLayer3DRendererWidget;
 class QgsMeshLayer3DRendererWidget;
+class QgsMeshLabelingWidget;
+class QgsRasterLabelingWidget;
 class QgsPointCloudLayer3DRendererWidget;
 class QgsMessageBar;
 class QgsVectorTileBasicRendererWidget;
 class QgsVectorTileBasicLabelingWidget;
-
-class APP_EXPORT QgsLayerStyleManagerWidgetFactory : public QgsMapLayerConfigWidgetFactory
-{
-  public:
-    QgsLayerStyleManagerWidgetFactory();
-    bool supportsStyleDock() const override { return true; }
-    QgsMapLayerConfigWidget *createWidget( QgsMapLayer *layer, QgsMapCanvas *canvas, bool dockMode, QWidget *parent ) const override;
-    bool supportsLayer( QgsMapLayer *layer ) const override;
-};
+class QgsAnnotationLayer;
+class QgsLayerTreeGroup;
+class QgsSettingsEntryInteger;
 
 class APP_EXPORT QgsMapLayerStyleCommand : public QUndoCommand
 {
   public:
+    static const QgsSettingsEntryInteger *settingsStyleUndoMergeTimeout SIP_SKIP;
+
     QgsMapLayerStyleCommand( QgsMapLayer *layer, const QString &text, const QDomNode &current, const QDomNode &last, bool triggerRepaint = true );
 
     /**
@@ -86,22 +88,42 @@ class APP_EXPORT QgsLayerStylingWidget : public QWidget, private Ui::QgsLayerSty
 {
     Q_OBJECT
   public:
-
-    enum Page
+    enum class Page
     {
-      Symbology = 1,
+      VectorRenderer,
       VectorLabeling,
+      VectorMasks,
+      Vector3D,
+      VectorDiagrams,
+      RasterRenderer,
       RasterTransparency,
+      RasterLabeling,
       RasterHistogram,
+      RasterAttributeTable,
+      MeshRenderer,
+      MeshLabeling,
+      Mesh3D,
+      VectorTileRenderer,
+      VectorTileLabeling,
+      StyleManager,
       History,
-      Symbology3D,
+      Custom,
+      Invalid
     };
+    Q_ENUM( Page )
 
-    QgsLayerStylingWidget( QgsMapCanvas *canvas, QgsMessageBar *messageBar, const QList<QgsMapLayerConfigWidgetFactory *> &pages, QWidget *parent = nullptr );
+    enum class CustomRole : int
+    {
+      PageEnum = Qt::UserRole,
+      PageFactoryPointer
+    };
+    Q_ENUM( CustomRole )
+
+    QgsLayerStylingWidget( QgsMapCanvas *canvas, QgsMessageBar *messageBar, const QList<const QgsMapLayerConfigWidgetFactory *> &pages, QWidget *parent = nullptr );
     ~QgsLayerStylingWidget() override;
     QgsMapLayer *layer() { return mCurrentLayer; }
 
-    void setPageFactories( const QList<QgsMapLayerConfigWidgetFactory *> &factories );
+    void setPageFactories( const QList<const QgsMapLayerConfigWidgetFactory *> &factories );
 
     /**
      * Sets whether updates of the styling widget are blocked. This can be called to prevent
@@ -113,6 +135,7 @@ class APP_EXPORT QgsLayerStylingWidget : public QWidget, private Ui::QgsLayerSty
 
   signals:
     void styleChanged( QgsMapLayer *layer );
+    void layerStyleChanged( const QString &currentStyleName );
 
   public slots:
     void setLayer( QgsMapLayer *layer );
@@ -125,38 +148,57 @@ class APP_EXPORT QgsLayerStylingWidget : public QWidget, private Ui::QgsLayerSty
     /**
      * Sets the current visible page in the widget.
      * \param page standard page to display
+     *
+     * \returns TRUE if the page could be set to the matching page, or FALSE if that page does not exist (e.g. mismatched layer type)
      */
-    void setCurrentPage( QgsLayerStylingWidget::Page page );
+    bool setCurrentPage( Page page );
+
+    /**
+     * Sets an annotation item to show in the widget.
+     */
+    void setAnnotationItem( QgsAnnotationLayer *layer, const QString &itemId, bool multipleItems = false );
+
+    /**
+     * Sets a layer tree group to show in the widget.
+     */
+    void setLayerTreeGroup( QgsLayerTreeGroup *group );
+
+    /**
+     * Focuses the default widget for the current page.
+     */
+    void focusDefaultWidget();
 
   private slots:
 
     void layerAboutToBeRemoved( QgsMapLayer *layer );
-    void liveApplyToggled( bool value );
+    void liveApplyToggled( bool liveUpdateEnabled );
 
   private:
+    void rebuildWidgetForLayer( QgsMapLayer *layer );
     void pushUndoItem( const QString &name, bool triggerRepaint = true );
-    int mNotSupportedPage;
-    int mLayerPage;
+    void emitLayerStyleChanged( const QString &currentStyleName ) { emit layerStyleChanged( currentStyleName ); };
+    void emitLayerStyleRenamed();
+    int mNotSupportedPage = 0;
+    int mLayerPage = 1;
     QTimer *mAutoApplyTimer = nullptr;
     QDomNode mLastStyleXml;
     QgsMapCanvas *mMapCanvas = nullptr;
     QgsMessageBar *mMessageBar = nullptr;
-    bool mBlockAutoApply;
-    QgsUndoWidget *mUndoWidget = nullptr;
+    bool mBlockAutoApply = false;
+    QPointer< QgsUndoWidget > mUndoWidget;
+    QPointer< QgsMapLayerStyleManagerWidget > mStyleManagerWidget;
     QgsMapLayer *mCurrentLayer = nullptr;
-    QgsLabelingWidget *mLabelingWidget = nullptr;
-    QgsMaskingWidget *mMaskingWidget = nullptr;
+    QPointer< QgsLabelingWidget > mLabelingWidget;
+    QPointer<QgsRasterLabelingWidget> mRasterLabelingWidget;
+    QPointer< QgsMaskingWidget > mMaskingWidget;
 #ifdef HAVE_3D
-    QgsVectorLayer3DRendererWidget *mVector3DWidget = nullptr;
-    QgsMeshLayer3DRendererWidget *mMesh3DWidget = nullptr;
+    QPointer< QgsVectorLayer3DRendererWidget > mVector3DWidget;
+    QPointer< QgsMeshLayer3DRendererWidget > mMesh3DWidget;
 #endif
-    QgsRendererRasterPropertiesWidget *mRasterStyleWidget = nullptr;
-    QgsRendererMeshPropertiesWidget *mMeshStyleWidget = nullptr;
-    QgsVectorTileBasicRendererWidget *mVectorTileStyleWidget = nullptr;
-    QgsVectorTileBasicLabelingWidget *mVectorTileLabelingWidget = nullptr;
-    QList<QgsMapLayerConfigWidgetFactory *> mPageFactories;
-    QMap<int, QgsMapLayerConfigWidgetFactory *> mUserPages;
-    QgsLayerStyleManagerWidgetFactory *mStyleManagerFactory = nullptr;
+    QPointer< QgsRendererRasterPropertiesWidget > mRasterStyleWidget;
+    QPointer< QgsRasterAttributeTableWidget > mRasterAttributeTableWidget;
+    QList<const QgsMapLayerConfigWidgetFactory *> mPageFactories;
+    QgsMapLayerConfigWidgetContext mContext;
 };
 
 #endif // QGSLAYERSTYLESDOCK_H

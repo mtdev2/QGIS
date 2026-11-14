@@ -20,13 +20,13 @@
 
 #include <map>
 
-#include <QDir>
-#include <QString>
-#include <QStringList>
-#include <QMainWindow>
-
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+
+#include <QDir>
+#include <QMainWindow>
+#include <QString>
+#include <QStringList>
 
 class QgsProjectStorageGuiProvider;
 class QgsProviderGuiMetadata;
@@ -35,10 +35,12 @@ class QgsSourceSelectProvider;
 class QgsProjectStorageGuiProvider;
 class QgsSubsetStringEditorProvider;
 class QgsProviderSourceWidgetProvider;
+class QgsMapLayerConfigWidgetFactory;
+class QgsMapLayer;
 
 /**
  * \ingroup gui
- * A registry / canonical manager of GUI parts of data providers.
+ * \brief A registry / canonical manager of GUI parts of data providers.
  *
  * QgsProviderGuiRegistry is not usually directly created, but rather accessed through
  * QgsGui::providerGuiRegistry().
@@ -51,11 +53,9 @@ class QgsProviderSourceWidgetProvider;
 class GUI_EXPORT QgsProviderGuiRegistry
 {
   public:
-
     //! Creates registry and loads static provider plugins
     QgsProviderGuiRegistry( const QString &pluginPath );
 
-    //! dtor
     virtual ~QgsProviderGuiRegistry();
 
     //! Returns list of available providers by their keys
@@ -102,14 +102,22 @@ class GUI_EXPORT QgsProviderGuiRegistry
      */
     virtual QList<QgsProviderSourceWidgetProvider *> sourceWidgetProviders( const QString &providerKey ) SIP_FACTORY;
 
+    /**
+     * Returns all map layer config widget factories associated with the registered providers.
+     *
+     * The optional \a layer argument can be used to only return factories which support the specified layer.
+     *
+     * \since QGIS 3.20
+     */
+    virtual QList<const QgsMapLayerConfigWidgetFactory *> mapLayerConfigWidgetFactories( QgsMapLayer *layer = nullptr );
+
     //! Type for data provider metadata associative container
     SIP_SKIP typedef std::map<QString, QgsProviderGuiMetadata *> GuiProviders;
 
   private:
-
     /**
      * Loads the dynamic plugins on the given path
-     * When QGIS is compiled with FORCE_STATIC_PROVIDERS,
+     * When QGIS is compiled with FORCE_STATIC_LIBS,
      * the function is no-op
      */
     void loadDynamicProviders( const QString &pluginPath );
@@ -119,7 +127,7 @@ class GUI_EXPORT QgsProviderGuiRegistry
      * By default only ogr and gdal providers, but when QGIS is compiled with
      * FORCE_STATIC_PROVIDERS, it also loads all the rest of providers
      */
-    void loadStaticProviders( );
+    void loadStaticProviders();
 
     //! Associative container of provider metadata handles
     GuiProviders mProviders;

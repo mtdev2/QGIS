@@ -13,13 +13,14 @@
 *                                                                         *
 ***************************************************************************/
 
-#include <QGridLayout>
-#include <QDialogButtonBox>
-
-
 #include "qgsscalevisibilitydialog.h"
+
 #include "qgsscalerangewidget.h"
 
+#include <QDialogButtonBox>
+#include <QGridLayout>
+
+#include "moc_qgsscalevisibilitydialog.cpp"
 
 QgsScaleVisibilityDialog::QgsScaleVisibilityDialog( QWidget *parent, const QString &title, QgsMapCanvas *mapCanvas )
   : QDialog( parent )
@@ -54,7 +55,7 @@ QgsScaleVisibilityDialog::QgsScaleVisibilityDialog( QWidget *parent, const QStri
   dlgLayout->addWidget( buttonBox, 1, 0 );
 }
 
-void QgsScaleVisibilityDialog::setScaleVisiblity( bool hasScaleVisibility )
+void QgsScaleVisibilityDialog::setScaleVisibility( bool hasScaleVisibility )
 {
   mGroupBox->setChecked( hasScaleVisibility );
 }

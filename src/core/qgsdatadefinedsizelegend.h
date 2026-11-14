@@ -32,16 +32,15 @@ class QgsLineSymbol;
 
 /**
  * \ingroup core
- * Object that keeps configuration of appearance of marker symbol's data-defined size in legend.
+ * \brief Object that keeps configuration of appearance of marker symbol's data-defined size in legend.
+ *
  * For example: the list of classes (size values), whether the classes should appear in separate
  * legend nodes or whether to collapse them into one legend node.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsDataDefinedSizeLegend
 {
   public:
-
     /**
      * Constructor for QgsDataDefinedSizeLegend.
      */
@@ -49,31 +48,36 @@ class CORE_EXPORT QgsDataDefinedSizeLegend
 
     ~QgsDataDefinedSizeLegend();
 
-    //! Copy constructor
     QgsDataDefinedSizeLegend( const QgsDataDefinedSizeLegend &other );
     QgsDataDefinedSizeLegend &operator=( const QgsDataDefinedSizeLegend &other );
 
     //! Determines how to display data-defined size legend
     enum LegendType
     {
-      LegendSeparated,   //!< Each class (size value) has a separate legend node
-      LegendCollapsed,   //!< All classes are rendered within one legend node
+      LegendSeparated, //!< Each class (size value) has a separate legend node
+      LegendCollapsed, //!< All classes are rendered within one legend node
     };
 
     //! How to vertically align symbols when all classes go into one node
     enum VerticalAlignment
     {
-      AlignCenter,      //!< Symbols are aligned to the center
-      AlignBottom,      //!< Symbols are aligned to the bottom
+      AlignCenter, //!< Symbols are aligned to the center
+      AlignBottom, //!< Symbols are aligned to the bottom
     };
 
     //! Definition of one class for the legend
     struct SizeClass
     {
-      SizeClass( double size, const QString &label ): size( size ), label( label ) {}
+        SizeClass( double size, const QString &label )
+          : size( size )
+          , label( label )
+        {}
 
-      double size;    //!< Marker size in units used by the symbol (usually millimeters). May be further scaled before rendering if size scale transformer is enabled.
-      QString label;  //!< Label to be shown with the particular symbol size
+        //! Marker size in units used by the symbol (usually millimeters). May be further scaled before rendering if size scale transformer is enabled.
+        double size;
+
+        //! Label to be shown with the particular symbol size
+        QString label;
     };
 
     //! Sets how the legend should be rendered
@@ -157,18 +161,18 @@ class CORE_EXPORT QgsDataDefinedSizeLegend
     QImage collapsedLegendImage( QgsRenderContext &context, const QColor &backgroundColor = Qt::transparent, double paddingMM = 1 ) const;
 
     //! Creates instance from given element and returns it (caller takes ownership). Returns NULLPTR on error.
-    static QgsDataDefinedSizeLegend *readXml( const QDomElement &elem, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsDataDefinedSizeLegend> readXml( const QDomElement &elem, const QgsReadWriteContext &context );
 
     //! Writes configuration to the given XML element.
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const;
 
   private:
     LegendType mType = LegendSeparated;
-    QString mTitleLabel;  //!< Title label for the following size-based item(s)
-    QList< SizeClass > mSizeClasses;  //!< List of classes: symbol size (in whatever units symbol uses) + label
+    QString mTitleLabel;             //!< Title label for the following size-based item(s)
+    QList< SizeClass > mSizeClasses; //!< List of classes: symbol size (in whatever units symbol uses) + label
     std::unique_ptr<QgsMarkerSymbol> mSymbol;
     std::unique_ptr<QgsLineSymbol> mLineSymbol;
-    std::unique_ptr<QgsSizeScaleTransformer> mSizeScaleTransformer;  //!< Optional transformer for classes
+    std::unique_ptr<QgsSizeScaleTransformer> mSizeScaleTransformer; //!< Optional transformer for classes
     VerticalAlignment mVAlign = AlignBottom;
     QFont mFont;
     QColor mTextColor = Qt::black;

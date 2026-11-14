@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>573</width>
-    <height>464</height>
+    <width>581</width>
+    <height>728</height>
    </rect>
   </property>
   <layout class="QGridLayout" name="gridLayout">
@@ -34,17 +34,11 @@
      <property name="checkable">
       <bool>false</bool>
      </property>
-     <layout class="QGridLayout" name="gridLayout_5" columnstretch="1,0">
-      <property name="leftMargin">
-       <number>0</number>
-      </property>
-      <property name="rightMargin">
-       <number>3</number>
-      </property>
-      <item row="1" column="0">
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
        <layout class="QGridLayout" name="gridLayout_7">
         <item row="0" column="0">
-         <widget class="QLabel" name="lblTransparency_4">
+         <widget class="QLabel" name="labelPointSize">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
             <horstretch>0</horstretch>
@@ -57,35 +51,9 @@
          </widget>
         </item>
         <item row="1" column="0">
-         <widget class="QLabel" name="label_4">
+         <widget class="QLabel" name="labelMaxScreenError">
           <property name="text">
            <string>Maximum screen space error</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1" colspan="2">
-         <widget class="QgsDoubleSpinBox" name="mMaxScreenErrorSpinBox">
-          <property name="maximum">
-           <double>100000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>1.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1" colspan="2">
-         <widget class="QSpinBox" name="mPointBudgetSpinBox">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="maximum">
-           <number>99999999</number>
-          </property>
-          <property name="singleStep">
-           <number>10000</number>
-          </property>
-          <property name="value">
-           <number>1000000</number>
           </property>
          </widget>
         </item>
@@ -101,49 +69,194 @@
            <double>10.000000000000000</double>
           </property>
           <property name="value">
-           <double>2.000000000000000</double>
+           <double>3.000000000000000</double>
           </property>
          </widget>
         </item>
         <item row="2" column="0">
-         <widget class="QLabel" name="label">
+         <widget class="QLabel" name="labelPointBudget">
           <property name="text">
            <string>Point budget</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="label_7">
-          <property name="text">
-           <string>Point cloud size:</string>
+        <item row="2" column="1" colspan="2">
+         <widget class="QDoubleSpinBox" name="mPointBudgetSpinBox">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="decimals">
+           <number>0</number>
+          </property>
+          <property name="minimum">
+           <double>100000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>99999999.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>100000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>5000000.000000000000000</double>
           </property>
          </widget>
         </item>
-        <item row="3" column="1" colspan="2">
-         <widget class="QLabel" name="mPointCloudSizeLabel">
-          <property name="text">
-           <string>10000</string>
+        <item row="1" column="1" colspan="2">
+         <widget class="QgsDoubleSpinBox" name="mMaxScreenErrorSpinBox">
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>3.000000000000000</double>
           </property>
          </widget>
         </item>
        </layout>
       </item>
-      <item row="4" column="0" colspan="2">
+      <item>
+       <widget class="QgsCollapsibleGroupBox" name="mTriangulateGroupBox">
+        <property name="title">
+         <string>Render as a Surface (Triangulate)</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <layout class="QGridLayout" name="gridLayout_8">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item row="0" column="0">
+          <widget class="QCheckBox" name="mHorizontalTriangleCheckBox">
+           <property name="text">
+            <string>Skip triangles longer than</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QgsDoubleSpinBox" name="mHorizontalTriangleThresholdSpinBox">
+           <property name="toolTip">
+            <string>Maximum Triangle Side Size in Horizontal Plan</string>
+           </property>
+           <property name="maximum">
+            <double>10000000000000000000000.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QCheckBox" name="mVerticalTriangleCheckBox">
+           <property name="text">
+            <string>Skip triangles taller than</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QgsDoubleSpinBox" name="mVerticalTriangleThresholdSpinBox">
+           <property name="toolTip">
+            <string>Maximum Triangle Side 3D Height</string>
+           </property>
+           <property name="maximum">
+            <double>10000000000000000000000.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
        <widget class="QCheckBox" name="mShowBoundingBoxesCheckBox">
         <property name="text">
          <string>Show bounding boxes</string>
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QgsCollapsibleGroupBox" name="mVpcGroupBox">
+        <property name="title">
+         <string>Virtual Point Cloud Options</string>
+        </property>
+        <property name="checkable">
+         <bool>false</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <layout class="QGridLayout" name="gridLayout_5">
+         <item row="1" column="0">
+          <widget class="QLabel" name="label">
+           <property name="text">
+            <string>Overview switching scale</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="0">
+          <widget class="QLabel" name="label_4">
+           <property name="text">
+            <string>When zoomed out</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1" colspan="2">
+          <widget class="QComboBox" name="mZoomOutOptions"/>
+         </item>
+         <item row="1" column="1" colspan="2">
+          <widget class="QComboBox" name="mOverviewSwitchingScale">
+           <property name="toolTip">
+            <string>Sets the screen space error threshold at which detailed 3D point cloud tiles are rendered instead of their bounding boxes.
+
+Normal means tiles switch to detailed rendering once they occupy a noticeable portion of the screen.
+
+Select Earlier to load detailed tiles at a greater distance (zoomed out), or Later to switch only when zoomed in very close.</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item row="2" column="0" colspan="3">
-    <widget class="QStackedWidget" name="mStackedWidget">
+    <widget class="QgsStackedWidget" name="mStackedWidget">
      <property name="currentIndex">
-      <number>1</number>
+      <number>5</number>
      </property>
      <widget class="QWidget" name="noRendererPage"/>
+     <widget class="QWidget" name="follow2DRendererPage">
+      <layout class="QGridLayout" name="gridLayout_9">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_8">
+         <property name="text">
+          <string>See 2D Symbology settings</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="singleColorRendererPage">
       <layout class="QGridLayout" name="gridLayout_2" columnstretch="0,1">
        <property name="leftMargin">
@@ -168,7 +281,7 @@
        <item row="1" column="1">
         <spacer name="verticalSpacer_2">
          <property name="orientation">
-          <enum>Qt::Vertical</enum>
+          <enum>Qt::Orientation::Vertical</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
@@ -322,7 +435,7 @@ enhancement</string>
             <string>Min</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -338,7 +451,7 @@ enhancement</string>
             <string>Max</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -364,7 +477,7 @@ enhancement</string>
             <string>Min</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -380,7 +493,7 @@ enhancement</string>
             <string>Max</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -399,7 +512,7 @@ enhancement</string>
             <string>Min</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -415,7 +528,7 @@ enhancement</string>
             <string>Max</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -448,7 +561,7 @@ enhancement</string>
             <string>Blue band</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -478,7 +591,7 @@ enhancement</string>
             <string>Green band</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -494,7 +607,7 @@ enhancement</string>
        <item>
         <spacer name="verticalSpacer">
          <property name="orientation">
-          <enum>Qt::Vertical</enum>
+          <enum>Qt::Orientation::Vertical</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
@@ -539,14 +652,9 @@ enhancement</string>
    <header>qgsdoublespinbox.h</header>
   </customwidget>
   <customwidget>
-   <class>QgsPointCloudAttributeComboBox</class>
-   <extends>QComboBox</extends>
-   <header>qgspointcloudattributecombobox.h</header>
-  </customwidget>
-  <customwidget>
-   <class>QgsColorRampShaderWidget</class>
-   <extends>QWidget</extends>
-   <header>raster/qgscolorrampshaderwidget.h</header>
+   <class>QgsCollapsibleGroupBox</class>
+   <extends>QGroupBox</extends>
+   <header>qgscollapsiblegroupbox.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>
@@ -555,7 +663,46 @@ enhancement</string>
    <header>qgscolorbutton.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>QgsColorRampShaderWidget</class>
+   <extends>QWidget</extends>
+   <header>qgscolorrampshaderwidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>QgsPointCloudAttributeComboBox</class>
+   <extends>QComboBox</extends>
+   <header>qgspointcloudattributecombobox.h</header>
+  </customwidget>
+  <customwidget>
+   <class>QgsStackedWidget</class>
+   <extends>QStackedWidget</extends>
+   <header>qgsstackedwidget.h</header>
+   <container>1</container>
+  </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>mRenderingStyleComboBox</tabstop>
+  <tabstop>mSingleColorBtn</tabstop>
+  <tabstop>mPointSizeSpinBox</tabstop>
+  <tabstop>mMaxScreenErrorSpinBox</tabstop>
+  <tabstop>mPointBudgetSpinBox</tabstop>
+  <tabstop>mShowBoundingBoxesCheckBox</tabstop>
+  <tabstop>mRenderingParameterComboBox</tabstop>
+  <tabstop>mColorRampShaderMinEdit</tabstop>
+  <tabstop>mColorRampShaderMaxEdit</tabstop>
+  <tabstop>mScalarRecalculateMinMaxButton</tabstop>
+  <tabstop>mContrastEnhancementAlgorithmComboBox</tabstop>
+  <tabstop>mRedMinLineEdit</tabstop>
+  <tabstop>mRedAttributeComboBox</tabstop>
+  <tabstop>mGreenAttributeComboBox</tabstop>
+  <tabstop>mBlueAttributeComboBox</tabstop>
+  <tabstop>mRedMaxLineEdit</tabstop>
+  <tabstop>mGreenMinLineEdit</tabstop>
+  <tabstop>mBlueMinLineEdit</tabstop>
+  <tabstop>mBlueMaxLineEdit</tabstop>
+  <tabstop>mGreenMaxLineEdit</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>

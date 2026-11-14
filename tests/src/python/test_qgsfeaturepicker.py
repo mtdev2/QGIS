@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for edit widgets.
 
 .. note:: This program is free software; you can redistribute it and/or modify
@@ -6,37 +5,32 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 """
-__author__ = 'Denis Rouzaud'
-__date__ = '24/04/2020'
-__copyright__ = 'Copyright 2015, The QGIS Project'
 
-import qgis  # NOQA
+__author__ = "Denis Rouzaud"
+__date__ = "24/04/2020"
+__copyright__ = "Copyright 2015, The QGIS Project"
 
-import os
+import unittest
 
 from qgis.core import (
     QgsApplication,
     QgsFeature,
-    QgsVectorLayer,
+    QgsGeometry,
     QgsPointXY,
-    QgsGeometry
+    QgsVectorLayer,
 )
-from qgis.gui import (
-    QgsFeaturePickerWidget
-)
-
-from qgis.testing import start_app, unittest
-
-from qgis.PyQt.QtWidgets import QComboBox
+from qgis.gui import QgsFeaturePickerWidget
 from qgis.PyQt.QtTest import QSignalSpy, QTest
-
+from qgis.PyQt.QtWidgets import QComboBox
+from qgis.testing import QgisTestCase, start_app
 
 start_app()
 
 
 def createLayer(manyFeatures: bool = False):
-    layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer",
-                           "test layer", "memory")
+    layer = QgsVectorLayer(
+        "Point?field=fldtxt:string&field=fldint:integer", "test layer", "memory"
+    )
     pr = layer.dataProvider()
     f = QgsFeature()
     f.setAttributes(["test1", 123])
@@ -51,7 +45,7 @@ def createLayer(manyFeatures: bool = False):
     if manyFeatures:
         for i in range(4, 100):
             f = QgsFeature()
-            f.setAttributes(["test{}".format(i), i])
+            f.setAttributes([f"test{i}", i])
             flist.append(f)
 
     assert pr.addFeatures(flist)
@@ -59,17 +53,18 @@ def createLayer(manyFeatures: bool = False):
     return layer
 
 
-class TestQgsRelationEditWidget(unittest.TestCase):
-
+class TestQgsRelationEditWidget(QgisTestCase):
     def testSetFeature(self):
         layer = createLayer()
         w = QgsFeaturePickerWidget()
+        spy = QSignalSpy(w.featureChanged)
         w.setLayer(layer)
         w.setFeature(2)
-        spy = QSignalSpy(w.currentFeatureChanged)
         spy.wait()
         self.assertEqual(w.findChild(QComboBox).lineEdit().text(), "test2")
-        self.assertTrue(w.feature().geometry().equals(QgsGeometry.fromPointXY(QgsPointXY(200, 200))))
+        self.assertTrue(
+            w.feature().geometry().equals(QgsGeometry.fromPointXY(QgsPointXY(200, 200)))
+        )
 
     def testSetAllowNull(self):
         layer = createLayer()
@@ -78,13 +73,16 @@ class TestQgsRelationEditWidget(unittest.TestCase):
         w.setAllowNull(True)
         spy = QSignalSpy(w.featureChanged)
         spy.wait()
-        self.assertEqual(w.findChild(QComboBox).lineEdit().text(), QgsApplication.nullRepresentation())
+        self.assertEqual(
+            w.findChild(QComboBox).lineEdit().text(),
+            QgsApplication.nullRepresentation(),
+        )
         w.setAllowNull(False)
         spy.wait()
         self.assertEqual(w.findChild(QComboBox).lineEdit().text(), "test1")
 
     def testFetchLimit(self):
-        layer = createLayer()
+        layer = createLayer(manyFeatures=True)
         w = QgsFeaturePickerWidget()
         w.setAllowNull(False)
         w.setFetchLimit(20)
@@ -107,5 +105,5 @@ class TestQgsRelationEditWidget(unittest.TestCase):
         self.assertEqual(w.feature().id(), 99)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -16,18 +16,17 @@
 #ifndef QGSQUICKCOORDINATETRANSFORMER_H
 #define QGSQUICKCOORDINATETRANSFORMER_H
 
-#include <QObject>
-
-#include "qgspoint.h"
-
 #include "qgis_quick.h"
-#include "qgscoordinatetransformcontext.h"
 #include "qgscoordinatereferencesystem.h"
+#include "qgscoordinatetransform.h"
+#include "qgscoordinatetransformcontext.h"
 #include "qgspoint.h"
+
+#include <QObject>
 
 /**
  * \ingroup quick
- * Helper class for transform of coordinates (QgsPoint) to a different coordinate reference system.
+ * \brief Helper class for transform of coordinates (QgsPoint) to a different coordinate reference system.
  *
  * It requires connection of transformation context from mapSettings, source position and source CRS to
  * calculate projected position in desired destination CRS.

@@ -13,18 +13,26 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgshtmlannotationdialog.h"
-#include "qgshtmlannotation.h"
-#include "qgsannotationwidget.h"
-#include "qgsmapcanvasannotationitem.h"
-#include "qgsvectorlayer.h"
-#include "qgsproject.h"
+
 #include "qgsannotationmanager.h"
+#include "qgsannotationwidget.h"
 #include "qgsgui.h"
 #include "qgshelp.h"
+#include "qgshtmlannotation.h"
+#include "qgsmapcanvasannotationitem.h"
+#include "qgsproject.h"
+#include "qgssettingsentryimpl.h"
+#include "qgsvectorlayer.h"
+
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGraphicsScene>
 #include <QPushButton>
+#include <QString>
+
+#include "moc_qgshtmlannotationdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsHtmlAnnotationDialog::QgsHtmlAnnotationDialog( QgsMapCanvasAnnotationItem *item, QWidget *parent, Qt::WindowFlags f )
   : QDialog( parent, f )
@@ -34,6 +42,10 @@ QgsHtmlAnnotationDialog::QgsHtmlAnnotationDialog( QgsMapCanvasAnnotationItem *it
   setupUi( this );
   connect( mBrowseToolButton, &QToolButton::clicked, this, &QgsHtmlAnnotationDialog::mBrowseToolButton_clicked );
   connect( mButtonBox, &QDialogButtonBox::clicked, this, &QgsHtmlAnnotationDialog::mButtonBox_clicked );
+
+  connect( mFileRadioButton, &QToolButton::toggled, this, &QgsHtmlAnnotationDialog::fileRadioButtonToggled );
+  connect( mSourceRadioButton, &QToolButton::toggled, this, &QgsHtmlAnnotationDialog::sourceRadioButtonToggled );
+
   setWindowTitle( tr( "HTML Annotation" ) );
   mEmbeddedWidget = new QgsAnnotationWidget( mItem );
   mStackedWidget->addWidget( mEmbeddedWidget );
@@ -41,8 +53,18 @@ QgsHtmlAnnotationDialog::QgsHtmlAnnotationDialog( QgsMapCanvasAnnotationItem *it
 
   if ( item && item->annotation() )
   {
-    QgsHtmlAnnotation *annotation = static_cast< QgsHtmlAnnotation * >( item->annotation() );
-    mFileLineEdit->setText( annotation->sourceFile() );
+    QgsHtmlAnnotation *annotation = static_cast<QgsHtmlAnnotation *>( item->annotation() );
+    const QString file = annotation->sourceFile();
+    if ( !file.isEmpty() )
+    {
+      mFileLineEdit->setText( file );
+      mFileRadioButton->setChecked( true );
+    }
+    else
+    {
+      mHtmlSourceTextEdit->setText( annotation->htmlSource() );
+      mSourceRadioButton->setChecked( true );
+    }
   }
 
   QObject::connect( mButtonBox, &QDialogButtonBox::accepted, this, &QgsHtmlAnnotationDialog::applySettingsToItem );
@@ -50,6 +72,13 @@ QgsHtmlAnnotationDialog::QgsHtmlAnnotationDialog( QgsMapCanvasAnnotationItem *it
   QPushButton *deleteButton = new QPushButton( tr( "Delete" ) );
   QObject::connect( deleteButton, &QPushButton::clicked, this, &QgsHtmlAnnotationDialog::deleteItem );
   mButtonBox->addButton( deleteButton, QDialogButtonBox::RejectRole );
+
+  connect( mLiveCheckBox, &QCheckBox::toggled, this, &QgsHtmlAnnotationDialog::onLiveUpdateToggled );
+  mLiveCheckBox->setChecked( QgsAnnotationWidget::settingLiveUpdate->value() );
+  connect( mEmbeddedWidget, &QgsAnnotationWidget::changed, this, &QgsHtmlAnnotationDialog::onSettingsChanged );
+  connect( mHtmlSourceTextEdit, &QgsCodeEditorHTML::textChanged, this, &QgsHtmlAnnotationDialog::onSettingsChanged );
+  connect( mFileLineEdit, &QLineEdit::textChanged, this, &QgsHtmlAnnotationDialog::onSettingsChanged );
+  connect( mLiveCheckBox, &QCheckBox::toggled, this, &QgsHtmlAnnotationDialog::onSettingsChanged );
 
   QgsGui::enableAutoGeometryRestore( this );
 }
@@ -64,8 +93,15 @@ void QgsHtmlAnnotationDialog::applySettingsToItem()
 
   if ( mItem && mItem->annotation() )
   {
-    QgsHtmlAnnotation *annotation = static_cast< QgsHtmlAnnotation * >( mItem->annotation() );
-    annotation->setSourceFile( mFileLineEdit->text() );
+    QgsHtmlAnnotation *annotation = static_cast<QgsHtmlAnnotation *>( mItem->annotation() );
+    if ( mFileRadioButton->isChecked() )
+    {
+      annotation->setSourceFile( mFileLineEdit->text() );
+    }
+    else
+    {
+      annotation->setHtmlSource( mHtmlSourceTextEdit->text() );
+    }
     mItem->update();
   }
 }
@@ -73,7 +109,7 @@ void QgsHtmlAnnotationDialog::applySettingsToItem()
 void QgsHtmlAnnotationDialog::mBrowseToolButton_clicked()
 {
   QString directory;
-  QFileInfo fi( mFileLineEdit->text() );
+  const QFileInfo fi( mFileLineEdit->text() );
   if ( fi.exists() )
   {
     directory = fi.absolutePath();
@@ -82,8 +118,24 @@ void QgsHtmlAnnotationDialog::mBrowseToolButton_clicked()
   {
     directory = QDir::homePath();
   }
-  QString filename = QFileDialog::getOpenFileName( nullptr, tr( "html" ), directory, QStringLiteral( "HTML (*.html *.htm);;All files (*.*)" ) );
+  const QString filename = QFileDialog::getOpenFileName( nullptr, tr( "html" ), directory, u"HTML (*.html *.htm);;All files (*.*)"_s );
+  if ( filename.isEmpty() )
+  {
+    return;
+  }
   mFileLineEdit->setText( filename );
+}
+
+void QgsHtmlAnnotationDialog::fileRadioButtonToggled( bool checked )
+{
+  mFileLineEdit->setEnabled( checked );
+  onSettingsChanged();
+}
+
+void QgsHtmlAnnotationDialog::sourceRadioButtonToggled( bool checked )
+{
+  mHtmlSourceTextEdit->setEnabled( checked );
+  onSettingsChanged();
 }
 
 void QgsHtmlAnnotationDialog::deleteItem()
@@ -103,5 +155,21 @@ void QgsHtmlAnnotationDialog::mButtonBox_clicked( QAbstractButton *button )
 
 void QgsHtmlAnnotationDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "introduction/general_tools.html#annotation-tools" ) );
+  QgsHelp::openHelp( u"map_views/map_view.html#sec-annotations"_s );
+}
+
+void QgsHtmlAnnotationDialog::onSettingsChanged()
+{
+  if ( mLiveCheckBox->isChecked() )
+  {
+    applySettingsToItem();
+  }
+}
+
+void QgsHtmlAnnotationDialog::onLiveUpdateToggled( bool checked )
+{
+  // Apply and Cancel buttons make no sense when live update is on
+  mButtonBox->button( QDialogButtonBox::Apply )->setHidden( checked );
+  mButtonBox->button( QDialogButtonBox::Cancel )->setHidden( checked );
+  QgsAnnotationWidget::settingLiveUpdate->setValue( checked );
 }

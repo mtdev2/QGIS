@@ -28,20 +28,18 @@ class QgsLayoutItemMap;
  * \ingroup core
  * \class QgsLayoutItemMapItem
  * \brief An item which is drawn inside a QgsLayoutItemMap, e.g., a grid or map overview.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutItemMapItem : public QgsLayoutObject
 {
     Q_OBJECT
 
   public:
-
     //! Item stacking position, specifies where the in the map's stack the item should be rendered
     enum StackingPosition
     {
-      StackBelowMap, //!< Render below all map layers
-      StackBelowMapLayer, //!< Render below a specific map layer (see stackingLayer())
-      StackAboveMapLayer, //!< Render above a specific map layer (see stackingLayer())
+      StackBelowMap,       //!< Render below all map layers
+      StackBelowMapLayer,  //!< Render below a specific map layer (see stackingLayer())
+      StackAboveMapLayer,  //!< Render above a specific map layer (see stackingLayer())
       StackBelowMapLabels, //!< Render above all map layers, but below map labels
       StackAboveMapLabels, //!< Render above all map layers and labels
     };
@@ -199,7 +197,6 @@ class CORE_EXPORT QgsLayoutItemMapItem : public QgsLayoutObject
     QgsExpressionContext createExpressionContext() const override;
 
   protected:
-
     //! Friendly display name
     QString mName;
 
@@ -210,12 +207,11 @@ class CORE_EXPORT QgsLayoutItemMapItem : public QgsLayoutObject
     QString mUuid;
 
     //! True if item is to be displayed on map
-    bool mEnabled;
+    bool mEnabled = true;
 
     StackingPosition mStackingPosition = StackBelowMapLabels;
 
     QgsMapLayerRef mStackingLayer;
-
 };
 
 /**
@@ -225,12 +221,10 @@ class CORE_EXPORT QgsLayoutItemMapItem : public QgsLayoutObject
  * QgsLayoutItemMap. The item stack controls which items are drawn and the
  * order they are drawn in.
  * \see QgsLayoutItemMapItem
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutItemMapItemStack
 {
   public:
-
     /**
      * Constructor for QgsLayoutItemMapItemStack, attached to the
      * specified \a map.
@@ -296,7 +290,6 @@ class CORE_EXPORT QgsLayoutItemMapItemStack
     QgsLayoutItemMapItem *item( int index ) const;
 
   protected:
-
     /**
      * Adds a new map item to the stack and takes ownership of the item.
      * The item will be added to the end of the stack, and rendered
@@ -349,7 +342,6 @@ class CORE_EXPORT QgsLayoutItemMapItemStack
     QList< QgsLayoutItemMapItem * > asList() const;
 
   protected:
-
     QList< QgsLayoutItemMapItem * > mItems;
 
     QgsLayoutItemMap *mMap = nullptr;
@@ -362,4 +354,3 @@ class CORE_EXPORT QgsLayoutItemMapItemStack
 };
 
 #endif //QGSLAYOUTITEMMAPITEM_H
-

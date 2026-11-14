@@ -19,13 +19,16 @@
 #ifndef QGSVERTEXEDITOR_H
 #define QGSVERTEXEDITOR_H
 
+#include "qgis_app.h"
+#include "qgscoordinatereferencesystem.h"
+#include "qgsdockwidget.h"
+#include "qgspanelwidget.h"
+#include "qgspoint.h"
+#include "qgsvertexid.h"
+
 #include <QAbstractTableModel>
 #include <QItemSelection>
 #include <QStyledItemDelegate>
-
-#include "qgis_app.h"
-#include "qgsdockwidget.h"
-#include "qgspoint.h"
 
 class QLabel;
 class QTableView;
@@ -33,18 +36,17 @@ class QTableView;
 class QgsMapCanvas;
 class QgsLockedFeature;
 class QgsVectorLayer;
-
+class QCheckBox;
+class QStackedWidget;
+class QgsSettingsEntryBool;
 
 class APP_EXPORT QgsVertexEntry
 {
   public:
-    QgsVertexEntry( const QgsPoint &p,
-                    QgsVertexId vertexId )
-      : mSelected( false )
-      , mPoint( p )
+    QgsVertexEntry( const QgsPoint &p, QgsVertexId vertexId )
+      : mPoint( p )
       , mVertexId( vertexId )
-    {
-    }
+    {}
 
     QgsVertexEntry( const QgsVertexEntry &rh ) = delete;
     QgsVertexEntry &operator=( const QgsVertexEntry &rh ) = delete;
@@ -55,7 +57,7 @@ class APP_EXPORT QgsVertexEntry
     void setSelected( bool selected ) { mSelected = selected; }
 
   private:
-    bool mSelected;
+    bool mSelected = false;
     QgsPoint mPoint;
     QgsVertexId mVertexId;
 };
@@ -64,7 +66,6 @@ class APP_EXPORT QgsVertexEditorModel : public QAbstractTableModel
 {
     Q_OBJECT
   public:
-
     QgsVertexEditorModel( QgsMapCanvas *canvas, QObject *parent = nullptr );
 
     void setFeature( QgsLockedFeature *lockedFeature );
@@ -78,27 +79,41 @@ class APP_EXPORT QgsVertexEditorModel : public QAbstractTableModel
 
   private:
     QgsLockedFeature *mLockedFeature = nullptr;
-    QgsMapCanvas *mCanvas = nullptr;
 
     bool mHasZ = false;
     bool mHasM = false;
-    bool mHasR = true; //always show for now - avoids scanning whole feature for curves TODO - avoid this
+    bool mHasR = true;       //always show for now - avoids scanning whole feature for curves TODO - avoid this
+    bool mHasWeight = false; // true if geometry contains NURBS curves
 
     int mZCol = -1;
     int mMCol = -1;
     int mRCol = -1;
+    int mWeightCol = -1; // weight column for NURBS control points
 
     QFont mWidgetFont;
 
     bool calcR( int row, double &r, double &minRadius ) const;
 
+    /**
+     * Returns the weight for the vertex at the specified row.
+     * Returns -1 if the vertex is not a NURBS control point.
+     * \Since QGIS 4.0
+     */
+    double getWeightForVertex( int row ) const;
+
+    /**
+     * Sets the weight for the vertex at the specified row.
+     * Returns true if successful.
+     * \Since QGIS 4.0
+     */
+    bool setWeightForVertex( int row, double weight );
 };
 
-class APP_EXPORT QgsVertexEditor : public QgsDockWidget
+class APP_EXPORT QgsVertexEditorWidget : public QgsPanelWidget
 {
     Q_OBJECT
   public:
-    QgsVertexEditor( QgsMapCanvas *canvas );
+    QgsVertexEditorWidget( QgsMapCanvas *canvas );
 
     void updateEditor( QgsLockedFeature *lockedFeature );
     QgsLockedFeature *mLockedFeature = nullptr;
@@ -106,24 +121,50 @@ class APP_EXPORT QgsVertexEditor : public QgsDockWidget
     QTableView *mTableView = nullptr;
     QgsVertexEditorModel *mVertexModel = nullptr;
 
+    QMenu *menuButtonMenu() override;
+    QString menuButtonTooltip() const override;
+
   signals:
     void deleteSelectedRequested();
-    void editorClosed();
 
   protected:
     void keyPressEvent( QKeyEvent *event ) override;
-    void closeEvent( QCloseEvent *event ) override;
 
   private slots:
     void updateTableSelection();
     void updateVertexSelection( const QItemSelection &, const QItemSelection &deselected );
 
   private:
-
     QLabel *mHintLabel = nullptr;
+    QStackedWidget *mStackedWidget = nullptr;
+    QWidget *mPageHint = nullptr;
+    QWidget *mPageTable = nullptr;
+
+    QMenu *mWidgetMenu = nullptr;
 
     bool mUpdatingTableSelection = false;
     bool mUpdatingVertexSelection = false;
+};
+
+class APP_EXPORT QgsVertexEditor : public QgsDockWidget
+{
+    Q_OBJECT
+  public:
+    static const QgsSettingsEntryBool *settingAutoPopupVertexEditorDock;
+
+    QgsVertexEditor( QgsMapCanvas *canvas );
+
+    void updateEditor( QgsLockedFeature *lockedFeature );
+
+  signals:
+    void deleteSelectedRequested();
+    void editorClosed();
+
+  protected:
+    void closeEvent( QCloseEvent *event ) override;
+
+  private:
+    QgsVertexEditorWidget *mWidget = nullptr;
 };
 
 
@@ -132,7 +173,6 @@ class APP_EXPORT CoordinateItemDelegate : public QStyledItemDelegate
     Q_OBJECT
 
   public:
-
     explicit CoordinateItemDelegate( const QgsCoordinateReferenceSystem &crs, QObject *parent = nullptr );
 
     QString displayText( const QVariant &value, const QLocale &locale ) const override;
@@ -147,7 +187,6 @@ class APP_EXPORT CoordinateItemDelegate : public QStyledItemDelegate
     int displayDecimalPlaces() const;
     QgsCoordinateReferenceSystem mCrs;
 };
-
 
 
 #endif // QGSVERTEXEDITOR_H

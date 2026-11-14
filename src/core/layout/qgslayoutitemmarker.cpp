@@ -15,14 +15,21 @@
  ***************************************************************************/
 
 #include "qgslayoutitemmarker.h"
+
 #include "qgslayout.h"
-#include "qgslayoututils.h"
-#include "qgssymbollayerutils.h"
-#include "qgslayoutmodel.h"
-#include "qgsstyleentityvisitor.h"
 #include "qgslayoutitemmap.h"
+#include "qgslayoutrendercontext.h"
+#include "qgslayoututils.h"
+#include "qgsmarkersymbol.h"
+#include "qgsstyleentityvisitor.h"
+#include "qgssymbollayerutils.h"
 
 #include <QPainter>
+#include <QString>
+
+#include "moc_qgslayoutitemmarker.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayoutItemMarker::QgsLayoutItemMarker( QgsLayout *layout )
   : QgsLayoutItem( layout )
@@ -32,12 +39,11 @@ QgsLayoutItemMarker::QgsLayoutItemMarker( QgsLayout *layout )
   setFrameEnabled( false );
   setReferencePoint( QgsLayoutItem::Middle );
   QVariantMap properties;
-  properties.insert( QStringLiteral( "size" ), QStringLiteral( "4" ) );
-  mShapeStyleSymbol.reset( QgsMarkerSymbol::createSimple( properties ) );
+  properties.insert( u"size"_s, u"4"_s );
+  mShapeStyleSymbol = QgsMarkerSymbol::createSimple( properties );
   refreshSymbol();
 
-  connect( this, &QgsLayoutItemMarker::sizePositionChanged, this, [ = ]
-  {
+  connect( this, &QgsLayoutItemMarker::sizePositionChanged, this, [this] {
     updateBoundingRect();
     update();
   } );
@@ -59,7 +65,7 @@ int QgsLayoutItemMarker::type() const
 
 QIcon QgsLayoutItemMarker::icon() const
 {
-  return QgsApplication::getThemeIcon( QStringLiteral( "/mLayoutItemMarker.svg" ) );
+  return QgsApplication::getThemeIcon( u"/mLayoutItemMarker.svg"_s );
 }
 
 void QgsLayoutItemMarker::refreshSymbol()
@@ -73,11 +79,10 @@ void QgsLayoutItemMarker::refreshSymbol()
     sym->startRender( rc );
     QRectF bounds = sym->bounds( QPointF( 0, 0 ), rc );
     sym->stopRender( rc );
-    mPoint = QPointF( -bounds.left() * 25.4 / lLayout->renderContext().dpi(),
-                      -bounds.top() * 25.4 / lLayout->renderContext().dpi() );
+    mPoint = QPointF( -bounds.left() * 25.4 / lLayout->renderContext().dpi(), -bounds.top() * 25.4 / lLayout->renderContext().dpi() );
     bounds.translate( mPoint );
 
-    QgsLayoutSize newSizeMm = QgsLayoutSize( bounds.size()  * 25.4 / lLayout->renderContext().dpi(), QgsUnitTypes::LayoutMillimeters );
+    const QgsLayoutSize newSizeMm = QgsLayoutSize( bounds.size() * 25.4 / lLayout->renderContext().dpi(), Qgis::LayoutUnit::Millimeters );
     mFixedSize = mLayout->renderContext().measurementConverter().convert( newSizeMm, sizeWithUnits().units() );
 
     attemptResize( mFixedSize );
@@ -135,13 +140,11 @@ QgsLayoutItemMap *QgsLayoutItemMarker::linkedMap() const
 QgsLayoutNorthArrowHandler::NorthMode QgsLayoutItemMarker::northMode() const
 {
   return mNorthArrowHandler->northMode();
-
 }
 
 void QgsLayoutItemMarker::setNorthMode( QgsLayoutNorthArrowHandler::NorthMode mode )
 {
   mNorthArrowHandler->setNorthMode( mode );
-
 }
 
 double QgsLayoutItemMarker::northOffset() const
@@ -182,9 +185,9 @@ void QgsLayoutItemMarker::draw( QgsLayoutItemRenderContext &context )
   painter->setPen( Qt::NoPen );
   painter->setBrush( Qt::NoBrush );
 
-  double scale = context.renderContext().convertToPainterUnits( 1, QgsUnitTypes::RenderMillimeters );
+  const double scale = context.renderContext().convertToPainterUnits( 1, Qgis::RenderUnit::Millimeters );
 
-  QPointF shapePoint = mPoint * scale;
+  const QPointF shapePoint = mPoint * scale;
 
   std::unique_ptr< QgsMarkerSymbol > sym( mShapeStyleSymbol->clone() );
   sym->setAngle( sym->angle() + mNorthArrowRotation );
@@ -195,45 +198,45 @@ void QgsLayoutItemMarker::draw( QgsLayoutItemRenderContext &context )
 
 bool QgsLayoutItemMarker::writePropertiesToElement( QDomElement &element, QDomDocument &document, const QgsReadWriteContext &context ) const
 {
-  QDomElement shapeStyleElem = QgsSymbolLayerUtils::saveSymbol( QString(), mShapeStyleSymbol.get(), document, context );
+  const QDomElement shapeStyleElem = QgsSymbolLayerUtils::saveSymbol( QString(), mShapeStyleSymbol.get(), document, context );
   element.appendChild( shapeStyleElem );
 
   //rotation
-  element.setAttribute( QStringLiteral( "arrowRotation" ), QString::number( mNorthArrowRotation ) );
+  element.setAttribute( u"arrowRotation"_s, QString::number( mNorthArrowRotation ) );
   if ( !mNorthArrowHandler->linkedMap() )
   {
-    element.setAttribute( QStringLiteral( "mapUuid" ), QString() );
+    element.setAttribute( u"mapUuid"_s, QString() );
   }
   else
   {
-    element.setAttribute( QStringLiteral( "mapUuid" ), mNorthArrowHandler->linkedMap()->uuid() );
+    element.setAttribute( u"mapUuid"_s, mNorthArrowHandler->linkedMap()->uuid() );
   }
-  element.setAttribute( QStringLiteral( "northMode" ), mNorthArrowHandler->northMode() );
-  element.setAttribute( QStringLiteral( "northOffset" ), mNorthArrowHandler->northOffset() );
+  element.setAttribute( u"northMode"_s, mNorthArrowHandler->northMode() );
+  element.setAttribute( u"northOffset"_s, mNorthArrowHandler->northOffset() );
 
   return true;
 }
 
 bool QgsLayoutItemMarker::readPropertiesFromElement( const QDomElement &element, const QDomDocument &, const QgsReadWriteContext &context )
 {
-  QDomElement shapeStyleSymbolElem = element.firstChildElement( QStringLiteral( "symbol" ) );
+  const QDomElement shapeStyleSymbolElem = element.firstChildElement( u"symbol"_s );
   if ( !shapeStyleSymbolElem.isNull() )
   {
-    mShapeStyleSymbol.reset( QgsSymbolLayerUtils::loadSymbol<QgsMarkerSymbol>( shapeStyleSymbolElem, context ) );
+    mShapeStyleSymbol = QgsSymbolLayerUtils::loadSymbol<QgsMarkerSymbol>( shapeStyleSymbolElem, context );
   }
 
   //picture rotation
-  if ( !qgsDoubleNear( element.attribute( QStringLiteral( "arrowRotation" ), QStringLiteral( "0" ) ).toDouble(), 0.0 ) )
+  if ( !qgsDoubleNear( element.attribute( u"arrowRotation"_s, u"0"_s ).toDouble(), 0.0 ) )
   {
-    mNorthArrowRotation = element.attribute( QStringLiteral( "arrowRotation" ), QStringLiteral( "0" ) ).toDouble();
+    mNorthArrowRotation = element.attribute( u"arrowRotation"_s, u"0"_s ).toDouble();
   }
 
   //rotation map
-  mNorthArrowHandler->setNorthMode( static_cast< QgsLayoutNorthArrowHandler::NorthMode >( element.attribute( QStringLiteral( "northMode" ), QStringLiteral( "0" ) ).toInt() ) );
-  mNorthArrowHandler->setNorthOffset( element.attribute( QStringLiteral( "northOffset" ), QStringLiteral( "0" ) ).toDouble() );
+  mNorthArrowHandler->setNorthMode( static_cast< QgsLayoutNorthArrowHandler::NorthMode >( element.attribute( u"northMode"_s, u"0"_s ).toInt() ) );
+  mNorthArrowHandler->setNorthOffset( element.attribute( u"northOffset"_s, u"0"_s ).toDouble() );
 
   mNorthArrowHandler->setLinkedMap( nullptr );
-  mRotationMapUuid = element.attribute( QStringLiteral( "mapUuid" ) );
+  mRotationMapUuid = element.attribute( u"mapUuid"_s );
 
   refreshSymbol();
 

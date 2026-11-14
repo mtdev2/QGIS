@@ -17,22 +17,21 @@
 
 ///@cond PRIVATE
 
-#include <memory>
-#include <limits>
-
 #include "qgsmeshlayerinterpolator.h"
 
+#include <limits>
+#include <memory>
+
 #include "qgis.h"
-#include "qgsrasterinterface.h"
-#include "qgsmaptopixel.h"
-#include "qgsvector.h"
-#include "qgspoint.h"
-#include "qgspointxy.h"
-#include "qgsmeshlayerutils.h"
-#include "qgsmeshlayer.h"
-#include "qgscoordinatetransformcontext.h"
 #include "qgscoordinatetransform.h"
+#include "qgselevationmap.h"
+#include "qgsmaptopixel.h"
 #include "qgsmeshdataprovider.h"
+#include "qgsmeshlayer.h"
+#include "qgsmeshlayerutils.h"
+#include "qgspointxy.h"
+#include "qgsrasterinterface.h"
+#include "qgsrendercontext.h"
 
 QgsMeshLayerInterpolator::QgsMeshLayerInterpolator(
   const QgsTriangularMesh &m,
@@ -40,15 +39,15 @@ QgsMeshLayerInterpolator::QgsMeshLayerInterpolator(
   const QgsMeshDataBlock &activeFaceFlagValues,
   QgsMeshDatasetGroupMetadata::DataType dataType,
   const QgsRenderContext &context,
-  const QSize &size )
-  : mTriangularMesh( m ),
-    mDatasetValues( datasetValues ),
-    mActiveFaceFlagValues( activeFaceFlagValues ),
-    mContext( context ),
-    mDataType( dataType ),
-    mOutputSize( size )
-{
-}
+  const QSize &size
+)
+  : mTriangularMesh( m )
+  , mDatasetValues( datasetValues )
+  , mActiveFaceFlagValues( activeFaceFlagValues )
+  , mContext( context )
+  , mDataType( dataType )
+  , mOutputSize( size )
+{}
 
 QgsMeshLayerInterpolator::~QgsMeshLayerInterpolator() = default;
 
@@ -60,7 +59,7 @@ QgsRasterInterface *QgsMeshLayerInterpolator::clone() const
 
 Qgis::DataType QgsMeshLayerInterpolator::dataType( int ) const
 {
-  return Qgis::Float64;
+  return Qgis::DataType::Float64;
 }
 
 int QgsMeshLayerInterpolator::bandCount() const
@@ -70,10 +69,10 @@ int QgsMeshLayerInterpolator::bandCount() const
 
 QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent, int width, int height, QgsRasterBlockFeedback *feedback )
 {
-  std::unique_ptr<QgsRasterBlock> outputBlock( new QgsRasterBlock( Qgis::Float64, width, height ) );
+  auto outputBlock = std::make_unique<QgsRasterBlock>( Qgis::DataType::Float64, width, height );
   const double noDataValue = std::numeric_limits<double>::quiet_NaN();
   outputBlock->setNoDataValue( noDataValue );
-  outputBlock->setIsNoData();  // assume initially that all values are unset
+  outputBlock->setIsNoData(); // assume initially that all values are unset
   double *data = reinterpret_cast<double *>( outputBlock->bits() );
 
   QList<int> spatialIndexTriangles;
@@ -99,6 +98,8 @@ QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent
   if ( mDataType == QgsMeshDatasetGroupMetadata::DataType::DataOnVertices )
     Q_ASSERT( mDatasetValues.count() == mTriangularMesh.vertices().count() );
 
+  double pixelRatio = mContext.devicePixelRatio();
+
   for ( int i = 0; i < indexCount; ++i )
   {
     if ( feedback && feedback->isCanceled() )
@@ -115,6 +116,9 @@ QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent
 
     const QgsMeshFace &face = mTriangularMesh.triangles()[triangleIndex];
 
+    if ( face.isEmpty() )
+      continue;
+
     const int v1 = face[0], v2 = face[1], v3 = face[2];
     const QgsPointXY &p1 = vertices[v1], &p2 = vertices[v2], &p3 = vertices[v3];
 
@@ -123,13 +127,13 @@ QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent
     if ( !isActive )
       continue;
 
-    QgsRectangle bbox = QgsMeshLayerUtils::triangleBoundingBox( p1, p2, p3 );
+    const QgsRectangle bbox = QgsMeshLayerUtils::triangleBoundingBox( p1, p2, p3 );
     if ( !extent.intersects( bbox ) )
       continue;
 
     // Get the BBox of the element in pixels
     int topLim, bottomLim, leftLim, rightLim;
-    QgsMeshLayerUtils::boundingBoxToScreenRectangle( mContext.mapToPixel(), mOutputSize, bbox, leftLim, rightLim, topLim, bottomLim );
+    QgsMeshLayerUtils::boundingBoxToScreenRectangle( mContext.mapToPixel(), mOutputSize, bbox, leftLim, rightLim, topLim, bottomLim, pixelRatio );
 
     double value( 0 ), value1( 0 ), value2( 0 ), value3( 0 );
     const int faceIdx = mTriangularMesh.trianglesToNativeFaces()[triangleIndex];
@@ -150,25 +154,12 @@ QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent
       for ( int k = leftLim; k <= rightLim; k++ )
       {
         double val;
-        const QgsPointXY p = mContext.mapToPixel().toMapCoordinates( k, j );
+        const QgsPointXY p = mContext.mapToPixel().toMapCoordinates( k / pixelRatio, j / pixelRatio );
         if ( mDataType == QgsMeshDatasetGroupMetadata::DataType::DataOnVertices )
-          val = QgsMeshLayerUtils::interpolateFromVerticesData(
-                  p1,
-                  p2,
-                  p3,
-                  value1,
-                  value2,
-                  value3,
-                  p );
+          val = QgsMeshLayerUtils::interpolateFromVerticesData( p1, p2, p3, value1, value2, value3, p );
         else
         {
-          val = QgsMeshLayerUtils::interpolateFromFacesData(
-                  p1,
-                  p2,
-                  p3,
-                  value,
-                  p
-                );
+          val = QgsMeshLayerUtils::interpolateFromFacesData( p1, p2, p3, value, p );
         }
         if ( !std::isnan( val ) )
         {
@@ -177,119 +168,28 @@ QgsRasterBlock *QgsMeshLayerInterpolator::block( int, const QgsRectangle &extent
         }
       }
     }
+  }
 
+  if ( mRenderElevation && ( !feedback || !feedback->isCanceled() ) )
+  {
+    QgsElevationMap *elevationMap = mContext.elevationMap();
+    if ( elevationMap && elevationMap->isValid() )
+      elevationMap->fillWithRasterBlock( outputBlock.get(), 0, 0, mElevationScale, mElevationOffset );
   }
 
   return outputBlock.release();
 }
 
-void QgsMeshLayerInterpolator::setSpatialIndexActive( bool active ) {mSpatialIndexActive = active;}
+void QgsMeshLayerInterpolator::setSpatialIndexActive( bool active )
+{
+  mSpatialIndexActive = active;
+}
+
+void QgsMeshLayerInterpolator::setElevationMapSettings( bool renderElevationMap, double elevationScale, double elevationOffset )
+{
+  mRenderElevation = renderElevationMap;
+  mElevationScale = elevationScale;
+  mElevationOffset = elevationOffset;
+}
 
 ///@endcond
-
-QgsRasterBlock *QgsMeshUtils::exportRasterBlock(
-  const QgsMeshLayer &layer,
-  const QgsMeshDatasetIndex &datasetIndex,
-  const QgsCoordinateReferenceSystem &destinationCrs,
-  const QgsCoordinateTransformContext &transformContext,
-  double mapUnitsPerPixel,
-  const QgsRectangle &extent,
-  QgsRasterBlockFeedback *feedback )
-{
-  if ( !layer.dataProvider() )
-    return nullptr;
-
-  if ( !datasetIndex.isValid() )
-    return nullptr;
-
-  int widthPixel = static_cast<int>( extent.width() / mapUnitsPerPixel );
-  int heightPixel = static_cast<int>( extent.height() / mapUnitsPerPixel );
-
-  const QgsPointXY center = extent.center();
-  QgsMapToPixel mapToPixel( mapUnitsPerPixel,
-                            center.x(),
-                            center.y(),
-                            widthPixel,
-                            heightPixel,
-                            0 );
-  QgsCoordinateTransform transform( layer.crs(), destinationCrs, transformContext );
-
-  QgsRenderContext renderContext;
-  renderContext.setCoordinateTransform( transform );
-  renderContext.setMapToPixel( mapToPixel );
-  renderContext.setExtent( extent );
-
-  std::unique_ptr<QgsMesh> nativeMesh = qgis::make_unique<QgsMesh>();
-  layer.dataProvider()->populateMesh( nativeMesh.get() );
-  std::unique_ptr<QgsTriangularMesh> triangularMesh = qgis::make_unique<QgsTriangularMesh>();
-  triangularMesh->update( nativeMesh.get(), transform );
-
-  const QgsMeshDatasetGroupMetadata metadata = layer.dataProvider()->datasetGroupMetadata( datasetIndex );
-  QgsMeshDatasetGroupMetadata::DataType scalarDataType = QgsMeshLayerUtils::datasetValuesType( metadata.dataType() );
-  const int count =  QgsMeshLayerUtils::datasetValuesCount( nativeMesh.get(), scalarDataType );
-  QgsMeshDataBlock vals = QgsMeshLayerUtils::datasetValues(
-                            &layer,
-                            datasetIndex,
-                            0,
-                            count );
-  if ( !vals.isValid() )
-    return nullptr;
-
-  QVector<double> datasetValues = QgsMeshLayerUtils::calculateMagnitudes( vals );
-  QgsMeshDataBlock activeFaceFlagValues = layer.dataProvider()->areFacesActive(
-      datasetIndex,
-      0,
-      nativeMesh->faces.count() );
-
-  QgsMeshLayerInterpolator interpolator(
-    *( triangularMesh.get() ),
-    datasetValues,
-    activeFaceFlagValues,
-    scalarDataType,
-    renderContext,
-    QSize( widthPixel, heightPixel )
-  );
-
-  return interpolator.block( 0, extent, widthPixel, heightPixel, feedback );
-}
-
-QgsRasterBlock *QgsMeshUtils::exportRasterBlock(
-  const QgsTriangularMesh &triangularMesh,
-  const QgsMeshDataBlock &datasetValues,
-  const QgsMeshDataBlock &activeFlags,
-  const QgsMeshDatasetGroupMetadata::DataType dataType,
-  const QgsCoordinateTransform &transform,
-  double mapUnitsPerPixel,
-  const QgsRectangle &extent,
-  QgsRasterBlockFeedback *feedback )
-{
-
-  int widthPixel = static_cast<int>( extent.width() / mapUnitsPerPixel );
-  int heightPixel = static_cast<int>( extent.height() / mapUnitsPerPixel );
-
-  const QgsPointXY center = extent.center();
-  QgsMapToPixel mapToPixel( mapUnitsPerPixel,
-                            center.x(),
-                            center.y(),
-                            widthPixel,
-                            heightPixel,
-                            0 );
-
-  QgsRenderContext renderContext;
-  renderContext.setCoordinateTransform( transform );
-  renderContext.setMapToPixel( mapToPixel );
-  renderContext.setExtent( extent );
-
-  QVector<double> magnitudes = QgsMeshLayerUtils::calculateMagnitudes( datasetValues );
-
-  QgsMeshLayerInterpolator interpolator(
-    triangularMesh,
-    magnitudes,
-    activeFlags,
-    dataType,
-    renderContext,
-    QSize( widthPixel, heightPixel )
-  );
-
-  return interpolator.block( 0, extent, widthPixel, heightPixel, feedback );
-}

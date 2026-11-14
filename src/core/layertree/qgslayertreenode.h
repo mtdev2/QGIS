@@ -17,11 +17,14 @@
 #define QGSLAYERTREENODE_H
 
 #include "qgis_core.h"
-#include <QObject>
-
+#include "qgis_sip.h"
 #include "qgsobjectcustomproperties.h"
 #include "qgsreadwritecontext.h"
-#include "qgis_sip.h"
+
+#include <QObject>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QDomElement;
 
@@ -30,7 +33,8 @@ class QgsMapLayer;
 
 /**
  * \ingroup core
- * This class is a base class for nodes in a layer tree.
+ * \brief Base class for nodes in a layer tree.
+ *
  * Layer tree is a hierarchical structure consisting of group and layer nodes:
  *
  * - group nodes are containers and may contain children (layer and group nodes)
@@ -68,8 +72,10 @@ class QgsMapLayer;
  * - "legend/..." - properties for legend appearance customization
  * - "expandedLegendNodes" - list of layer's legend nodes' rules in expanded state
  *
- * \see also QgsLayerTree, QgsLayerTreeLayer, QgsLayerTreeGroup
- * \since QGIS 2.4
+ * \see QgsLayerTree
+ * \see QgsLayerTreeLayer
+ * \see QgsLayerTreeGroup
+ * \see QgsLayerTreeCustomNode
  */
 class CORE_EXPORT QgsLayerTreeNode : public QObject
 {
@@ -87,10 +93,12 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
         sipType = sipType_QgsLayerTree;
       else if ( QgsLayerTree::isGroup( node ) )
         sipType = sipType_QgsLayerTreeGroup;
+      else if ( QgsLayerTree::isCustomNode( node ) )
+        sipType = sipType_QgsLayerTreeCustomNode;
     }
     else
       sipType = 0;
-    SIP_END
+  SIP_END
 #endif
 
   public:
@@ -98,23 +106,75 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
     //! Enumeration of possible tree node types
     enum NodeType
     {
-      NodeGroup,   //!< Container of other groups and layers
-      NodeLayer    //!< Leaf node pointing to a layer
+      NodeGroup, //!< Container of other groups and layers
+      NodeLayer, //!< Leaf node pointing to a layer
+      NodeCustom //!< Leaf node pointing to a custom object
     };
 
     ~QgsLayerTreeNode() override;
 
-    //! Find out about type of the node. It is usually shorter to use convenience functions from QgsLayerTree namespace for that
-    NodeType nodeType() const { return mNodeType; }
+#ifdef SIP_RUN
+    // clang-format off
+    SIP_PYOBJECT __repr__();
+    % MethodCode
+    QString str = u"<QgsLayerTreeNode: %1>"_s.arg( sipCpp->name() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+
+    /**
+     * Returns the number of children contained in the node.
+     *
+     * \since QGIS 4.0
+     */
+    int __len__() const;
+    % MethodCode
+    sipRes = sipCpp->children().count();
+    % End
+
+    //! Ensures that bool(obj) returns TRUE (otherwise __len__() would be used)
+    int __bool__() const;
+    % MethodCode
+    sipRes = true;
+    % End
+
+    /**
+     * Returns the child node at the specified ``index``.
+     *
+     * \throws IndexError if no child with the specified ``index`` exists.
+     * \since QGIS 4.0
+     */
+    SIP_PYOBJECT __getitem__( int index ) SIP_TYPEHINT( QgsLayerTreeNode );
+    % MethodCode
+    const QList< QgsLayerTreeNode * > children = sipCpp->children();
+    const int count = children.count();
+    if ( a0 < 0 || a0 >= count )
+    {
+      PyErr_SetString( PyExc_IndexError, QByteArray::number( a0 ) );
+      sipIsErr = 1;
+    }
+    else
+    {
+      QgsLayerTreeNode *child = children.at( a0 );
+      sipRes = sipConvertFromType( child, sipType_QgsLayerTreeNode, NULL );
+    }
+    % End
+// clang-format on
+#endif
+
+        //! Find out about type of the node. It is usually shorter to use convenience functions from QgsLayerTree namespace for that
+        NodeType nodeType() const
+    {
+      return mNodeType;
+    }
     //! Gets pointer to the parent. If parent is NULLPTR, the node is a root node
     QgsLayerTreeNode *parent() { return mParent; }
     //! Gets list of children of the node. Children are owned by the parent
     QList<QgsLayerTreeNode *> children() { return mChildren; }
     //! Gets list of children of the node. Children are owned by the parent
-    QList<QgsLayerTreeNode *> children() const { return mChildren; } SIP_SKIP
+    QList<QgsLayerTreeNode *> children() const SIP_SKIP { return mChildren; }
 
     /**
-     * Removes the childrens, disconnect all the forwarded and external signals and sets their parent to NULLPTR
+     * Removes the children, disconnect all the forwarded and external signals and sets their parent to NULLPTR
      * \return the removed children
      * \since QGIS 3.16
      */
@@ -122,15 +182,27 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
 
     /**
      * Returns name of the node
-     * \since QGIS 3.0
      */
     virtual QString name() const = 0;
 
     /**
      * Set name of the node. Emits nameChanged signal.
-     * \since QGIS 3.0
      */
     virtual void setName( const QString &name ) = 0;
+
+    /**
+     * Returns the node's unique identifier.
+     *
+     * Each node subclass defines the identity it exposes: a group or custom node
+     * returns its own generated id, while a layer node returns the id of the map
+     * layer it references (see QgsLayerTreeLayer::layerId()).
+     *
+     * The base class returns an empty string; subclasses override this to return
+     * their identifier.
+     *
+     * \since QGIS 4.4
+     */
+    virtual QString id() const { return QString(); }
 
     /**
      * Read layer tree from XML. Returns new instance.
@@ -141,7 +213,6 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
     /**
      * Read layer tree from XML. Returns new instance.
      * Also resolves textual references to layers from the project (calls resolveReferences() internally).
-     * \since QGIS 3.0
      */
     static QgsLayerTreeNode *readXml( QDomElement &element, const QgsProject *project ) SIP_FACTORY;
 
@@ -161,19 +232,16 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
      * will match if the name, public source, and data provider match. This can be
      * used to match legend customization from different projects where layers
      * will have different layer IDs.
-     * \since QGIS 3.0
      */
     virtual void resolveReferences( const QgsProject *project, bool looseMatching = false ) = 0;
 
     /**
      * Returns whether a node is really visible (ie checked and all its ancestors checked as well)
-     * \since QGIS 3.0
      */
     bool isVisible() const;
 
     /**
      * Returns whether a node is checked (independently of its ancestors or children)
-     * \since QGIS 3.0
      */
     bool itemVisibilityChecked() const { return mChecked; }
 
@@ -182,38 +250,32 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
      *
      * \see QgsLayerTreeView::setLayerVisible()
      *
-     * \since QGIS 3.0
      */
     void setItemVisibilityChecked( bool checked );
 
     /**
      * Check or uncheck a node and all its children (taking into account exclusion rules)
-     * \since QGIS 3.0
      */
     virtual void setItemVisibilityCheckedRecursive( bool checked );
 
     /**
      * Check or uncheck a node and all its parents
-     * \since QGIS 3.0
      */
     void setItemVisibilityCheckedParentRecursive( bool checked );
 
     /**
      * Returns whether this node is checked and all its children.
-     * \since QGIS 3.0
      */
     bool isItemVisibilityCheckedRecursive() const;
 
     /**
      * Returns whether this node is unchecked and all its children.
-     * \since QGIS 3.0
      */
     bool isItemVisibilityUncheckedRecursive() const;
 
     /**
      * Returns a list of any checked layers which belong to this node or its
      * children.
-     * \since QGIS 3.0
      */
     QList< QgsMapLayer * > checkedLayers() const;
 
@@ -258,12 +320,10 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
 
     /**
      * Emitted when the name of the node is changed
-     * \since QGIS 3.0
      */
     void nameChanged( QgsLayerTreeNode *node, QString name );
 
   protected:
-
     //! Constructor
     QgsLayerTreeNode( NodeType t, bool checked = true );
     QgsLayerTreeNode( const QgsLayerTreeNode &other );
@@ -271,12 +331,12 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
     // low-level utility functions
 
     //! Read common XML elements.
-    void readCommonXml( QDomElement &element );
+    void readCommonXml( const QDomElement &element );
     //! Write common XML elements.
     void writeCommonXml( QDomElement &element );
 
     //! Low-level insertion of children to the node. The children must not have any parent yet!
-    void insertChildrenPrivate( int index, QList<QgsLayerTreeNode *> nodes );
+    void insertChildrenPrivate( int index, const QList<QgsLayerTreeNode *> &nodes );
     //! Low-level removal of children from the node.
     void removeChildrenPrivate( int from, int count, bool destroy = true );
 
@@ -289,7 +349,7 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
     //! list of children - node is responsible for their deletion
     QList<QgsLayerTreeNode *> mChildren;
     //! whether the node should be shown in GUI as expanded
-    bool mExpanded;
+    bool mExpanded = true;
     //! custom properties attached to the node
     QgsObjectCustomProperties mProperties;
 
@@ -298,10 +358,7 @@ class CORE_EXPORT QgsLayerTreeNode : public QObject
 
   private:
     QgsLayerTreeNode &operator=( const QgsLayerTreeNode & ) = delete;
-
 };
-
-
 
 
 #endif // QGSLAYERTREENODE_H

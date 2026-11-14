@@ -14,24 +14,28 @@
  ***************************************************************************/
 
 #include "qgsratiolockbutton.h"
+
 #include "qgis.h"
+#include "qgsapplication.h"
+#include "qgssvgcache.h"
 
 #include <QApplication>
+#include <QDoubleSpinBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+#include <QString>
 #include <QWidget>
-#include <QDoubleSpinBox>
+
+#include "moc_qgsratiolockbutton.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsRatioLockButton::QgsRatioLockButton( QWidget *parent )
   : QToolButton( parent )
 {
   setMinimumSize( QSize( 24, 24 ) );
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-  setMaximumWidth( fontMetrics().width( QStringLiteral( "000" ) ) );
-#else
   setMaximumWidth( fontMetrics().horizontalAdvance( '0' ) * 3 );
-#endif
   setCheckable( true );
   setAutoRaise( true );
   connect( this, &QPushButton::clicked, this, &QgsRatioLockButton::buttonClicked );
@@ -46,7 +50,7 @@ void QgsRatioLockButton::setLocked( const bool locked )
 void QgsRatioLockButton::buttonClicked()
 {
   mLocked = !mLocked;
-  setDown( mLocked );
+  setChecked( mLocked );
 
   emit lockChanged( mLocked );
 
@@ -55,14 +59,13 @@ void QgsRatioLockButton::buttonClicked()
 
 void QgsRatioLockButton::widthSpinBoxChanged( double value )
 {
-  if ( mUpdatingRatio || qgsDoubleNear( value, 0.0 ) || qgsDoubleNear( mPrevWidth, 0.0 )
-       || qgsDoubleNear( mPrevHeight, 0.0 ) || !mHeightSpinBox || !mLocked )
+  if ( mUpdatingRatio || qgsDoubleNear( value, 0.0 ) || qgsDoubleNear( mPrevWidth, 0.0 ) || qgsDoubleNear( mPrevHeight, 0.0 ) || !mHeightSpinBox || !mLocked )
   {
     mPrevWidth = value;
     return;
   }
 
-  double oldRatio = mPrevHeight / mPrevWidth;
+  const double oldRatio = mPrevHeight / mPrevWidth;
   mUpdatingRatio = true;
   mHeightSpinBox->setValue( oldRatio * value );
   mUpdatingRatio = false;
@@ -71,14 +74,13 @@ void QgsRatioLockButton::widthSpinBoxChanged( double value )
 
 void QgsRatioLockButton::heightSpinBoxChanged( double value )
 {
-  if ( mUpdatingRatio || qgsDoubleNear( value, 0.0 ) || qgsDoubleNear( mPrevWidth, 0.0 )
-       || qgsDoubleNear( mPrevHeight, 0.0 ) || !mWidthSpinBox || !mLocked )
+  if ( mUpdatingRatio || qgsDoubleNear( value, 0.0 ) || qgsDoubleNear( mPrevWidth, 0.0 ) || qgsDoubleNear( mPrevHeight, 0.0 ) || !mWidthSpinBox || !mLocked )
   {
     mPrevHeight = value;
     return;
   }
 
-  double oldRatio = mPrevWidth / mPrevHeight;
+  const double oldRatio = mPrevWidth / mPrevHeight;
   mUpdatingRatio = true;
   mWidthSpinBox->setValue( oldRatio * value );
   mUpdatingRatio = false;
@@ -121,24 +123,29 @@ void QgsRatioLockButton::drawButton()
     return;
   }
 
-  QPixmap pm;
-  pm = QPixmap( currentIconSize );
+  const double pixelRatio = devicePixelRatioF();
+  QPixmap pm( currentIconSize * pixelRatio );
+  pm.setDevicePixelRatio( pixelRatio );
   pm.fill( Qt::transparent );
 
   QPainter painter;
-  QPen pen  = ( QColor( 136, 136, 136 ) );
+  QPen pen = QPen( QColor( 136, 136, 136 ) );
   pen.setWidth( 2 );
 
   painter.begin( &pm );
+  painter.setRenderHint( QPainter::Antialiasing, true );
   painter.setPen( pen );
 
-  painter.drawLine( 1, 1, currentIconSize.width() / 2, 1 );
-  painter.drawLine( currentIconSize.width() / 2, 1, currentIconSize.width() / 2, currentIconSize.height() / 2 - 13 );
-  painter.drawLine( currentIconSize.width() / 2, currentIconSize.height() / 2 + 13, currentIconSize.width() / 2, currentIconSize.height() - 2 );
-  painter.drawLine( currentIconSize.width() / 2, currentIconSize.height() - 2, 1, currentIconSize.height() - 2 );
+  painter.drawLine( QPointF( 1, 1 ), QPointF( currentIconSize.width() / 2, 1 ) );
+  painter.drawLine( QPointF( currentIconSize.width() / 2, 1 ), QPointF( currentIconSize.width() / 2, currentIconSize.height() / 2 - 13 ) );
+  painter.drawLine( QPointF( currentIconSize.width() / 2, currentIconSize.height() / 2 + 13 ), QPointF( currentIconSize.width() / 2, currentIconSize.height() - 2 ) );
+  painter.drawLine( QPointF( currentIconSize.width() / 2, currentIconSize.height() - 2 ), QPointF( 1, currentIconSize.height() - 2 ) );
 
-  QImage image( mLocked ? QStringLiteral( ":/images/themes/default/lockedGray.svg" ) : QStringLiteral( ":/images/themes/default/unlockedGray.svg" ) );
-  painter.drawImage( QRectF( currentIconSize.width() / 2 - 8, currentIconSize.height() / 2 - 8, 16, 16 ), image, QRectF( 0, 0, 16, 16 ) );
+  const QString imageSource = mLocked ? u":/images/themes/default/lockedGray.svg"_s : u":/images/themes/default/unlockedGray.svg"_s;
+  bool fitsInCache = false;
+  QImage image = QgsApplication::svgCache()->svgAsImage( imageSource, 16 * pixelRatio, QColor(), QColor(), 0, 1, fitsInCache );
+  image.setDevicePixelRatio( pixelRatio );
+  painter.drawImage( QRectF( currentIconSize.width() / 2 - 8, currentIconSize.height() / 2 - 8, 16, 16 ), image );
 
   painter.end();
 

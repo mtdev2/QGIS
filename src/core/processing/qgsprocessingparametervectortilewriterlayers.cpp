@@ -17,11 +17,13 @@
 
 #include "qgsvectorlayer.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsProcessingParameterVectorTileWriterLayers::QgsProcessingParameterVectorTileWriterLayers( const QString &name, const QString &description )
   : QgsProcessingParameterDefinition( name, description, QVariant(), false )
-{
-}
+{}
 
 QgsProcessingParameterDefinition *QgsProcessingParameterVectorTileWriterLayers::clone() const
 {
@@ -36,15 +38,15 @@ QString QgsProcessingParameterVectorTileWriterLayers::type() const
 bool QgsProcessingParameterVectorTileWriterLayers::checkValueIsAcceptable( const QVariant &input, QgsProcessingContext *context ) const
 {
   if ( !input.isValid() )
-    return mFlags & FlagOptional;
+    return mFlags & Qgis::ProcessingParameterFlag::Optional;
 
-  if ( input.type() != QVariant::List )
+  if ( input.userType() != QMetaType::Type::QVariantList )
     return false;
 
   const QVariantList inputList = input.toList();
   for ( const QVariant &inputItem : inputList )
   {
-    if ( inputItem.type() != QVariant::Map )
+    if ( inputItem.userType() != QMetaType::Type::QVariantMap )
       return false;
     QVariantMap inputItemMap = inputItem.toMap();
 
@@ -52,13 +54,13 @@ bool QgsProcessingParameterVectorTileWriterLayers::checkValueIsAcceptable( const
     if ( !inputItemMap.contains( "layer" ) )
       return false;
 
-    QVariant inputItemLayer = inputItemMap["layer"];
+    const QVariant inputItemLayer = inputItemMap["layer"];
 
     if ( qobject_cast< QgsVectorLayer * >( qvariant_cast<QObject *>( inputItemLayer ) ) )
       continue;
 
     if ( !context )
-      continue;  // when called without context, we will skip checking whether the layer can be resolved
+      continue; // when called without context, we will skip checking whether the layer can be resolved
 
     if ( !QgsProcessingUtils::mapLayerFromString( inputItemLayer.toString(), *context ) )
       return false;
@@ -74,17 +76,17 @@ QString QgsProcessingParameterVectorTileWriterLayers::valueAsPythonString( const
   for ( const QgsVectorTileWriter::Layer &layer : layers )
   {
     QStringList layerDefParts;
-    layerDefParts << QStringLiteral( "'layer': " ) + QgsProcessingUtils::stringToPythonLiteral( QgsProcessingUtils::normalizeLayerSource( layer.layer()->source() ) );
+    layerDefParts << u"'layer': "_s + QgsProcessingUtils::stringToPythonLiteral( QgsProcessingUtils::normalizeLayerSource( layer.layer()->source() ) );
     if ( !layer.filterExpression().isEmpty() )
-      layerDefParts << QStringLiteral( "'filterExpression': " ) + QgsProcessingUtils::variantToPythonLiteral( layer.filterExpression() );
+      layerDefParts << u"'filterExpression': "_s + QgsProcessingUtils::variantToPythonLiteral( layer.filterExpression() );
     if ( !layer.layerName().isEmpty() )
-      layerDefParts << QStringLiteral( "'layerName': " ) + QgsProcessingUtils::variantToPythonLiteral( layer.layerName() );
+      layerDefParts << u"'layerName': "_s + QgsProcessingUtils::variantToPythonLiteral( layer.layerName() );
     if ( layer.minZoom() >= 0 )
-      layerDefParts << QStringLiteral( "'minZoom': " ) + QgsProcessingUtils::variantToPythonLiteral( layer.minZoom() );
+      layerDefParts << u"'minZoom': "_s + QgsProcessingUtils::variantToPythonLiteral( layer.minZoom() );
     if ( layer.maxZoom() >= 0 )
-      layerDefParts << QStringLiteral( "'maxZoom': " ) + QgsProcessingUtils::variantToPythonLiteral( layer.maxZoom() );
+      layerDefParts << u"'maxZoom': "_s + QgsProcessingUtils::variantToPythonLiteral( layer.maxZoom() );
 
-    QString layerDef = QStringLiteral( "{ %1 }" ).arg( layerDefParts.join( ',' ) );
+    const QString layerDef = u"{ %1 }"_s.arg( layerDefParts.join( ',' ) );
     parts << layerDef;
   }
   return parts.join( ',' ).prepend( '[' ).append( ']' );
@@ -94,9 +96,9 @@ QString QgsProcessingParameterVectorTileWriterLayers::asPythonString( QgsProcess
 {
   switch ( outputType )
   {
-    case QgsProcessing::PythonQgsProcessingAlgorithmSubclass:
+    case QgsProcessing::PythonOutputType::PythonQgsProcessingAlgorithmSubclass:
     {
-      QString code = QStringLiteral( "QgsProcessingParameterVectorTileWriterLayers('%1', '%2')" ).arg( name(), description() );
+      QString code = u"QgsProcessingParameterVectorTileWriterLayers('%1', %2)"_s.arg( name(), QgsProcessingUtils::stringToPythonLiteral( description() ) );
       return code;
     }
   }
@@ -109,7 +111,7 @@ QList<QgsVectorTileWriter::Layer> QgsProcessingParameterVectorTileWriterLayers::
   const QVariantList layersVariantList = layersVariant.toList();
   for ( const QVariant &layerItem : layersVariantList )
   {
-    QVariantMap layerVariantMap = layerItem.toMap();
+    const QVariantMap layerVariantMap = layerItem.toMap();
     layers << variantMapAsLayer( layerVariantMap, context );
   }
   return layers;
@@ -117,7 +119,7 @@ QList<QgsVectorTileWriter::Layer> QgsProcessingParameterVectorTileWriterLayers::
 
 QgsVectorTileWriter::Layer QgsProcessingParameterVectorTileWriterLayers::variantMapAsLayer( const QVariantMap &layerVariantMap, QgsProcessingContext &context )
 {
-  QVariant layerVariant = layerVariantMap["layer"];
+  const QVariant layerVariant = layerVariantMap["layer"];
 
   QgsVectorLayer *inputLayer = nullptr;
   if ( ( inputLayer = qobject_cast< QgsVectorLayer * >( qvariant_cast<QObject *>( layerVariant ) ) ) )

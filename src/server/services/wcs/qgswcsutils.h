@@ -22,15 +22,18 @@
 #define QGSWCSUTILS_H
 
 #include "qgsmodule.h"
+#include "qgsrasterlayer.h"
+#include "qgsserversettings.h"
 #include "qgswcsserviceexception.h"
 
-#include "qgsrasterlayer.h"
-
 #include <QDomDocument>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup server
- * WCS implementation
+ * \brief WCS implementation
  */
 
 //! WCS implementation
@@ -50,7 +53,7 @@ namespace QgsWcs
   /**
    * Service URL string
    */
-  QString serviceUrl( const QgsServerRequest &request, const QgsProject *project );
+  QString serviceUrl( const QgsServerRequest &request, const QgsProject *project, const QgsServerSettings &settings );
 
   /**
    * Parse bounding box
@@ -59,12 +62,10 @@ namespace QgsWcs
   QgsRectangle parseBbox( const QString &bboxStr );
 
   // Define namespaces used in WCS documents
-  const QString WCS_NAMESPACE = QStringLiteral( "http://www.opengis.net/wcs" );
-  const QString GML_NAMESPACE = QStringLiteral( "http://www.opengis.net/gml" );
-  const QString OGC_NAMESPACE = QStringLiteral( "http://www.opengis.net/ogc" );
+  const QString WCS_NAMESPACE = u"http://www.opengis.net/wcs"_s;
+  const QString GML_NAMESPACE = u"http://www.opengis.net/gml"_s;
+  const QString OGC_NAMESPACE = u"http://www.opengis.net/ogc"_s;
 
 } // namespace QgsWcs
 
 #endif
-
-

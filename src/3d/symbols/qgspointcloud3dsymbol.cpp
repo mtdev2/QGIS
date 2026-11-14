@@ -15,45 +15,139 @@
 
 #include "qgspointcloud3dsymbol.h"
 
+#include "qgs3dutils.h"
 #include "qgscolorramptexture.h"
-#include "qgssymbollayerutils.h"
+#include "qgscolorutils.h"
+#include "qgsmaterial.h"
 
-#include <Qt3DRender/QMaterial>
+#include <QString>
 #include <Qt3DRender/QParameter>
 #include <Qt3DRender/QTexture>
+
+using namespace Qt::StringLiterals;
 
 // QgsPointCloud3DSymbol
 
 
 QgsPointCloud3DSymbol::QgsPointCloud3DSymbol()
   : QgsAbstract3DSymbol()
-{
-}
+{}
 
-QgsPointCloud3DSymbol::~QgsPointCloud3DSymbol() {  }
+QgsPointCloud3DSymbol::~QgsPointCloud3DSymbol()
+{}
 
 void QgsPointCloud3DSymbol::setPointSize( float size )
 {
   mPointSize = size;
 }
 
+bool QgsPointCloud3DSymbol::renderAsTriangles() const
+{
+  return mRenderAsTriangles;
+}
+
+void QgsPointCloud3DSymbol::setRenderAsTriangles( bool asTriangles )
+{
+  mRenderAsTriangles = asTriangles;
+}
+
+bool QgsPointCloud3DSymbol::horizontalTriangleFilter() const
+{
+  return mHorizontalTriangleFilter;
+}
+
+void QgsPointCloud3DSymbol::setHorizontalTriangleFilter( bool horizontalTriangleFilter )
+{
+  mHorizontalTriangleFilter = horizontalTriangleFilter;
+}
+
+float QgsPointCloud3DSymbol::horizontalFilterThreshold() const
+{
+  return mHorizontalFilterThreshold;
+}
+
+void QgsPointCloud3DSymbol::setHorizontalFilterThreshold( float horizontalFilterThreshold )
+{
+  mHorizontalFilterThreshold = horizontalFilterThreshold;
+}
+
+bool QgsPointCloud3DSymbol::verticalTriangleFilter() const
+{
+  return mVerticalTriangleFilter;
+}
+
+void QgsPointCloud3DSymbol::setVerticalTriangleFilter( bool verticalTriangleFilter )
+{
+  mVerticalTriangleFilter = verticalTriangleFilter;
+}
+
+float QgsPointCloud3DSymbol::verticalFilterThreshold() const
+{
+  return mVerticalFilterThreshold;
+}
+
+void QgsPointCloud3DSymbol::setVerticalFilterThreshold( float verticalFilterThreshold )
+{
+  mVerticalFilterThreshold = verticalFilterThreshold;
+}
+
+void QgsPointCloud3DSymbol::writeBaseXml( QDomElement &elem, const QgsReadWriteContext &context ) const
+{
+  Q_UNUSED( context )
+
+  elem.setAttribute( u"point-size"_s, mPointSize );
+  elem.setAttribute( u"render-as-triangles"_s, mRenderAsTriangles ? 1 : 0 );
+  elem.setAttribute( u"horizontal-triangle-filter"_s, mHorizontalTriangleFilter ? 1 : 0 );
+  elem.setAttribute( u"horizontal-filter-threshold"_s, mHorizontalFilterThreshold );
+  elem.setAttribute( u"vertical-triangle-filter"_s, mVerticalTriangleFilter ? 1 : 0 );
+  elem.setAttribute( u"vertical-filter-threshold"_s, mVerticalFilterThreshold );
+}
+
+void QgsPointCloud3DSymbol::readBaseXml( const QDomElement &elem, const QgsReadWriteContext &context )
+{
+  Q_UNUSED( context )
+
+  mPointSize = elem.attribute( u"point-size"_s, u"3.0"_s ).toFloat();
+  mRenderAsTriangles = elem.attribute( u"render-as-triangles"_s, u"0"_s ).toInt() == 1;
+  mHorizontalTriangleFilter = elem.attribute( u"horizontal-triangle-filter"_s, u"0"_s ).toInt() == 1;
+  mHorizontalFilterThreshold = elem.attribute( u"horizontal-filter-threshold"_s, u"10.0"_s ).toFloat();
+  mVerticalTriangleFilter = elem.attribute( u"vertical-triangle-filter"_s, u"0"_s ).toInt() == 1;
+  mVerticalFilterThreshold = elem.attribute( u"vertical-filter-threshold"_s, u"10.0"_s ).toFloat();
+}
+
+void QgsPointCloud3DSymbol::copyBaseSettings( QgsAbstract3DSymbol *destination ) const
+{
+  QgsAbstract3DSymbol::copyBaseSettings( destination );
+  QgsPointCloud3DSymbol *pcDestination = static_cast<QgsPointCloud3DSymbol *>( destination );
+  pcDestination->mPointSize = mPointSize;
+  pcDestination->mRenderAsTriangles = mRenderAsTriangles;
+  pcDestination->mHorizontalFilterThreshold = mHorizontalFilterThreshold;
+  pcDestination->mHorizontalTriangleFilter = mHorizontalTriangleFilter;
+  pcDestination->mVerticalFilterThreshold = mVerticalFilterThreshold;
+  pcDestination->mVerticalTriangleFilter = mVerticalTriangleFilter;
+}
+
+void QgsPointCloud3DSymbol::setMaterialSettings( QgsAbstractMaterialSettings *materialSettings )
+{
+  Q_UNUSED( materialSettings );
+  throw QgsNotSupportedException( u"QgsPointCloud3DSymbol does not support material settings"_s );
+}
+
+
 // QgsSingleColorPointCloud3DSymbol
 
 QgsSingleColorPointCloud3DSymbol::QgsSingleColorPointCloud3DSymbol()
   : QgsPointCloud3DSymbol()
-{
-
-}
+{}
 
 QString QgsSingleColorPointCloud3DSymbol::symbolType() const
 {
-  return QStringLiteral( "single-color" );
+  return u"single-color"_s;
 }
 
-QgsAbstract3DSymbol *QgsSingleColorPointCloud3DSymbol::clone() const
+QgsSingleColorPointCloud3DSymbol *QgsSingleColorPointCloud3DSymbol::clone() const
 {
   QgsSingleColorPointCloud3DSymbol *result = new QgsSingleColorPointCloud3DSymbol;
-  result->mPointSize = mPointSize;
   result->mSingleColor = mSingleColor;
   copyBaseSettings( result );
   return result;
@@ -63,16 +157,16 @@ void QgsSingleColorPointCloud3DSymbol::writeXml( QDomElement &elem, const QgsRea
 {
   Q_UNUSED( context )
 
-  elem.setAttribute( QStringLiteral( "point-size" ), mPointSize );
-  elem.setAttribute( QStringLiteral( "single-color" ), QgsSymbolLayerUtils::encodeColor( mSingleColor ) );
+  writeBaseXml( elem, context );
+  elem.setAttribute( u"single-color"_s, QgsColorUtils::colorToString( mSingleColor ) );
 }
 
 void QgsSingleColorPointCloud3DSymbol::readXml( const QDomElement &elem, const QgsReadWriteContext &context )
 {
   Q_UNUSED( context )
 
-  mPointSize = elem.attribute( QStringLiteral( "point-size" ), QStringLiteral( "2.0" ) ).toFloat();
-  mSingleColor = QgsSymbolLayerUtils::decodeColor( elem.attribute( QStringLiteral( "single-color" ), QStringLiteral( "0,0,255" ) ) );
+  readBaseXml( elem, context );
+  mSingleColor = QgsColorUtils::colorFromString( elem.attribute( u"single-color"_s, u"0,0,255"_s ) );
 }
 
 void QgsSingleColorPointCloud3DSymbol::setSingleColor( QColor color )
@@ -80,13 +174,12 @@ void QgsSingleColorPointCloud3DSymbol::setSingleColor( QColor color )
   mSingleColor = color;
 }
 
-void QgsSingleColorPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
+void QgsSingleColorPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
 {
-  Qt3DRender::QParameter *renderingStyle = new Qt3DRender::QParameter( "u_renderingStyle", QgsPointCloud3DSymbol::SingleColor );
-  mat->addParameter( renderingStyle );
   Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
   mat->addParameter( pointSizeParameter );
-  Qt3DRender::QParameter *singleColorParameter = new Qt3DRender::QParameter( "u_singleColor", QVector3D( mSingleColor.redF(), mSingleColor.greenF(), mSingleColor.blueF() ) );
+  const QColor linearColor = Qgs3DUtils::srgbToLinear( mSingleColor );
+  Qt3DRender::QParameter *singleColorParameter = new Qt3DRender::QParameter( "u_singleColor", QVector3D( linearColor.redF(), linearColor.greenF(), linearColor.blueF() ) );
   mat->addParameter( singleColorParameter );
 }
 
@@ -94,14 +187,11 @@ void QgsSingleColorPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat 
 
 QgsColorRampPointCloud3DSymbol::QgsColorRampPointCloud3DSymbol()
   : QgsPointCloud3DSymbol()
-{
+{}
 
-}
-
-QgsAbstract3DSymbol *QgsColorRampPointCloud3DSymbol::clone() const
+QgsColorRampPointCloud3DSymbol *QgsColorRampPointCloud3DSymbol::clone() const
 {
   QgsColorRampPointCloud3DSymbol *result = new QgsColorRampPointCloud3DSymbol;
-  result->mPointSize = mPointSize;
   result->mRenderingParameter = mRenderingParameter;
   result->mColorRampShader = mColorRampShader;
   result->mColorRampShaderMin = mColorRampShaderMin;
@@ -112,19 +202,19 @@ QgsAbstract3DSymbol *QgsColorRampPointCloud3DSymbol::clone() const
 
 QString QgsColorRampPointCloud3DSymbol::symbolType() const
 {
-  return QStringLiteral( "color-ramp" );
+  return u"color-ramp"_s;
 }
 
 void QgsColorRampPointCloud3DSymbol::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
 {
   Q_UNUSED( context )
 
-  elem.setAttribute( QStringLiteral( "point-size" ), mPointSize );
-  elem.setAttribute( QStringLiteral( "rendering-parameter" ), mRenderingParameter );
-  elem.setAttribute( QStringLiteral( "color-ramp-shader-min" ), mColorRampShaderMin );
-  elem.setAttribute( QStringLiteral( "color-ramp-shader-max" ), mColorRampShaderMax );
+  writeBaseXml( elem, context );
+  elem.setAttribute( u"rendering-parameter"_s, mRenderingParameter );
+  elem.setAttribute( u"color-ramp-shader-min"_s, mColorRampShaderMin );
+  elem.setAttribute( u"color-ramp-shader-max"_s, mColorRampShaderMax );
   QDomDocument doc = elem.ownerDocument();
-  QDomElement elemColorRampShader = mColorRampShader.writeXml( doc );
+  const QDomElement elemColorRampShader = mColorRampShader.writeXml( doc );
   elem.appendChild( elemColorRampShader );
 }
 
@@ -132,10 +222,10 @@ void QgsColorRampPointCloud3DSymbol::readXml( const QDomElement &elem, const Qgs
 {
   Q_UNUSED( context )
 
-  mPointSize = elem.attribute( "point-size", QStringLiteral( "2.0" ) ).toFloat();
+  readBaseXml( elem, context );
   mRenderingParameter = elem.attribute( "rendering-parameter", QString() );
-  mColorRampShaderMin = elem.attribute( QStringLiteral( "color-ramp-shader-min" ), QStringLiteral( "0.0" ) ).toDouble();
-  mColorRampShaderMax = elem.attribute( QStringLiteral( "color-ramp-shader-max" ), QStringLiteral( "1.0" ) ).toDouble();
+  mColorRampShaderMin = elem.attribute( u"color-ramp-shader-min"_s, u"0.0"_s ).toDouble();
+  mColorRampShaderMax = elem.attribute( u"color-ramp-shader-max"_s, u"1.0"_s ).toDouble();
   mColorRampShader.readXml( elem );
 }
 
@@ -165,10 +255,8 @@ void QgsColorRampPointCloud3DSymbol::setColorRampShaderMinMax( double min, doubl
   mColorRampShaderMax = max;
 }
 
-void QgsColorRampPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
+void QgsColorRampPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
 {
-  Qt3DRender::QParameter *renderingStyle = new Qt3DRender::QParameter( "u_renderingStyle", QgsPointCloud3DSymbol::ColorRamp );
-  mat->addParameter( renderingStyle );
   Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
   mat->addParameter( pointSizeParameter );
   // Create the texture to pass the color ramp
@@ -179,6 +267,9 @@ void QgsColorRampPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
     colorRampTexture->addTextureImage( new QgsColorRampTexture( mColorRampShader, 1 ) );
     colorRampTexture->setMinificationFilter( Qt3DRender::QTexture1D::Linear );
     colorRampTexture->setMagnificationFilter( Qt3DRender::QTexture1D::Linear );
+    // note -- this texture is an exception, we do NOT set it to srgb format as we do NOT want
+    // it linearised before sampling. That is because we need to do the interpolation on the ramp
+    // in SRGB color space. The shader converts the result after sampling the ramp to linear.
   }
 
   // Parameters
@@ -186,8 +277,8 @@ void QgsColorRampPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
   mat->addParameter( colorRampTextureParameter );
   Qt3DRender::QParameter *colorRampCountParameter = new Qt3DRender::QParameter( "u_colorRampCount", mColorRampShader.colorRampItemList().count() );
   mat->addParameter( colorRampCountParameter );
-  int colorRampType = mColorRampShader.colorRampType();
-  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", colorRampType );
+  const Qgis::ShaderInterpolationMethod colorRampType = mColorRampShader.colorRampType();
+  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", static_cast<int>( colorRampType ) );
   mat->addParameter( colorRampTypeParameter );
 }
 
@@ -195,19 +286,16 @@ void QgsColorRampPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
 
 QgsRgbPointCloud3DSymbol::QgsRgbPointCloud3DSymbol()
   : QgsPointCloud3DSymbol()
-{
-
-}
+{}
 
 QString QgsRgbPointCloud3DSymbol::symbolType() const
 {
-  return QStringLiteral( "rgb" );
+  return u"rgb"_s;
 }
 
-QgsAbstract3DSymbol *QgsRgbPointCloud3DSymbol::clone() const
+QgsRgbPointCloud3DSymbol *QgsRgbPointCloud3DSymbol::clone() const
 {
   QgsRgbPointCloud3DSymbol *result = new QgsRgbPointCloud3DSymbol;
-  result->mPointSize = mPointSize;
   result->mRedAttribute = mRedAttribute;
   result->mGreenAttribute = mGreenAttribute;
   result->mBlueAttribute = mBlueAttribute;
@@ -231,30 +319,31 @@ QgsAbstract3DSymbol *QgsRgbPointCloud3DSymbol::clone() const
 void QgsRgbPointCloud3DSymbol::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
 {
   Q_UNUSED( context )
-  elem.setAttribute( QStringLiteral( "point-size" ), mPointSize );
 
-  elem.setAttribute( QStringLiteral( "red" ), mRedAttribute );
-  elem.setAttribute( QStringLiteral( "green" ), mGreenAttribute );
-  elem.setAttribute( QStringLiteral( "blue" ), mBlueAttribute );
+  writeBaseXml( elem, context );
+
+  elem.setAttribute( u"red"_s, mRedAttribute );
+  elem.setAttribute( u"green"_s, mGreenAttribute );
+  elem.setAttribute( u"blue"_s, mBlueAttribute );
 
   QDomDocument doc = elem.ownerDocument();
 
   //contrast enhancement
   if ( mRedContrastEnhancement )
   {
-    QDomElement redContrastElem = doc.createElement( QStringLiteral( "redContrastEnhancement" ) );
+    QDomElement redContrastElem = doc.createElement( u"redContrastEnhancement"_s );
     mRedContrastEnhancement->writeXml( doc, redContrastElem );
     elem.appendChild( redContrastElem );
   }
   if ( mGreenContrastEnhancement )
   {
-    QDomElement greenContrastElem = doc.createElement( QStringLiteral( "greenContrastEnhancement" ) );
+    QDomElement greenContrastElem = doc.createElement( u"greenContrastEnhancement"_s );
     mGreenContrastEnhancement->writeXml( doc, greenContrastElem );
     elem.appendChild( greenContrastElem );
   }
   if ( mBlueContrastEnhancement )
   {
-    QDomElement blueContrastElem = doc.createElement( QStringLiteral( "blueContrastEnhancement" ) );
+    QDomElement blueContrastElem = doc.createElement( u"blueContrastEnhancement"_s );
     mBlueContrastEnhancement->writeXml( doc, blueContrastElem );
     elem.appendChild( blueContrastElem );
   }
@@ -263,45 +352,44 @@ void QgsRgbPointCloud3DSymbol::writeXml( QDomElement &elem, const QgsReadWriteCo
 void QgsRgbPointCloud3DSymbol::readXml( const QDomElement &elem, const QgsReadWriteContext &context )
 {
   Q_UNUSED( context )
-  mPointSize = elem.attribute( "point-size", QStringLiteral( "2.0" ) ).toFloat();
 
-  setRedAttribute( elem.attribute( QStringLiteral( "red" ), QStringLiteral( "Red" ) ) );
-  setGreenAttribute( elem.attribute( QStringLiteral( "green" ), QStringLiteral( "Green" ) ) );
-  setBlueAttribute( elem.attribute( QStringLiteral( "blue" ), QStringLiteral( "Blue" ) ) );
+  readBaseXml( elem, context );
+
+  setRedAttribute( elem.attribute( u"red"_s, u"Red"_s ) );
+  setGreenAttribute( elem.attribute( u"green"_s, u"Green"_s ) );
+  setBlueAttribute( elem.attribute( u"blue"_s, u"Blue"_s ) );
 
   //contrast enhancements
   QgsContrastEnhancement *redContrastEnhancement = nullptr;
-  QDomElement redContrastElem = elem.firstChildElement( QStringLiteral( "redContrastEnhancement" ) );
+  const QDomElement redContrastElem = elem.firstChildElement( u"redContrastEnhancement"_s );
   if ( !redContrastElem.isNull() )
   {
-    redContrastEnhancement = new QgsContrastEnhancement( Qgis::UnknownDataType );
+    redContrastEnhancement = new QgsContrastEnhancement( Qgis::DataType::UnknownDataType );
     redContrastEnhancement->readXml( redContrastElem );
     setRedContrastEnhancement( redContrastEnhancement );
   }
 
   QgsContrastEnhancement *greenContrastEnhancement = nullptr;
-  QDomElement greenContrastElem = elem.firstChildElement( QStringLiteral( "greenContrastEnhancement" ) );
+  const QDomElement greenContrastElem = elem.firstChildElement( u"greenContrastEnhancement"_s );
   if ( !greenContrastElem.isNull() )
   {
-    greenContrastEnhancement = new QgsContrastEnhancement( Qgis::UnknownDataType );
+    greenContrastEnhancement = new QgsContrastEnhancement( Qgis::DataType::UnknownDataType );
     greenContrastEnhancement->readXml( greenContrastElem );
     setGreenContrastEnhancement( greenContrastEnhancement );
   }
 
   QgsContrastEnhancement *blueContrastEnhancement = nullptr;
-  QDomElement blueContrastElem = elem.firstChildElement( QStringLiteral( "blueContrastEnhancement" ) );
+  const QDomElement blueContrastElem = elem.firstChildElement( u"blueContrastEnhancement"_s );
   if ( !blueContrastElem.isNull() )
   {
-    blueContrastEnhancement = new QgsContrastEnhancement( Qgis::UnknownDataType );
+    blueContrastEnhancement = new QgsContrastEnhancement( Qgis::DataType::UnknownDataType );
     blueContrastEnhancement->readXml( blueContrastElem );
     setBlueContrastEnhancement( blueContrastEnhancement );
   }
 }
 
-void QgsRgbPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
+void QgsRgbPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
 {
-  Qt3DRender::QParameter *renderingStyle = new Qt3DRender::QParameter( "u_renderingStyle", QgsPointCloud3DSymbol::RgbRendering );
-  mat->addParameter( renderingStyle );
   Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
   mat->addParameter( pointSizeParameter );
 }
@@ -372,14 +460,11 @@ void QgsRgbPointCloud3DSymbol::setBlueContrastEnhancement( QgsContrastEnhancemen
 
 QgsClassificationPointCloud3DSymbol::QgsClassificationPointCloud3DSymbol()
   : QgsPointCloud3DSymbol()
-{
+{}
 
-}
-
-QgsAbstract3DSymbol *QgsClassificationPointCloud3DSymbol::clone() const
+QgsClassificationPointCloud3DSymbol *QgsClassificationPointCloud3DSymbol::clone() const
 {
   QgsClassificationPointCloud3DSymbol *result = new QgsClassificationPointCloud3DSymbol;
-  result->mPointSize = mPointSize;
   result->mRenderingParameter = mRenderingParameter;
   result->mCategoriesList = mCategoriesList;
   copyBaseSettings( result );
@@ -388,7 +473,7 @@ QgsAbstract3DSymbol *QgsClassificationPointCloud3DSymbol::clone() const
 
 QString QgsClassificationPointCloud3DSymbol::symbolType() const
 {
-  return QStringLiteral( "classification" );
+  return u"classification"_s;
 }
 
 void QgsClassificationPointCloud3DSymbol::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
@@ -396,18 +481,20 @@ void QgsClassificationPointCloud3DSymbol::writeXml( QDomElement &elem, const Qgs
   Q_UNUSED( context )
   QDomDocument doc = elem.ownerDocument();
 
-  elem.setAttribute( QStringLiteral( "point-size" ), mPointSize );
-  elem.setAttribute( QStringLiteral( "rendering-parameter" ), mRenderingParameter );
+  writeBaseXml( elem, context );
+
+  elem.setAttribute( u"rendering-parameter"_s, mRenderingParameter );
 
   // categories
-  QDomElement catsElem = doc.createElement( QStringLiteral( "categories" ) );
+  QDomElement catsElem = doc.createElement( u"categories"_s );
   for ( const QgsPointCloudCategory &category : mCategoriesList )
   {
-    QDomElement catElem = doc.createElement( QStringLiteral( "category" ) );
-    catElem.setAttribute( QStringLiteral( "value" ), QString::number( category.value() ) );
-    catElem.setAttribute( QStringLiteral( "label" ), category.label() );
-    catElem.setAttribute( QStringLiteral( "color" ), QgsSymbolLayerUtils::encodeColor( category.color() ) );
-    catElem.setAttribute( QStringLiteral( "render" ), category.renderState() ? "true" : "false" );
+    QDomElement catElem = doc.createElement( u"category"_s );
+    catElem.setAttribute( u"value"_s, QString::number( category.value() ) );
+    catElem.setAttribute( u"pointSize"_s, category.pointSize() );
+    catElem.setAttribute( u"label"_s, category.label() );
+    catElem.setAttribute( u"color"_s, QgsColorUtils::colorToString( category.color() ) );
+    catElem.setAttribute( u"render"_s, category.renderState() ? "true" : "false" );
     catsElem.appendChild( catElem );
   }
   elem.appendChild( catsElem );
@@ -417,23 +504,24 @@ void QgsClassificationPointCloud3DSymbol::readXml( const QDomElement &elem, cons
 {
   Q_UNUSED( context )
 
-  mPointSize = elem.attribute( "point-size", QStringLiteral( "2.0" ) ).toFloat();
+  readBaseXml( elem, context );
   mRenderingParameter = elem.attribute( "rendering-parameter", QString() );
 
-  const QDomElement catsElem = elem.firstChildElement( QStringLiteral( "categories" ) );
+  const QDomElement catsElem = elem.firstChildElement( u"categories"_s );
   if ( !catsElem.isNull() )
   {
     mCategoriesList.clear();
     QDomElement catElem = catsElem.firstChildElement();
     while ( !catElem.isNull() )
     {
-      if ( catElem.tagName() == QLatin1String( "category" ) )
+      if ( catElem.tagName() == "category"_L1 )
       {
-        const int value = catElem.attribute( QStringLiteral( "value" ) ).toInt();
-        const QString label = catElem.attribute( QStringLiteral( "label" ) );
-        const bool render = catElem.attribute( QStringLiteral( "render" ) ) != QLatin1String( "false" );
-        const QColor color = QgsSymbolLayerUtils::decodeColor( catElem.attribute( QStringLiteral( "color" ) ) );
-        mCategoriesList.append( QgsPointCloudCategory( value, color, label, render ) );
+        const int value = catElem.attribute( u"value"_s ).toInt();
+        const double size = catElem.attribute( u"pointSize"_s, u"0"_s ).toDouble();
+        const QString label = catElem.attribute( u"label"_s );
+        const bool render = catElem.attribute( u"render"_s ) != "false"_L1;
+        const QColor color = QgsColorUtils::colorFromString( catElem.attribute( u"color"_s ) );
+        mCategoriesList.append( QgsPointCloudCategory( value, color, label, render, size ) );
       }
       catElem = catElem.nextSiblingElement();
     }
@@ -458,7 +546,7 @@ void QgsClassificationPointCloud3DSymbol::setCategoriesList( const QgsPointCloud
 QgsPointCloudCategoryList QgsClassificationPointCloud3DSymbol::getFilteredOutCategories() const
 {
   QgsPointCloudCategoryList filteredOut;
-  for ( QgsPointCloudCategory category : mCategoriesList )
+  for ( const QgsPointCloudCategory &category : mCategoriesList )
   {
     if ( !category.renderState() )
       filteredOut.push_back( category );
@@ -469,13 +557,13 @@ QgsPointCloudCategoryList QgsClassificationPointCloud3DSymbol::getFilteredOutCat
 QgsColorRampShader QgsClassificationPointCloud3DSymbol::colorRampShader() const
 {
   QgsColorRampShader colorRampShader;
-  colorRampShader.setColorRampType( QgsColorRampShader::Type::Exact );
-  colorRampShader.setClassificationMode( QgsColorRampShader::ClassificationMode::Continuous );
+  colorRampShader.setColorRampType( Qgis::ShaderInterpolationMethod::Exact );
+  colorRampShader.setClassificationMode( Qgis::ShaderClassificationMethod::Continuous );
   QList<QgsColorRampShader::ColorRampItem> colorRampItemList;
   for ( const QgsPointCloudCategory &category : mCategoriesList )
   {
-    QColor color = category.color();
-    QgsColorRampShader::ColorRampItem item( category.value(), color, category.label() );
+    const QColor color = category.color();
+    const QgsColorRampShader::ColorRampItem item( category.value(), color, category.label() );
     colorRampItemList.push_back( item );
   }
   colorRampShader.setColorRampItemList( colorRampItemList );
@@ -483,13 +571,9 @@ QgsColorRampShader QgsClassificationPointCloud3DSymbol::colorRampShader() const
 }
 
 
-void QgsClassificationPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *mat )
+void QgsClassificationPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
 {
-  QgsColorRampShader mColorRampShader = colorRampShader();
-  Qt3DRender::QParameter *renderingStyle = new Qt3DRender::QParameter( "u_renderingStyle", QgsPointCloud3DSymbol::ColorRamp );
-  mat->addParameter( renderingStyle );
-  Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
-  mat->addParameter( pointSizeParameter );
+  const QgsColorRampShader mColorRampShader = colorRampShader();
   // Create the texture to pass the color ramp
   Qt3DRender::QTexture1D *colorRampTexture = nullptr;
   if ( mColorRampShader.colorRampItemList().count() > 0 )
@@ -498,6 +582,9 @@ void QgsClassificationPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *m
     colorRampTexture->addTextureImage( new QgsColorRampTexture( mColorRampShader, 1 ) );
     colorRampTexture->setMinificationFilter( Qt3DRender::QTexture1D::Linear );
     colorRampTexture->setMagnificationFilter( Qt3DRender::QTexture1D::Linear );
+    // note -- this texture is an exception, we do NOT set it to srgb format as we do NOT want
+    // it linearised before sampling. That is because we need to do the interpolation on the ramp
+    // in SRGB color space. The shader converts the result after sampling the ramp to linear.
   }
 
   // Parameters
@@ -505,8 +592,7 @@ void QgsClassificationPointCloud3DSymbol::fillMaterial( Qt3DRender::QMaterial *m
   mat->addParameter( colorRampTextureParameter );
   Qt3DRender::QParameter *colorRampCountParameter = new Qt3DRender::QParameter( "u_colorRampCount", mColorRampShader.colorRampItemList().count() );
   mat->addParameter( colorRampCountParameter );
-  int colorRampType = mColorRampShader.colorRampType();
-  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", colorRampType );
+  const Qgis::ShaderInterpolationMethod colorRampType = mColorRampShader.colorRampType();
+  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", static_cast<int>( colorRampType ) );
   mat->addParameter( colorRampTypeParameter );
 }
-

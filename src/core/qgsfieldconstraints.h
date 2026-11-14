@@ -16,17 +16,17 @@
 #ifndef QGSFIELDCONSTRAINTS_H
 #define QGSFIELDCONSTRAINTS_H
 
-#include <QString>
+#include "qgis_core.h"
+#include "qgis_sip.h"
+
 #include <QHash>
 #include <QObject>
-
-#include "qgis_core.h"
+#include <QString>
 
 /**
  * \class QgsFieldConstraints
  * \ingroup core
- * Stores information about constraints which may be present on a field.
- * \since QGIS 3.0
+ * \brief Stores information about constraints which may be present on a field.
  */
 
 class CORE_EXPORT QgsFieldConstraints
@@ -36,14 +36,13 @@ class CORE_EXPORT QgsFieldConstraints
     Q_PROPERTY( Constraints constraints READ constraints )
 
   public:
-
     /**
      * Constraints which may be present on a field.
      */
-    enum Constraint
+    enum Constraint SIP_ENUM_BASETYPE( IntFlag )
     {
-      ConstraintNotNull = 1, //!< Field may not be null
-      ConstraintUnique = 1 << 1, //!< Field must have a unique value
+      ConstraintNotNull = 1,         //!< Field may not be null
+      ConstraintUnique = 1 << 1,     //!< Field must have a unique value
       ConstraintExpression = 1 << 2, //!< Field has an expression constraint set. See constraintExpression().
     };
     Q_DECLARE_FLAGS( Constraints, Constraint )
@@ -54,8 +53,8 @@ class CORE_EXPORT QgsFieldConstraints
     enum ConstraintOrigin
     {
       ConstraintOriginNotSet = 0, //!< Constraint is not set
-      ConstraintOriginProvider, //!< Constraint was set at data provider
-      ConstraintOriginLayer, //!< Constraint was set by layer
+      ConstraintOriginProvider,   //!< Constraint was set at data provider
+      ConstraintOriginLayer,      //!< Constraint was set by layer
     };
 
     /**
@@ -64,8 +63,8 @@ class CORE_EXPORT QgsFieldConstraints
     enum ConstraintStrength
     {
       ConstraintStrengthNotSet = 0, //!< Constraint is not set
-      ConstraintStrengthHard, //!< Constraint must be honored before feature can be accepted
-      ConstraintStrengthSoft, //!< User is warned if constraint is violated but feature can still be accepted
+      ConstraintStrengthHard,       //!< Constraint must be honored before feature can be accepted
+      ConstraintStrengthSoft,       //!< User is warned if constraint is violated but feature can still be accepted
     };
 
     /**
@@ -89,7 +88,8 @@ class CORE_EXPORT QgsFieldConstraints
 
     /**
      * Returns the strength of a field constraint, or ConstraintStrengthNotSet if the constraint
-     * is not present on this field.
+     * is not present on this field. If the strength is not set returns ConstraintStrengthNotSet
+     * for anything but ConstraintExpression which returns ConstraintStrengthHard.
      * \see constraints()
      * \see setConstraintStrength()
      */
@@ -141,10 +141,26 @@ class CORE_EXPORT QgsFieldConstraints
      */
     void setConstraintExpression( const QString &expression, const QString &description = QString() );
 
+    /**
+     * Returns the associated field domain name, for providers which support field domains.
+     *
+     * \see setDomainName()
+     * \since QGIS 3.26
+     */
+    QString domainName() const { return mDomainName; }
+
+    /**
+     * Sets the associated field \a domain name, for providers which support field domains.
+     *
+     * \see domainName()
+     * \since QGIS 3.26
+     */
+    void setDomainName( const QString &domain ) { mDomainName = domain; }
+
+    // TODO c++20 - replace with = default
     bool operator==( const QgsFieldConstraints &other ) const;
 
   private:
-
     //! Constraints
     Constraints mConstraints;
 
@@ -159,6 +175,9 @@ class CORE_EXPORT QgsFieldConstraints
 
     //! Expression constraint descriptive name
     QString mExpressionConstraintDescription;
+
+    //! Field domain name, for providers which support field domains
+    QString mDomainName;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsFieldConstraints::Constraints )

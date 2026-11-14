@@ -17,19 +17,26 @@
 
 #include "qgssourcecache.h"
 
+#include <memory>
+
 #include "qgis.h"
+#include "qgsabstractcontentcache_p.h"
 #include "qgslogger.h"
 
-#include <QFile>
 #include <QBuffer>
+#include <QFile>
+#include <QString>
 #include <QTemporaryDir>
+
+#include "moc_qgssourcecache.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QgsSourceCacheEntry::QgsSourceCacheEntry( const QString &path )
   : QgsAbstractContentCacheEntry( path )
-{
-}
+{}
 
 bool QgsSourceCacheEntry::isEqual( const QgsAbstractContentCacheEntry *other ) const
 {
@@ -48,7 +55,7 @@ int QgsSourceCacheEntry::dataSize() const
 
 void QgsSourceCacheEntry::dump() const
 {
-  QgsDebugMsgLevel( QStringLiteral( "path: %1" ).arg( path ), 3 );
+  QgsDebugMsgLevel( u"path: %1"_s.arg( path ), 3 );
 }
 
 ///@endcond
@@ -56,7 +63,7 @@ void QgsSourceCacheEntry::dump() const
 QgsSourceCache::QgsSourceCache( QObject *parent )
   : QgsAbstractContentCache< QgsSourceCacheEntry >( parent, QObject::tr( "Source" ) )
 {
-  temporaryDir.reset( new QTemporaryDir() );
+  temporaryDir = std::make_unique<QTemporaryDir>();
 
   connect( this, &QgsAbstractContentCacheBase::remoteContentFetched, this, &QgsSourceCache::remoteSourceFetched );
 }
@@ -67,7 +74,7 @@ QString QgsSourceCache::localFilePath( const QString &path, bool blocking )
   if ( file.isEmpty() )
     return QString();
 
-  QMutexLocker locker( &mMutex );
+  const QMutexLocker locker( &mMutex );
 
   QgsSourceCacheEntry *currentEntry = findExistingEntry( new QgsSourceCacheEntry( file ) );
 
@@ -75,7 +82,7 @@ QString QgsSourceCache::localFilePath( const QString &path, bool blocking )
   if ( currentEntry->filePath.isEmpty() )
   {
     bool isBroken;
-    QString filePath = fetchSource( file, isBroken, blocking );
+    const QString filePath = fetchSource( file, isBroken, blocking );
     currentEntry->filePath = filePath;
   }
 
@@ -86,13 +93,13 @@ QString QgsSourceCache::fetchSource( const QString &path, bool &isBroken, bool b
 {
   QString filePath;
 
-  if ( !path.startsWith( QLatin1String( "base64:" ) ) && QFile::exists( path ) )
+  if ( !path.startsWith( "base64:"_L1 ) && QFile::exists( path ) )
   {
     filePath = path;
   }
   else
   {
-    QByteArray ba = getContent( path, QByteArray( "broken" ), QByteArray( "fetching" ), blocking );
+    const QByteArray ba = getContent( path, QByteArray( "broken" ), QByteArray( "fetching" ), blocking );
 
     if ( ba == "broken" )
     {
@@ -106,7 +113,11 @@ QString QgsSourceCache::fetchSource( const QString &path, bool &isBroken, bool b
         filePath = temporaryDir->filePath( QString::number( ++id ) );
 
       QFile file( filePath );
-      file.open( QIODevice::WriteOnly );
+      if ( !file.open( QIODevice::WriteOnly ) )
+      {
+        QgsDebugError( u"Can't open file %1"_s.arg( filePath ) );
+        return QString();
+      }
       file.write( ba );
       file.close();
     }
@@ -114,3 +125,5 @@ QString QgsSourceCache::fetchSource( const QString &path, bool &isBroken, bool b
 
   return filePath;
 }
+
+template class QgsAbstractContentCache<QgsSourceCacheEntry>; // clazy:exclude=missing-qobject-macro

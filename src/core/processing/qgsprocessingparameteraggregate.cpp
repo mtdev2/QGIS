@@ -15,14 +15,14 @@
 
 #include "qgsprocessingparameteraggregate.h"
 
-#include "qgsvectorlayer.h"
+#include <QString>
 
+using namespace Qt::StringLiterals;
 
 QgsProcessingParameterAggregate::QgsProcessingParameterAggregate( const QString &name, const QString &description, const QString &parentLayerParameterName, bool optional )
   : QgsProcessingParameterDefinition( name, description, QVariant(), optional )
   , mParentLayerParameterName( parentLayerParameterName )
-{
-}
+{}
 
 QgsProcessingParameterDefinition *QgsProcessingParameterAggregate::clone() const
 {
@@ -37,15 +37,15 @@ QString QgsProcessingParameterAggregate::type() const
 bool QgsProcessingParameterAggregate::checkValueIsAcceptable( const QVariant &input, QgsProcessingContext * ) const
 {
   if ( !input.isValid() )
-    return mFlags & FlagOptional;
+    return mFlags & Qgis::ProcessingParameterFlag::Optional;
 
-  if ( input.type() != QVariant::List )
+  if ( input.userType() != QMetaType::Type::QVariantList )
     return false;
 
   const QVariantList inputList = input.toList();
   for ( const QVariant &inputItem : inputList )
   {
-    if ( inputItem.type() != QVariant::Map )
+    if ( inputItem.userType() != QMetaType::Type::QVariantMap )
       return false;
 
     const QVariantMap inputItemMap = inputItem.toMap();
@@ -72,14 +72,14 @@ QString QgsProcessingParameterAggregate::asPythonString( QgsProcessing::PythonOu
 {
   switch ( outputType )
   {
-    case QgsProcessing::PythonQgsProcessingAlgorithmSubclass:
+    case QgsProcessing::PythonOutputType::PythonQgsProcessingAlgorithmSubclass:
     {
-      QString code = QStringLiteral( "QgsProcessingParameterAggregate('%1', '%2'" ).arg( name(), description() );
+      QString code = u"QgsProcessingParameterAggregate('%1', %2"_s.arg( name(), QgsProcessingUtils::stringToPythonLiteral( description() ) );
       if ( !mParentLayerParameterName.isEmpty() )
-        code += QStringLiteral( ", parentLayerParameterName=%1" ).arg( QgsProcessingUtils::stringToPythonLiteral( mParentLayerParameterName ) );
+        code += u", parentLayerParameterName=%1"_s.arg( QgsProcessingUtils::stringToPythonLiteral( mParentLayerParameterName ) );
 
-      if ( mFlags & FlagOptional )
-        code += QLatin1String( ", optional=True" );
+      if ( mFlags & Qgis::ProcessingParameterFlag::Optional )
+        code += ", optional=True"_L1;
       code += ')';
       return code;
     }
@@ -90,14 +90,14 @@ QString QgsProcessingParameterAggregate::asPythonString( QgsProcessing::PythonOu
 QVariantMap QgsProcessingParameterAggregate::toVariantMap() const
 {
   QVariantMap map = QgsProcessingParameterDefinition::toVariantMap();
-  map.insert( QStringLiteral( "parent_layer" ), mParentLayerParameterName );
+  map.insert( u"parent_layer"_s, mParentLayerParameterName );
   return map;
 }
 
 bool QgsProcessingParameterAggregate::fromVariantMap( const QVariantMap &map )
 {
   QgsProcessingParameterDefinition::fromVariantMap( map );
-  mParentLayerParameterName = map.value( QStringLiteral( "parent_layer" ) ).toString();
+  mParentLayerParameterName = map.value( u"parent_layer"_s ).toString();
   return true;
 }
 
@@ -118,4 +118,3 @@ void QgsProcessingParameterAggregate::setParentLayerParameterName( const QString
 {
   mParentLayerParameterName = name;
 }
-

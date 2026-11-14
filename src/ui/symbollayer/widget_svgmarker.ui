@@ -152,7 +152,7 @@
         <number>2</number>
        </property>
        <item>
-        <widget class="QgsRatioLockButton" name="mLockAspectRatio" native="true">
+        <widget class="QgsRatioLockButton" name="mLockAspectRatio">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -231,23 +231,7 @@
     </widget>
    </item>
    <item row="8" column="1">
-    <widget class="QComboBox" name="mHorizontalAnchorComboBox">
-     <item>
-      <property name="text">
-       <string>Left</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>HCenter</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Right</string>
-      </property>
-     </item>
-    </widget>
+    <widget class="QComboBox" name="mHorizontalAnchorComboBox"/>
    </item>
    <item row="4" column="1">
     <layout class="QHBoxLayout" name="horizontalLayout_5">
@@ -457,23 +441,7 @@
     </widget>
    </item>
    <item row="7" column="1">
-    <widget class="QComboBox" name="mVerticalAnchorComboBox">
-     <item>
-      <property name="text">
-       <string>Top</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>VCenter</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Bottom</string>
-      </property>
-     </item>
-    </widget>
+    <widget class="QComboBox" name="mVerticalAnchorComboBox"/>
    </item>
    <item row="7" column="0" rowspan="2">
     <widget class="QLabel" name="mAnchorPointLabel">
@@ -487,19 +455,19 @@
  <customwidgets>
   <customwidget>
    <class>QgsColorButton</class>
-   <extends>QPushButton</extends>
+   <extends>QToolButton</extends>
    <header>qgscolorbutton.h</header>
    <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>QgsDoubleSpinBox</class>
-   <extends>QDoubleSpinBox</extends>
-   <header>qgsdoublespinbox.h</header>
   </customwidget>
   <customwidget>
    <class>QgsPropertyOverrideButton</class>
    <extends>QToolButton</extends>
    <header>qgspropertyoverridebutton.h</header>
+  </customwidget>
+  <customwidget>
+   <class>QgsDoubleSpinBox</class>
+   <extends>QDoubleSpinBox</extends>
+   <header>qgsdoublespinbox.h</header>
   </customwidget>
   <customwidget>
    <class>QgsUnitSelectionWidget</class>
@@ -509,8 +477,9 @@
   </customwidget>
   <customwidget>
    <class>QgsRatioLockButton</class>
-   <extends>QWidget</extends>
+   <extends>QToolButton</extends>
    <header>qgsratiolockbutton.h</header>
+   <container>1</container>
   </customwidget>
   <customwidget>
    <class>QgsSvgSelectorWidget</class>
@@ -522,9 +491,10 @@
  <tabstops>
   <tabstop>spinWidth</tabstop>
   <tabstop>spinHeight</tabstop>
-  <tabstop>mSizeUnitWidget</tabstop>
+  <tabstop>mLockAspectRatio</tabstop>
   <tabstop>mWidthDDBtn</tabstop>
   <tabstop>mHeightDDBtn</tabstop>
+  <tabstop>mSizeUnitWidget</tabstop>
   <tabstop>mChangeColorButton</tabstop>
   <tabstop>mFillColorDDBtn</tabstop>
   <tabstop>mChangeStrokeColorButton</tabstop>

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """
 ***************************************************************************
     ProcessingResults.py
@@ -17,9 +15,9 @@
 ***************************************************************************
 """
 
-__author__ = 'Victor Olaya'
-__date__ = 'August 2012'
-__copyright__ = '(C) 2012, Victor Olaya'
+__author__ = "Victor Olaya"
+__date__ = "August 2012"
+__copyright__ = "(C) 2012, Victor Olaya"
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
@@ -38,7 +36,6 @@ class ProcessingResults(QObject):
 
 
 class Result:
-
     def __init__(self, icon, name, timestamp, filename):
         self.icon = icon
         self.name = name

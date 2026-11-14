@@ -14,21 +14,25 @@
  ***************************************************************************/
 
 #include "qgslocaldefaultsettings.h"
-#include "qgsbearingnumericformat.h"
-#include "qgis.h"
-#include "qgsreadwritecontext.h"
-#include "qgssettings.h"
-#include "qgsapplication.h"
-#include "qgsnumericformatregistry.h"
 
 #include <memory>
+
+#include "qgis.h"
+#include "qgsbearingnumericformat.h"
+#include "qgscoordinatenumericformat.h"
+#include "qgsreadwritecontext.h"
+
+#include <QSettings>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 void QgsLocalDefaultSettings::setBearingFormat( const QgsBearingNumericFormat *format )
 {
   const QVariantMap config = format->configuration( QgsReadWriteContext() );
 
   QSettings s;
-  s.beginGroup( QStringLiteral( "defaults/bearing_format" ) );
+  s.beginGroup( u"defaults/bearing_format"_s );
   for ( auto it = config.constBegin(); it != config.constEnd(); ++it )
   {
     s.setValue( it.key(), it.value() );
@@ -40,7 +44,7 @@ QgsBearingNumericFormat *QgsLocalDefaultSettings::bearingFormat()
 {
   QVariantMap config;
   QSettings s;
-  s.beginGroup( QStringLiteral( "defaults/bearing_format" ) );
+  s.beginGroup( u"defaults/bearing_format"_s );
   const QStringList keys = s.childKeys();
   for ( const QString &key : keys )
   {
@@ -49,7 +53,38 @@ QgsBearingNumericFormat *QgsLocalDefaultSettings::bearingFormat()
   }
   s.endGroup();
 
-  std::unique_ptr< QgsBearingNumericFormat > res = qgis::make_unique< QgsBearingNumericFormat >();
+  auto res = std::make_unique< QgsBearingNumericFormat >();
+  res->setConfiguration( config, QgsReadWriteContext() );
+  return res.release();
+}
+
+void QgsLocalDefaultSettings::setGeographicCoordinateFormat( const QgsGeographicCoordinateNumericFormat *format )
+{
+  const QVariantMap config = format->configuration( QgsReadWriteContext() );
+
+  QSettings s;
+  s.beginGroup( u"defaults/coordinate_format"_s );
+  for ( auto it = config.constBegin(); it != config.constEnd(); ++it )
+  {
+    s.setValue( it.key(), it.value() );
+  }
+  s.endGroup();
+}
+
+QgsGeographicCoordinateNumericFormat *QgsLocalDefaultSettings::geographicCoordinateFormat()
+{
+  QVariantMap config;
+  QSettings s;
+  s.beginGroup( u"defaults/coordinate_format"_s );
+  const QStringList keys = s.childKeys();
+  for ( const QString &key : keys )
+  {
+    const QVariant value = s.value( key );
+    config.insert( key, value );
+  }
+  s.endGroup();
+
+  auto res = std::make_unique< QgsGeographicCoordinateNumericFormat >();
   res->setConfiguration( config, QgsReadWriteContext() );
   return res.release();
 }

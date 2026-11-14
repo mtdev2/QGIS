@@ -13,13 +13,19 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QDir>
-
 #include "qgslocalizeddatapathregistry.h"
-#include "qgssettings.h"
+
 #include "qgis.h"
 #include "qgsreadwritelocker.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingstree.h"
 
+#include <QDir>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryStringList *QgsLocalizedDataPathRegistry::settingsLocalizedDataPaths = new QgsSettingsEntryStringList( u"localized_data_paths"_s, QgsSettingsTree::sTreeQgis, QStringList() );
 
 QgsLocalizedDataPathRegistry::QgsLocalizedDataPathRegistry()
 {
@@ -30,7 +36,7 @@ QString QgsLocalizedDataPathRegistry::globalPath( const QString &relativePath ) 
 {
   QgsReadWriteLocker locker( mLock, QgsReadWriteLocker::Read );
 
-  for ( const QDir &basePath : qgis::as_const( mPaths ) )
+  for ( const QDir &basePath : std::as_const( mPaths ) )
     if ( basePath.exists( relativePath ) )
       return basePath.absoluteFilePath( relativePath );
 
@@ -41,12 +47,11 @@ QString QgsLocalizedDataPathRegistry::localizedPath( const QString &fullPath ) c
 {
   QgsReadWriteLocker locker( mLock, QgsReadWriteLocker::Read );
 
-  for ( const QDir &basePath : qgis::as_const( mPaths ) )
+  for ( const QDir &basePath : std::as_const( mPaths ) )
     if ( fullPath.startsWith( basePath.absolutePath() ) )
       return basePath.relativeFilePath( fullPath );
 
   return QString();
-
 }
 
 QStringList QgsLocalizedDataPathRegistry::paths() const
@@ -105,10 +110,10 @@ void QgsLocalizedDataPathRegistry::unregisterPath( const QString &path )
 
 void QgsLocalizedDataPathRegistry::readFromSettings()
 {
-  setPaths( QgsSettings().value( QStringLiteral( "/qgis/localized_data_paths" ) ).toStringList() );
+  setPaths( settingsLocalizedDataPaths->value() );
 }
 
-void QgsLocalizedDataPathRegistry::writeToSettings()
+void QgsLocalizedDataPathRegistry::writeToSettings() const
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/localized_data_paths" ), paths() );
+  settingsLocalizedDataPaths->setValue( paths() );
 }

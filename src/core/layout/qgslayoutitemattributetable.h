@@ -20,31 +20,29 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgslayoutitemmap.h"
 #include "qgslayouttable.h"
 #include "qgsvectorlayerref.h"
 
-class QgsLayoutItemMap;
 class QgsVectorLayer;
 
 /**
  * \ingroup core
- * A layout table subclass that displays attributes from a vector layer.
- * \since QGIS 3.0
+ * \brief A layout table subclass that displays attributes from a vector layer.
 */
-class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
+class CORE_EXPORT QgsLayoutItemAttributeTable : public QgsLayoutTable
 {
     Q_OBJECT
 
   public:
-
     /**
      * Specifies the content source for the attribute table
      */
     enum ContentSource
     {
       LayerAttributes = 0, //!< Table shows attributes from features in a vector layer
-      AtlasFeature, //!< Table shows attributes from the current atlas feature
-      RelationChildren //!< Table shows attributes from related child features
+      AtlasFeature,        //!< Table shows attributes from the current atlas feature
+      RelationChildren     //!< Table shows attributes from related child features
     };
 
     /**
@@ -279,12 +277,13 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
     bool getTableContents( QgsLayoutTableContents &contents ) override;
 
     QgsConditionalStyle conditionalCellStyle( int row, int column ) const override;
+    QgsTextFormat textFormatForCell( int row, int column ) const override;
     QgsExpressionContextScope *scopeForCell( int row, int column ) const override SIP_FACTORY;
 
     QgsExpressionContext createExpressionContext() const override;
     void finalizeRestoreFromXml() override;
 
-    void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::AllProperties ) override;
+    void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::DataDefinedProperty::AllProperties ) override;
 
     /**
      * Returns TRUE if the attribute table will be rendered using the conditional styling
@@ -305,7 +304,6 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
     void setUseConditionalStyling( bool enabled );
 
   protected:
-
     bool writePropertiesToElement( QDomElement &elem, QDomDocument &doc, const QgsReadWriteContext &context ) const override;
     bool readPropertiesFromElement( const QDomElement &itemElem, const QDomDocument &doc, const QgsReadWriteContext &context ) override;
 
@@ -314,7 +312,6 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
     void disconnectCurrentMap();
 
   private:
-
     //! Attribute source
     ContentSource mSource = LayerAttributes;
     //! Associated vector layer
@@ -330,7 +327,7 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
     QgsVectorLayer *mCurrentAtlasLayer = nullptr;
 
     //! Associated map (used to display the visible features)
-    QgsLayoutItemMap *mMap = nullptr;
+    QPointer< QgsLayoutItemMap > mMap = nullptr;
     QString mMapUuid;
 
     //! Maximum number of features that is displayed
@@ -357,18 +354,20 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
 
     QList< QList< QgsConditionalStyle > > mConditionalStyles;
     QList< QgsFeature > mFeatures;
+    QMap<QString, QVariant> mLayerCache;
 
     struct Cell
     {
-      Cell() = default;
+        Cell() = default;
 
-      Cell( const QVariant &content, const QgsConditionalStyle &style, const QgsFeature &feature )
-        : content( content )
-        , style( style )
-        , feature( feature ) {}
-      QVariant content;
-      QgsConditionalStyle style;
-      QgsFeature feature;
+        Cell( const QVariant &content, const QgsConditionalStyle &style, const QgsFeature &feature )
+          : content( content )
+          , style( style )
+          , feature( feature )
+        {}
+        QVariant content;
+        QgsConditionalStyle style;
+        QgsFeature feature;
     };
 
     /**
@@ -390,12 +389,19 @@ class CORE_EXPORT QgsLayoutItemAttributeTable: public QgsLayoutTable
      */
     QVariant replaceWrapChar( const QVariant &variant ) const;
 
+#ifdef HAVE_SERVER_PYTHON_PLUGINS
+
+    /**
+     * Returns the list of visible columns filtered by feature filter provider.
+     */
+    QgsLayoutTableColumns filteredColumns();
+#endif
+
   private slots:
     //! Checks if this vector layer will be removed (and sets mVectorLayer to 0 if yes)
     void removeLayer( const QString &layerId );
 
     void atlasLayerChanged( QgsVectorLayer *layer );
-
 };
 
 #endif // QGSLAYOUTITEMATTRIBUTETABLE_H

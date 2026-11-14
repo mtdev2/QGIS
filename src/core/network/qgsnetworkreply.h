@@ -17,18 +17,17 @@
 
 #include "qgis_core.h"
 
-#include <QNetworkReply>
 #include <QByteArray>
+#include <QNetworkReply>
 
 /**
- * Encapsulates a network reply within a container which is inexpensive to copy and safe to pass between threads.
+ * \brief Encapsulates a network reply within a container which is inexpensive to copy and safe to pass between threads.
  * \ingroup core
  * \since QGIS 3.6
  */
 class CORE_EXPORT QgsNetworkReplyContent
 {
   public:
-
     /**
      * Default constructor for an empty reply.
      */
@@ -72,10 +71,7 @@ class CORE_EXPORT QgsNetworkReplyContent
      *
      * \see errorString()
      */
-    QNetworkReply::NetworkError error() const
-    {
-      return mError;
-    }
+    QNetworkReply::NetworkError error() const { return mError; }
 
     /**
      * Returns the error text for the reply, or an empty string if no
@@ -83,10 +79,7 @@ class CORE_EXPORT QgsNetworkReplyContent
      *
      * \see error()
      */
-    QString errorString() const
-    {
-      return mErrorString;
-    }
+    QString errorString() const { return mErrorString; }
 
 #ifndef SIP_RUN
     typedef QPair<QByteArray, QByteArray> RawHeaderPair;
@@ -98,10 +91,7 @@ class CORE_EXPORT QgsNetworkReplyContent
      * \see rawHeader()
      * \note Not available in Python bindings
      */
-    const QList<RawHeaderPair> &rawHeaderPairs() const
-    {
-      return mRawHeaderPairs;
-    }
+    const QList<RawHeaderPair> &rawHeaderPairs() const { return mRawHeaderPairs; }
 #endif
 
     /**
@@ -157,8 +147,21 @@ class CORE_EXPORT QgsNetworkReplyContent
      */
     QByteArray content() const { return mContent; }
 
-  private:
+    /**
+     * Extracts the filename component of the content disposition header from a network \a reply.
+     *
+     * \since QGIS 3.28
+     */
+    static QString extractFilenameFromContentDispositionHeader( QNetworkReply *reply );
 
+    /**
+     * Extracts the filename component of the content disposition header from the \a header.
+     *
+     * \since QGIS 3.28
+     */
+    static QString extractFileNameFromContentDispositionHeader( const QString &header );
+
+  private:
     QNetworkReply::NetworkError mError = QNetworkReply::NoError;
     QString mErrorString;
     QList<RawHeaderPair> mRawHeaderPairs;

@@ -16,11 +16,11 @@
 #ifndef QGSRANGEWIDGETWRAPPER_H
 #define QGSRANGEWIDGETWRAPPER_H
 
+#include "qgis_gui.h"
 #include "qgseditorwidgetwrapper.h"
 
-#include <QSpinBox>
 #include <QDoubleSpinBox>
-#include "qgis_gui.h"
+#include <QSpinBox>
 
 SIP_NO_FILE
 
@@ -33,7 +33,7 @@ class TestQgsRangeWidgetWrapper;
 
 /**
  * \ingroup gui
- * Wraps a range widget.
+ * \brief Wraps a range widget.
  *
  * Options:
  * <ul>
@@ -49,7 +49,6 @@ class GUI_EXPORT QgsRangeWidgetWrapper : public QgsEditorWidgetWrapper
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsRangeWidgetWrapper.
      *
@@ -62,6 +61,15 @@ class GUI_EXPORT QgsRangeWidgetWrapper : public QgsEditorWidgetWrapper
      */
     explicit QgsRangeWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QWidget *parent = nullptr );
 
+    /**
+     * Returns the default field precision to use for a \a field.
+     *
+     * This precision will be used by the widget if the user has not manually set a precision.
+     *
+     * \since QGIS 4.0
+     */
+    static int defaultFieldPrecision( const QgsField &field );
+
     // QgsEditorWidgetWrapper interface
   public:
     QVariant value() const override;
@@ -70,6 +78,9 @@ class GUI_EXPORT QgsRangeWidgetWrapper : public QgsEditorWidgetWrapper
     QWidget *createWidget( QWidget *parent ) override;
     void initWidget( QWidget *editor ) override;
     bool valid() const override;
+
+  public slots:
+    void setEnabled( bool enabled ) override;
 
   private slots:
     // NOTE - cannot be named "valueChanged", otherwise implicit conversion to QVariant results in

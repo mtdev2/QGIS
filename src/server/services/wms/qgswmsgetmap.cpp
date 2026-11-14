@@ -18,22 +18,26 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgswmsutils.h"
 #include "qgswmsgetmap.h"
+
 #include "qgswmsrenderer.h"
 #include "qgswmsserviceexception.h"
+#include "qgswmsutils.h"
 
 #include <QImage>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 namespace QgsWms
 {
 
-  void writeGetMap( QgsServerInterface *serverIface, const QgsProject *project,
-                    const QString &, const QgsServerRequest &request,
-                    QgsServerResponse &response )
+  void writeGetMap( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response )
   {
-    // get wms parameters from query
-    const QgsWmsParameters parameters( QUrlQuery( request.url() ) );
+    if ( request.serverParameters().version().isEmpty() )
+    {
+      throw QgsServiceException( QgsServiceException::OGC_OperationNotSupported, u"Please add the value of the VERSION parameter"_s, 501 );
+    }
 
     // prepare render context
     QgsWmsRenderContext context( project, serverIface );
@@ -45,20 +49,26 @@ namespace QgsWms
     context.setFlag( QgsWmsRenderContext::AddExternalLayers );
     context.setFlag( QgsWmsRenderContext::SetAccessControl );
     context.setFlag( QgsWmsRenderContext::UseTileBuffer );
-    context.setParameters( parameters );
+    context.setParameters( request.wmsParameters() );
+    context.setSocketFeedback( response.feedback() );
 
     // rendering
     QgsRenderer renderer( context );
     std::unique_ptr<QImage> result( renderer.getMap() );
 
+    if ( response.feedback() && response.feedback()->isCanceled() )
+    {
+      return;
+    }
+
     if ( result )
     {
-      const QString format = request.parameters().value( QStringLiteral( "FORMAT" ), QStringLiteral( "PNG" ) );
+      const QString format = request.parameters().value( u"FORMAT"_s, u"PNG"_s );
       writeImage( response, *result, format, context.imageQuality() );
     }
     else
     {
-      throw QgsException( QStringLiteral( "Failed to compute GetMap image" ) );
+      throw QgsException( u"Failed to compute GetMap image"_s );
     }
   }
 } // namespace QgsWms

@@ -16,13 +16,14 @@
 #ifndef QGSDATABASESCHEMAMODEL_H
 #define QGSDATABASESCHEMAMODEL_H
 
-#include <QAbstractItemModel>
-#include <QSortFilterProxyModel>
-#include <QStringList>
 #include <memory>
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+
+#include <QAbstractItemModel>
+#include <QSortFilterProxyModel>
+#include <QStringList>
 
 class QgsProviderMetadata;
 class QgsAbstractDatabaseProviderConnection;
@@ -44,12 +45,20 @@ class CORE_EXPORT QgsDatabaseSchemaModel : public QAbstractItemModel
     Q_OBJECT
 
   public:
+    // *INDENT-OFF*
 
-    //! Model roles
-    enum Role
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsDatabaseSchemaModel::Role
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsDatabaseSchemaModel, Role ) : int
     {
-      RoleEmpty = Qt::UserRole, //!< Entry is an empty entry
+      Empty SIP_MONKEYPATCH_COMPAT_NAME( RoleEmpty ) = Qt::UserRole, //!< Entry is an empty entry
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsDatabaseSchemaModel, for the specified \a provider and \a connection name.

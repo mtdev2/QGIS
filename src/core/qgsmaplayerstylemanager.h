@@ -22,9 +22,8 @@
 
 #include <QByteArray>
 #include <QMap>
-#include <QStringList>
 #include <QObject>
-
+#include <QStringList>
 
 class QDomElement;
 
@@ -32,7 +31,9 @@ class QgsMapLayer;
 
 /**
  * \ingroup core
- * Management of styles for use with one map layer. Stored styles are identified by their names. The manager
+ * \brief Management of styles for use with one map layer.
+ *
+ * Stored styles are identified by their names. The manager
  * always keep track of which style of the stored ones is currently active. When the current style is changed,
  * the new style is applied to the associated layer.
  *
@@ -50,13 +51,11 @@ class QgsMapLayer;
  * The class also features support for temporary change of the layer's style, ideal for short-term use of a custom
  * style followed by restoration of the original style (for example, when rendering a map with a different than current style).
  *
- * \since QGIS 2.8
  */
 class CORE_EXPORT QgsMapLayerStyleManager : public QObject
 {
     Q_OBJECT
   public:
-
     /**
      * Construct a style manager associated with a map layer (must not be NULLPTR).
      * The style manager will be parented to \a layer.
@@ -80,7 +79,6 @@ class CORE_EXPORT QgsMapLayerStyleManager : public QObject
     /**
      * Gets available styles for the associated map layer.
      * \returns A map of map layer style by style name
-     * \since QGIS 3.0
      */
     QMap<QString, QgsMapLayerStyle> mapLayerStyles() const;
 
@@ -132,9 +130,8 @@ class CORE_EXPORT QgsMapLayerStyleManager : public QObject
     /**
      * Returns TRUE if this is the default style
      *
-     * \since QGIS 3.0
      */
-    bool isDefault( const QString &styleName ) const;
+    static bool isDefault( const QString &styleName );
 
     /**
      * Copies all styles from \a other.
@@ -159,7 +156,7 @@ class CORE_EXPORT QgsMapLayerStyleManager : public QObject
     QMap<QString, QgsMapLayerStyle> mStyles;
     QString mCurrentStyle;
     QgsMapLayerStyle *mOverriddenOriginalStyle = nullptr;
-    QString defaultStyleName() const;
+    static QString defaultStyleName();
 };
 
 #endif // QGSMAPLAYERSTYLEMANAGER_H

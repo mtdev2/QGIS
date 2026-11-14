@@ -18,15 +18,19 @@
 #ifndef QGSANNOTATION_H
 #define QGSANNOTATION_H
 
-#include "qgis_core.h"
 #include "qgis.h"
-#include "qgspointxy.h"
+#include "qgis_core.h"
 #include "qgscoordinatereferencesystem.h"
-#include "qgssymbol.h"
-#include "qgsmargins.h"
+#include "qgsfeature.h"
 #include "qgsmaplayer.h"
+#include "qgsmargins.h"
+#include "qgspointxy.h"
+
+#include <QPointer>
 
 class QgsRenderContext;
+class QgsMarkerSymbol;
+class QgsFillSymbol;
 
 /**
  * \ingroup core
@@ -43,12 +47,10 @@ class QgsRenderContext;
  * Derived classes should implement their custom painting routines within
  * a renderAnnotation() override.
  *
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsAnnotation : public QObject
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( dynamic_cast< QgsTextAnnotation * >( sipCpp ) )
@@ -70,11 +72,12 @@ class CORE_EXPORT QgsAnnotation : public QObject
     Q_PROPERTY( QSizeF frameSize READ frameSize WRITE setFrameSize )
 
   public:
-
     /**
      * Constructor for QgsAnnotation.
      */
     QgsAnnotation( QObject *parent SIP_TRANSFERTHIS = nullptr );
+
+    ~QgsAnnotation() override;
 
     /**
      * Clones the annotation, returning a new copy of the annotation
@@ -159,14 +162,14 @@ class CORE_EXPORT QgsAnnotation : public QObject
     /**
      * Sets the annotation's frame's offset (in pixels) from the mapPosition() reference point.
      * \see frameOffsetFromReferencePoint()
-     * \deprecated use setFrameOffsetFromReferencePointMm() instead
+     * \deprecated QGIS 3.40. Use setFrameOffsetFromReferencePointMm() instead.
      */
     Q_DECL_DEPRECATED void setFrameOffsetFromReferencePoint( QPointF offset ) SIP_DEPRECATED;
 
     /**
      * Returns the annotation's frame's offset (in pixels) from the mapPosition() reference point.
      * \see setFrameOffsetFromReferencePoint()
-     * \deprecated use frameOffsetFromReferencePointMm() instead
+     * \deprecated QGIS 3.40. Use frameOffsetFromReferencePointMm() instead.
      */
     Q_DECL_DEPRECATED QPointF frameOffsetFromReferencePoint() const SIP_DEPRECATED;
 
@@ -188,7 +191,7 @@ class CORE_EXPORT QgsAnnotation : public QObject
      * Sets the size (in pixels) of the annotation's frame (the main area in which
      * the annotation's content is drawn).
      * \see frameSize()
-     * \deprecated use setFrameSizeMm() instead
+     * \deprecated QGIS 3.40. Use setFrameSizeMm() instead.
      */
     Q_DECL_DEPRECATED void setFrameSize( QSizeF size ) SIP_DEPRECATED;
 
@@ -196,7 +199,7 @@ class CORE_EXPORT QgsAnnotation : public QObject
      * Returns the size (in pixels) of the annotation's frame (the main area in which
      * the annotation's content is drawn).
      * \see setFrameSize()
-     * \deprecated use frameSizeMm() instead
+     * \deprecated QGIS 3.40. Use frameSizeMm() instead.
      */
     Q_DECL_DEPRECATED QSizeF frameSize() const SIP_DEPRECATED;
 
@@ -241,7 +244,7 @@ class CORE_EXPORT QgsAnnotation : public QObject
      * Returns the symbol that is used for rendering the annotation frame.
      * \see setFillSymbol()
      */
-    QgsFillSymbol *fillSymbol() const { return mFillSymbol.get(); }
+    QgsFillSymbol *fillSymbol() const;
 
     /**
      * Renders the annotation to a target render context.
@@ -334,7 +337,6 @@ class CORE_EXPORT QgsAnnotation : public QObject
     void mapLayerChanged();
 
   protected:
-
     /**
      * Renders the annotation's contents to a target /a context at the specified /a size.
      * Derived classes should implement their custom annotation drawing logic here.
@@ -372,13 +374,6 @@ class CORE_EXPORT QgsAnnotation : public QObject
     void copyCommonProperties( QgsAnnotation *target ) const;
 
   private:
-
-    //! Check where to attach the balloon connection between frame and map point
-    void updateBalloon();
-
-    //! Gets the frame line (0 is the top line, 1 right, 2 bottom, 3 left)
-    QLineF segment( int index, QgsRenderContext *context ) const;
-
     //! Draws the annotation frame to a destination painter
     void drawFrame( QgsRenderContext &context ) const;
 
@@ -413,15 +408,6 @@ class CORE_EXPORT QgsAnnotation : public QObject
     //! Fill symbol used for drawing annotation
     std::unique_ptr<QgsFillSymbol> mFillSymbol;
 
-    //! Segment number where the connection to the map point is attached. -1 if no balloon needed (e.g. if point is contained in frame)
-    int mBalloonSegment = -1;
-
-    //! First segment point for drawing the connection (ccw direction) (always in mm)
-    QPointF mBalloonSegmentPoint1;
-
-    //! Second segment point for drawing the balloon connection (ccw direction) (always in mm)
-    QPointF mBalloonSegmentPoint2;
-
     //! Associated layer (or NULLPTR if not attached to a layer)
     QgsWeakMapLayerPointer mMapLayer;
 
@@ -430,8 +416,6 @@ class CORE_EXPORT QgsAnnotation : public QObject
 
     //! Roughly 10 pixels at 96 dpi, to match earlier version rendering
     double mSegmentPointWidthMm = 2.64;
-
 };
 
 #endif // QGSANNOTATION_H
-

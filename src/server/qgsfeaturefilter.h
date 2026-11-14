@@ -18,8 +18,8 @@
 #ifndef QGSFEATUREFILTER_H
 #define QGSFEATUREFILTER_H
 
-#include "qgsfeaturefilterprovider.h"
 #include "qgis_server.h"
+#include "qgsfeaturefilterprovider.h"
 
 #include <QMap>
 
@@ -29,7 +29,7 @@ class QgsExpression;
  * \ingroup server
  * \class QgsFeatureFilter
  * \brief A feature filter provider allowing to set filter expressions on a per-layer basis.
- * \since QGIS 3.0
+ * \deprecated QGIS 3.4. Use QgsFeatureExpressionFilterProvider.
  */
 class SERVER_EXPORT QgsFeatureFilter : public QgsFeatureFilterProvider
 {
@@ -37,17 +37,11 @@ class SERVER_EXPORT QgsFeatureFilter : public QgsFeatureFilterProvider
     //! Constructor
     QgsFeatureFilter() = default;
 
-    /**
-     * Filter the features of the layer
-     * \param layer the layer to control
-     * \param filterFeatures the request to fill
-     */
-    void filterFeatures( const QgsVectorLayer *layer, QgsFeatureRequest &filterFeatures ) const override;
+    bool isFilterThreadSafe() const override { return false; }
 
-    /**
-     * Returns a clone of the object
-     * \returns A clone
-     */
+    using QgsFeatureFilterProvider::filterFeatures;
+    void filterFeatures( const QgsVectorLayer *layer, QgsFeatureRequest &filterFeatures ) const override;
+    QStringList layerAttributes( const QgsVectorLayer *layer, const QStringList &attributes ) const override;
     QgsFeatureFilterProvider *clone() const override SIP_FACTORY;
 
     /**

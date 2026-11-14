@@ -16,10 +16,16 @@
  ***************************************************************************/
 
 #include "qgsalgorithmrandomraster.h"
+
+#include <limits>
+#include <random>
+
 #include "qgsrasterfilewriter.h"
 #include "qgsstringutils.h"
-#include "random"
-#include "limits"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
@@ -33,65 +39,96 @@ QString QgsRandomRasterAlgorithmBase::group() const
 
 QString QgsRandomRasterAlgorithmBase::groupId() const
 {
-  return QStringLiteral( "rastercreation" );
+  return u"rastercreation"_s;
 }
 
 void QgsRandomRasterAlgorithmBase::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterExtent( QStringLiteral( "EXTENT" ), QObject::tr( "Desired extent" ) ) );
-  addParameter( new QgsProcessingParameterCrs( QStringLiteral( "TARGET_CRS" ), QObject::tr( "Target CRS" ), QStringLiteral( "ProjectCrs" ) ) );
-  addParameter( new QgsProcessingParameterNumber( QStringLiteral( "PIXEL_SIZE" ), QObject::tr( "Pixel size" ),
-                QgsProcessingParameterNumber::Double, 1, false, 0.01 ) );
+  addParameter( new QgsProcessingParameterExtent( u"EXTENT"_s, QObject::tr( "Desired extent" ) ) );
+  addParameter( new QgsProcessingParameterCrs( u"TARGET_CRS"_s, QObject::tr( "Target CRS" ), u"ProjectCrs"_s ) );
+  addParameter( new QgsProcessingParameterNumber( u"PIXEL_SIZE"_s, QObject::tr( "Pixel size" ), Qgis::ProcessingNumberParameterType::Double, 1, false, 0 ) );
 
   //add specific parameters
   addAlgorithmParams();
 
-  addParameter( new QgsProcessingParameterRasterDestination( QStringLiteral( "OUTPUT" ), QObject::tr( "Output raster" ) ) );
+  // backwards compatibility parameter
+  // TODO QGIS 5: remove parameter and related logic
+  auto createOptsParam = std::make_unique<QgsProcessingParameterString>( u"CREATE_OPTIONS"_s, QObject::tr( "Creation options" ), QVariant(), false, true );
+  createOptsParam->setMetadata( QVariantMap( { { u"widget_wrapper"_s, QVariantMap( { { u"widget_type"_s, u"rasteroptions"_s } } ) } } ) );
+  createOptsParam->setFlags( createOptsParam->flags() | Qgis::ProcessingParameterFlag::Hidden );
+  addParameter( createOptsParam.release() );
+
+  auto creationOptsParam = std::make_unique<QgsProcessingParameterString>( u"CREATION_OPTIONS"_s, QObject::tr( "Creation options" ), QVariant(), false, true );
+  creationOptsParam->setMetadata( QVariantMap( { { u"widget_wrapper"_s, QVariantMap( { { u"widget_type"_s, u"rasteroptions"_s } } ) } } ) );
+  creationOptsParam->setFlags( creationOptsParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
+  addParameter( creationOptsParam.release() );
+
+  addParameter( new QgsProcessingParameterRasterDestination( u"OUTPUT"_s, QObject::tr( "Output raster" ) ) );
 }
 
 bool QgsRandomRasterAlgorithmBase::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
   Q_UNUSED( feedback );
-  mCrs = parameterAsCrs( parameters, QStringLiteral( "TARGET_CRS" ), context );
-  mExtent = parameterAsExtent( parameters, QStringLiteral( "EXTENT" ), context, mCrs );
-  mPixelSize = parameterAsDouble( parameters, QStringLiteral( "PIXEL_SIZE" ), context );
+  mCrs = parameterAsCrs( parameters, u"TARGET_CRS"_s, context );
+  mExtent = parameterAsExtent( parameters, u"EXTENT"_s, context, mCrs );
+  mPixelSize = parameterAsDouble( parameters, u"PIXEL_SIZE"_s, context );
+
+  if ( mPixelSize <= 0 )
+  {
+    throw QgsProcessingException( QObject::tr( "Pixel size must be greater than 0." ) );
+  }
 
   return true;
 }
 
 QVariantMap QgsRandomRasterAlgorithmBase::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  int typeId = parameterAsInt( parameters, QStringLiteral( "OUTPUT_TYPE" ), context );
+  const int typeId = parameterAsInt( parameters, u"OUTPUT_TYPE"_s, context );
   //prepare specific parameters
   mRasterDataType = getRasterDataType( typeId );
   prepareRandomParameters( parameters, context );
 
   std::random_device rd {};
-  std::mt19937 mersenneTwister{rd()};
+  std::mt19937 mersenneTwister { rd() };
 
-  const QString outputFile = parameterAsOutputLayer( parameters, QStringLiteral( "OUTPUT" ), context );
-  QFileInfo fi( outputFile );
-  const QString outputFormat = QgsRasterFileWriter::driverForExtension( fi.suffix() );
+  QString creationOptions = parameterAsString( parameters, u"CREATION_OPTIONS"_s, context ).trimmed();
+  // handle backwards compatibility parameter CREATE_OPTIONS
+  const QString optionsString = parameterAsString( parameters, u"CREATE_OPTIONS"_s, context );
+  if ( !optionsString.isEmpty() )
+    creationOptions = optionsString;
 
-  int rows = std::max( std::ceil( mExtent.height() / mPixelSize ), 1.0 );
-  int cols = std::max( std::ceil( mExtent.width() / mPixelSize ), 1.0 );
+  const QString outputFile = parameterAsOutputLayer( parameters, u"OUTPUT"_s, context );
+  const QString outputFormat = parameterAsOutputRasterFormat( parameters, u"OUTPUT"_s, context );
+
+  // round up width and height to the nearest integer as GDAL does (e.g. in gdal_rasterize)
+  // see https://github.com/qgis/QGIS/issues/43547
+  const int rows = static_cast<int>( 0.5 + mExtent.height() / mPixelSize );
+  const int cols = static_cast<int>( 0.5 + mExtent.width() / mPixelSize );
 
   //build new raster extent based on number of columns and cellsize
   //this prevents output cellsize being calculated too small
-  QgsRectangle rasterExtent = QgsRectangle( mExtent.xMinimum(), mExtent.yMaximum() - ( rows * mPixelSize ), mExtent.xMinimum() + ( cols * mPixelSize ), mExtent.yMaximum() );
+  const QgsRectangle rasterExtent = QgsRectangle( mExtent.xMinimum(), mExtent.yMaximum() - ( rows * mPixelSize ), mExtent.xMinimum() + ( cols * mPixelSize ), mExtent.yMaximum() );
 
-  std::unique_ptr< QgsRasterFileWriter > writer = qgis::make_unique< QgsRasterFileWriter >( outputFile );
-  writer->setOutputProviderKey( QStringLiteral( "gdal" ) );
+  auto writer = std::make_unique<QgsRasterFileWriter>( outputFile );
+  writer->setOutputProviderKey( u"gdal"_s );
+  if ( !creationOptions.isEmpty() )
+  {
+    writer->setCreationOptions( creationOptions.split( '|' ) );
+  }
+
   writer->setOutputFormat( outputFormat );
-  std::unique_ptr<QgsRasterDataProvider > provider( writer->createOneBandRaster( mRasterDataType, cols, rows, rasterExtent, mCrs ) );
+  std::unique_ptr<QgsRasterDataProvider> provider( writer->createOneBandRaster( mRasterDataType, cols, rows, rasterExtent, mCrs ) );
   if ( !provider )
     throw QgsProcessingException( QObject::tr( "Could not create raster output: %1" ).arg( outputFile ) );
   if ( !provider->isValid() )
     throw QgsProcessingException( QObject::tr( "Could not create raster output %1: %2" ).arg( outputFile, provider->error().message( QgsErrorMessage::Text ) ) );
 
-  double step = rows > 0 ? 100.0 / rows : 1;
+  const bool hasReportsDuringClose = provider->hasReportsDuringClose();
+  const double maxProgressDuringBlockWriting = hasReportsDuringClose ? 50.0 : 100.0;
 
-  for ( int row = 0; row < rows ; row++ )
+  const double step = rows > 0 ? maxProgressDuringBlockWriting / rows : 1;
+
+  for ( int row = 0; row < rows; row++ )
   {
     if ( feedback->isCanceled() )
     {
@@ -101,85 +138,109 @@ QVariantMap QgsRandomRasterAlgorithmBase::processAlgorithm( const QVariantMap &p
     QgsRasterBlock block( mRasterDataType, cols, 1 );
     switch ( mRasterDataType )
     {
-      case Qgis::Byte:
+      case Qgis::DataType::Byte:
       {
         std::vector<quint8> byteRow( cols );
         for ( int col = 0; col < cols; col++ )
         {
           byteRow[col] = static_cast<quint8>( generateRandomLongValue( mersenneTwister ) );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( byteRow.data() ), QgsRasterBlock::typeSize( Qgis::Byte ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( byteRow.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Byte ) * cols ) );
         break;
       }
-      case Qgis::Int16:
+      case Qgis::DataType::Int8:
+      {
+        std::vector<qint8> int8Row( cols );
+        for ( int col = 0; col < cols; col++ )
+        {
+          int8Row[col] = static_cast<qint8>( generateRandomLongValue( mersenneTwister ) );
+        }
+        block.setData( QByteArray( reinterpret_cast<const char *>( int8Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Int8 ) * cols ) );
+        break;
+      }
+      case Qgis::DataType::Int16:
       {
         std::vector<qint16> int16Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           int16Row[col] = static_cast<qint16>( generateRandomLongValue( mersenneTwister ) );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( int16Row.data() ), QgsRasterBlock::typeSize( Qgis::Int16 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( int16Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Int16 ) * cols ) );
         break;
       }
-      case Qgis::UInt16:
+      case Qgis::DataType::UInt16:
       {
         std::vector<quint16> uInt16Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           uInt16Row[col] = static_cast<quint16>( generateRandomLongValue( mersenneTwister ) );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( uInt16Row.data() ), QgsRasterBlock::typeSize( Qgis::UInt16 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( uInt16Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::UInt16 ) * cols ) );
         break;
       }
-      case Qgis::Int32:
+      case Qgis::DataType::Int32:
       {
         std::vector<qint32> int32Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           int32Row[col] = generateRandomLongValue( mersenneTwister );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( int32Row.data() ), QgsRasterBlock::typeSize( Qgis::Int32 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( int32Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Int32 ) * cols ) );
         break;
       }
-      case Qgis::UInt32:
+      case Qgis::DataType::UInt32:
       {
         std::vector<quint32> uInt32Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           uInt32Row[col] = static_cast<quint32>( generateRandomLongValue( mersenneTwister ) );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( uInt32Row.data() ), QgsRasterBlock::typeSize( Qgis::UInt32 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( uInt32Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::UInt32 ) * cols ) );
         break;
       }
-      case Qgis::Float32:
+      case Qgis::DataType::Float32:
       {
         std::vector<float> float32Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           float32Row[col] = static_cast<float>( generateRandomDoubleValue( mersenneTwister ) );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( float32Row.data() ), QgsRasterBlock::typeSize( Qgis::Float32 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( float32Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Float32 ) * cols ) );
         break;
       }
-      case Qgis::Float64:
+      case Qgis::DataType::Float64:
       {
         std::vector<double> float64Row( cols );
         for ( int col = 0; col < cols; col++ )
         {
           float64Row[col] = generateRandomDoubleValue( mersenneTwister );
         }
-        block.setData( QByteArray( reinterpret_cast<const char *>( float64Row.data() ), QgsRasterBlock::typeSize( Qgis::Float64 ) * cols ) );
+        block.setData( QByteArray( reinterpret_cast<const char *>( float64Row.data() ), QgsRasterBlock::typeSize( Qgis::DataType::Float64 ) * cols ) );
         break;
       }
       default:
         break;
     }
-    provider->writeBlock( &block, 1, 0, row );
+    if ( !provider->writeBlock( &block, 1, 0, row ) )
+    {
+      throw QgsProcessingException( QObject::tr( "Could not write raster block: %1" ).arg( provider->error().summary() ) );
+    }
     feedback->setProgress( row * step );
   }
 
+  if ( feedback && hasReportsDuringClose )
+  {
+    std::unique_ptr<QgsFeedback> scaledFeedback( QgsFeedback::createScaledFeedback( feedback, maxProgressDuringBlockWriting, 100.0 ) );
+    if ( !provider->closeWithProgress( scaledFeedback.get() ) )
+    {
+      if ( feedback->isCanceled() )
+        return {};
+      throw QgsProcessingException( QObject::tr( "Could not write raster dataset" ) );
+    }
+  }
+
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OUTPUT" ), outputFile );
+  outputs.insert( u"OUTPUT"_s, outputFile );
   return outputs;
 }
 
@@ -188,7 +249,7 @@ QVariantMap QgsRandomRasterAlgorithmBase::processAlgorithm( const QVariantMap &p
 //
 QString QgsRandomUniformRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomuniformrasterlayer" );
+  return u"createrandomuniformrasterlayer"_s;
 }
 
 QString QgsRandomUniformRasterAlgorithm::displayName() const
@@ -203,16 +264,26 @@ QStringList QgsRandomUniformRasterAlgorithm::tags() const
 
 QString QgsRandomUniformRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with random values.\n"
-                      "By default, the values will range between the minimum and "
-                      "maximum value of the specified output raster type. This can "
-                      "be overridden by using the advanced parameters for lower and "
-                      "upper bound value. If the bounds have the same value or both "
-                      "are zero (default) the algorithm will create random values in "
-                      "the full value range of the chosen raster data type. "
-                      "Choosing bounds outside the acceptable range of the output "
-                      "raster type will abort the algorithm." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with random values.\n"
+    "By default, the values will range between the minimum and "
+    "maximum value of the specified output raster type. This can "
+    "be overridden by using the advanced parameters for lower and "
+    "upper bound value. If the bounds have the same value or both "
+    "are zero (default) the algorithm will create random values in "
+    "the full value range of the chosen raster data type. "
+    "Choosing bounds outside the acceptable range of the output "
+    "raster type will abort the algorithm."
+  );
+}
+
+QString QgsRandomUniformRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with random values."
+  );
 }
 
 QgsRandomUniformRasterAlgorithm *QgsRandomUniformRasterAlgorithm::createInstance() const
@@ -223,24 +294,19 @@ QgsRandomUniformRasterAlgorithm *QgsRandomUniformRasterAlgorithm::createInstance
 void QgsRandomUniformRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Byte" )
-                  << QStringLiteral( "Integer16" )
-                  << QStringLiteral( "Unsigned Integer16" )
-                  << QStringLiteral( "Integer32" )
-                  << QStringLiteral( "Unsigned Integer32" )
-                  << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Byte"_s << u"Integer16"_s << u"Unsigned Integer16"_s << u"Integer32"_s << u"Unsigned Integer32"_s << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 5, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 5, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > lowerBoundParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "LOWER_BOUND" ), QStringLiteral( "Lower bound for random number range" ), QgsProcessingParameterNumber::Double, QVariant(), true );
-  lowerBoundParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto lowerBoundParameter = std::make_unique<QgsProcessingParameterNumber>( u"LOWER_BOUND"_s, u"Lower bound for random number range"_s, Qgis::ProcessingNumberParameterType::Double, QVariant(), true );
+  lowerBoundParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( lowerBoundParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > upperBoundParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "UPPER_BOUND" ), QStringLiteral( "Upper bound for random number range" ), QgsProcessingParameterNumber::Double, QVariant(), true );
-  upperBoundParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto upperBoundParameter = std::make_unique<QgsProcessingParameterNumber>( u"UPPER_BOUND"_s, u"Upper bound for random number range"_s, Qgis::ProcessingNumberParameterType::Double, QVariant(), true );
+  upperBoundParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( upperBoundParameter.release() );
 }
 
@@ -249,40 +315,47 @@ Qgis::DataType QgsRandomUniformRasterAlgorithm::getRasterDataType( int typeId )
   switch ( typeId )
   {
     case 0:
-      return Qgis::Byte;
+      return Qgis::DataType::Byte;
     case 1:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case 2:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case 3:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
     case 4:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case 5:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 6:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomUniformRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  mRandomUpperBound = parameterAsDouble( parameters, QStringLiteral( "UPPER_BOUND" ), context );
-  mRandomLowerBound = parameterAsDouble( parameters, QStringLiteral( "LOWER_BOUND" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  mRandomUpperBound = parameterAsDouble( parameters, u"UPPER_BOUND"_s, context );
+  mRandomLowerBound = parameterAsDouble( parameters, u"LOWER_BOUND"_s, context );
 
   if ( mRandomLowerBound > mRandomUpperBound )
     throw QgsProcessingException( QObject::tr( "The chosen lower bound for random number range is greater than the upper bound. The lower bound value must be smaller than the upper bound value." ) );
 
-  int typeId = parameterAsInt( parameters, QStringLiteral( "OUTPUT_TYPE" ), context );
-  Qgis::DataType rasterDataType = getRasterDataType( typeId );
+  const int typeId = parameterAsInt( parameters, u"OUTPUT_TYPE"_s, context );
+  const Qgis::DataType rasterDataType = getRasterDataType( typeId );
 
   switch ( rasterDataType )
   {
-    case Qgis::Byte:
+    case Qgis::DataType::Byte:
       if ( mRandomLowerBound < std::numeric_limits<quint8>::min() || mRandomUpperBound > std::numeric_limits<quint8>::max() )
-        throw QgsProcessingException( QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." ).arg( std::numeric_limits<quint8>::min() ).arg( std::numeric_limits<quint8>::max() ).arg( QLatin1String( "Byte" ) ) );
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<quint8>::min() )
+            .arg( std::numeric_limits<quint8>::max() )
+            .arg( "Byte"_L1 )
+        );
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         //if parameters unset (=both are 0 or equal) --> use the whole value range
@@ -290,57 +363,98 @@ bool QgsRandomUniformRasterAlgorithm::prepareRandomParameters( const QVariantMap
         mRandomLowerBound = std::numeric_limits<quint8>::min();
       }
       break;
-    case Qgis::Int16:
+    case Qgis::DataType::Int8:
+      if ( mRandomLowerBound < std::numeric_limits<qint8>::min() || mRandomUpperBound > std::numeric_limits<qint8>::max() )
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<qint8>::min() )
+            .arg( std::numeric_limits<qint8>::max() )
+            .arg( "Int8"_L1 )
+        );
+      if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
+      {
+        //if parameters unset (=both are 0 or equal) --> use the whole value range
+        mRandomUpperBound = std::numeric_limits<qint8>::max();
+        mRandomLowerBound = std::numeric_limits<qint8>::min();
+      }
+      break;
+    case Qgis::DataType::Int16:
       if ( mRandomLowerBound < std::numeric_limits<qint16>::min() || mRandomUpperBound > std::numeric_limits<qint16>::max() )
-        throw QgsProcessingException( QObject::tr( "Raster datasets of type %3 only accept values between %1 and %2. Please choose other bounds for random values." ).arg( std::numeric_limits<qint16>::min() ).arg( std::numeric_limits<qint16>::max() ).arg( QLatin1String( "Integer16" ) ) );
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<qint16>::min() )
+            .arg( std::numeric_limits<qint16>::max() )
+            .arg( "Integer16"_L1 )
+        );
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<qint16>::max();
         mRandomLowerBound = std::numeric_limits<qint16>::min();
       }
       break;
-    case Qgis::UInt16:
+    case Qgis::DataType::UInt16:
       if ( mRandomLowerBound < std::numeric_limits<quint16>::min() || mRandomUpperBound > std::numeric_limits<quint16>::max() )
-        throw QgsProcessingException( QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." ).arg( std::numeric_limits<quint16>::min() ).arg( std::numeric_limits<quint16>::max() ).arg( QLatin1String( "Unsigned Integer16" ) ) );
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<quint16>::min() )
+            .arg( std::numeric_limits<quint16>::max() )
+            .arg( "Unsigned Integer16"_L1 )
+        );
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<quint16>::max();
         mRandomLowerBound = std::numeric_limits<quint16>::min();
       }
       break;
-    case Qgis::Int32:
+    case Qgis::DataType::Int32:
       if ( mRandomLowerBound < std::numeric_limits<qint32>::min() || mRandomUpperBound > std::numeric_limits<qint32>::max() )
-        throw QgsProcessingException( QObject::tr( "Raster datasets of type %3 only accept values between %1 and %2. Please choose other bounds for random values." ).arg( std::numeric_limits<qint32>::min() ).arg( std::numeric_limits<qint32>::max() ).arg( QLatin1String( "Integer32" ) ) );
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<qint32>::min() )
+            .arg( std::numeric_limits<qint32>::max() )
+            .arg( "Integer32"_L1 )
+        );
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<qint32>::max();
         mRandomLowerBound = std::numeric_limits<qint32>::min();
       }
       break;
-    case Qgis::UInt32:
+    case Qgis::DataType::UInt32:
       if ( mRandomLowerBound < std::numeric_limits<quint32>::min() || mRandomUpperBound > std::numeric_limits<quint32>::max() )
-        throw QgsProcessingException( QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." ).arg( std::numeric_limits<quint32>::min() ).arg( std::numeric_limits<quint32>::max() ).arg( QLatin1String( "Unsigned Integer32" ) ) );
+        throw QgsProcessingException(
+          QObject::tr( "Raster datasets of type %3 only accept positive values between %1 and %2. Please choose other bounds for random values." )
+            .arg( std::numeric_limits<quint32>::min() )
+            .arg( std::numeric_limits<quint32>::max() )
+            .arg( "Unsigned Integer32"_L1 )
+        );
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<quint32>::max();
         mRandomLowerBound = std::numeric_limits<quint32>::min();
       }
       break;
-    case Qgis::Float32:
+    case Qgis::DataType::Float32:
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<float>::max();
         mRandomLowerBound = std::numeric_limits<float>::min();
       }
       break;
-    case Qgis::Float64:
+    case Qgis::DataType::Float64:
       if ( ( qgsDoubleNear( mRandomLowerBound, 0.0 ) && qgsDoubleNear( mRandomUpperBound, 0.0 ) ) || qgsDoubleNear( mRandomUpperBound, mRandomLowerBound ) )
       {
         mRandomUpperBound = std::numeric_limits<double>::max();
         mRandomLowerBound = std::numeric_limits<double>::min();
       }
       break;
-    default:
+    case Qgis::DataType::CInt16:
+    case Qgis::DataType::CInt32:
+    case Qgis::DataType::CFloat32:
+    case Qgis::DataType::CFloat64:
+    case Qgis::DataType::ARGB32:
+    case Qgis::DataType::ARGB32_Premultiplied:
+    case Qgis::DataType::UnknownDataType:
       break;
   }
 
@@ -365,7 +479,7 @@ double QgsRandomUniformRasterAlgorithm::generateRandomDoubleValue( std::mt19937 
 //
 QString QgsRandomBinomialRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandombinomialrasterlayer" );
+  return u"createrandombinomialrasterlayer"_s;
 }
 
 QString QgsRandomBinomialRasterAlgorithm::displayName() const
@@ -380,14 +494,24 @@ QStringList QgsRandomBinomialRasterAlgorithm::tags() const
 
 QString QgsRandomBinomialRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with binomially distributed random values.\n"
-                      "By default, the values will be chosen given an N of 10 and a probability of 0.5. "
-                      "This can be overridden by using the advanced parameter for N and probability. "
-                      "The raster data type is set to Integer types (Integer16 by default). "
-                      "The binomial distribution random values are defined as positive integer numbers. "
-                      "A floating point raster will represent a cast of integer values "
-                      "to floating point." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with binomially distributed random values.\n"
+    "By default, the values will be chosen given an N of 10 and a probability of 0.5. "
+    "This can be overridden by using the advanced parameter for N and probability. "
+    "The raster data type is set to Integer types (Integer16 by default). "
+    "The binomial distribution random values are defined as positive integer numbers. "
+    "A floating point raster will represent a cast of integer values "
+    "to floating point."
+  );
+}
+
+QString QgsRandomBinomialRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with binomially distributed random values."
+  );
 }
 
 QgsRandomBinomialRasterAlgorithm *QgsRandomBinomialRasterAlgorithm::createInstance() const
@@ -396,26 +520,22 @@ QgsRandomBinomialRasterAlgorithm *QgsRandomBinomialRasterAlgorithm::createInstan
 }
 
 
-void QgsRandomBinomialRasterAlgorithm::addAlgorithmParams( )
+void QgsRandomBinomialRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Integer16" )
-                  << QStringLiteral( "Unsigned Integer16" )
-                  << QStringLiteral( "Integer32" )
-                  << QStringLiteral( "Unsigned Integer32" )
-                  << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Integer16"_s << u"Unsigned Integer16"_s << u"Integer32"_s << u"Unsigned Integer32"_s << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > nParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "N" ), QStringLiteral( "N" ), QgsProcessingParameterNumber::Integer, 10, true, 0 );
-  nParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto nParameter = std::make_unique<QgsProcessingParameterNumber>( u"N"_s, u"N"_s, Qgis::ProcessingNumberParameterType::Integer, 10, true, 0 );
+  nParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( nParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > probabilityParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "PROBABILITY" ), QStringLiteral( "Probability" ), QgsProcessingParameterNumber::Double, 0.5, true, 0 );
-  probabilityParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto probabilityParameter = std::make_unique<QgsProcessingParameterNumber>( u"PROBABILITY"_s, u"Probability"_s, Qgis::ProcessingNumberParameterType::Double, 0.5, true, 0 );
+  probabilityParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( probabilityParameter.release() );
 }
 
@@ -424,26 +544,28 @@ Qgis::DataType QgsRandomBinomialRasterAlgorithm::getRasterDataType( int typeId )
   switch ( typeId )
   {
     case 0:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case 1:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case 2:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
     case 3:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case 4:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 5:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomBinomialRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  int n = parameterAsInt( parameters, QStringLiteral( "N" ), context );
-  double probability = parameterAsDouble( parameters, QStringLiteral( "PROBABILITY" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const int n = parameterAsInt( parameters, u"N"_s, context );
+  const double probability = parameterAsDouble( parameters, u"PROBABILITY"_s, context );
   mRandombinomialDistribution = std::binomial_distribution<long>( n, probability );
   return true;
 }
@@ -463,7 +585,7 @@ double QgsRandomBinomialRasterAlgorithm::generateRandomDoubleValue( std::mt19937
 //
 QString QgsRandomExponentialRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomexponentialrasterlayer" );
+  return u"createrandomexponentialrasterlayer"_s;
 }
 
 QString QgsRandomExponentialRasterAlgorithm::displayName() const
@@ -478,12 +600,22 @@ QStringList QgsRandomExponentialRasterAlgorithm::tags() const
 
 QString QgsRandomExponentialRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with exponentially distributed random values.\n"
-                      "By default, the values will be chosen given a lambda of 1.0. "
-                      "This can be overridden by using the advanced parameter for lambda. "
-                      "The raster data type is set to Float32 by default as "
-                      "the exponential distribution random values are floating point numbers." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with exponentially distributed random values.\n"
+    "By default, the values will be chosen given a lambda of 1.0. "
+    "This can be overridden by using the advanced parameter for lambda. "
+    "The raster data type is set to Float32 by default as "
+    "the exponential distribution random values are floating point numbers."
+  );
+}
+
+QString QgsRandomExponentialRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with exponentially distributed random values."
+  );
 }
 
 QgsRandomExponentialRasterAlgorithm *QgsRandomExponentialRasterAlgorithm::createInstance() const
@@ -495,15 +627,15 @@ QgsRandomExponentialRasterAlgorithm *QgsRandomExponentialRasterAlgorithm::create
 void QgsRandomExponentialRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > lambdaParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "LAMBDA" ), QStringLiteral( "Lambda" ), QgsProcessingParameterNumber::Double, 1.0, true, 0.000001 );
-  lambdaParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto lambdaParameter = std::make_unique<QgsProcessingParameterNumber>( u"LAMBDA"_s, u"Lambda"_s, Qgis::ProcessingNumberParameterType::Double, 1.0, true, 0.000001 );
+  lambdaParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( lambdaParameter.release() );
 }
 
@@ -512,17 +644,19 @@ Qgis::DataType QgsRandomExponentialRasterAlgorithm::getRasterDataType( int typeI
   switch ( typeId )
   {
     case 0:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 1:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomExponentialRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  double lambda = parameterAsDouble( parameters, QStringLiteral( "LAMBDA" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const double lambda = parameterAsDouble( parameters, u"LAMBDA"_s, context );
   mRandomExponentialDistribution = std::exponential_distribution<double>( lambda );
   return true;
 }
@@ -542,7 +676,7 @@ double QgsRandomExponentialRasterAlgorithm::generateRandomDoubleValue( std::mt19
 //
 QString QgsRandomGammaRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomgammarasterlayer" );
+  return u"createrandomgammarasterlayer"_s;
 }
 
 QString QgsRandomGammaRasterAlgorithm::displayName() const
@@ -557,12 +691,22 @@ QStringList QgsRandomGammaRasterAlgorithm::tags() const
 
 QString QgsRandomGammaRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with gamma distributed random values.\n"
-                      "By default, the values will be chosen given an alpha and beta value of 1.0. "
-                      "This can be overridden by using the advanced parameter for alpha and beta. "
-                      "The raster data type is set to Float32 by default as "
-                      "the gamma distribution random values are floating point numbers." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with gamma distributed random values.\n"
+    "By default, the values will be chosen given an alpha and beta value of 1.0. "
+    "This can be overridden by using the advanced parameter for alpha and beta. "
+    "The raster data type is set to Float32 by default as "
+    "the gamma distribution random values are floating point numbers."
+  );
+}
+
+QString QgsRandomGammaRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with gamma distributed random values."
+  );
 }
 
 QgsRandomGammaRasterAlgorithm *QgsRandomGammaRasterAlgorithm::createInstance() const
@@ -574,19 +718,19 @@ QgsRandomGammaRasterAlgorithm *QgsRandomGammaRasterAlgorithm::createInstance() c
 void QgsRandomGammaRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > alphaParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "ALPHA" ), QStringLiteral( "Alpha" ), QgsProcessingParameterNumber::Double, 1.0, true, 0.000001 );
-  alphaParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto alphaParameter = std::make_unique<QgsProcessingParameterNumber>( u"ALPHA"_s, u"Alpha"_s, Qgis::ProcessingNumberParameterType::Double, 1.0, true, 0.000001 );
+  alphaParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( alphaParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > betaParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "BETA" ), QStringLiteral( "Beta" ), QgsProcessingParameterNumber::Double, 1.0, true, 0.000001 );
-  betaParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto betaParameter = std::make_unique<QgsProcessingParameterNumber>( u"BETA"_s, u"Beta"_s, Qgis::ProcessingNumberParameterType::Double, 1.0, true, 0.000001 );
+  betaParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( betaParameter.release() );
 }
 
@@ -595,18 +739,20 @@ Qgis::DataType QgsRandomGammaRasterAlgorithm::getRasterDataType( int typeId )
   switch ( typeId )
   {
     case 0:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 1:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomGammaRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  double alpha = parameterAsDouble( parameters, QStringLiteral( "ALPHA" ), context );
-  double beta = parameterAsDouble( parameters, QStringLiteral( "BETA" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const double alpha = parameterAsDouble( parameters, u"ALPHA"_s, context );
+  const double beta = parameterAsDouble( parameters, u"BETA"_s, context );
   mRandomGammaDistribution = std::gamma_distribution<double>( alpha, beta );
   return true;
 }
@@ -626,7 +772,7 @@ double QgsRandomGammaRasterAlgorithm::generateRandomDoubleValue( std::mt19937 &m
 //
 QString QgsRandomGeometricRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomgeometricrasterlayer" );
+  return u"createrandomgeometricrasterlayer"_s;
 }
 
 QString QgsRandomGeometricRasterAlgorithm::displayName() const
@@ -641,14 +787,24 @@ QStringList QgsRandomGeometricRasterAlgorithm::tags() const
 
 QString QgsRandomGeometricRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with geometrically distributed random values.\n"
-                      "By default, the values will be chosen given a probability of 0.5. "
-                      "This can be overridden by using the advanced parameter for mean "
-                      "value. The raster data type is set to Integer types (Integer16 by default). "
-                      "The geometric distribution random values are defined as positive integer numbers. "
-                      "A floating point raster will represent a cast of "
-                      "integer values to floating point." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with geometrically distributed random values.\n"
+    "By default, the values will be chosen given a probability of 0.5. "
+    "This can be overridden by using the advanced parameter for mean "
+    "value. The raster data type is set to Integer types (Integer16 by default). "
+    "The geometric distribution random values are defined as positive integer numbers. "
+    "A floating point raster will represent a cast of "
+    "integer values to floating point."
+  );
+}
+
+QString QgsRandomGeometricRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with geometrically distributed random values."
+  );
 }
 
 QgsRandomGeometricRasterAlgorithm *QgsRandomGeometricRasterAlgorithm::createInstance() const
@@ -660,19 +816,15 @@ QgsRandomGeometricRasterAlgorithm *QgsRandomGeometricRasterAlgorithm::createInst
 void QgsRandomGeometricRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Integer16" )
-                  << QStringLiteral( "Unsigned Integer16" )
-                  << QStringLiteral( "Integer32" )
-                  << QStringLiteral( "Unsigned Integer32" )
-                  << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Integer16"_s << u"Unsigned Integer16"_s << u"Integer32"_s << u"Unsigned Integer32"_s << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > probabilityParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "PROBABILITY" ), QStringLiteral( "Probability" ), QgsProcessingParameterNumber::Double, 0.5, true, 0.00001 );
-  probabilityParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto probabilityParameter = std::make_unique<QgsProcessingParameterNumber>( u"PROBABILITY"_s, u"Probability"_s, Qgis::ProcessingNumberParameterType::Double, 0.5, true, 0.00001 );
+  probabilityParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( probabilityParameter.release() );
 }
 
@@ -681,25 +833,27 @@ Qgis::DataType QgsRandomGeometricRasterAlgorithm::getRasterDataType( int typeId 
   switch ( typeId )
   {
     case 0:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case 1:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case 2:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
     case 3:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case 4:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 5:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomGeometricRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  double probability = parameterAsDouble( parameters, QStringLiteral( "PROBABILITY" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const double probability = parameterAsDouble( parameters, u"PROBABILITY"_s, context );
   mRandomGeometricDistribution = std::geometric_distribution<long>( probability );
   return true;
 }
@@ -719,7 +873,7 @@ double QgsRandomGeometricRasterAlgorithm::generateRandomDoubleValue( std::mt1993
 //
 QString QgsRandomNegativeBinomialRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomnegativebinomialrasterlayer" );
+  return u"createrandomnegativebinomialrasterlayer"_s;
 }
 
 QString QgsRandomNegativeBinomialRasterAlgorithm::displayName() const
@@ -734,15 +888,25 @@ QStringList QgsRandomNegativeBinomialRasterAlgorithm::tags() const
 
 QString QgsRandomNegativeBinomialRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with negative binomially distributed random values.\n"
-                      "By default, the values will be chosen given a distribution parameter k of 10.0 "
-                      "and a probability of 0.5. "
-                      "This can be overridden by using the advanced parameters for k and probability. "
-                      "The raster data type is set to Integer types (Integer 16 by default). "
-                      "The negative binomial distribution random values are defined as positive integer numbers. "
-                      "A floating point raster will represent a cast of "
-                      "integer values to floating point." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with negative binomially distributed random values.\n"
+    "By default, the values will be chosen given a distribution parameter k of 10.0 "
+    "and a probability of 0.5. "
+    "This can be overridden by using the advanced parameters for k and probability. "
+    "The raster data type is set to Integer types (Integer 16 by default). "
+    "The negative binomial distribution random values are defined as positive integer numbers. "
+    "A floating point raster will represent a cast of "
+    "integer values to floating point."
+  );
+}
+
+QString QgsRandomNegativeBinomialRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with negative binomially distributed random values."
+  );
 }
 
 QgsRandomNegativeBinomialRasterAlgorithm *QgsRandomNegativeBinomialRasterAlgorithm::createInstance() const
@@ -751,26 +915,22 @@ QgsRandomNegativeBinomialRasterAlgorithm *QgsRandomNegativeBinomialRasterAlgorit
 }
 
 
-void QgsRandomNegativeBinomialRasterAlgorithm::addAlgorithmParams( )
+void QgsRandomNegativeBinomialRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Integer16" )
-                  << QStringLiteral( "Unsigned Integer16" )
-                  << QStringLiteral( "Integer32" )
-                  << QStringLiteral( "Unsigned Integer32" )
-                  << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Integer16"_s << u"Unsigned Integer16"_s << u"Integer32"_s << u"Unsigned Integer32"_s << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > kParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "K_PARAMETER" ), QStringLiteral( "Distribution parameter k" ), QgsProcessingParameterNumber::Integer, 10, true, 0.00001 );
-  kParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto kParameter = std::make_unique<QgsProcessingParameterNumber>( u"K_PARAMETER"_s, u"Distribution parameter k"_s, Qgis::ProcessingNumberParameterType::Integer, 10, true, 0.00001 );
+  kParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( kParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > probabilityParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "PROBABILITY" ), QStringLiteral( "Probability" ), QgsProcessingParameterNumber::Double, 0.5, true, 0.00001 );
-  probabilityParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto probabilityParameter = std::make_unique<QgsProcessingParameterNumber>( u"PROBABILITY"_s, u"Probability"_s, Qgis::ProcessingNumberParameterType::Double, 0.5, true, 0.00001 );
+  probabilityParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( probabilityParameter.release() );
 }
 
@@ -779,26 +939,28 @@ Qgis::DataType QgsRandomNegativeBinomialRasterAlgorithm::getRasterDataType( int 
   switch ( typeId )
   {
     case 0:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case 1:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case 2:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
     case 3:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case 4:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 5:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomNegativeBinomialRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  int k = parameterAsInt( parameters, QStringLiteral( "K_PARAMETER" ), context );
-  double probability = parameterAsDouble( parameters, QStringLiteral( "PROBABILITY" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const int k = parameterAsInt( parameters, u"K_PARAMETER"_s, context );
+  const double probability = parameterAsDouble( parameters, u"PROBABILITY"_s, context );
   mRandomNegativeBinomialDistribution = std::negative_binomial_distribution<long>( k, probability );
   return true;
 }
@@ -818,7 +980,7 @@ double QgsRandomNegativeBinomialRasterAlgorithm::generateRandomDoubleValue( std:
 //
 QString QgsRandomNormalRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandomnormalrasterlayer" );
+  return u"createrandomnormalrasterlayer"_s;
 }
 
 QString QgsRandomNormalRasterAlgorithm::displayName() const
@@ -833,13 +995,23 @@ QStringList QgsRandomNormalRasterAlgorithm::tags() const
 
 QString QgsRandomNormalRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with normally distributed random values.\n"
-                      "By default, the values will be chosen given a mean of 0.0 and "
-                      "a standard deviation of 1.0. This can be overridden by "
-                      "using the advanced parameters for mean and standard deviation "
-                      "value. The raster data type is set to Float32 by default "
-                      "as the normal distribution random values are floating point numbers." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with normally distributed random values.\n"
+    "By default, the values will be chosen given a mean of 0.0 and "
+    "a standard deviation of 1.0. This can be overridden by "
+    "using the advanced parameters for mean and standard deviation "
+    "value. The raster data type is set to Float32 by default "
+    "as the normal distribution random values are floating point numbers."
+  );
+}
+
+QString QgsRandomNormalRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with normally distributed random values."
+  );
 }
 
 QgsRandomNormalRasterAlgorithm *QgsRandomNormalRasterAlgorithm::createInstance() const
@@ -850,19 +1022,19 @@ QgsRandomNormalRasterAlgorithm *QgsRandomNormalRasterAlgorithm::createInstance()
 void QgsRandomNormalRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > meanParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "MEAN" ), QStringLiteral( "Mean of normal distribution" ), QgsProcessingParameterNumber::Double, 0, true );
-  meanParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto meanParameter = std::make_unique<QgsProcessingParameterNumber>( u"MEAN"_s, u"Mean of normal distribution"_s, Qgis::ProcessingNumberParameterType::Double, 0, true );
+  meanParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( meanParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > stdevParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "STDDEV" ), QStringLiteral( "Standard deviation of normal distribution" ), QgsProcessingParameterNumber::Double, 1, true, 0 );
-  stdevParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto stdevParameter = std::make_unique<QgsProcessingParameterNumber>( u"STDDEV"_s, u"Standard deviation of normal distribution"_s, Qgis::ProcessingNumberParameterType::Double, 1, true, 0 );
+  stdevParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( stdevParameter.release() );
 }
 
@@ -871,18 +1043,20 @@ Qgis::DataType QgsRandomNormalRasterAlgorithm::getRasterDataType( int typeId )
   switch ( typeId )
   {
     case 0:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 1:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomNormalRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  double mean = parameterAsDouble( parameters, QStringLiteral( "MEAN" ), context );
-  double stddev = parameterAsDouble( parameters, QStringLiteral( "STDDEV" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const double mean = parameterAsDouble( parameters, u"MEAN"_s, context );
+  const double stddev = parameterAsDouble( parameters, u"STDDEV"_s, context );
   mRandomNormalDistribution = std::normal_distribution<double>( mean, stddev );
   return true;
 }
@@ -902,7 +1076,7 @@ double QgsRandomNormalRasterAlgorithm::generateRandomDoubleValue( std::mt19937 &
 //
 QString QgsRandomPoissonRasterAlgorithm::name() const
 {
-  return QStringLiteral( "createrandompoissonrasterlayer" );
+  return u"createrandompoissonrasterlayer"_s;
 }
 
 QString QgsRandomPoissonRasterAlgorithm::displayName() const
@@ -917,13 +1091,23 @@ QStringList QgsRandomPoissonRasterAlgorithm::tags() const
 
 QString QgsRandomPoissonRasterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "Generates a raster layer for given extent and cell size "
-                      "filled with poisson distributed random values.\n"
-                      "By default, the values will be chosen given a mean of 1.0. "
-                      "This can be overridden by using the advanced parameter for mean "
-                      "value. The raster data type is set to Integer types (Integer16 by default). "
-                      "The poisson distribution random values are positive integer numbers. "
-                      "A floating point raster will represent a cast of integer values to floating point." );
+  return QObject::tr(
+    "This algorithm generates a raster layer for a given extent and cell size "
+    "filled with poisson distributed random values.\n"
+    "By default, the values will be chosen given a mean of 1.0. "
+    "This can be overridden by using the advanced parameter for mean "
+    "value. The raster data type is set to Integer types (Integer16 by default). "
+    "The poisson distribution random values are positive integer numbers. "
+    "A floating point raster will represent a cast of integer values to floating point."
+  );
+}
+
+QString QgsRandomPoissonRasterAlgorithm::shortDescription() const
+{
+  return QObject::tr(
+    "Generates a raster layer for a given extent and cell size "
+    "filled with poisson distributed random values."
+  );
 }
 
 QgsRandomPoissonRasterAlgorithm *QgsRandomPoissonRasterAlgorithm::createInstance() const
@@ -935,19 +1119,15 @@ QgsRandomPoissonRasterAlgorithm *QgsRandomPoissonRasterAlgorithm::createInstance
 void QgsRandomPoissonRasterAlgorithm::addAlgorithmParams()
 {
   QStringList rasterDataTypes = QStringList();
-  rasterDataTypes << QStringLiteral( "Integer16" )
-                  << QStringLiteral( "Unsigned Integer16" )
-                  << QStringLiteral( "Integer32" )
-                  << QStringLiteral( "Unsigned Integer32" )
-                  << QStringLiteral( "Float32" )
-                  << QStringLiteral( "Float64" );
+  rasterDataTypes << u"Integer16"_s << u"Unsigned Integer16"_s << u"Integer32"_s << u"Unsigned Integer32"_s << u"Float32"_s << u"Float64"_s;
 
-  std::unique_ptr< QgsProcessingParameterDefinition > rasterTypeParameter = qgis::make_unique< QgsProcessingParameterEnum >( QStringLiteral( "OUTPUT_TYPE" ), QObject::tr( "Output raster data type" ),  rasterDataTypes, false, 0, false );
-  rasterTypeParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  std::unique_ptr<QgsProcessingParameterDefinition> rasterTypeParameter
+    = std::make_unique<QgsProcessingParameterEnum>( u"OUTPUT_TYPE"_s, QObject::tr( "Output raster data type" ), rasterDataTypes, false, 0, false );
+  rasterTypeParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( rasterTypeParameter.release() );
 
-  std::unique_ptr< QgsProcessingParameterNumber > upperBoundParameter = qgis::make_unique< QgsProcessingParameterNumber >( QStringLiteral( "MEAN" ), QStringLiteral( "Mean" ), QgsProcessingParameterNumber::Double, 1.0, true, 0 );
-  upperBoundParameter->setFlags( QgsProcessingParameterDefinition::FlagAdvanced );
+  auto upperBoundParameter = std::make_unique<QgsProcessingParameterNumber>( u"MEAN"_s, u"Mean"_s, Qgis::ProcessingNumberParameterType::Double, 1.0, true, 0 );
+  upperBoundParameter->setFlags( Qgis::ProcessingParameterFlag::Advanced );
   addParameter( upperBoundParameter.release() );
 }
 
@@ -956,25 +1136,27 @@ Qgis::DataType QgsRandomPoissonRasterAlgorithm::getRasterDataType( int typeId )
   switch ( typeId )
   {
     case 0:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case 1:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case 2:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
     case 3:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case 4:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case 5:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     default:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
   }
 }
 
 bool QgsRandomPoissonRasterAlgorithm::prepareRandomParameters( const QVariantMap &parameters, QgsProcessingContext &context )
 {
-  double mean = parameterAsDouble( parameters, QStringLiteral( "MEAN" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const double mean = parameterAsDouble( parameters, u"MEAN"_s, context );
   mRandomPoissonDistribution = std::poisson_distribution<long>( mean );
   return true;
 }

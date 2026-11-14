@@ -17,10 +17,14 @@
 
 #include "qgsmeshlayer.h"
 
-QgsMeshStaticDatasetWidget::QgsMeshStaticDatasetWidget( QWidget *parent ): QWidget( parent )
+#include "moc_qgsmeshstaticdatasetwidget.cpp"
+
+QgsMeshStaticDatasetWidget::QgsMeshStaticDatasetWidget( QWidget *parent )
+  : QWidget( parent )
 {
   setupUi( this );
 
+  this->layout()->setContentsMargins( 0, 0, 0, 0 );
   mDatasetScalarModel = new QgsMeshDatasetListModel( this );
   mScalarDatasetComboBox->setModel( mDatasetScalarModel );
   mDatasetVectorModel = new QgsMeshDatasetListModel( this );
@@ -48,8 +52,22 @@ void QgsMeshStaticDatasetWidget::apply()
   if ( !mLayer )
     return;
 
-  mLayer->setStaticScalarDatasetIndex( QgsMeshDatasetIndex( mScalarDatasetGroup, mScalarDatasetComboBox->currentIndex() - 1 ) );
-  mLayer->setStaticVectorDatasetIndex( QgsMeshDatasetIndex( mVectorDatasetGroup, mVectorDatasetComboBox->currentIndex() - 1 ) );
+  int scalarIndex;
+  // if only one item, there is no active dataset group.
+  // Set to 0 instead of -1 to avoid none dataset (item 0) when the group is reactivate
+  if ( mScalarDatasetComboBox->count() == 1 )
+    scalarIndex = 0;
+  else
+    scalarIndex = mScalarDatasetComboBox->currentIndex() - 1;
+  int vectorIndex;
+  // Same as scalar
+  if ( mVectorDatasetComboBox->count() == 1 )
+    vectorIndex = 0;
+  else
+    vectorIndex = mVectorDatasetComboBox->currentIndex() - 1;
+
+  mLayer->setStaticScalarDatasetIndex( QgsMeshDatasetIndex( mScalarDatasetGroup, scalarIndex ) );
+  mLayer->setStaticVectorDatasetIndex( QgsMeshDatasetIndex( mVectorDatasetGroup, vectorIndex ) );
 }
 
 void QgsMeshStaticDatasetWidget::setScalarDatasetGroup( int index )
@@ -92,7 +110,8 @@ void QgsMeshStaticDatasetWidget::setVectorDatasetIndex( int index )
     mVectorDatasetComboBox->setCurrentIndex( 0 );
 }
 
-QgsMeshDatasetListModel::QgsMeshDatasetListModel( QObject *parent ): QAbstractListModel( parent )
+QgsMeshDatasetListModel::QgsMeshDatasetListModel( QObject *parent )
+  : QAbstractListModel( parent )
 {}
 
 void QgsMeshDatasetListModel::setMeshLayer( QgsMeshLayer *layer )
@@ -114,7 +133,7 @@ int QgsMeshDatasetListModel::rowCount( const QModelIndex &parent ) const
   Q_UNUSED( parent )
 
   if ( mLayer )
-    return  mLayer->datasetCount( mDatasetGroup ) + 1;
+    return mLayer->datasetCount( mDatasetGroup ) + 1;
   else
     return 0;
 }
@@ -135,7 +154,7 @@ QVariant QgsMeshDatasetListModel::data( const QModelIndex &index, int role ) con
     }
     else
     {
-      QgsInterval time = mLayer->datasetRelativeTime( QgsMeshDatasetIndex( mDatasetGroup, index.row() - 1 ) );
+      const QgsInterval time = mLayer->datasetRelativeTime( QgsMeshDatasetIndex( mDatasetGroup, index.row() - 1 ) );
       return mLayer->formatTime( time.hours() );
     }
   }

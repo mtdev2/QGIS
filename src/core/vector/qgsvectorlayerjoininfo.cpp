@@ -16,6 +16,7 @@
  ***************************************************************************/
 
 #include "qgsvectorlayerjoininfo.h"
+
 #include "qgsvectorlayer.h"
 
 QString QgsVectorLayerJoinInfo::prefixedFieldName( const QgsField &f ) const
@@ -52,7 +53,7 @@ void QgsVectorLayerJoinInfo::setEditable( bool enabled )
 {
   mEditable = enabled;
 
-  if ( ! mEditable )
+  if ( !mEditable )
   {
     setCascadedDelete( false );
     setUpsertOnEdit( false );
@@ -85,6 +86,11 @@ QgsFeature QgsVectorLayerJoinInfo::extractJoinedFeature( const QgsFeature &featu
 
 QStringList QgsVectorLayerJoinInfo::joinFieldNamesSubset( const QgsVectorLayerJoinInfo &info, bool blocklisted )
 {
+  return joinFieldNamesSubset( info, info.joinLayer() ? info.joinLayer()->fields() : QgsFields(), blocklisted );
+}
+
+QStringList QgsVectorLayerJoinInfo::joinFieldNamesSubset( const QgsVectorLayerJoinInfo &info, const QgsFields &joinLayerFields, bool blocklisted )
+{
   QStringList fieldNames;
 
   if ( blocklisted && !info.joinFieldNamesBlockList().isEmpty() )
@@ -92,7 +98,7 @@ QStringList QgsVectorLayerJoinInfo::joinFieldNamesSubset( const QgsVectorLayerJo
     QStringList *lst = info.joinFieldNamesSubset();
     if ( lst )
     {
-      for ( const QString &s : qgis::as_const( *lst ) )
+      for ( const QString &s : std::as_const( *lst ) )
       {
         if ( !info.joinFieldNamesBlockList().contains( s ) )
           fieldNames.append( s );
@@ -100,15 +106,10 @@ QStringList QgsVectorLayerJoinInfo::joinFieldNamesSubset( const QgsVectorLayerJo
     }
     else
     {
-      if ( auto *lJoinLayer = info.joinLayer() )
+      for ( const QgsField &f : joinLayerFields )
       {
-        const QgsFields fields { lJoinLayer->fields() };
-        for ( const QgsField &f : fields )
-        {
-          if ( !info.joinFieldNamesBlockList().contains( f.name() )
-               && f.name() != info.joinFieldName() )
-            fieldNames.append( f.name() );
-        }
+        if ( !info.joinFieldNamesBlockList().contains( f.name() ) && f.name() != info.joinFieldName() )
+          fieldNames.append( f.name() );
       }
     }
   }

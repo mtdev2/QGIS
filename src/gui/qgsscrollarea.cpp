@@ -13,19 +13,29 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsscrollarea.h"
+
+#include <QAbstractButton>
+#include <QAbstractItemView>
+#include <QAbstractSlider>
+#include <QAbstractSpinBox>
+#include <QComboBox>
+#include <QDateTimeEdit>
 #include <QEvent>
 #include <QMouseEvent>
-#include "qgsscrollarea.h"
 #include <QScrollBar>
 
+#include "moc_qgsscrollarea.cpp"
+
 // milliseconds to swallow child wheel events for after a scroll occurs
-#define TIMEOUT 1000
+constexpr qint64 TIMEOUT = 1000;
 
 QgsScrollArea::QgsScrollArea( QWidget *parent )
   : QScrollArea( parent )
   , mFilter( new ScrollAreaFilter( this, viewport() ) )
 {
   viewport()->installEventFilter( mFilter );
+  setMouseTracking( true );
 }
 
 void QgsScrollArea::wheelEvent( QWheelEvent *e )
@@ -44,13 +54,18 @@ void QgsScrollArea::resizeEvent( QResizeEvent *event )
 
 void QgsScrollArea::scrollOccurred()
 {
-  mTimer.setSingleShot( true );
-  mTimer.start( TIMEOUT );
+  mTimer.restart();
+  mTimerActive = true;
 }
 
 bool QgsScrollArea::hasScrolled() const
 {
-  return mTimer.isActive();
+  return mTimerActive && mTimer.elapsed() < TIMEOUT;
+}
+
+void QgsScrollArea::resetHasScrolled()
+{
+  mTimerActive = false;
 }
 
 void QgsScrollArea::setVerticalOnly( bool verticalOnly )
@@ -69,7 +84,10 @@ ScrollAreaFilter::ScrollAreaFilter( QgsScrollArea *parent, QWidget *viewPort )
   : QObject( parent )
   , mScrollAreaWidget( parent )
   , mViewPort( viewPort )
-{}
+{
+  QFontMetrics fm( parent->font() );
+  mMoveDistanceThreshold = fm.horizontalAdvance( 'X' );
+}
 
 bool ScrollAreaFilter::eventFilter( QObject *obj, QEvent *event )
 {
@@ -90,6 +108,22 @@ bool ScrollAreaFilter::eventFilter( QObject *obj, QEvent *event )
       break;
     }
 
+    case QEvent::MouseMove:
+    {
+      if ( obj == mViewPort )
+      {
+        const QPoint mouseDelta = QCursor::pos() - mPreviousViewportCursorPos;
+        if ( mouseDelta.manhattanLength() > mMoveDistanceThreshold )
+        {
+          // release time based child widget constraint -- user moved the mouse over the viewport (and not just an accidental "wiggle")
+          // so we no longer are in the 'possible unwanted mouse wheel event going to child widget mid-scroll' state
+          mScrollAreaWidget->resetHasScrolled();
+        }
+        mPreviousViewportCursorPos = QCursor::pos();
+      }
+      break;
+    }
+
     case QEvent::Wheel:
     {
       if ( obj == mViewPort )
@@ -97,7 +131,11 @@ bool ScrollAreaFilter::eventFilter( QObject *obj, QEvent *event )
         // scrolling scroll area - kick off the timer to block wheel events in children
         mScrollAreaWidget->scrollOccurred();
       }
-      else
+      else if ( qobject_cast< QComboBox * >( obj )
+                || qobject_cast< QAbstractSpinBox * >( obj )
+                || qobject_cast< QAbstractButton *>( obj )
+                || qobject_cast< QAbstractSlider *>( obj )
+                || qobject_cast< QDateTimeEdit * >( obj ) )
       {
         if ( mScrollAreaWidget->hasScrolled() )
         {
@@ -118,7 +156,12 @@ void ScrollAreaFilter::addChild( QObject *child )
 {
   if ( child && child->isWidgetType() )
   {
+    if ( qobject_cast<QScrollArea *>( child ) || qobject_cast<QAbstractItemView *>( child ) )
+      return;
+
     child->installEventFilter( this );
+    if ( QWidget *w = qobject_cast<QWidget *>( child ) )
+      w->setMouseTracking( true );
 
     // also install filter on existing children
     const auto constChildren = child->children();
@@ -133,6 +176,9 @@ void ScrollAreaFilter::removeChild( QObject *child )
 {
   if ( child && child->isWidgetType() )
   {
+    if ( qobject_cast<QScrollArea *>( child ) || qobject_cast<QAbstractItemView *>( child ) )
+      return;
+
     child->removeEventFilter( this );
 
     // also remove filter on existing children

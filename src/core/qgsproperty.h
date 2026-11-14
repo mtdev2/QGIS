@@ -17,18 +17,18 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsexpression.h"
 #include "qgsexpressioncontext.h"
-#include "qgscolorramp.h"
 
-#include <QVariant>
+#include <QColor>
+#include <QDateTime>
+#include <QDomDocument>
+#include <QDomElement>
 #include <QHash>
 #include <QString>
 #include <QStringList>
-#include <QDomElement>
-#include <QDomDocument>
-#include <QColor>
-#include <QDateTime>
+#include <QVariant>
+
+using namespace Qt::StringLiterals;
 
 class QgsPropertyTransformer;
 class QgsPropertyPrivate;
@@ -42,43 +42,41 @@ class QgsPropertyPrivate;
  * handles descriptive names and help text for using the property. Definitions
  * can use one of the predefined standard templates to simplify definition of
  * commonly used property types, such as colors and blend modes.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsPropertyDefinition
 {
   public:
-
     //! Predefined standard property templates
     enum StandardPropertyTemplate
     {
-      Boolean = 0, //!< Boolean value
-      Integer, //!< Integer value (including negative values)
-      IntegerPositive, //!< Positive integer values (including 0)
+      Boolean = 0,                //!< Boolean value
+      Integer,                    //!< Integer value (including negative values)
+      IntegerPositive,            //!< Positive integer values (including 0)
       IntegerPositiveGreaterZero, //!< Non-zero positive integer values
-      Double, //!< Double value (including negative values)
-      DoublePositive, //!< Positive double value (including 0)
-      Double0To1, //!< Double value between 0-1 (inclusive)
-      Rotation, //!< Rotation (value between 0-360 degrees)
-      String, //!< Any string value
-      Opacity, //!< Opacity (0-100)
-      RenderUnits, //!< Render units (eg mm/pixels/map units)
-      ColorWithAlpha, //!< Color with alpha channel
-      ColorNoAlpha, //!< Color with no alpha channel
-      PenJoinStyle, //!< Pen join style
-      BlendMode, //!< Blend mode
-      Point, //!< 2D point
-      Size, //!< 1D size (eg marker radius, or square marker height/width)
-      Size2D, //!< 2D size (width/height different)
-      LineStyle, //!< Line style (eg solid/dashed)
-      StrokeWidth, //!< Line stroke width
-      FillStyle, //!< Fill style (eg solid, lines)
-      CapStyle, //!< Line cap style (eg round)
-      HorizontalAnchor, //!< Horizontal anchor point
-      VerticalAnchor, //!< Vertical anchor point
-      SvgPath, //!< Path to an SVG file
-      Offset, //!< 2D offset
-      DateTime, //!< DateTime value
-      Custom = 3000, //!< Custom property types
+      Double,                     //!< Double value (including negative values)
+      DoublePositive,             //!< Positive double value (including 0)
+      Double0To1,                 //!< Double value between 0-1 (inclusive)
+      Rotation,                   //!< Rotation (value between 0-360 degrees)
+      String,                     //!< Any string value
+      Opacity,                    //!< Opacity (0-100)
+      RenderUnits,                //!< Render units (eg mm/pixels/map units)
+      ColorWithAlpha,             //!< Color with alpha channel
+      ColorNoAlpha,               //!< Color with no alpha channel
+      PenJoinStyle,               //!< Pen join style
+      BlendMode,                  //!< Blend mode
+      Point,                      //!< 2D point
+      Size,                       //!< 1D size (eg marker radius, or square marker height/width)
+      Size2D,                     //!< 2D size (width/height different)
+      LineStyle,                  //!< Line style (eg solid/dashed)
+      StrokeWidth,                //!< Line stroke width
+      FillStyle,                  //!< Fill style (eg solid, lines)
+      CapStyle,                   //!< Line cap style (eg round)
+      HorizontalAnchor,           //!< Horizontal anchor point
+      VerticalAnchor,             //!< Vertical anchor point
+      SvgPath,                    //!< Path to an SVG file
+      Offset,                     //!< 2D offset
+      DateTime,                   //!< DateTime value
+      Custom = 3000,              //!< Custom property types
     };
 
     //! Valid data types required by property
@@ -201,7 +199,6 @@ class CORE_EXPORT QgsPropertyDefinition
     bool supportsAssistant() const;
 
   private:
-
     QString mName;
     QString mDescription;
     DataType mTypes = DataTypeString;
@@ -225,21 +222,25 @@ class CORE_EXPORT QgsPropertyDefinition
  *
  * QgsProperty objects are implicitly shared and can be inexpensively copied.
  *
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsProperty
 {
   public:
+    /**
+     * Convert a map of QgsProperty to a map of QVariant
+     * This is useful to save a map of properties
+     * \since QGIS 3.20
+     */
+    static QVariantMap propertyMapToVariantMap( const QMap<QString, QgsProperty> &propertyMap );
 
-    //! Property types
-    enum Type
-    {
-      InvalidProperty, //!< Invalid (not set) property
-      StaticProperty, //!< Static property (QgsStaticProperty)
-      FieldBasedProperty, //!< Field based property (QgsFieldBasedProperty)
-      ExpressionBasedProperty, //!< Expression based property (QgsExpressionBasedProperty)
-    };
+    /**
+     * Convert a map of QVariant to a map of QgsProperty
+     * This is useful to restore a map of properties.
+     * The properties are created using QgsProperty::loadVariant
+     * \since QGIS 3.20
+     */
+    static QMap<QString, QgsProperty> variantMapToPropertyMap( const QVariantMap &variantMap );
 
     /**
      * Constructor for a QgsProperty. The property will be set to an InvalidProperty type.
@@ -263,15 +264,13 @@ class CORE_EXPORT QgsProperty
      */
     static QgsProperty fromValue( const QVariant &value, bool isActive = true );
 
-    //! Copy constructor
     QgsProperty( const QgsProperty &other );
-
     QgsProperty &operator=( const QgsProperty &other );
 
     /**
      * Returns TRUE if the property is not an invalid type.
      */
-    operator bool() const;
+    explicit operator bool() const SIP_SKIP;
 
     bool operator==( const QgsProperty &other ) const;
     bool operator!=( const QgsProperty &other ) const;
@@ -279,13 +278,29 @@ class CORE_EXPORT QgsProperty
     /**
      * Returns the property type.
      */
-    Type propertyType() const;
+    Qgis::PropertyType propertyType() const;
 
     /**
      * Returns whether the property is currently active.
      * \see setActive()
      */
     bool isActive() const;
+
+    /**
+     * Returns TRUE if the property is effectively a static value
+     * in the specified \a context.
+     *
+     * I.e. if the property type is QgsProperty::ExpressionBasedProperty with
+     * a fixed value expression ('some static value'), this method will return
+     * TRUE.
+     *
+     * \param context expression context
+     * \param staticValue will be set to evaluated static value if property is effectively a static value
+     * \returns TRUE if property is a static value
+     *
+     * \since QGIS 3.24
+     */
+    bool isStaticValueInContext( const QgsExpressionContext &context, QVariant &staticValue SIP_OUT ) const;
 
     /**
      * Sets whether the property is currently active.
@@ -356,6 +371,14 @@ class CORE_EXPORT QgsProperty
      * where the actual available field names may not be known beforehand.
      */
     QSet< QString > referencedFields( const QgsExpressionContext &context = QgsExpressionContext(), bool ignoreContext = false ) const;
+
+    /**
+     * Returns the set of any variables referenced by the property's expression.
+     *
+     * Returns an empty set if the property is inactive or not of type Qgis::PropertyType::Expression.
+     * \since QGIS 4.2
+     */
+    QSet<QString> referencedVariables() const;
 
     /**
      * Returns TRUE if the property is set to a linked project color.
@@ -510,56 +533,57 @@ class CORE_EXPORT QgsProperty
     bool convertToTransformer();
 
     //! Allows direct construction of QVariants from properties.
-    operator QVariant() const
-    {
-      return QVariant::fromValue( *this );
-    }
+    operator QVariant() const { return QVariant::fromValue( *this ); }
 
 
 #ifdef SIP_RUN
+    // clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
     QString typeString;
     QString definitionString;
     switch ( sipCpp->propertyType() )
     {
-      case QgsProperty::StaticProperty:
-        typeString = QStringLiteral( "static" );
+      case Qgis::PropertyType::Static:
+        typeString = u"static"_s;
         definitionString = sipCpp->staticValue().toString();
         break;
 
-      case QgsProperty::FieldBasedProperty:
-        typeString = QStringLiteral( "field" );
+      case Qgis::PropertyType::Field:
+        typeString = u"field"_s;
         definitionString = sipCpp->field();
         break;
 
-      case QgsProperty::ExpressionBasedProperty:
-        typeString = QStringLiteral( "expression" );
+      case Qgis::PropertyType::Expression:
+        typeString = u"expression"_s;
         definitionString = sipCpp->expressionString();
         break;
 
-      case QgsProperty::InvalidProperty:
-        typeString = QStringLiteral( "invalid" );
+      case Qgis::PropertyType::Invalid:
+        typeString = u"invalid"_s;
         break;
     }
 
-    QString str = QStringLiteral( "<QgsProperty: %1%2%3>" ).arg( !sipCpp->isActive() && sipCpp->propertyType() != QgsProperty::InvalidProperty ? QStringLiteral( "INACTIVE " ) : QString(),
+    QString str = u"<QgsProperty: %1%2%3>"_s.arg( !sipCpp->isActive() && sipCpp->propertyType() != Qgis::PropertyType::Invalid ? u"INACTIVE "_s : QString(),
                   typeString,
-                  definitionString.isEmpty() ? QString() : QStringLiteral( " (%1)" ).arg( definitionString ) );
+                  definitionString.isEmpty() ? QString() : u" (%1)"_s.arg( definitionString ) );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
-  private:
+    // clang-format off
+    private:
+    // clang-format on
 
-    mutable QExplicitlySharedDataPointer<QgsPropertyPrivate> d;
+    mutable QExplicitlySharedDataPointer<QgsPropertyPrivate>
+      d;
 
     /**
      * Calculates the current value of the property, before any transformations or
      * conversions are applied.
      */
     QVariant propertyValue( const QgsExpressionContext &context, const QVariant &defaultValue = QVariant(), bool *ok = nullptr ) const;
-
 };
 
 Q_DECLARE_METATYPE( QgsProperty )

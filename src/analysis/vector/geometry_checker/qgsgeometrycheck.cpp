@@ -13,18 +13,18 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsgeometrycheckcontext.h"
-#include "qgsgeometrycollection.h"
-#include "qgscurvepolygon.h"
 #include "qgsgeometrycheck.h"
-#include "qgsgeometrycheckerror.h"
+
+#include "qgscurvepolygon.h"
 #include "qgsfeaturepool.h"
-#include "qgsvectorlayer.h"
+#include "qgsgeometrycheckcontext.h"
+#include "qgsgeometrycheckerror.h"
+#include "qgsgeometrycollection.h"
 #include "qgsreadwritelocker.h"
 #include "qgsthreadingutils.h"
+#include "qgsvectorlayer.h"
 
-
-
+#include "moc_qgsgeometrycheck.cpp"
 
 QgsGeometryCheck::QgsGeometryCheck( const QgsGeometryCheckContext *context, const QVariantMap &configuration )
   : mContext( context )
@@ -47,7 +47,23 @@ QgsGeometryCheck::Flags QgsGeometryCheck::flags() const
   return QgsGeometryCheck::Flags();
 }
 
-void QgsGeometryCheck::fixError( const QMap<QString, QgsFeaturePool *> &featurePools, QgsGeometryCheckError *error, int method, const QMap<QString, int> &mergeAttributeIndices, QgsGeometryCheck::Changes &changes ) const
+QgsGeometryCheck::Result QgsGeometryCheck::collectErrors(
+  const QMap<QString, QgsFeaturePool *> &featurePools, QList<QgsGeometryCheckError *> &errors SIP_INOUT, QStringList &messages SIP_INOUT, QgsFeedback *feedback, const LayerFeatureIds &ids
+) const
+{
+  Q_UNUSED( featurePools )
+  Q_UNUSED( errors )
+  Q_UNUSED( messages )
+  Q_UNUSED( feedback )
+  Q_UNUSED( ids )
+
+  return QgsGeometryCheck::Result::Success;
+}
+
+
+void QgsGeometryCheck::fixError(
+  const QMap<QString, QgsFeaturePool *> &featurePools, QgsGeometryCheckError *error, int method, const QMap<QString, int> &mergeAttributeIndices, QgsGeometryCheck::Changes &changes
+) const
 {
   Q_UNUSED( featurePools )
   Q_UNUSED( error )
@@ -68,7 +84,7 @@ QList<QgsGeometryCheckResolutionMethod> QgsGeometryCheck::availableResolutionMet
   int i = 0;
   for ( const QString &method : methods )
   {
-    fixes.append( QgsGeometryCheckResolutionMethod( i, method, QString(), false ) );
+    fixes.append( QgsGeometryCheckResolutionMethod( i++, method, QString(), false ) );
   }
 
   return fixes;
@@ -89,14 +105,14 @@ QMap<QString, QgsFeatureIds> QgsGeometryCheck::allLayerFeatureIds( const QMap<QS
   return featureIds;
 }
 
-void QgsGeometryCheck::replaceFeatureGeometryPart( const QMap<QString, QgsFeaturePool *> &featurePools,
-    const QString &layerId, QgsFeature &feature,
-    int partIdx, QgsAbstractGeometry *newPartGeom, Changes &changes ) const
+void QgsGeometryCheck::replaceFeatureGeometryPart(
+  const QMap<QString, QgsFeaturePool *> &featurePools, const QString &layerId, QgsFeature &feature, int partIdx, QgsAbstractGeometry *newPartGeom, Changes &changes
+) const
 {
   QgsFeaturePool *featurePool = featurePools[layerId];
   QgsGeometry featureGeom = feature.geometry();
   QgsAbstractGeometry *geom = featureGeom.get();
-  if ( QgsGeometryCollection *geomCollection = dynamic_cast< QgsGeometryCollection *>( geom ) )
+  if ( QgsGeometryCollection *geomCollection = dynamic_cast<QgsGeometryCollection *>( geom ) )
   {
     geomCollection->removeGeometry( partIdx );
     geomCollection->addGeometry( newPartGeom );
@@ -139,9 +155,7 @@ void QgsGeometryCheck::deleteFeatureGeometryPart( const QMap<QString, QgsFeature
   }
 }
 
-void QgsGeometryCheck::deleteFeatureGeometryRing( const QMap<QString, QgsFeaturePool *> &featurePools,
-    const QString &layerId, QgsFeature &feature,
-    int partIdx, int ringIdx, Changes &changes ) const
+void QgsGeometryCheck::deleteFeatureGeometryRing( const QMap<QString, QgsFeaturePool *> &featurePools, const QString &layerId, QgsFeature &feature, int partIdx, int ringIdx, Changes &changes ) const
 {
   QgsFeaturePool *featurePool = featurePools[layerId];
   QgsGeometry featureGeom = feature.geometry();
@@ -175,10 +189,31 @@ double QgsGeometryCheck::scaleFactor( const QPointer<QgsVectorLayer> &layer ) co
   QgsVectorLayer *lyr = layer.data();
   if ( lyr )
   {
-    QgsCoordinateTransform ct( lyr->crs(), mContext->mapCrs, mContext->transformContext );
+    const QgsCoordinateTransform ct( lyr->crs(), mContext->mapCrs, mContext->transformContext );
     scaleFactor = ct.scaleFactor( lyr->extent() );
   }
   return scaleFactor;
 }
 
+QgsGeometryCheck::Result QgsGeometryCheck::checkUniqueId( const QgsGeometryCheckerUtils::LayerFeature layerFeature, QMap< QString, QSet<QVariant> > &uniqueIds ) const
+{
+  const int uniqueIdFieldIndex = mContext->uniqueIdFieldIndex;
+  if ( uniqueIdFieldIndex == -1 )
+  {
+    return QgsGeometryCheck::Result::Success;
+  }
 
+  auto uniqueIdIt = uniqueIds.find( layerFeature.layerId() );
+  if ( uniqueIdIt == uniqueIds.end() )
+  {
+    uniqueIdIt = uniqueIds.insert( layerFeature.layerId(), QSet<QVariant>() );
+  }
+  const QVariant uniqueIdValue = layerFeature.feature().attribute( uniqueIdFieldIndex );
+  if ( uniqueIdIt.value().contains( uniqueIdValue ) )
+  {
+    return QgsGeometryCheck::Result::DuplicatedUniqueId;
+  }
+  uniqueIdIt.value().insert( uniqueIdValue );
+
+  return QgsGeometryCheck::Result::Success;
+}

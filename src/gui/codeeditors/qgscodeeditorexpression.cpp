@@ -1,5 +1,5 @@
 /***************************************************************************
-    qgscodeeditorexpressoin.cpp - An expression editor based on QScintilla
+    qgscodeeditorexpression.cpp - An expression editor based on QScintilla
      --------------------------------------
     Date                 : 8.9.2018
     Copyright            : (C) 2018 by Matthias Kuhn
@@ -13,12 +13,16 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
 #include "qgscodeeditorexpression.h"
-#include "qgssymbollayerutils.h"
 
-#include <QString>
+#include "qgsexpression.h"
+
 #include <QFont>
+#include <QString>
+
+#include "moc_qgscodeeditorexpression.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsCodeEditorExpression::QgsCodeEditorExpression( QWidget *parent )
   : QgsCodeEditor( parent )
@@ -27,9 +31,23 @@ QgsCodeEditorExpression::QgsCodeEditorExpression( QWidget *parent )
   {
     setTitle( tr( "Expression Editor" ) );
   }
-  setFoldingVisible( false );
   setAutoCompletionCaseSensitivity( false );
   QgsCodeEditorExpression::initializeLexer(); // avoid cppcheck warning by explicitly specifying namespace
+}
+
+Qgis::ScriptLanguage QgsCodeEditorExpression::language() const
+{
+  return Qgis::ScriptLanguage::QgisExpression;
+}
+
+Qgis::ScriptLanguageCapabilities QgsCodeEditorExpression::languageCapabilities() const
+{
+  return Qgis::ScriptLanguageCapability::ToggleComment;
+}
+
+void QgsCodeEditorExpression::toggleComment()
+{
+  toggleLineComments( u"--"_s );
 }
 
 void QgsCodeEditorExpression::setExpressionContext( const QgsExpressionContext &context )
@@ -42,14 +60,22 @@ void QgsCodeEditorExpression::setExpressionContext( const QgsExpressionContext &
     mVariables << '@' + var;
   }
 
+  // always show feature variables in autocomplete -- they may not be available in the context
+  // at time of showing an expression builder, but they'll generally be available at evaluation time.
+  mVariables << u"@feature"_s;
+  mVariables << u"@id"_s;
+  mVariables << u"@geometry"_s;
+
   mContextFunctions = context.functionNames();
 
   mFunctions.clear();
 
-  const int count = QgsExpression::functionCount();
+  const QgsExpression::FunctionListSnapshot functions = QgsExpression::getFunctionsSnapshot();
+
+  const int count = functions->size();
   for ( int i = 0; i < count; i++ )
   {
-    QgsExpressionFunction *func = QgsExpression::Functions()[i];
+    QgsExpression::SharedFunctionPtr func = functions->getFunction( i );
     if ( func->isDeprecated() ) // don't show deprecated functions
       continue;
     if ( func->isContextual() )
@@ -137,26 +163,27 @@ void QgsCodeEditorExpression::updateApis()
 {
   mApis = new QgsSciApisExpression( mSqlLexer );
 
-  for ( const QString &var : qgis::as_const( mVariables ) )
+  for ( const QString &var : std::as_const( mVariables ) )
   {
     mApis->add( var );
   }
 
-  for ( const QString &function : qgis::as_const( mContextFunctions ) )
+  for ( const QString &function : std::as_const( mContextFunctions ) )
   {
     mApis->add( function );
   }
 
-  for ( const QString &function : qgis::as_const( mFunctions ) )
+  for ( const QString &function : std::as_const( mFunctions ) )
   {
     mApis->add( function );
   }
 
-  for ( const QString &fieldName : qgis::as_const( mFieldNames ) )
+  for ( const QString &fieldName : std::as_const( mFieldNames ) )
   {
     mApis->add( fieldName );
   }
 
+  mApis->add( QString( "NULL" ) );
   mApis->prepare();
   mSqlLexer->setAPIs( mApis );
 }
@@ -165,6 +192,7 @@ void QgsCodeEditorExpression::updateApis()
 QgsLexerExpression::QgsLexerExpression( QObject *parent )
   : QsciLexerSQL( parent )
 {
+  setBackslashEscapes( true );
 }
 
 const char *QgsLexerExpression::language() const
@@ -184,9 +212,7 @@ const char *QgsLexerExpression::wordCharacters() const
 
 QgsSciApisExpression::QgsSciApisExpression( QsciLexer *lexer )
   : QsciAPIs( lexer )
-{
-
-}
+{}
 
 QStringList QgsSciApisExpression::callTips( const QStringList &context, int commas, QsciScintilla::CallTipsStyle style, QList<int> &shifts )
 {

@@ -16,12 +16,12 @@
 #ifndef QGSATTRIBUTETABLEVIEW_H
 #define QGSATTRIBUTETABLEVIEW_H
 
-#include <QTableView>
-#include <QAction>
-#include "qgsfeatureid.h"
-
 #include "qgis_gui.h"
 #include "qgsattributetableconfig.h"
+#include "qgsfeatureid.h"
+#include "qgstableview.h"
+
+#include <QAction>
 
 class QgsAttributeTableDelegate;
 class QgsAttributeTableFilterModel;
@@ -45,16 +45,22 @@ class QgsFeature;
  * Or this can be used within the QgsDualView stacked widget.
  */
 
-class GUI_EXPORT QgsAttributeTableView : public QTableView
+class GUI_EXPORT QgsAttributeTableView : public QgsTableView
 {
     Q_OBJECT
 
   public:
-
     //! Constructor for QgsAttributeTableView
     QgsAttributeTableView( QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Woverloaded-virtual"
+#endif
     virtual void setModel( QgsAttributeTableFilterModel *filterModel );
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
     /**
      * \brief setFeatureSelectionManager
@@ -77,7 +83,6 @@ class GUI_EXPORT QgsAttributeTableView : public QTableView
     /**
      * Set the attribute table config which should be used to control
      * the appearance of the attribute table.
-     * \since QGIS 2.16
      */
     void setAttributeTableConfig( const QgsAttributeTableConfig &config );
 
@@ -88,19 +93,23 @@ class GUI_EXPORT QgsAttributeTableView : public QTableView
      */
     QList<QgsFeatureId> selectedFeaturesIds() const;
 
-
     /**
      * Scroll to a feature with a given \a fid.
-
-      Optionally a \a column can be specified, which will also bring that column into view.
-
+     *
+     * Optionally a \a column can be specified, which will also bring that column into view.
+     *
      * \since QGIS 3.16
      */
     void scrollToFeature( const QgsFeatureId &fid, int column = -1 );
 
+    /**
+     * Closes the editor delegate for the current item, committing its changes to the model.
+     *
+     * \since QGIS 3.30
+     */
+    void closeCurrentEditor();
 
   protected:
-
     /**
      * Called for mouse press events on a table cell.
      * Disables selection change for these events.
@@ -151,7 +160,6 @@ class GUI_EXPORT QgsAttributeTableView : public QTableView
   signals:
 
     /**
-     * \brief
      * Emitted in order to provide a hook to add additional* menu entries to the context menu.
      *
      * \param menu     If additional QMenuItems are added, they will show up in the context menu.
@@ -162,13 +170,22 @@ class GUI_EXPORT QgsAttributeTableView : public QTableView
 
     /**
      * Emitted when a column in the view has been resized.
-     * \param column column index (starts at 0)
+     * \param column visual column index (starts at 0)
      * \param width new width in pixel
-     * \since QGIS 2.16
      */
     void columnResized( int column, int width );
 
-    void finished();
+    /**
+     * \deprecated QGIS 3.40. No longer used.
+     */
+    Q_DECL_DEPRECATED void finished() SIP_DEPRECATED;
+
+    /**
+     * Emitted when a row header is double-clicked.
+     * \param fid the feature ID of the double-clicked row.
+     * \since QGIS 4.0
+     */
+    void rowHeaderDoubleClicked( QgsFeatureId fid );
 
   public slots:
     void repaintRequested( const QModelIndexList &indexes );
@@ -198,8 +215,10 @@ class GUI_EXPORT QgsAttributeTableView : public QTableView
     QMenu *mActionPopup = nullptr;
     int mRowSectionAnchor = 0;
     QItemSelectionModel::SelectionFlag mCtrlDragSelectionFlag = QItemSelectionModel::Select;
-    QMap< QModelIndex, QWidget * > mActionWidgets;
+    QMap<QModelIndex, QWidget *> mActionWidgets;
     QgsAttributeTableConfig mConfig;
+    QString mSortExpression;
+    int mBlockColumnUpdates = 0;
 };
 
 #endif

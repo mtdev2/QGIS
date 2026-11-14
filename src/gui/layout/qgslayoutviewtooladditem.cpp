@@ -14,22 +14,26 @@
  ***************************************************************************/
 
 #include "qgslayoutviewtooladditem.h"
-#include "qgsapplication.h"
-#include "qgslayoutview.h"
-#include "qgslayout.h"
-#include "qgslayoutitemregistry.h"
-#include "qgslayoutviewmouseevent.h"
-#include "qgslogger.h"
-#include "qgslayoutviewrubberband.h"
+
 #include "qgsgui.h"
+#include "qgslayout.h"
 #include "qgslayoutitemguiregistry.h"
 #include "qgslayoutnewitempropertiesdialog.h"
-#include "qgssettings.h"
 #include "qgslayoutundostack.h"
-#include <QGraphicsRectItem>
-#include <QPen>
+#include "qgslayoutview.h"
+#include "qgslayoutviewmouseevent.h"
+#include "qgslayoutviewrubberband.h"
+#include "qgssettings.h"
+
 #include <QBrush>
+#include <QGraphicsRectItem>
 #include <QMouseEvent>
+#include <QPen>
+#include <QString>
+
+#include "moc_qgslayoutviewtooladditem.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayoutViewToolAddItem::QgsLayoutViewToolAddItem( QgsLayoutView *view )
   : QgsLayoutViewTool( view, tr( "Add item" ) )
@@ -57,10 +61,7 @@ void QgsLayoutViewToolAddItem::layoutPressEvent( QgsLayoutViewMouseEvent *event 
   mRubberBand.reset( QgsGui::layoutItemGuiRegistry()->createItemRubberBand( mItemMetadataId, view() ) );
   if ( mRubberBand )
   {
-    connect( mRubberBand.get(), &QgsLayoutViewRubberBand::sizeChanged, this, [ = ]( const QString & size )
-    {
-      view()->pushStatusMessage( size );
-    } );
+    connect( mRubberBand.get(), &QgsLayoutViewRubberBand::sizeChanged, this, [this]( const QString &size ) { view()->pushStatusMessage( size ); } );
     mRubberBand->start( event->snappedPoint(), event->modifiers() );
   }
 }
@@ -86,7 +87,7 @@ void QgsLayoutViewToolAddItem::layoutReleaseEvent( QgsLayoutViewMouseEvent *even
   }
   mDrawing = false;
 
-  QRectF rect = mRubberBand ? mRubberBand->finish( event->snappedPoint(), event->modifiers() ) : QRectF();
+  const QRectF rect = mRubberBand ? mRubberBand->finish( event->snappedPoint(), event->modifiers() ) : QRectF();
 
   QString undoText;
   if ( QgsLayoutItemAbstractGuiMetadata *metadata = QgsGui::layoutItemGuiRegistry()->itemMetadata( mItemMetadataId ) )
@@ -107,7 +108,7 @@ void QgsLayoutViewToolAddItem::layoutReleaseEvent( QgsLayoutViewMouseEvent *even
   }
 
   // click? or click-and-drag?
-  bool clickOnly = !isClickAndDrag( mMousePressStartPos, event->pos() );
+  const bool clickOnly = !isClickAndDrag( mMousePressStartPos, event->pos() );
   if ( clickOnly && mRubberBand )
   {
     QgsLayoutItemPropertiesDialog dlg( view() );
@@ -128,8 +129,8 @@ void QgsLayoutViewToolAddItem::layoutReleaseEvent( QgsLayoutViewMouseEvent *even
   }
   else if ( mRubberBand )
   {
-    item->attemptResize( QgsLayoutSize( rect.width(), rect.height(), QgsUnitTypes::LayoutMillimeters ) );
-    item->attemptMove( QgsLayoutPoint( rect.left(), rect.top(), QgsUnitTypes::LayoutMillimeters ) );
+    item->attemptResize( QgsLayoutSize( rect.width(), rect.height(), Qgis::LayoutUnit::Millimeters ) );
+    item->attemptMove( QgsLayoutPoint( rect.left(), rect.top(), Qgis::LayoutUnit::Millimeters ) );
   }
   else
   {
@@ -141,9 +142,9 @@ void QgsLayoutViewToolAddItem::layoutReleaseEvent( QgsLayoutViewMouseEvent *even
   if ( mRubberBand )
   {
     QgsSettings settings;
-    settings.setValue( QStringLiteral( "LayoutDesigner/lastItemWidth" ), item->sizeWithUnits().width() );
-    settings.setValue( QStringLiteral( "LayoutDesigner/lastItemHeight" ), item->sizeWithUnits().height() );
-    settings.setEnumValue( QStringLiteral( "LayoutDesigner/lastSizeUnit" ), item->sizeWithUnits().units() );
+    settings.setValue( u"LayoutDesigner/lastItemWidth"_s, item->sizeWithUnits().width() );
+    settings.setValue( u"LayoutDesigner/lastItemHeight"_s, item->sizeWithUnits().height() );
+    settings.setEnumValue( u"LayoutDesigner/lastSizeUnit"_s, item->sizeWithUnits().units() );
   }
 
   QgsGui::layoutItemGuiRegistry()->newItemAddedToLayout( mItemMetadataId, item, mCustomProperties );

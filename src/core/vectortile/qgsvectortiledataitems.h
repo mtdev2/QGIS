@@ -15,11 +15,13 @@
 #ifndef QGSVECTORTILEDATAITEMS_H
 #define QGSVECTORTILEDATAITEMS_H
 
-#include "qgsdataitem.h"
+#include "qgsconnectionsitem.h"
 #include "qgsdataitemprovider.h"
+#include "qgslayeritem.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
-#define SIP_NO_FILE
 
 //! Root item for XYZ tile layers
 class CORE_EXPORT QgsVectorTileRootItem : public QgsConnectionsRootItem
@@ -31,7 +33,6 @@ class CORE_EXPORT QgsVectorTileRootItem : public QgsConnectionsRootItem
     QVector<QgsDataItem *> createChildren() override;
 
     QVariant sortKey() const override { return 8; }
-
 };
 
 //! Item implementation for XYZ tile layers
@@ -40,7 +41,6 @@ class CORE_EXPORT QgsVectorTileLayerItem : public QgsLayerItem
     Q_OBJECT
   public:
     QgsVectorTileLayerItem( QgsDataItem *parent, QString name, QString path, const QString &encodedUri );
-
 };
 
 
@@ -50,8 +50,7 @@ class QgsVectorTileDataItemProvider : public QgsDataItemProvider
   public:
     QString name() override;
     QString dataProviderKey() const override;
-    int capabilities() const override;
-
+    Qgis::DataItemProviderCapabilities capabilities() const override;
     QgsDataItem *createDataItem( const QString &path, QgsDataItem *parentItem ) override;
 };
 

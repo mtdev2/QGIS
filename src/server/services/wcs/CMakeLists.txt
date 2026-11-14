@@ -15,12 +15,6 @@ set (wcs_SRCS
 
 add_library (wcs MODULE ${wcs_SRCS})
 
-
-include_directories(SYSTEM
-  ${GDAL_INCLUDE_DIR}
-  ${POSTGRES_INCLUDE_DIR}
-)
-
 include_directories(
   ${CMAKE_SOURCE_DIR}/src/server
   ${CMAKE_SOURCE_DIR}/src/server/services

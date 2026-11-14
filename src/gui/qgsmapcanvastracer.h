@@ -15,8 +15,8 @@
 #ifndef QGSMAPCANVASTRACER_H
 #define QGSMAPCANVASTRACER_H
 
-#include "qgstracer.h"
 #include "qgis_gui.h"
+#include "qgstracer.h"
 
 class QAction;
 class QgsMapCanvas;
@@ -25,7 +25,9 @@ class QgsMessageBarItem;
 
 /**
  * \ingroup gui
- * Extension of QgsTracer that provides extra functionality:
+ * \brief Extension of QgsTracer that provides extra functionality.
+ *
+ * This tracer subclass adds:
  *
  * - automatic updates of own configuration based on canvas settings
  * - reporting of issues to the user via message bar
@@ -36,7 +38,6 @@ class QgsMessageBarItem;
  * tracer instances and map canvas API is not "polluted" by this optional
  * functionality).
  *
- * \since QGIS 2.14
  */
 class GUI_EXPORT QgsMapCanvasTracer : public QgsTracer
 {
@@ -58,14 +59,12 @@ class GUI_EXPORT QgsMapCanvasTracer : public QgsTracer
 
     /**
      * Access to action that user may use to toggle snapping on/off. May be NULLPTR if no action was associated.
-     * \since QGIS 3.0
      */
     QAction *actionEnableSnapping() const { return mActionEnableSnapping; }
 
     /**
      * Assign "enable snapping" checkable action to the tracer.
      * The action is used to determine whether snapping is currently enabled by the user.
-     * \since QGIS 3.0
      */
     void setActionEnableSnapping( QAction *action ) { mActionEnableSnapping = action; }
 

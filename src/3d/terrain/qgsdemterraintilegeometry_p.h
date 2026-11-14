@@ -27,50 +27,43 @@
 // version without notice, or even be removed.
 //
 
-#define SIP_NO_FILE
-
-#include <Qt3DExtras/qt3dextras_global.h>
-#include <Qt3DRender/qgeometry.h>
-#include <QSize>
 
 #include <QImage>
+#include <QSize>
+#include <Qt3DCore/QGeometry>
 
-namespace Qt3DRender
+#define SIP_NO_FILE
+
+namespace Qt3DCore
 {
-
   class QAttribute;
   class QBuffer;
+} // namespace Qt3DCore
 
-} // Qt3DRender
-
-namespace QgsRayCastingUtils
-{
-  class Ray3D;
-}
+class QgsRay3D;
+class QgsRayCastContext;
 
 /**
- * \ingroup 3d
- * Stores attributes and vertex/index buffers for one terrain tile based on DEM.
- * \since QGIS 3.0
+ * \ingroup qgis_3d
+ * \brief Stores attributes and vertex/index buffers for one terrain tile based on DEM.
  */
-class DemTerrainTileGeometry : public Qt3DRender::QGeometry
+class DemTerrainTileGeometry : public Qt3DCore::QGeometry
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructs a terrain tile geometry. Resolution is the number of vertices on one side of the tile,
      * heightMap is array of float values with one height value for each vertex
      */
     explicit DemTerrainTileGeometry( int resolution, float side, float vertScale, float skirtHeight, const QByteArray &heightMap, QNode *parent = nullptr );
 
-    bool rayIntersection( const QgsRayCastingUtils::Ray3D &ray, const QMatrix4x4 &worldTransform, QVector3D &intersectionPoint );
+    bool rayIntersection( const QgsRay3D &ray, const QgsRayCastContext &context, const QMatrix4x4 &worldTransform, QVector3D &intersectionPoint );
 
-    Qt3DRender::QAttribute *positionAttribute() { return mPositionAttribute; }
-    Qt3DRender::QAttribute *normalAttribute() { return mNormalAttribute; }
-    Qt3DRender::QAttribute *texCoordsAttribute() { return mTexCoordAttribute; }
-    Qt3DRender::QAttribute *indexAttribute() { return mIndexAttribute; }
+    Qt3DCore::QAttribute *positionAttribute() { return mPositionAttribute; }
+    Qt3DCore::QAttribute *normalAttribute() { return mNormalAttribute; }
+    Qt3DCore::QAttribute *texCoordsAttribute() { return mTexCoordAttribute; }
+    Qt3DCore::QAttribute *indexAttribute() { return mIndexAttribute; }
 
   private:
     void init();
@@ -80,14 +73,14 @@ class DemTerrainTileGeometry : public Qt3DRender::QGeometry
     float mVertScale;
     float mSkirtHeight;
     QByteArray mHeightMap;
-    Qt3DRender::QAttribute *mPositionAttribute = nullptr;
-    Qt3DRender::QAttribute *mNormalAttribute = nullptr;
-    Qt3DRender::QAttribute *mTexCoordAttribute = nullptr;
-    Qt3DRender::QAttribute *mIndexAttribute = nullptr;
-    Qt3DRender::QBuffer *mVertexBuffer = nullptr;
-    Qt3DRender::QBuffer *mIndexBuffer = nullptr;
+    Qt3DCore::QAttribute *mPositionAttribute = nullptr;
+    Qt3DCore::QAttribute *mNormalAttribute = nullptr;
+    Qt3DCore::QAttribute *mTexCoordAttribute = nullptr;
+    Qt3DCore::QAttribute *mIndexAttribute = nullptr;
+    Qt3DCore::QBuffer *mVertexBuffer = nullptr;
+    Qt3DCore::QBuffer *mIndexBuffer = nullptr;
 };
 
 /// @endcond
 
-#endif  // QGSDEMTERRAINTILEGEOMETRY_P_H
+#endif // QGSDEMTERRAINTILEGEOMETRY_P_H

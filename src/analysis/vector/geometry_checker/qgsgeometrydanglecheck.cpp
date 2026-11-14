@@ -13,19 +13,39 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsgeometrycheckcontext.h"
 #include "qgsgeometrydanglecheck.h"
+
+#include "qgsfeedback.h"
+#include "qgsgeometrycheckcontext.h"
+#include "qgsgeometrycheckerror.h"
 #include "qgslinestring.h"
 #include "qgsvectorlayer.h"
-#include "qgsgeometrycheckerror.h"
 
-void QgsGeometryDangleCheck::collectErrors( const QMap<QString, QgsFeaturePool *> &featurePools, QList<QgsGeometryCheckError *> &errors, QStringList &messages, QgsFeedback *feedback, const LayerFeatureIds &ids ) const
+QgsGeometryCheck::Result QgsGeometryDangleCheck::collectErrors(
+  const QMap<QString, QgsFeaturePool *> &featurePools, QList<QgsGeometryCheckError *> &errors, QStringList &messages, QgsFeedback *feedback, const LayerFeatureIds &ids
+) const
 {
   Q_UNUSED( messages )
-  QMap<QString, QgsFeatureIds> featureIds = ids.isEmpty() ? allLayerFeatureIds( featurePools ) : ids.toMap();
-  QgsGeometryCheckerUtils::LayerFeatures layerFeatures( featurePools, featureIds, compatibleGeometryTypes(), feedback, mContext );
+
+  QMap<QString, QSet<QVariant>> uniqueIds;
+  const QMap<QString, QgsFeatureIds> featureIds = ids.isEmpty() ? allLayerFeatureIds( featurePools ) : ids.toMap();
+  const QgsGeometryCheckerUtils::LayerFeatures layerFeatures( featurePools, featureIds, compatibleGeometryTypes(), feedback, mContext );
   for ( const QgsGeometryCheckerUtils::LayerFeature &layerFeature : layerFeatures )
   {
+    if ( feedback && feedback->isCanceled() )
+    {
+      return QgsGeometryCheck::Result::Canceled;
+    }
+
+    if ( context()->uniqueIdFieldIndex != -1 )
+    {
+      QgsGeometryCheck::Result result = checkUniqueId( layerFeature, uniqueIds );
+      if ( result != QgsGeometryCheck::Result::Success )
+      {
+        return result;
+      }
+    }
+
     const QgsAbstractGeometry *geom = layerFeature.geometry().constGet();
     for ( int iPart = 0, nParts = geom->partCount(); iPart < nParts; ++iPart )
     {
@@ -36,7 +56,7 @@ void QgsGeometryDangleCheck::collectErrors( const QMap<QString, QgsFeaturePool *
         continue;
       }
       // Check that start and end node lie on a line
-      int nVerts = geom->vertexCount( iPart, 0 );
+      const int nVerts = geom->vertexCount( iPart, 0 );
       const QgsPoint &p1 = geom->vertexAt( QgsVertexId( iPart, 0, 0 ) );
       const QgsPoint &p2 = geom->vertexAt( QgsVertexId( iPart, 0, nVerts - 1 ) );
 
@@ -50,9 +70,14 @@ void QgsGeometryDangleCheck::collectErrors( const QMap<QString, QgsFeaturePool *
       }
 
       // Check whether endpoints line on another line in the layer
-      QgsGeometryCheckerUtils::LayerFeatures checkFeatures( featurePools, QList<QString>() << layerFeature.layer()->id(), line->boundingBox(), {QgsWkbTypes::LineGeometry}, mContext );
+      const QgsGeometryCheckerUtils::LayerFeatures checkFeatures( featurePools, QList<QString>() << layerFeature.layer()->id(), line->boundingBox(), { Qgis::GeometryType::Line }, mContext );
       for ( const QgsGeometryCheckerUtils::LayerFeature &checkFeature : checkFeatures )
       {
+        if ( feedback && feedback->isCanceled() )
+        {
+          return QgsGeometryCheck::Result::Canceled;
+        }
+
         const QgsAbstractGeometry *testGeom = checkFeature.geometry().constGet();
         for ( int jPart = 0, mParts = testGeom->partCount(); jPart < mParts; ++jPart )
         {
@@ -92,6 +117,7 @@ void QgsGeometryDangleCheck::collectErrors( const QMap<QString, QgsFeaturePool *
       }
     }
   }
+  return QgsGeometryCheck::Result::Success;
 }
 
 void QgsGeometryDangleCheck::fixError( const QMap<QString, QgsFeaturePool *> &featurePools, QgsGeometryCheckError *error, int method, const QMap<QString, int> & /*mergeAttributeIndices*/, Changes & /*changes*/ ) const
@@ -110,7 +136,7 @@ void QgsGeometryDangleCheck::fixError( const QMap<QString, QgsFeaturePool *> &fe
 
 QStringList QgsGeometryDangleCheck::resolutionMethods() const
 {
-  static QStringList methods = QStringList() << tr( "No action" );
+  static const QStringList methods = QStringList() << tr( "No action" );
   return methods;
 }
 

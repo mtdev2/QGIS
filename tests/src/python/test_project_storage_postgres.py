@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for the postgres project storage.
 
 Note: to prepare the DB, you need to run the sql files specified in
@@ -10,80 +9,57 @@ the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 
 """
-from builtins import next
 
-__author__ = 'Martin Dobias'
-__date__ = '2018-03-29'
-__copyright__ = 'Copyright 2018, The QGIS Project'
-
-import qgis  # NOQA
-import psycopg2
+__author__ = "Martin Dobias"
+__date__ = "2018-03-29"
+__copyright__ = "Copyright 2018, The QGIS Project"
 
 import os
-import time
+import unittest
 
+import psycopg2
 from qgis.core import (
     QgsApplication,
     QgsDataSourceUri,
-    QgsVectorLayer,
     QgsProject,
+    QgsProjectItem,
+    QgsProviderRegistry,
+    QgsVectorLayer,
 )
-from PyQt5.QtCore import QDateTime, QUrl, QUrlQuery
-from qgis.testing import start_app, unittest
+from qgis.PyQt.QtCore import QUrl, QUrlQuery
+from qgis.testing import QgisTestCase, start_app
+from test_project_storage_base import TestPyQgsProjectStorageBase
 from utilities import unitTestDataPath
 
 QGISAPP = start_app()
 TEST_DATA_DIR = unitTestDataPath()
 
 
-def encode_uri(ds_uri, schema_name, project_name=None):
-    u = QUrl()
-    urlQuery = QUrlQuery()
-
-    u.setScheme("postgresql")
-    u.setHost(ds_uri.host())
-    if ds_uri.port() != '':
-        u.setPort(int(ds_uri.port()))
-    if ds_uri.username() != '':
-        u.setUserName(ds_uri.username())
-    if ds_uri.password() != '':
-        u.setPassword(ds_uri.password())
-
-    if ds_uri.service() != '':
-        urlQuery.addQueryItem("service", ds_uri.service())
-    if ds_uri.authConfigId() != '':
-        urlQuery.addQueryItem("authcfg", ds_uri.authConfigId())
-    if ds_uri.sslMode() != QgsDataSourceUri.SslPrefer:
-        urlQuery.addQueryItem("sslmode", QgsDataSourceUri.encodeSslMode(ds_uri.sslMode()))
-
-    urlQuery.addQueryItem("dbname", ds_uri.database())
-
-    urlQuery.addQueryItem("schema", schema_name)
-    if project_name:
-        urlQuery.addQueryItem("project", project_name)
-
-    u.setQuery(urlQuery)
-    return str(u.toEncoded(), 'utf-8')
-
-
-class TestPyQgsProjectStoragePostgres(unittest.TestCase):
-
+class TestPyQgsProjectStoragePostgres(QgisTestCase, TestPyQgsProjectStorageBase):
     @classmethod
     def setUpClass(cls):
         """Run before all tests"""
-        cls.dbconn = 'service=qgis_test'
-        if 'QGIS_PGTEST_DB' in os.environ:
-            cls.dbconn = os.environ['QGIS_PGTEST_DB']
+
+        super().setUpClass()
+
+        cls.dbconn = "service=qgis_test"
+        if "QGIS_PGTEST_DB" in os.environ:
+            cls.dbconn = os.environ["QGIS_PGTEST_DB"]
         cls.ds_uri = QgsDataSourceUri(cls.dbconn)
 
         # Create test layers
-        cls.vl = QgsVectorLayer(cls.dbconn + ' sslmode=disable key=\'pk\' srid=4326 type=POINT table="qgis_test"."someData" (geom) sql=', 'test', 'postgres')
+        cls.vl = QgsVectorLayer(
+            cls.dbconn
+            + ' sslmode=disable key=\'pk\' srid=4326 type=POINT table="qgis_test"."someData" (geom) sql=',
+            "test",
+            "postgres",
+        )
         assert cls.vl.isValid()
         cls.con = psycopg2.connect(cls.dbconn)
 
-    @classmethod
-    def tearDownClass(cls):
-        """Run after all tests"""
+        cls.schema = "qgis_test"
+        cls.provider = "postgres"
+        cls.project_storage_type = "postgresql"
 
     def execSQLCommand(self, sql):
         self.assertTrue(self.con)
@@ -96,66 +72,109 @@ class TestPyQgsProjectStoragePostgres(unittest.TestCase):
     def dropProjectsTable(self):
         self.execSQLCommand("DROP TABLE IF EXISTS qgis_test.qgis_projects;")
 
-    def testSaveLoadProject(self):
-        schema_uri = encode_uri(self.ds_uri, 'qgis_test')
-        project_uri = encode_uri(self.ds_uri, 'qgis_test', 'abc')
+    def encode_uri(self, ds_uri, schema_name, project_name=None):
+        u = QUrl()
+        urlQuery = QUrlQuery()
 
-        self.dropProjectsTable()  # make sure we have a clean start
+        u.setScheme("postgresql")
+        u.setHost(ds_uri.host())
+        if ds_uri.port() != "":
+            u.setPort(int(ds_uri.port()))
+        if ds_uri.username() != "":
+            u.setUserName(ds_uri.username())
+        if ds_uri.password() != "":
+            u.setPassword(ds_uri.password())
 
-        prj = QgsProject()
-        uri = self.vl.source()
-        vl1 = QgsVectorLayer(uri, 'test', 'postgres')
-        self.assertEqual(vl1.isValid(), True)
-        prj.addMapLayer(vl1)
+        if ds_uri.service() != "":
+            urlQuery.addQueryItem("service", ds_uri.service())
+        if ds_uri.authConfigId() != "":
+            urlQuery.addQueryItem("authcfg", ds_uri.authConfigId())
+        if ds_uri.sslMode() != QgsDataSourceUri.SslMode.SslPrefer:
+            urlQuery.addQueryItem(
+                "sslmode", QgsDataSourceUri.encodeSslMode(ds_uri.sslMode())
+            )
 
-        prj_storage = QgsApplication.projectStorageRegistry().projectStorageFromType("postgresql")
-        self.assertTrue(prj_storage)
+        urlQuery.addQueryItem("dbname", ds_uri.database())
 
-        lst0 = prj_storage.listProjects(schema_uri)
-        self.assertEqual(lst0, [])
+        urlQuery.addQueryItem("schema", schema_name)
+        if project_name:
+            urlQuery.addQueryItem("project", project_name)
 
-        # try to save project in the database
+        u.setQuery(urlQuery)
+        return str(u.toEncoded(), "utf-8")
 
-        prj.setFileName(project_uri)
-        res = prj.write()
-        self.assertTrue(res)
+    def test_browser_project_item(self):
+        """Test project items and their tooltips in the browser"""
 
-        lst1 = prj_storage.listProjects(schema_uri)
-        self.assertEqual(lst1, ["abc"])
+        # helper to find item in list by name
+        def find_item(items: list[QgsProjectItem], name: str):
+            return next((item for item in items if item.name() == name), None)
 
-        # now try to load the project back
+        # helper to find project item by name in the Postgres browser tree
+        def find_project_item_in_postgres(
+            project_name: str,
+        ) -> tuple[
+            QgsProjectItem, tuple[QgsProjectItem, QgsProjectItem, QgsProjectItem]
+        ]:
+            root_item = (
+                QgsApplication.dataItemProviderRegistry()
+                .provider("PostGIS")
+                .createDataItem("", None)
+            )
+            conn_item = find_item(root_item.createChildren(), "browser_projects_test")
+            self.assertIsNotNone(conn_item)
+            schema_item = find_item(conn_item.createChildren(), self.schema)
+            self.assertIsNotNone(schema_item)
+            project_item = find_item(schema_item.createChildren(), project_name)
+            self.assertIsInstance(project_item, QgsProjectItem)
+            # return all objects to avoid deletion of parents
+            return (project_item, (root_item, conn_item, schema_item))
 
-        prj2 = QgsProject()
-        prj2.setFileName(project_uri)
-        res = prj2.read()
-        self.assertTrue(res)
+        self.dropProjectsTable()
 
-        self.assertEqual(len(prj2.mapLayers()), 1)
+        # provider metadata and connection
+        md = QgsProviderRegistry.instance().providerMetadata(self.provider)
+        conn = md.createConnection(self.dbconn, {"projectsInDatabase": True})
+        md.saveConnection(conn, "browser_projects_test")
 
-        self.assertEqual(prj2.baseName(), "abc")
-        self.assertEqual(prj2.absoluteFilePath(), "")  # path not supported for project storages
-        self.assertTrue(abs(prj2.lastModified().secsTo(QDateTime.currentDateTime())) < 10)
+        project_name = "pg_project_for_testing_browser"
+        comment_str = "test comment"
 
-        # try to see project's metadata
+        # project with vector layer saved in DB
+        project = QgsProject()
+        project.addMapLayer(QgsVectorLayer(self.vl.source(), "test", self.provider))
+        project.setFileName(self.encode_uri(self.ds_uri, self.schema, project_name))
+        self.assertTrue(project.write())
 
-        res, metadata = prj_storage.readProjectStorageMetadata(project_uri)
-        self.assertTrue(res)
-        self.assertEqual(metadata.name, "abc")
-        time_project = metadata.lastModified
-        time_now = QDateTime.currentDateTime()
-        time_diff = time_now.secsTo(time_project)
-        self.assertTrue(abs(time_diff) < 10)
+        # add comment to project in DB
+        self.execSQLCommand(
+            f"UPDATE qgis_test.qgis_projects SET comment = '{comment_str}' WHERE name = '{project_name}';"
+        )
 
-        # try to remove the project
+        # test creation of project item in Postgres browser tree and  tooltip
+        project_item, _parents = find_project_item_in_postgres(project_name)
+        self.assertIsInstance(project_item, QgsProjectItem)
+        tooltip_lines = project_item.toolTip().split("\n")
+        self.assertEqual(len(tooltip_lines), 3)
+        self.assertTrue(tooltip_lines[0].startswith("Last modified time: "))
+        self.assertTrue(tooltip_lines[1].startswith("Last modified user: "))
+        self.assertEqual(tooltip_lines[2], f"Comment: {comment_str}")
 
-        res = prj_storage.removeProject(project_uri)
-        self.assertTrue(res)
+        # historic tables might not have comment column, test that it works without it
+        self.execSQLCommand("ALTER TABLE qgis_test.qgis_projects DROP COLUMN comment;")
 
-        lst2 = prj_storage.listProjects(schema_uri)
-        self.assertEqual(lst2, [])
+        project_item, _parents = find_project_item_in_postgres(project_name)
+        self.assertIsInstance(project_item, QgsProjectItem)
+        tooltip_lines = project_item.toolTip().split("\n")
+        self.assertEqual(len(tooltip_lines), 3)
+        self.assertTrue(tooltip_lines[0].startswith("Last modified time: "))
+        self.assertTrue(tooltip_lines[1].startswith("Last modified user: "))
+        self.assertEqual(tooltip_lines[2], "Comment: ")
 
-        self.dropProjectsTable()  # make sure we have a clean finish... "leave no trace"
+        # cleanup
+        self.dropProjectsTable()
+        md.deleteConnection("browser_projects_test")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

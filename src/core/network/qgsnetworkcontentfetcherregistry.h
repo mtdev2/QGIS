@@ -19,21 +19,23 @@
 #ifndef QGSNETWORKCONTENTFETCHERREGISTRY_H
 #define QGSNETWORKCONTENTFETCHERREGISTRY_H
 
-#include <QObject>
+#include "qgis_core.h"
+#include "qgshttpheaders.h"
+#include "qgsnetworkcontentfetchertask.h"
+#include "qgstaskmanager.h"
+
+#include <QFile>
 #include <QMap>
 #include <QMutex>
 #include <QNetworkReply>
-
-#include "qgis_core.h"
-#include "qgstaskmanager.h"
-#include "qgsnetworkcontentfetchertask.h"
-
-class QTemporaryFile;
+#include <QObject>
+#include <QPointer>
+#include <QTemporaryFile>
 
 /**
  * \class QgsFetchedContent
  * \ingroup core
- * FetchedContent holds useful information about a network content being fetched
+ * \brief Holds information about fetched network content.
  * \see QgsNetworkContentFetcherRegistry
  * \since QGIS 3.2
  */
@@ -44,40 +46,48 @@ class CORE_EXPORT QgsFetchedContent : public QObject
     //! Status of fetched content
     enum ContentStatus
     {
-      NotStarted, //!< No download started for such URL
+      NotStarted,  //!< No download started for such URL
       Downloading, //!< Currently downloading
-      Finished, //!< Download finished and successful
-      Failed //!< Download failed
+      Finished,    //!< Download finished and successful
+      Failed       //!< Download failed
     };
 
     //! Constructs a FetchedContent with pointer to the downloaded file and status of the download
-    explicit QgsFetchedContent( const QString &url, QTemporaryFile *file = nullptr, ContentStatus status = NotStarted )
+    explicit QgsFetchedContent(
+      const QString &url, QTemporaryFile *file SIP_TRANSFER = nullptr, ContentStatus status = NotStarted, const QString &authConfig = QString(), const QgsHttpHeaders &headers = QgsHttpHeaders()
+    )
       : mUrl( url )
       , mFile( file )
       , mStatus( status )
+      , mAuthConfig( authConfig )
+      , mHeaders( headers )
     {}
 
     ~QgsFetchedContent() override
     {
       if ( mFile )
         mFile->close();
-      delete mFile;
     }
 
 
 #ifndef SIP_RUN
     //! Returns a pointer to the local file, or NULLPTR if the file is not accessible yet.
-    QFile *file() const {return mFile;}
+    QFile *file() const { return mFile.get(); }
 #endif
 
     //! Returns the path to the local file, an empty string if the file is not accessible yet.
-    const QString filePath() const {return mFilePath;}
+    const QString filePath() const { return mFilePath; }
 
     //! Returns the status of the download
-    ContentStatus status() const {return mStatus;}
+    ContentStatus status() const { return mStatus; }
 
     //! Returns the potential error of the download
-    QNetworkReply::NetworkError error() const {return mError;}
+    QNetworkReply::NetworkError error() const { return mError; }
+
+    /**
+     * Returns the authentication configuration id use for this fetched content
+     */
+    QString authConfig() const { return mAuthConfig; }
 
   public slots:
 
@@ -96,22 +106,32 @@ class CORE_EXPORT QgsFetchedContent : public QObject
     //! Emitted when the file is fetched and accessible
     void fetched();
 
+    /**
+     * Emitted when an error with \a code error occurred while processing the request
+     * \a errorMsg is a textual description of the error
+     * \since QGIS 3.22
+     */
+    void errorOccurred( QNetworkReply::NetworkError code, const QString &errorMsg );
+
   private slots:
     void taskCompleted();
 
   private:
     QString mUrl;
-    QTemporaryFile *mFile = nullptr;
+    std::unique_ptr<QTemporaryFile> mFile;
     QString mFilePath;
-    QgsNetworkContentFetcherTask *mFetchingTask = nullptr;
+    QPointer< QgsNetworkContentFetcherTask > mFetchingTask;
     ContentStatus mStatus = NotStarted;
     QNetworkReply::NetworkError mError = QNetworkReply::NoError;
+    QString mAuthConfig;
+    QString mErrorString;
+    QgsHttpHeaders mHeaders;
 };
 
 /**
  * \class QgsNetworkContentFetcherRegistry
  * \ingroup core
- * \brief Registry for temporary fetched files
+ * \brief Registry for temporary fetched files.
  *
  * This provides a simple way of downloading and accessing
  * remote files during QGIS application running.
@@ -124,14 +144,6 @@ class CORE_EXPORT QgsNetworkContentFetcherRegistry : public QObject
 {
     Q_OBJECT
   public:
-    //! Enum to determine when the download should start
-    enum FetchingMode
-    {
-      DownloadLater,       //!< Do not start immediately the download to properly connect the fetched signal
-      DownloadImmediately, //!< The download will start immediately, not need to run QgsFecthedContent::download()
-    };
-    Q_ENUM( FetchingMode )
-
     //! Create the registry for temporary downloaded files
     explicit QgsNetworkContentFetcherRegistry() = default;
 
@@ -141,9 +153,11 @@ class CORE_EXPORT QgsNetworkContentFetcherRegistry : public QObject
      * \brief Initialize a download for the given URL
      * \param url the URL to be fetched
      * \param fetchingMode defines if the download will start immediately or shall be manually triggered
+     * \param authConfig authentication configuration id to be used while fetching
+     * \param headers optional HTTP headers to add to the request (since QGIS 3.44.8)
      * \note If the download starts immediately, it will not redownload any already fetched or currently fetching file.
      */
-    const QgsFetchedContent *fetch( const QString &url, FetchingMode fetchingMode = DownloadLater );
+    QgsFetchedContent *fetch( const QString &url, Qgis::ActionStart fetchingMode = Qgis::ActionStart::Deferred, const QString &authConfig = QString(), const QgsHttpHeaders &headers = QgsHttpHeaders() );
 
 #ifndef SIP_RUN
 
@@ -162,7 +176,6 @@ class CORE_EXPORT QgsNetworkContentFetcherRegistry : public QObject
 
   private:
     QMap<QString, QgsFetchedContent *> mFileRegistry;
-
 };
 
 #endif // QGSNETWORKCONTENTFETCHERREGISTRY_H

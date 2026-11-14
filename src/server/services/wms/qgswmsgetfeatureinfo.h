@@ -19,18 +19,21 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgswmsrequest.h"
+
+class QgsServerInterface;
+class QgsProject;
+class QgsServerRequest;
+class QgsServerSettings;
+class QgsServerResponse;
+
 namespace QgsWms
 {
+  class QgsWmsRequest;
 
   /**
    * Output GetFeatureInfo response
    */
-  void writeGetFeatureInfo( QgsServerInterface *serverIface, const QgsProject *project,
-                            const QString &version, const QgsServerRequest &request,
-                            QgsServerResponse &response );
+  void writeGetFeatureInfo( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response );
 
 } // namespace QgsWms
-
-
-
-

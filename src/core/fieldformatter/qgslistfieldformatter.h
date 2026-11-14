@@ -21,19 +21,15 @@
 
 /**
  * \ingroup core
- * Field formatter for a list field.
+ * \brief Field formatter for a list field.
+ *
  * This represents a list type value.
  * Values will be represented as a comma-separated list.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsListFieldFormatter : public QgsFieldFormatter
 {
   public:
-
-    /**
-      * Default constructor of field formatter for a list field.
-      */
     QgsListFieldFormatter() = default;
     QString id() const override;
 

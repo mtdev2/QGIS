@@ -17,21 +17,23 @@
 #define QGSCACHEDFEATUREITERATOR_H
 
 #include "qgis_core.h"
+#include "qgscoordinatetransform.h"
 #include "qgsfeature.h"
 #include "qgsfeatureiterator.h"
+#include "qgsvectorlayercache.h"
+
+#include <QPointer>
 
 class QgsVectorLayerCache;
 
 /**
  * \ingroup core
  * \brief
- * Delivers features from the cache
- *
+ * \brief Delivers features from the cache.
  */
 class CORE_EXPORT QgsCachedFeatureIterator : public QgsAbstractFeatureIterator
 {
   public:
-
     /**
      * This constructor creates a feature iterator, that delivers all cached features. No request is made to the backend.
      *
@@ -39,6 +41,8 @@ class CORE_EXPORT QgsCachedFeatureIterator : public QgsAbstractFeatureIterator
      * \param featureRequest   The feature request to answer
      */
     QgsCachedFeatureIterator( QgsVectorLayerCache *vlCache, const QgsFeatureRequest &featureRequest );
+
+    ~QgsCachedFeatureIterator() override;
 
     /**
      * Rewind to the beginning of the iterator
@@ -56,14 +60,11 @@ class CORE_EXPORT QgsCachedFeatureIterator : public QgsAbstractFeatureIterator
 
     // QgsAbstractFeatureIterator interface
   protected:
-
     /**
      * Implementation for fetching a feature.
      *
      * \param f      Will write to this feature
      * \returns bool  TRUE if the operation was OK
-     *
-     * \see bool getFeature( QgsFeature& f )
      */
     bool fetchFeature( QgsFeature &f ) override;
 
@@ -76,23 +77,30 @@ class CORE_EXPORT QgsCachedFeatureIterator : public QgsAbstractFeatureIterator
     bool nextFeatureFilterFids( QgsFeature &f ) override { return fetchFeature( f ); }
 
   private:
-    QgsFeatureIds mFeatureIds;
-    QgsVectorLayerCache *mVectorLayerCache = nullptr;
-    QgsFeatureIds::ConstIterator mFeatureIdIterator;
+#ifdef SIP_RUN
+    QgsCachedFeatureIterator( const QgsCachedFeatureIterator &other );
+#endif
+
+    QList< QgsFeatureId > mFeatureIds;
+    QPointer< QgsVectorLayerCache > mVectorLayerCache = nullptr;
+    QList< QgsFeatureId >::ConstIterator mFeatureIdIterator;
     QgsCoordinateTransform mTransform;
     QgsRectangle mFilterRect;
+
+    QgsGeometry mDistanceWithinGeom;
+    std::unique_ptr< QgsGeometryEngine > mDistanceWithinEngine;
+    double mDistanceWithin = 0;
 };
 
 /**
  * \ingroup core
  * \brief
- * Uses another iterator as backend and writes features to the cache
+ * \brief Uses another iterator as backend and writes features to the cache.
  *
  */
 class CORE_EXPORT QgsCachedFeatureWriterIterator : public QgsAbstractFeatureIterator
 {
   public:
-
     /**
      * This constructor creates a feature iterator, which queries the backend and caches retrieved features.
      *
@@ -116,20 +124,17 @@ class CORE_EXPORT QgsCachedFeatureWriterIterator : public QgsAbstractFeatureIter
     bool close() override;
 
   protected:
-
     /**
      * Implementation for fetching a feature.
      *
      * \param f      Will write to this feature
      * \returns bool  TRUE if the operation was OK
-     *
-     * \see bool getFeature( QgsFeature& f )
      */
     bool fetchFeature( QgsFeature &f ) override;
 
   private:
     QgsFeatureIterator mFeatIt;
-    QgsVectorLayerCache *mVectorLayerCache = nullptr;
+    QPointer< QgsVectorLayerCache > mVectorLayerCache;
     QgsFeatureIds mFids;
     QgsCoordinateTransform mTransform;
     QgsRectangle mFilterRect;

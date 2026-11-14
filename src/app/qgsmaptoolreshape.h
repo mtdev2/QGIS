@@ -16,17 +16,18 @@
 #ifndef QGSMAPTOOLRESHAPE_H
 #define QGSMAPTOOLRESHAPE_H
 
-#include "qgsmaptoolcapture.h"
 #include "qgis_app.h"
+#include "qgsmaptoolcapture.h"
 
 //! A map tool that draws a line and splits the features cut by the line
-class APP_EXPORT QgsMapToolReshape: public QgsMapToolCapture
+class APP_EXPORT QgsMapToolReshape : public QgsMapToolCapture
 {
     Q_OBJECT
 
   public:
     QgsMapToolReshape( QgsMapCanvas *canvas );
     void cadCanvasReleaseEvent( QgsMapMouseEvent *e ) override;
+    bool supportsTechnique( Qgis::CaptureTechnique technique ) const override;
 
   private:
     void reshape( QgsVectorLayer *vlayer );

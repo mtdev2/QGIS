@@ -17,19 +17,23 @@
 #define QGSVECTORTILERENDERER_H
 
 #include "qgis_core.h"
-
 #include "qgsfeature.h"
-
 #include "qgstiles.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 class QgsRenderContext;
+class QgsReadWriteContext;
+class QgsProject;
 
 //! Features of a vector tile, grouped by sub-layer names (key of the map)
 typedef QMap<QString, QVector<QgsFeature> > QgsVectorTileFeatures SIP_SKIP;
 
 /**
  * \ingroup core
- * Contains decoded features of a single vector tile and any other data necessary
+ * \brief Contains decoded features of a single vector tile and any other data necessary
  * for rendering of it.
  *
  * \since QGIS 3.14
@@ -38,7 +42,10 @@ class CORE_EXPORT QgsVectorTileRendererData
 {
   public:
     //! Constructs the object
-    explicit QgsVectorTileRendererData( QgsTileXYZ id ): mId( id ) {}
+    explicit QgsVectorTileRendererData( QgsTileXYZ id )
+      : mId( id )
+      , mRenderZoomLevel( id.zoomLevel() )
+    {}
 
     //! Returns coordinates of the tile
     QgsTileXYZ id() const { return mId; }
@@ -47,6 +54,28 @@ class CORE_EXPORT QgsVectorTileRendererData
     void setTilePolygon( QPolygon polygon ) { mTilePolygon = polygon; }
     //! Returns polygon (made out of four corners of the tile) in screen coordinates calculated from render context
     QPolygon tilePolygon() const { return mTilePolygon; }
+
+    /**
+     * Sets the zoom level corresponding to the target render.
+     *
+     * This may differ from the tile's actual zoom leve when indexed tiles cause replacement of
+     * higher zoom level tiles with data from lower zoom level tiles.
+     *
+     * \see renderZoomLevel()
+     * \since QGIS 3.32
+     */
+    void setRenderZoomLevel( int level ) { mRenderZoomLevel = level; }
+
+    /**
+     * Returns the zoom level corresponding to the target render.
+     *
+     * This may differ from the tile's actual zoom leve when indexed tiles cause replacement of
+     * higher zoom level tiles with data from lower zoom level tiles.
+     *
+     * \see setRenderZoomLevel()
+     * \since QGIS 3.32
+     */
+    int renderZoomLevel() const { return mRenderZoomLevel; }
 
     //! Sets per-layer fields
     void setFields( const QMap<QString, QgsFields> &fields ) { mFields = fields; }
@@ -65,6 +94,13 @@ class CORE_EXPORT QgsVectorTileRendererData
   private:
     //! Position of the tile in the tile matrix set
     QgsTileXYZ mId;
+
+    /**
+     * Zoom level corresponding to the target render. This may differ from the tile's actual zoom leve when indexed tiles cause replacement of
+     * higher zoom level tiles with data from lower zoom level tiles.
+     */
+    int mRenderZoomLevel = -1;
+
     //! Per-layer fields
     QMap<QString, QgsFields> mFields;
     //! Features of the tile grouped into sub-layers
@@ -75,29 +111,28 @@ class CORE_EXPORT QgsVectorTileRendererData
 
 /**
  * \ingroup core
- * Abstract base class for all vector tile renderer implementations.
+ * \brief Abstract base class for all vector tile renderer implementations.
  *
  * For rendering it is expected that client code calls:
  *
- * # startRender() to prepare renderer
- * # renderTile() for each tile
- * # stopRender() to clean up renderer and free resources
+ * - startRender() to prepare renderer
+ * - renderTile() for each tile
+ * - stopRender() to clean up renderer and free resources
  *
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsVectorTileRenderer
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
 
     const QString type = sipCpp->type();
 
-    if ( type == QLatin1String( "basic" ) )
+    if ( type == "basic"_L1 )
       sipType = sipType_QgsVectorTileBasicRenderer;
     else
       sipType = 0;
-    SIP_END
+  SIP_END
 #endif
 
   public:
@@ -115,7 +150,7 @@ class CORE_EXPORT QgsVectorTileRenderer
     //! Returns field names of sub-layers that will be used for rendering. Must be called between startRender/stopRender.
     virtual QMap<QString, QSet<QString> > usedAttributes( const QgsRenderContext & ) SIP_SKIP { return QMap<QString, QSet<QString> >(); }
 
-    //TODO QGIS 4.0 -- make pure virtual
+    //TODO QGIS 5.0 -- make pure virtual
 
     /**
      * Returns a list of the layers required for rendering.
@@ -126,13 +161,37 @@ class CORE_EXPORT QgsVectorTileRenderer
      *
      * \since QGIS 3.16
      */
-    virtual QSet< QString > requiredLayers( QgsRenderContext &context, int tileZoom ) const { Q_UNUSED( context ); Q_UNUSED( tileZoom ); return QSet< QString >() << QString(); }
+    virtual QSet< QString > requiredLayers( QgsRenderContext &context, int tileZoom ) const
+    {
+      Q_UNUSED( context );
+      Q_UNUSED( tileZoom );
+      return QSet< QString >() << QString();
+    }
 
     //! Finishes rendering and cleans up any resources
     virtual void stopRender( QgsRenderContext &context ) = 0;
 
+    //! Renders the background if defined
+    virtual void renderBackground( QgsRenderContext &context ) = 0;
+
     //! Renders given vector tile. Must be called between startRender/stopRender.
     virtual void renderTile( const QgsVectorTileRendererData &tile, QgsRenderContext &context ) = 0;
+
+    /**
+     * Returns TRUE if the specified \a feature will be rendered in the given render \a context.
+     *
+     * \since QGIS 3.28
+     */
+    virtual bool willRenderFeature( const QgsFeature &feature, int tileZoom, const QString &layerName, QgsRenderContext &context ) = 0;
+
+    /**
+     * Renders the specified features in a selected state.
+     *
+     * This will be called after rendering the tiles, so that the selected features are always visible on the top of the layer.
+     *
+     * \since QGIS 3.28
+     */
+    virtual void renderSelectedFeatures( const QList< QgsFeature > &selection, QgsRenderContext &context ) = 0;
 
     //! Writes renderer's properties to given XML element
     virtual void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const = 0;
@@ -140,7 +199,6 @@ class CORE_EXPORT QgsVectorTileRenderer
     virtual void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) = 0;
     //! Resolves references to other objects - second phase of loading - after readXml()
     virtual void resolveReferences( const QgsProject &project ) { Q_UNUSED( project ) }
-
 };
 
 #endif // QGSVECTORTILERENDERER_H

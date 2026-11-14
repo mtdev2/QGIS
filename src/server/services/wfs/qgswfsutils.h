@@ -24,13 +24,20 @@
 #ifndef QGSWFSUTILS_H
 #define QGSWFSUTILS_H
 
-#include "qgsmodule.h"
 #include "qgsfeaturerequest.h"
+#include "qgsmodule.h"
+#include "qgsserversettings.h"
 #include "qgswfsserviceexception.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+class QgsMapLayer;
 
 /**
  * \ingroup server
- * WMS implementation
+ * \brief WMS implementation
  */
 
 //! WMS implementation
@@ -45,12 +52,7 @@ namespace QgsWfs
   /**
    * Service URL string
    */
-  QString serviceUrl( const QgsServerRequest &request, const QgsProject *project );
-
-  /**
-   * Returns typename from vector layer
-   */
-  QString layerTypeName( const QgsMapLayer *layer );
+  QString serviceUrl( const QgsServerRequest &request, const QgsProject *project, const QgsServerSettings &settings );
 
   /**
    * Retrieve a layer by typename
@@ -68,16 +70,11 @@ namespace QgsWfs
   QgsFeatureRequest parseFilterElement( const QString &typeName, QDomElement &filterElem, QStringList &serverFids, const QgsProject *project = nullptr, const QgsMapLayer *layer = nullptr );
 
   // Define namespaces used in WFS documents
-  const QString WFS_NAMESPACE = QStringLiteral( "http://www.opengis.net/wfs" );
-  const QString GML_NAMESPACE = QStringLiteral( "http://www.opengis.net/gml" );
-  const QString OGC_NAMESPACE = QStringLiteral( "http://www.opengis.net/ogc" );
-  const QString QGS_NAMESPACE = QStringLiteral( "http://www.qgis.org/gml" );
-
-  // Define clean tagName regExp
-  const QRegExp cleanTagNameRegExp( "(?![\\w\\d\\.-])." );
+  const QString WFS_NAMESPACE = u"http://www.opengis.net/wfs"_s;
+  const QString GML_NAMESPACE = u"http://www.opengis.net/gml"_s;
+  const QString OGC_NAMESPACE = u"http://www.opengis.net/ogc"_s;
+  const QString QGS_NAMESPACE = u"http://www.qgis.org/gml"_s;
 
 } // namespace QgsWfs
 
 #endif
-
-

@@ -17,18 +17,20 @@
 #define QGSRANGECONFIGDLG_H
 
 #include "ui_qgsrangeconfigdlgbase.h"
-#include "qgseditorconfigwidget.h"
+
 #include "qgis_gui.h"
+#include "qgseditorconfigwidget.h"
 
 SIP_NO_FILE
 
 /**
  * \ingroup gui
  * \class QgsRangeConfigDlg
+ * \brief Configuration widget for range widgets.
  * \note not available in Python bindings
  */
-
-class GUI_EXPORT QgsRangeConfigDlg : public QgsEditorConfigWidget, private Ui::QgsRangeConfigDlgBase
+class GUI_EXPORT QgsRangeConfigDlg : public QgsEditorConfigWidget,
+                                     private Ui::QgsRangeConfigDlgBase
 {
     Q_OBJECT
 
@@ -39,6 +41,12 @@ class GUI_EXPORT QgsRangeConfigDlg : public QgsEditorConfigWidget, private Ui::Q
 
   protected slots:
     void rangeWidgetChanged( int index );
+
+    /**
+     * Sets the precision of minimum value, maximum value, step size UI elements
+     * \param precision the precision
+     */
+    void setPrecision( int precision );
 };
 
 #endif // QGSRANGECONFIGDLG_H

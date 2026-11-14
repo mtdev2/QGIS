@@ -13,18 +13,23 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgseditorwidgetautoconf.h"
+
 #include "qgseditorwidgetregistry.h"
-#include "qgsvectordataprovider.h"
 #include "qgsgui.h"
+#include "qgsvectordataprovider.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup gui
- * Widget auto conf plugin that guesses what widget type to use in function of what the widgets support.
+ * \brief Widget auto conf plugin that guesses what widget type to use in function of what the widgets support.
  *
  * \note not available in Python bindings
  * \since QGIS 3.0
  */
-class FromFactoriesPlugin: public QgsEditorWidgetAutoConfPlugin
+class FromFactoriesPlugin : public QgsEditorWidgetAutoConfPlugin
 {
   public:
     QgsEditorWidgetSetup editorWidgetSetup( const QgsVectorLayer *vl, const QString &fieldName, int &score ) const override
@@ -57,17 +62,17 @@ class FromFactoriesPlugin: public QgsEditorWidgetAutoConfPlugin
 
 /**
  * \ingroup gui
- * Widget auto conf plugin that reads the widget setup to use from what the data provider says.
+ * \brief Widget auto conf plugin that reads the widget setup to use from what the data provider says.
  *
  * \note not available in Python bindings
  * \since QGIS 3.0
  */
-class FromDbTablePlugin: public QgsEditorWidgetAutoConfPlugin
+class FromDbTablePlugin : public QgsEditorWidgetAutoConfPlugin
 {
   public:
     QgsEditorWidgetSetup editorWidgetSetup( const QgsVectorLayer *vl, const QString &fieldName, int &score ) const override
     {
-      QgsField field = vl->fields().field( fieldName );
+      const QgsField field = vl->fields().field( fieldName );
       if ( !field.editorWidgetSetup().isNull() )
       {
         score = 20;
@@ -89,19 +94,18 @@ QgsEditorWidgetAutoConf::QgsEditorWidgetAutoConf()
 
 QgsEditorWidgetSetup QgsEditorWidgetAutoConf::editorWidgetSetup( const QgsVectorLayer *vl, const QString &fieldName ) const
 {
-  QgsEditorWidgetSetup result( QStringLiteral( "TextEdit" ), QVariantMap() );
+  QgsEditorWidgetSetup result( u"TextEdit"_s, QVariantMap() );
 
-  int fieldIndex = vl->fields().indexFromName( fieldName );
+  const int fieldIndex = vl->fields().indexFromName( fieldName );
   if ( fieldIndex >= 0 )
   {
-
-    if ( vl->fields().fieldOrigin( fieldIndex ) == QgsFields::OriginProvider )
+    if ( vl->fields().fieldOrigin( fieldIndex ) == Qgis::FieldOrigin::Provider )
     {
       // important check - for provider fields, we CANNOT use auto configured widgets if the field
       // uses a default value clause - otherwise the widget will obliterate the default value clause
       // (e.g., by trying to convert it to a number/date/etc). Instead we have to use a text edit
       // widget so that the clause remains intact
-      int providerOrigin = vl->fields().fieldOriginIndex( fieldIndex );
+      const int providerOrigin = vl->fields().fieldOriginIndex( fieldIndex );
       if ( !vl->dataProvider()->defaultValueClause( providerOrigin ).isEmpty() )
         return result;
     }

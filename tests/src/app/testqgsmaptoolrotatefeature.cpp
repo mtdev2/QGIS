@@ -13,40 +13,44 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
-
 #include "qgisapp.h"
 #include "qgsgeometry.h"
 #include "qgsmapcanvas.h"
 #include "qgsmapcanvassnappingutils.h"
-#include "qgssnappingconfig.h"
-#include "qgssnappingutils.h"
+#include "qgsmapmouseevent.h"
 #include "qgsmaptoolrotatefeature.h"
 #include "qgsproject.h"
 #include "qgssettings.h"
+#include "qgssnappingconfig.h"
+#include "qgssnappingutils.h"
+#include "qgstest.h"
 #include "qgsvectorlayer.h"
-#include "qgsmapmouseevent.h"
 #include "testqgsmaptoolutils.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup UnitTests
  * This is a unit test for the vertex tool
  */
-class TestQgsMapToolRotateFeature: public QObject
+class TestQgsMapToolRotateFeature : public QObject
 {
     Q_OBJECT
   public:
     TestQgsMapToolRotateFeature();
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     void testRotateFeature();
     void testRotateFeatureManualAnchor();
     void testCancelManualAnchor();
     void testRotateFeatureManualAnchorAfterStartRotate();
+    void testRotateFeatureManualAnchorSnapping();
+    void testAvoidIntersectionsAndTopoEdit();
 
   private:
     QgisApp *mQgisApp = nullptr;
@@ -66,16 +70,11 @@ void TestQgsMapToolRotateFeature::initTestCase()
   QgsApplication::init();
   QgsApplication::initQgis();
 
-  // Set up the QSettings environment
-  QCoreApplication::setOrganizationName( QStringLiteral( "QGIS" ) );
-  QCoreApplication::setOrganizationDomain( QStringLiteral( "qgis.org" ) );
-  QCoreApplication::setApplicationName( QStringLiteral( "QGIS-TEST" ) );
-
   mQgisApp = new QgisApp();
 
   mCanvas = new QgsMapCanvas();
 
-  mCanvas->setDestinationCrs( QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:3946" ) ) );
+  mCanvas->setDestinationCrs( QgsCoordinateReferenceSystem( u"EPSG:3946"_s ) );
 
   mCanvas->setFrameStyle( QFrame::NoFrame );
   mCanvas->resize( 512, 512 );
@@ -84,15 +83,15 @@ void TestQgsMapToolRotateFeature::initTestCase()
   mCanvas->hide();
 
   // make testing layers
-  mLayerBase = new QgsVectorLayer( QStringLiteral( "Polygon?crs=EPSG:3946" ), QStringLiteral( "baselayer" ), QStringLiteral( "memory" ) );
+  mLayerBase = new QgsVectorLayer( u"Polygon?crs=EPSG:3946"_s, u"baselayer"_s, u"memory"_s );
   QVERIFY( mLayerBase->isValid() );
   QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mLayerBase );
 
   mLayerBase->startEditing();
-  QString wkt1 = QStringLiteral( "Polygon ((0 0, 0 1, 1 1, 1 0))" );
+  const QString wkt1 = u"Polygon ((0 0, 0 1, 1 1, 1 0, 0 0))"_s;
   QgsFeature f1;
   f1.setGeometry( QgsGeometry::fromWkt( wkt1 ) );
-  QString wkt2 = QStringLiteral( "Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0))" );
+  const QString wkt2 = u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s;
   QgsFeature f2;
   f2.setGeometry( QgsGeometry::fromWkt( wkt2 ) );
 
@@ -104,14 +103,15 @@ void TestQgsMapToolRotateFeature::initTestCase()
   QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 1 ), wkt2 );
 
   QgsSnappingConfig cfg = mCanvas->snappingUtils()->config();
-  cfg.setMode( QgsSnappingConfig::AllLayers );
+  cfg.setMode( Qgis::SnappingMode::AllLayers );
   cfg.setTolerance( 1 );
-  cfg.setTypeFlag( static_cast<QgsSnappingConfig::SnappingTypeFlag>( QgsSnappingConfig::VertexFlag | QgsSnappingConfig::SegmentFlag ) );
+  cfg.setTypeFlag( static_cast<Qgis::SnappingTypes>( Qgis::SnappingType::Vertex | Qgis::SnappingType::Segment ) );
   cfg.setEnabled( true );
   mCanvas->snappingUtils()->setConfig( cfg );
 
   mCanvas->setLayers( QList<QgsMapLayer *>() << mLayerBase );
   mCanvas->setCurrentLayer( mLayerBase );
+  mCanvas->snappingUtils()->locatorForLayer( mLayerBase )->init();
 
   // create the tool
   mRotateTool = new QgsMapToolRotateFeature( mCanvas );
@@ -137,8 +137,8 @@ void TestQgsMapToolRotateFeature::testRotateFeature()
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
 
-  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((0.72 -0.17, 0.28 1.17, 1.17 0.72, 0.72 -0.17))" ) );
-  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0))" ) );
+  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), u"Polygon ((-0.17 0.28, 0.28 1.17, 1.17 0.72, 0.72 -0.17, -0.17 0.28))"_s );
+  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s );
 
   mLayerBase->undoStack()->undo();
 }
@@ -155,8 +155,8 @@ void TestQgsMapToolRotateFeature::testRotateFeatureManualAnchor()
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
 
-  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((2.06 0.34, 0.87 1.1, 1.84 1.31, 2.06 0.34))" ) );
-  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0))" ) );
+  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), u"Polygon ((1.08 0.12, 0.87 1.1, 1.84 1.31, 2.06 0.34, 1.08 0.12))"_s );
+  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s );
 
   mLayerBase->undoStack()->undo();
 }
@@ -177,8 +177,8 @@ void TestQgsMapToolRotateFeature::testCancelManualAnchor()
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
 
-  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((0.72 -0.17, 0.28 1.17, 1.17 0.72, 0.72 -0.17))" ) );
-  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0))" ) );
+  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), u"Polygon ((-0.17 0.28, 0.28 1.17, 1.17 0.72, 0.72 -0.17, -0.17 0.28))"_s );
+  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s );
 
   mLayerBase->undoStack()->undo();
 }
@@ -199,10 +199,76 @@ void TestQgsMapToolRotateFeature::testRotateFeatureManualAnchorAfterStartRotate(
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
 
-  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((-5.06 5.63, -3.79 6.26, -4.11 5.32, -5.06 5.63))" ) );
-  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), QStringLiteral( "Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0))" ) );
+  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), u"Polygon ((-4.74 6.58, -3.79 6.26, -4.11 5.32, -5.06 5.63, -4.74 6.58))"_s );
+  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s );
 
   mLayerBase->undoStack()->undo();
+}
+
+void TestQgsMapToolRotateFeature::testRotateFeatureManualAnchorSnapping()
+{
+  // test rotating around a fixed anchor point
+  TestQgsMapToolUtils utils( mRotateTool );
+
+  QgsSnappingConfig cfg = mCanvas->snappingUtils()->config();
+  const double tolerance = cfg.tolerance();
+  const Qgis::MapToolUnit units = cfg.units();
+  cfg.setTolerance( 0.5 );
+  cfg.setUnits( Qgis::MapToolUnit::Layer );
+  mCanvas->snappingUtils()->setConfig( cfg );
+
+  // set anchor point, should snap to (1.1, 5)
+  utils.mouseMove( 1, 5.1 );
+  utils.mouseClick( 1, 5.1, Qt::LeftButton, Qt::ControlModifier, true );
+
+  // source point should snap to (1, 1)
+  utils.mouseMove( 0.9, 0.9 );
+  utils.mouseClick( 0.9, 0.9, Qt::LeftButton, Qt::KeyboardModifiers(), true );
+  // target point should snap to (2.1, 1)
+  utils.mouseMove( 2, 1 );
+  utils.mouseClick( 2, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
+
+  QCOMPARE( mLayerBase->getFeature( 1 ).geometry().asWkt( 2 ), u"Polygon ((1.37 -0.11, 1.11 0.85, 2.07 1.12, 2.34 0.15, 1.37 -0.11))"_s );
+  QCOMPARE( mLayerBase->getFeature( 2 ).geometry().asWkt( 2 ), u"Polygon ((1.1 0, 1.1 5, 2.1 5, 2.1 0, 1.1 0))"_s );
+
+  mLayerBase->undoStack()->undo();
+
+  // restore tolerance setting
+  cfg.setTolerance( tolerance );
+  cfg.setUnits( units );
+  mCanvas->snappingUtils()->setConfig( cfg );
+}
+
+void TestQgsMapToolRotateFeature::testAvoidIntersectionsAndTopoEdit()
+{
+  const bool topologicalEditing = QgsProject::instance()->topologicalEditing();
+  const Qgis::AvoidIntersectionsMode mode( QgsProject::instance()->avoidIntersectionsMode() );
+
+  QgsProject::instance()->setAvoidIntersectionsMode( Qgis::AvoidIntersectionsMode::AvoidIntersectionsCurrentLayer );
+  QgsProject::instance()->setTopologicalEditing( true );
+
+  TestQgsMapToolUtils utils( mRotateTool );
+
+  // remove anchor point if it exists
+  utils.mouseClick( 1, 1, Qt::RightButton, Qt::KeyboardModifiers(), true );
+
+  utils.mouseClick( 1, 1, Qt::LeftButton, Qt::KeyboardModifiers(), true );
+  utils.mouseMove( 1.6, 0.5 );
+  utils.mouseClick( 1.6, 0.5, Qt::LeftButton, Qt::KeyboardModifiers(), true );
+
+  QgsGeometry geom = mLayerBase->getFeature( 1 ).geometry();
+  geom.normalize();
+  const QString wkt1 = "Polygon ((-0.21 0.5, 0.5 1.21, 1.1 0.61, 1.1 0.39, 0.5 -0.21, -0.21 0.5))";
+  QCOMPARE( geom.asWkt( 2 ), wkt1 );
+  geom = mLayerBase->getFeature( 2 ).geometry();
+  geom.normalize();
+  const QString wkt2 = "Polygon ((1.1 0, 1.1 0.39, 1.1 0.61, 1.1 5, 2.1 5, 2.1 0, 1.1 0))";
+  QCOMPARE( geom.asWkt( 2 ), wkt2 );
+
+  mLayerBase->undoStack()->undo();
+
+  QgsProject::instance()->setTopologicalEditing( topologicalEditing );
+  QgsProject::instance()->setAvoidIntersectionsMode( mode );
 }
 
 

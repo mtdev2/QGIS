@@ -17,22 +17,23 @@
 #ifndef QGSAUTHEDITORWIDGETS_H
 #define QGSAUTHEDITORWIDGETS_H
 
-#include <QWidget>
-#include "qgis_sip.h"
 #include "ui_qgsautheditorwidgets.h"
 #include "ui_qgsauthmethodplugins.h"
+
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+
+#include <QWidget>
 
 /**
  * \ingroup gui
- * Dialog for viewing available authentication method plugins
+ * \brief Dialog for viewing available authentication method plugins.
  */
 class GUI_EXPORT QgsAuthMethodPlugins : public QDialog, private Ui::QgsAuthMethodPlugins
 {
     Q_OBJECT
 
   public:
-
     /**
      * Construct a dialog for viewing available authentication method plugins
      * \param parent Parent widget
@@ -52,14 +53,13 @@ class GUI_EXPORT QgsAuthMethodPlugins : public QDialog, private Ui::QgsAuthMetho
 
 /**
  * \ingroup gui
- * Wrapper widget for available authentication editors
+ * \brief Wrapper widget for available authentication editors.
  */
 class GUI_EXPORT QgsAuthEditorWidgets : public QWidget, private Ui::QgsAuthEditors
 {
     Q_OBJECT
 
   public:
-
     /**
      * Construct a widget to contain various authentication editors
      * \param parent Parent widget
@@ -69,6 +69,12 @@ class GUI_EXPORT QgsAuthEditorWidgets : public QWidget, private Ui::QgsAuthEdito
   private slots:
     void btnCertManager_clicked();
     void btnAuthPlugins_clicked();
+
+    //! Import authentication configurations from a XML file
+    void importAuthenticationConfigs();
+
+    //! Exports selected authentication configurations to a XML file
+    void exportSelectedAuthenticationConfigs();
 
     //! Sets the cached master password (and verifies it if its hash is in authentication database)
     void setMasterPassword();
@@ -89,13 +95,10 @@ class GUI_EXPORT QgsAuthEditorWidgets : public QWidget, private Ui::QgsAuthEdito
     void eraseAuthenticationDatabase();
 
     //! Relay messages to widget's messagebar
-    void authMessageOut( const QString &message, const QString &authtag, QgsAuthManager::MessageLevel level );
+    void authMessageLog( const QString &message, const QString &authtag, Qgis::MessageLevel level );
 
     //! Remove master password from wallet
-    void  passwordHelperDelete();
-
-    //! Store master password into the wallet
-    void  passwordHelperSync();
+    void passwordHelperDelete();
 
     //! Toggle password helper (enable/disable)
     void passwordHelperEnableTriggered();
@@ -109,6 +112,8 @@ class GUI_EXPORT QgsAuthEditorWidgets : public QWidget, private Ui::QgsAuthEdito
     QgsMessageBar *messageBar();
 
     QMenu *mAuthUtilitiesMenu = nullptr;
+    QAction *mActionExportSelectedAuthenticationConfigs = nullptr;
+    QAction *mActionImportAuthenticationConfigs = nullptr;
     QAction *mActionSetMasterPassword = nullptr;
     QAction *mActionClearCachedMasterPassword = nullptr;
     QAction *mActionResetMasterPassword = nullptr;
@@ -116,7 +121,6 @@ class GUI_EXPORT QgsAuthEditorWidgets : public QWidget, private Ui::QgsAuthEdito
     QAction *mActionRemoveAuthConfigs = nullptr;
     QAction *mActionEraseAuthDatabase = nullptr;
     QAction *mActionPasswordHelperDelete = nullptr;
-    QAction *mActionPasswordHelperSync = nullptr;
     QAction *mActionPasswordHelperEnable = nullptr;
     QAction *mActionPasswordHelperLoggingEnable = nullptr;
     QAction *mActionClearAccessCacheNow = nullptr;

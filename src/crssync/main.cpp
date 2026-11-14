@@ -15,31 +15,30 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgsapplication.h"
-#include "qgscoordinatereferencesystem.h"
-#include "qgsconfig.h"
 
-#include <QRegExp>
-#include <QTemporaryDir>
-
+#include <cpl_error.h>
 #include <iostream>
 #include <limits>
 
-#include <cpl_error.h>
+#include "qgsapplication.h"
+#include "qgscoordinatereferencesystem.h"
+
+#include <QSettings>
+#include <QString>
+#include <QTemporaryDir>
+
+using namespace Qt::StringLiterals;
 
 void CPL_STDCALL showError( CPLErr errClass, int errNo, const char *msg )
 {
   Q_UNUSED( errClass )
-  QRegExp re( "EPSG PCS/GCS code \\d+ not found in EPSG support files.  Is this a valid\nEPSG coordinate system?" );
-  if ( errNo != 6 && !re.exactMatch( msg ) )
-  {
-    std::cerr << msg;
-  }
+  Q_UNUSED( errNo )
+  std::cerr << msg;
 }
 
 int main( int argc, char **argv )
 {
-  QCoreApplication app( argc, argv );
+  const QCoreApplication app( argc, argv );
 
   const QStringList args = QCoreApplication::arguments();
 
@@ -47,11 +46,15 @@ int main( int argc, char **argv )
 
   for ( const QString &arg : args )
   {
-    if ( arg == QLatin1String( "--verbose" ) )
+    if ( arg == "--verbose"_L1 )
       verbose = true;
   }
 
-  QTemporaryDir temp;
+  const QTemporaryDir stemp;
+  QSettings::setDefaultFormat( QSettings::IniFormat );
+  QSettings::setPath( QSettings::IniFormat, QSettings::UserScope, stemp.path() );
+
+  const QTemporaryDir temp;
   QgsApplication::init( temp.path() );
 
   if ( !QgsApplication::isRunningFromBuildDir() )
@@ -65,7 +68,7 @@ int main( int argc, char **argv )
 
   CPLPushErrorHandler( showError );
 
-  int res = QgsCoordinateReferenceSystem::syncDatabase();
+  const int res = QgsCoordinateReferenceSystem::syncDatabase();
 
   CPLPopErrorHandler();
 

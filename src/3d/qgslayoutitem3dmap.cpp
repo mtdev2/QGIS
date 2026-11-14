@@ -15,16 +15,22 @@
 
 #include "qgslayoutitem3dmap.h"
 
+#include <memory>
+
 #include "qgs3dmapscene.h"
 #include "qgs3dutils.h"
 #include "qgscameracontroller.h"
 #include "qgslayout.h"
-#include "qgslayoutmodel.h"
 #include "qgslayoutitemregistry.h"
+#include "qgslayoutmodel.h"
+#include "qgslayoutrendercontext.h"
 #include "qgsoffscreen3dengine.h"
-#include "qgspostprocessingentity.h"
-#include "qgsshadowrenderingframegraph.h"
-#include "qgswindow3dengine.h"
+
+#include <QString>
+
+#include "moc_qgslayoutitem3dmap.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayoutItem3DMap::QgsLayoutItem3DMap( QgsLayout *layout )
   : QgsLayoutItem( layout )
@@ -49,7 +55,7 @@ int QgsLayoutItem3DMap::type() const
 
 QIcon QgsLayoutItem3DMap::icon() const
 {
-  return QgsApplication::getThemeIcon( QStringLiteral( "/mLayoutItem3DMap.svg" ) );
+  return QgsApplication::getThemeIcon( u"/mLayoutItem3DMap.svg"_s );
 }
 
 void QgsLayoutItem3DMap::assignFreeId()
@@ -62,7 +68,7 @@ void QgsLayoutItem3DMap::assignFreeId()
 
   int maxId = -1;
   bool used = false;
-  for ( QgsLayoutItem3DMap *map : qgis::as_const( mapsList ) )
+  for ( QgsLayoutItem3DMap *map : std::as_const( mapsList ) )
   {
     if ( map == this )
       continue;
@@ -104,12 +110,9 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
   int h = static_cast<int>( std::ceil( rect().height() * ctx.scaleFactor() ) );
   QRect r( 0, 0, w, h );
 
-  painter->save();
-
   if ( !mSettings )
   {
     painter->drawText( r, Qt::AlignCenter, tr( "Scene not set" ) );
-    painter->restore();
     return;
   }
 
@@ -122,7 +125,6 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
   if ( !mCapturedImage.isNull() )
   {
     painter->drawImage( r, mCapturedImage );
-    painter->restore();
     return;
   }
 
@@ -131,19 +133,30 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
   if ( mLayout->renderContext().isPreviewRender() )
   {
     painter->drawText( r, Qt::AlignCenter, tr( "Loading" ) );
-    painter->restore();
+    if ( mSettings->rendererUsage() != Qgis::RendererUsage::View )
+    {
+      mSettings->setRendererUsage( Qgis::RendererUsage::View );
+      mEngine.reset(); //we need to rebuild the scene to force the render again
+    }
+  }
+  else
+  {
+    if ( mSettings->rendererUsage() != Qgis::RendererUsage::Export )
+    {
+      mSettings->setRendererUsage( Qgis::RendererUsage::Export );
+      mEngine.reset(); //we need to rebuild the scene to force the render again
+    }
   }
 
-  QSizeF sizePixels = mLayout->renderContext().measurementConverter().convert( sizeWithUnits(), QgsUnitTypes::LayoutPixels ).toQSizeF();
-  QSize sizePixelsInt = QSize( static_cast<int>( std::ceil( sizePixels.width() ) ),
-                               static_cast<int>( std::ceil( sizePixels.height() ) ) );
+  QSizeF sizePixels = mLayout->renderContext().measurementConverter().convert( sizeWithUnits(), Qgis::LayoutUnit::Pixels ).toQSizeF();
+  QSize sizePixelsInt = QSize( static_cast<int>( std::ceil( sizePixels.width() ) ), static_cast<int>( std::ceil( sizePixels.height() ) ) );
 
   if ( isTemporal() )
     mSettings->setTemporalRange( temporalRange() );
 
   if ( !mEngine )
   {
-    mEngine.reset( new QgsOffscreen3DEngine );
+    mEngine = std::make_unique<QgsOffscreen3DEngine>();
     connect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
 
     mEngine->setSize( sizePixelsInt );
@@ -151,7 +164,6 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
     connect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
 
     mEngine->setRootEntity( mScene );
-
   }
 
   if ( mEngine->size() != sizePixelsInt )
@@ -170,10 +182,15 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
     if ( mDrawing )
       return;
     mDrawing = true;
+    disconnect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
+    disconnect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
+
     Qgs3DUtils::captureSceneImage( *mEngine.get(), mScene );
     QImage img = Qgs3DUtils::captureSceneImage( *mEngine.get(), mScene );
     painter->drawImage( r, img );
-    painter->restore();
+
+    connect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
+    connect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
     mDrawing = false;
   }
 }
@@ -211,12 +228,12 @@ bool QgsLayoutItem3DMap::writePropertiesToElement( QDomElement &element, QDomDoc
   element.appendChild( elemCameraPose );
 
   //temporal settings
-  QDomElement elemTemporal = document.createElement( QStringLiteral( "temporal-settings" ) );
-  elemTemporal.setAttribute( QStringLiteral( "isTemporal" ), isTemporal() ? 1 : 0 );
+  QDomElement elemTemporal = document.createElement( u"temporal-settings"_s );
+  elemTemporal.setAttribute( u"isTemporal"_s, isTemporal() ? 1 : 0 );
   if ( isTemporal() )
   {
-    elemTemporal.setAttribute( QStringLiteral( "temporalRangeBegin" ), temporalRange().begin().toString( Qt::ISODate ) );
-    elemTemporal.setAttribute( QStringLiteral( "temporalRangeEnd" ), temporalRange().end().toString( Qt::ISODate ) );
+    elemTemporal.setAttribute( u"temporalRangeBegin"_s, temporalRange().begin().toString( Qt::ISODate ) );
+    elemTemporal.setAttribute( u"temporalRangeEnd"_s, temporalRange().end().toString( Qt::ISODate ) );
   }
   element.appendChild( elemTemporal );
 
@@ -226,10 +243,10 @@ bool QgsLayoutItem3DMap::writePropertiesToElement( QDomElement &element, QDomDoc
 bool QgsLayoutItem3DMap::readPropertiesFromElement( const QDomElement &element, const QDomDocument &document, const QgsReadWriteContext &context )
 {
   Q_UNUSED( document )
-  QDomElement elemSettings = element.firstChildElement( QStringLiteral( "qgis3d" ) );
+  QDomElement elemSettings = element.firstChildElement( u"qgis3d"_s );
   if ( !elemSettings.isNull() )
   {
-    mSettings.reset( new Qgs3DMapSettings );
+    mSettings = std::make_unique<Qgs3DMapSettings>();
     mSettings->readXml( elemSettings, context );
     if ( mLayout->project() )
     {
@@ -241,17 +258,17 @@ bool QgsLayoutItem3DMap::readPropertiesFromElement( const QDomElement &element, 
     }
   }
 
-  QDomElement elemCameraPose = element.firstChildElement( QStringLiteral( "camera-pose" ) );
+  QDomElement elemCameraPose = element.firstChildElement( u"camera-pose"_s );
   if ( !elemCameraPose.isNull() )
     mCameraPose.readXml( elemCameraPose );
 
   //temporal settings
-  QDomElement elemTemporal = element.firstChildElement( QStringLiteral( "temporal-settings" ) );
-  setIsTemporal( elemTemporal.attribute( QStringLiteral( "isTemporal" ) ).toInt() );
+  QDomElement elemTemporal = element.firstChildElement( u"temporal-settings"_s );
+  setIsTemporal( elemTemporal.attribute( u"isTemporal"_s ).toInt() );
   if ( isTemporal() )
   {
-    QDateTime begin = QDateTime::fromString( elemTemporal.attribute( QStringLiteral( "temporalRangeBegin" ) ), Qt::ISODate );
-    QDateTime end = QDateTime::fromString( elemTemporal.attribute( QStringLiteral( "temporalRangeBegin" ) ), Qt::ISODate );
+    QDateTime begin = QDateTime::fromString( elemTemporal.attribute( u"temporalRangeBegin"_s ), Qt::ISODate );
+    QDateTime end = QDateTime::fromString( elemTemporal.attribute( u"temporalRangeBegin"_s ), Qt::ISODate );
     setTemporalRange( QgsDateTimeRange( begin, end ) );
   }
 

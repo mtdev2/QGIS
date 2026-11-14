@@ -16,6 +16,9 @@
 
 #include "qgsattributeeditorcontainer.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsAttributeEditorContainer::~QgsAttributeEditorContainer()
 {
@@ -25,6 +28,19 @@ QgsAttributeEditorContainer::~QgsAttributeEditorContainer()
 void QgsAttributeEditorContainer::addChildElement( QgsAttributeEditorElement *widget )
 {
   mChildren.append( widget );
+}
+
+void QgsAttributeEditorContainer::setIsGroupBox( bool isGroupBox )
+{
+  if ( isGroupBox )
+    setType( Qgis::AttributeEditorContainerType::GroupBox );
+  else
+    setType( Qgis::AttributeEditorContainerType::Tab );
+}
+
+bool QgsAttributeEditorContainer::isGroupBox() const
+{
+  return mType == Qgis::AttributeEditorContainerType::GroupBox;
 }
 
 void QgsAttributeEditorContainer::setName( const QString &name )
@@ -45,6 +61,19 @@ void QgsAttributeEditorContainer::setVisibilityExpression( const QgsOptionalExpr
   mVisibilityExpression = visibilityExpression;
 }
 
+QgsOptionalExpression QgsAttributeEditorContainer::collapsedExpression() const
+{
+  return mCollapsedExpression;
+}
+
+void QgsAttributeEditorContainer::setCollapsedExpression( const QgsOptionalExpression &collapsedExpression )
+{
+  if ( collapsedExpression == mCollapsedExpression )
+    return;
+
+  mCollapsedExpression = collapsedExpression;
+}
+
 QColor QgsAttributeEditorContainer::backgroundColor() const
 {
   return mBackgroundColor;
@@ -55,7 +84,7 @@ void QgsAttributeEditorContainer::setBackgroundColor( const QColor &backgroundCo
   mBackgroundColor = backgroundColor;
 }
 
-QList<QgsAttributeEditorElement *> QgsAttributeEditorContainer::findElements( QgsAttributeEditorElement::AttributeEditorType type ) const
+QList<QgsAttributeEditorElement *> QgsAttributeEditorContainer::findElements( Qgis::AttributeEditorType type ) const
 {
   QList<QgsAttributeEditorElement *> results;
 
@@ -67,7 +96,7 @@ QList<QgsAttributeEditorElement *> QgsAttributeEditorContainer::findElements( Qg
       results.append( elem );
     }
 
-    if ( elem->type() == AeTypeContainer )
+    if ( elem->type() == Qgis::AttributeEditorType::Container )
     {
       QgsAttributeEditorContainer *cont = dynamic_cast<QgsAttributeEditorContainer *>( elem );
       if ( cont )
@@ -104,9 +133,12 @@ QgsAttributeEditorElement *QgsAttributeEditorContainer::clone( QgsAttributeEdito
   {
     element->addChildElement( child->clone( element ) );
   }
-  element->mIsGroupBox = mIsGroupBox;
+  element->mType = mType;
   element->mColumnCount = mColumnCount;
   element->mVisibilityExpression = mVisibilityExpression;
+  element->mCollapsed = mCollapsed;
+  element->mCollapsedExpression = mCollapsedExpression;
+  element->mLabelStyle = mLabelStyle;
 
   return element;
 }
@@ -114,12 +146,16 @@ QgsAttributeEditorElement *QgsAttributeEditorContainer::clone( QgsAttributeEdito
 void QgsAttributeEditorContainer::saveConfiguration( QDomElement &elem, QDomDocument &doc ) const
 {
   Q_UNUSED( doc )
-  elem.setAttribute( QStringLiteral( "columnCount" ), mColumnCount );
-  elem.setAttribute( QStringLiteral( "groupBox" ), mIsGroupBox ? 1 : 0 );
-  elem.setAttribute( QStringLiteral( "visibilityExpressionEnabled" ), mVisibilityExpression.enabled() ? 1 : 0 );
-  elem.setAttribute( QStringLiteral( "visibilityExpression" ), mVisibilityExpression->expression() );
+  elem.setAttribute( u"columnCount"_s, mColumnCount );
+  elem.setAttribute( u"groupBox"_s, mType == Qgis::AttributeEditorContainerType::GroupBox ? 1 : 0 );
+  elem.setAttribute( u"type"_s, qgsEnumValueToKey( mType ) );
+  elem.setAttribute( u"collapsed"_s, mCollapsed );
+  elem.setAttribute( u"collapsedExpressionEnabled"_s, mCollapsedExpression.enabled() ? 1 : 0 );
+  elem.setAttribute( u"collapsedExpression"_s, mCollapsedExpression->expression() );
+  elem.setAttribute( u"visibilityExpressionEnabled"_s, mVisibilityExpression.enabled() ? 1 : 0 );
+  elem.setAttribute( u"visibilityExpression"_s, mVisibilityExpression->expression() );
   if ( mBackgroundColor.isValid() )
-    elem.setAttribute( QStringLiteral( "backgroundColor" ), mBackgroundColor.name( ) );
+    elem.setAttribute( u"backgroundColor"_s, mBackgroundColor.name() );
   const auto constMChildren = mChildren;
   for ( QgsAttributeEditorElement *child : constMChildren )
   {
@@ -130,42 +166,64 @@ void QgsAttributeEditorContainer::saveConfiguration( QDomElement &elem, QDomDocu
 
 void QgsAttributeEditorContainer::loadConfiguration( const QDomElement &element, const QString &layerId, const QgsReadWriteContext &context, const QgsFields &fields )
 {
-  mBackgroundColor = element.attribute( QStringLiteral( "backgroundColor" ), QString() );
+  mBackgroundColor = element.attribute( u"backgroundColor"_s, QString() );
   bool ok;
-  int cc = element.attribute( QStringLiteral( "columnCount" ) ).toInt( &ok );
+  int cc = element.attribute( u"columnCount"_s ).toInt( &ok );
   if ( !ok )
     cc = 0;
   setColumnCount( cc );
 
-  bool isGroupBox = element.attribute( QStringLiteral( "groupBox" ) ).toInt( &ok );
-  if ( ok )
-    setIsGroupBox( isGroupBox );
+  if ( element.hasAttribute( u"type"_s ) )
+  {
+    mType = qgsEnumKeyToValue( element.attribute( u"type"_s ), Qgis::AttributeEditorContainerType::GroupBox );
+  }
   else
-    setIsGroupBox( mParent );
+  {
+    const bool isGroupBox = element.attribute( u"groupBox"_s ).toInt( &ok );
+    if ( ok )
+      setType( isGroupBox ? Qgis::AttributeEditorContainerType::GroupBox : Qgis::AttributeEditorContainerType::Tab );
+    else
+      setType( mParent ? Qgis::AttributeEditorContainerType::GroupBox : Qgis::AttributeEditorContainerType::Tab );
+  }
 
-  bool visibilityExpressionEnabled = element.attribute( QStringLiteral( "visibilityExpressionEnabled" ) ).toInt( &ok );
+  const bool isCollapsed = element.attribute( u"collapsed"_s ).toInt( &ok );
+  if ( ok )
+    setCollapsed( isCollapsed );
+  else
+    setCollapsed( false );
+
+  const bool collapsedExpressionEnabled = element.attribute( u"collapsedExpressionEnabled"_s ).toInt( &ok );
+  QgsOptionalExpression collapsedExpression;
+  if ( ok )
+  {
+    collapsedExpression.setEnabled( collapsedExpressionEnabled );
+    collapsedExpression.setData( QgsExpression( element.attribute( u"collapsedExpression"_s ) ) );
+  }
+  setCollapsedExpression( collapsedExpression );
+
+
+  const bool visibilityExpressionEnabled = element.attribute( u"visibilityExpressionEnabled"_s ).toInt( &ok );
   QgsOptionalExpression visibilityExpression;
   if ( ok )
   {
     visibilityExpression.setEnabled( visibilityExpressionEnabled );
-    visibilityExpression.setData( QgsExpression( element.attribute( QStringLiteral( "visibilityExpression" ) ) ) );
+    visibilityExpression.setData( QgsExpression( element.attribute( u"visibilityExpression"_s ) ) );
   }
   setVisibilityExpression( visibilityExpression );
 
-  QDomNodeList childNodeList = element.childNodes();
+  const QDomNodeList childNodeList = element.childNodes();
 
   for ( int i = 0; i < childNodeList.size(); i++ )
   {
-    QDomElement childElem = childNodeList.at( i ).toElement();
+    const QDomElement childElem = childNodeList.at( i ).toElement();
 
-    QgsAttributeEditorElement *myElem = create( childElem, layerId, fields, context, this );
+    std::unique_ptr<QgsAttributeEditorElement> myElem = create( childElem, layerId, fields, context, this );
     if ( myElem )
-      addChildElement( myElem );
+      addChildElement( myElem.release() );
   }
 }
 
 QString QgsAttributeEditorContainer::typeIdentifier() const
 {
-  return QStringLiteral( "attributeEditorContainer" );
+  return u"attributeEditorContainer"_s;
 }
-

@@ -175,16 +175,17 @@
   <customwidget>
    <class>QgsAuthSettingsWidget</class>
    <extends>QWidget</extends>
-   <header>auth/qgsauthsettingswidget.h</header>
+   <header>qgsauthsettingswidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
  <tabstops>
+  <tabstop>cmbDatabaseTypes</tabstop>
   <tabstop>txtName</tabstop>
   <tabstop>txtHost</tabstop>
   <tabstop>txtDatabase</tabstop>
   <tabstop>txtPort</tabstop>
-  <tabstop>buttonBox</tabstop>
+  <tabstop>btnConnect</tabstop>
  </tabstops>
  <resources/>
  <connections>

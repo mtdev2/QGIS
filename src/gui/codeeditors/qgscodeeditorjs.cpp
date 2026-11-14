@@ -13,24 +13,28 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
 #include "qgscodeeditorjs.h"
 
-#include <QWidget>
-#include <QString>
 #include <QFont>
+#include <QString>
+#include <QWidget>
 #include <Qsci/qscilexerjavascript.h>
 
+#include "moc_qgscodeeditorjs.cpp"
 
 QgsCodeEditorJavascript::QgsCodeEditorJavascript( QWidget *parent )
-  : QgsCodeEditor( parent )
+  : QgsCodeEditor( parent, QString(), false, false, QgsCodeEditor::Flag::CodeFolding )
 {
   if ( !parent )
   {
     setTitle( tr( "JavaScript Editor" ) );
   }
-  setFoldingVisible( true );
   QgsCodeEditorJavascript::initializeLexer();
+}
+
+Qgis::ScriptLanguage QgsCodeEditorJavascript::language() const
+{
+  return Qgis::ScriptLanguage::JavaScript;
 }
 
 void QgsCodeEditorJavascript::initializeLexer()

@@ -23,31 +23,17 @@
 #include "qgsgpsconnection.h"
 
 #include <QtCore/QPointer>
-
-#ifndef SIP_RUN
-#if defined(HAVE_QT_MOBILITY_LOCATION )
-#include <QtLocation/QGeoPositionInfoSource>
-#include <QtLocation/QGeoSatelliteInfo>
-#include <QtLocation/QGeoSatelliteInfoSource>
-
-QTM_USE_NAMESPACE
-#else // Using QtPositioning
 #include <QtPositioning/QGeoPositionInfoSource>
 #include <QtPositioning/QGeoSatelliteInfo>
 #include <QtPositioning/QGeoSatelliteInfoSource>
-#endif
-#endif
-
-SIP_FEATURE( MOBILITY_LOCATION )
-
-SIP_IF_FEATURE( MOBILITY_LOCATION )
 
 /**
  * \ingroup core
  * \class QgsQtLocationConnection
+ * \brief A GPS connection subclass based on the Qt Location libraries.
  * \note may not be available in Python bindings on all platforms
 */
-class CORE_EXPORT QgsQtLocationConnection: public QgsGpsConnection
+class CORE_EXPORT QgsQtLocationConnection : public QgsGpsConnection
 {
     Q_OBJECT
   public:
@@ -66,10 +52,6 @@ class CORE_EXPORT QgsQtLocationConnection: public QgsGpsConnection
       */
     void positionUpdated( const QGeoPositionInfo &info ) SIP_SKIP;
 
-#ifdef SIP_RUN
-    SIP_IF_FEATURE( !ANDROID )
-#endif
-
     /**
      * Called when the number of satellites in view is updated.
       * \note not available in Python bindings on android
@@ -82,10 +64,6 @@ class CORE_EXPORT QgsQtLocationConnection: public QgsGpsConnection
       */
     void satellitesInUseUpdated( const QList<QGeoSatelliteInfo> &satellites );
 
-#ifdef SIP_RUN
-    SIP_END
-#endif
-
   private:
     void startGPS();
     void startSatelliteMonitor();
@@ -93,9 +71,6 @@ class CORE_EXPORT QgsQtLocationConnection: public QgsGpsConnection
     QGeoPositionInfo mInfo;
     QPointer<QGeoPositionInfoSource> locationDataSource;
     QPointer<QGeoSatelliteInfoSource> satelliteInfoSource;
-
 };
-
-SIP_END // MOBILITY_LOCATION
 
 #endif // QGSQTLOCATIONCONNECTION_H

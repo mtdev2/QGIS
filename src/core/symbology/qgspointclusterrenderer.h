@@ -18,22 +18,21 @@
 #ifndef QGSPOINTCLUSTERRENDERER_H
 #define QGSPOINTCLUSTERRENDERER_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 #include "qgspointdistancerenderer.h"
 
 /**
  * \class QgsPointClusterRenderer
  * \ingroup core
- * A renderer that automatically clusters points with the same geographic position.
- * \since QGIS 3.0
+ * \brief A renderer that automatically clusters points with the same geographic position.
 */
-class CORE_EXPORT QgsPointClusterRenderer: public QgsPointDistanceRenderer
+class CORE_EXPORT QgsPointClusterRenderer : public QgsPointDistanceRenderer
 {
   public:
-
     QgsPointClusterRenderer();
 
+    Qgis::FeatureRendererFlags flags() const override;
     QgsPointClusterRenderer *clone() const override SIP_FACTORY;
     void startRender( QgsRenderContext &context, const QgsFields &fields ) override;
     void stopRender( QgsRenderContext &context ) override;
@@ -42,7 +41,7 @@ class CORE_EXPORT QgsPointClusterRenderer: public QgsPointDistanceRenderer
     bool accept( QgsStyleEntityVisitorInterface *visitor ) const override;
 
     //! Creates a renderer from XML element
-    static QgsFeatureRenderer *create( QDomElement &symbologyElem, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsFeatureRenderer> create( QDomElement &symbologyElem, const QgsReadWriteContext &context );
 
     /**
      * Returns the symbol used for rendering clustered groups (but not ownership of the symbol).
@@ -61,7 +60,7 @@ class CORE_EXPORT QgsPointClusterRenderer: public QgsPointDistanceRenderer
      * Creates a QgsPointClusterRenderer from an existing renderer.
      * \returns a new renderer if the conversion was possible, otherwise NULLPTR.
      */
-    static QgsPointClusterRenderer *convertFromRenderer( const QgsFeatureRenderer *renderer ) SIP_FACTORY;
+    static std::unique_ptr<QgsPointClusterRenderer> convertFromRenderer( const QgsFeatureRenderer *renderer );
 
   private:
 #ifdef SIP_RUN
@@ -72,8 +71,7 @@ class CORE_EXPORT QgsPointClusterRenderer: public QgsPointDistanceRenderer
     //! Symbol for point clusters
     std::unique_ptr< QgsMarkerSymbol > mClusterSymbol;
 
-    void drawGroup( QPointF centerPoint, QgsRenderContext &context, const QgsPointDistanceRenderer::ClusteredGroup &group ) override SIP_FORCE;
-
+    void drawGroup( QPointF centerPoint, QgsRenderContext &context, const QgsPointDistanceRenderer::ClusteredGroup &group ) const override SIP_FORCE;
 };
 
 #endif // QGSPOINTCLUSTERRENDERER_H

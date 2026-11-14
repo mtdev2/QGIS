@@ -22,25 +22,30 @@ email                : tim@linfiniti.com
 // includes
 
 #include "qgsdecorationcopyright.h"
-#include "qgsdecorationcopyrightdialog.h"
 
 #include "qgisapp.h"
-#include "qgsapplication.h"
+#include "qgsdecorationcopyrightdialog.h"
 #include "qgsexpression.h"
 #include "qgsexpressioncontext.h"
 #include "qgslogger.h"
-#include "qgsmapcanvas.h"
+#include "qgspainting.h"
 #include "qgsproject.h"
 #include "qgsreadwritecontext.h"
 #include "qgssymbollayerutils.h"
+#include "qgstextdocument.h"
+#include "qgstextdocumentmetrics.h"
 #include "qgstextrenderer.h"
 
-#include <QPainter>
-#include <QMenu>
 #include <QDate>
 #include <QDomDocument>
-#include <QMatrix>
 #include <QFile>
+#include <QMenu>
+#include <QPainter>
+#include <QString>
+
+#include "moc_qgsdecorationcopyright.cpp"
+
+using namespace Qt::StringLiterals;
 
 //non qt includes
 #include <cmath>
@@ -50,10 +55,10 @@ QgsDecorationCopyright::QgsDecorationCopyright( QObject *parent )
   : QgsDecorationItem( parent )
 {
   mPlacement = BottomRight;
-  mMarginUnit = QgsUnitTypes::RenderMillimeters;
+  mMarginUnit = Qgis::RenderUnit::Millimeters;
 
   setDisplayName( tr( "Copyright Label" ) );
-  mConfigurationName = QStringLiteral( "CopyrightLabel" );
+  mConfigurationName = u"CopyrightLabel"_s;
 
   projectRead();
 }
@@ -62,13 +67,13 @@ void QgsDecorationCopyright::projectRead()
 {
   QgsDecorationItem::projectRead();
 
-  mLabelText = QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/Label" ), QString() );
-  mMarginHorizontal = QgsProject::instance()->readNumEntry( mConfigurationName, QStringLiteral( "/MarginH" ), 0 );
-  mMarginVertical = QgsProject::instance()->readNumEntry( mConfigurationName, QStringLiteral( "/MarginV" ), 0 );
+  mLabelText = QgsProject::instance()->readEntry( mConfigurationName, u"/Label"_s, QString() );
+  mMarginHorizontal = QgsProject::instance()->readNumEntry( mConfigurationName, u"/MarginH"_s, 0 );
+  mMarginVertical = QgsProject::instance()->readNumEntry( mConfigurationName, u"/MarginV"_s, 0 );
 
   QDomDocument doc;
   QDomElement elem;
-  QString textXml = QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/Font" ) );
+  const QString textXml = QgsProject::instance()->readEntry( mConfigurationName, u"/Font"_s );
   if ( !textXml.isEmpty() )
   {
     doc.setContent( textXml );
@@ -79,27 +84,27 @@ void QgsDecorationCopyright::projectRead()
   }
 
   // Migration for pre QGIS 3.2 settings
-  QColor oldColor = QgsSymbolLayerUtils::decodeColor( QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/Color" ) ) );
+  const QColor oldColor = QgsSymbolLayerUtils::decodeColor( QgsProject::instance()->readEntry( mConfigurationName, u"/Color"_s ) );
   if ( oldColor.isValid() )
   {
     mTextFormat.setColor( oldColor );
-    QgsProject::instance()->removeEntry( mConfigurationName, QStringLiteral( "/Color" ) );
+    QgsProject::instance()->removeEntry( mConfigurationName, u"/Color"_s );
   }
 }
 
 void QgsDecorationCopyright::saveToProject()
 {
   QgsDecorationItem::saveToProject();
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/Label" ), mLabelText );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/MarginH" ), mMarginHorizontal );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/MarginV" ), mMarginVertical );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/Label"_s, mLabelText );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/MarginH"_s, mMarginHorizontal );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/MarginV"_s, mMarginVertical );
 
   QDomDocument textDoc;
   QgsReadWriteContext rwContext;
   rwContext.setPathResolver( QgsProject::instance()->pathResolver() );
-  QDomElement textElem = mTextFormat.writeXml( textDoc, rwContext );
+  const QDomElement textElem = mTextFormat.writeXml( textDoc, rwContext );
   textDoc.appendChild( textElem );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/Font" ), textDoc.toString() );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/Font"_s, textDoc.toString() );
 }
 
 // Slot called when the buffer menu item is activated
@@ -116,89 +121,89 @@ void QgsDecorationCopyright::render( const QgsMapSettings &mapSettings, QgsRende
   if ( !enabled() )
     return;
 
-  QgsScopedQPainterState painterState( context.painter() );
+  const QgsScopedQPainterState painterState( context.painter() );
   context.setPainterFlagsUsingContext();
 
-  QString displayString = QgsExpression::replaceExpressionText( mLabelText, &context.expressionContext() );
-  QStringList displayStringList = displayString.split( '\n' );
+  const QString displayString = QgsExpression::replaceExpressionText( mLabelText, &context.expressionContext() );
+  const QStringList displayStringList = displayString.split( '\n' );
 
-  QFontMetricsF textMetrics = QgsTextRenderer::fontMetrics( context, mTextFormat );
-  double textDescent = textMetrics.descent();
-  double textWidth = QgsTextRenderer::textWidth( context, mTextFormat, displayStringList );
-  double textHeight = QgsTextRenderer::textHeight( context, mTextFormat, displayStringList, QgsTextRenderer::Point );
+  QgsTextFormat textFormat = mTextFormat;
+  textFormat.updateDataDefinedProperties( context );
+  const QgsTextDocument doc = QgsTextDocument::fromTextAndFormat( displayStringList, textFormat );
+  const double textScaleFactor = QgsTextRenderer::calculateScaleFactorForFormat( context, textFormat );
+  const QgsTextDocumentMetrics documentMetrics = QgsTextDocumentMetrics::calculateMetrics( doc, textFormat, context, textScaleFactor );
+  const QSizeF documentSize = documentMetrics.documentSize( Qgis::TextLayoutMode::Rectangle, Qgis::TextOrientation::Horizontal );
+  const double textWidth = documentSize.width();
+  const double textHeight = documentSize.height();
 
   QPaintDevice *device = context.painter()->device();
-  int deviceHeight = device->height() / device->devicePixelRatioF();
-  int deviceWidth = device->width() / device->devicePixelRatioF();
-
-  float xOffset( 0 ), yOffset( 0 );
+  const float deviceHeight = static_cast<float>( device->height() ) / context.devicePixelRatio();
+  const float deviceWidth = static_cast<float>( device->width() ) / context.devicePixelRatio();
 
   // Set  margin according to selected units
+  float xOffset = 0.0;
+  float yOffset = 0.0;
   switch ( mMarginUnit )
   {
-    case QgsUnitTypes::RenderMillimeters:
+    case Qgis::RenderUnit::Millimeters:
     {
-      int pixelsInchX = context.painter()->device()->logicalDpiX();
-      int pixelsInchY = context.painter()->device()->logicalDpiY();
+      const int pixelsInchX = context.painter()->device()->logicalDpiX();
+      const int pixelsInchY = context.painter()->device()->logicalDpiY();
       xOffset = pixelsInchX * INCHES_TO_MM * mMarginHorizontal;
       yOffset = pixelsInchY * INCHES_TO_MM * mMarginVertical;
       break;
     }
-    case QgsUnitTypes::RenderPixels:
+    case Qgis::RenderUnit::Pixels:
     {
       xOffset = mMarginHorizontal;
       yOffset = mMarginVertical;
       break;
     }
-    case QgsUnitTypes::RenderPercentage:
+    case Qgis::RenderUnit::Percentage:
     {
       xOffset = ( ( deviceWidth - textWidth ) / 100. ) * mMarginHorizontal;
       yOffset = ( ( deviceHeight - textHeight ) / 100. ) * mMarginVertical;
       break;
     }
-    case QgsUnitTypes::RenderMapUnits:
-    case QgsUnitTypes::RenderPoints:
-    case QgsUnitTypes::RenderInches:
-    case QgsUnitTypes::RenderUnknownUnit:
-    case QgsUnitTypes::RenderMetersInMapUnits:
+    case Qgis::RenderUnit::MapUnits:
+    case Qgis::RenderUnit::Points:
+    case Qgis::RenderUnit::Inches:
+    case Qgis::RenderUnit::Unknown:
+    case Qgis::RenderUnit::MetersInMapUnits:
       break;
   }
 
   // Determine placement of label from form combo box
-  QgsTextRenderer::HAlignment horizontalAlignment = QgsTextRenderer::AlignLeft;
+  Qgis::TextHorizontalAlignment horizontalAlignment = Qgis::TextHorizontalAlignment::Left;
+  QRectF textRect;
   switch ( mPlacement )
   {
-    case BottomLeft: // Bottom Left, xOffset is set above
-      yOffset = deviceHeight - yOffset - textDescent;
+    case BottomLeft: // Bottom Left
+      textRect = QRectF( xOffset, deviceHeight - textHeight - yOffset, deviceWidth - xOffset * 2, textHeight );
       break;
-    case TopLeft: // Top left, xOffset is set above
-      yOffset = yOffset + textHeight - textDescent;
+    case TopLeft: // Top left
+      textRect = QRectF( xOffset, yOffset, deviceWidth - xOffset * 2, textHeight );
       break;
     case TopRight: // Top Right
-      yOffset = yOffset + textHeight - textDescent;
-      xOffset = deviceWidth - xOffset;
-      horizontalAlignment = QgsTextRenderer::AlignRight;
+      textRect = QRectF( xOffset, yOffset, deviceWidth - xOffset * 2, textHeight );
+      horizontalAlignment = Qgis::TextHorizontalAlignment::Right;
       break;
     case BottomRight: // Bottom Right
-      yOffset = deviceHeight - yOffset - textDescent;
-      xOffset = deviceWidth - xOffset;
-      horizontalAlignment = QgsTextRenderer::AlignRight;
+      textRect = QRectF( xOffset, deviceHeight - textHeight - yOffset * 2, deviceWidth - xOffset * 2, textHeight );
+      horizontalAlignment = Qgis::TextHorizontalAlignment::Right;
       break;
     case TopCenter: // Top Center
-      yOffset = yOffset + textHeight - textDescent;
-      xOffset = deviceWidth / 2 + xOffset;
-      horizontalAlignment = QgsTextRenderer::AlignCenter;
+      textRect = QRectF( xOffset, yOffset, deviceWidth - xOffset, textHeight );
+      horizontalAlignment = Qgis::TextHorizontalAlignment::Center;
       break;
     case BottomCenter: // Bottom Center
-      yOffset = deviceHeight - yOffset - textDescent;
-      xOffset = deviceWidth / 2 + xOffset;
-      horizontalAlignment = QgsTextRenderer::AlignCenter;
+      textRect = QRectF( xOffset, deviceHeight - textHeight - yOffset, deviceWidth - xOffset * 2, textHeight );
+      horizontalAlignment = Qgis::TextHorizontalAlignment::Center;
       break;
     default:
-      QgsDebugMsg( QStringLiteral( "Unsupported placement index of %1" ).arg( static_cast<int>( mPlacement ) ) );
+      QgsDebugError( u"Unsupported placement index of %1"_s.arg( static_cast<int>( mPlacement ) ) );
   }
 
   //Paint label to canvas
-  QgsTextRenderer::drawText( QPointF( xOffset, yOffset ), 0.0, horizontalAlignment, displayStringList, context, mTextFormat );
+  QgsTextRenderer::drawDocument( textRect, textFormat, documentMetrics.document(), documentMetrics, context, horizontalAlignment, Qgis::TextVerticalAlignment::Top, 0, Qgis::TextLayoutMode::Rectangle );
 }
-

@@ -20,20 +20,16 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsraster.h"
 #include "qgserror.h"
+#include "qgsraster.h"
 
 /**
  * \ingroup core
- * Raster identify results container.
+ * \brief Raster identify results container.
  */
 class CORE_EXPORT QgsRasterIdentifyResult
 {
   public:
-
-    /**
-     * Constructor for QgsRasterIdentifyResult.
-     */
     QgsRasterIdentifyResult() = default;
 
     /**
@@ -41,7 +37,7 @@ class CORE_EXPORT QgsRasterIdentifyResult
      *  \param format the result format
      *  \param results the results
      */
-    QgsRasterIdentifyResult( QgsRaster::IdentifyFormat format, const QMap<int, QVariant> &results );
+    QgsRasterIdentifyResult( Qgis::RasterIdentifyFormat format, const QMap<int, QVariant> &results );
 
     /**
      * \brief Constructor. Creates invalid result with error.
@@ -55,14 +51,14 @@ class CORE_EXPORT QgsRasterIdentifyResult
     bool isValid() const { return mValid; }
 
     //! Returns the results format.
-    QgsRaster::IdentifyFormat format() const { return mFormat; }
+    Qgis::RasterIdentifyFormat format() const { return mFormat; }
 
     /**
      * Returns the identify results. Results are different for each format:
      *
-     * - QgsRaster::IdentifyFormatValue: a map of values for each band, where keys are band numbers (from 1).
-     * - QgsRaster::IdentifyFormatFeature: a map of WMS sublayer keys and lists of QgsFeatureStore values.
-     * - QgsRaster::IdentifyFormatHtml: a map of WMS sublayer keys and HTML strings.
+     * - Qgis::RasterIdentifyFormat::Value: a map of values for each band, where keys are band numbers (from 1).
+     * - Qgis::RasterIdentifyFormat::Feature: a map of WMS sublayer keys and lists of QgsFeatureStore values.
+     * - Qgis::RasterIdentifyFormat::Html: a map of WMS sublayer keys and HTML strings.
      */
     QMap<int, QVariant> results() const { return mResults; }
 
@@ -76,14 +72,14 @@ class CORE_EXPORT QgsRasterIdentifyResult
     QgsError error() const { return mError; }
 
     //! Sets the last error
-    void setError( const QgsError &error ) { mError = error;}
+    void setError( const QgsError &error ) { mError = error; }
 
   private:
     //! \brief Is valid
     bool mValid = false;
 
     //! \brief Results format
-    QgsRaster::IdentifyFormat mFormat = QgsRaster::IdentifyFormatUndefined;
+    Qgis::RasterIdentifyFormat mFormat = Qgis::RasterIdentifyFormat::Undefined;
 
     // TODO: better hierarchy (sublayer multiple feature sets)?
     // TODO?: results are not consistent for different formats (per band x per sublayer)
@@ -99,5 +95,3 @@ class CORE_EXPORT QgsRasterIdentifyResult
 };
 
 #endif
-
-

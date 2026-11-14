@@ -13,17 +13,23 @@
 *******************************************************************/
 
 #include "qgsgrassutils.h"
-#include "qgsgrassselect.h"
-#include "qgsgrass.h"
 
 #include "qgisinterface.h"
 #include "qgsapplication.h"
+#include "qgsgrass.h"
+#include "qgsgrassselect.h"
 #include "qgslogger.h"
 
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QString>
 
-QString QgsGrassUtils::vectorLayerName( QString map, QString layer,
-                                        int nLayers )
+#include "moc_qgsgrassutils.cpp"
+
+using namespace Qt::StringLiterals;
+
+QString QgsGrassUtils::vectorLayerName( QString map, QString layer, int nLayers )
 {
   QString name = map;
   if ( nLayers > 1 )
@@ -31,8 +37,7 @@ QString QgsGrassUtils::vectorLayerName( QString map, QString layer,
   return name;
 }
 
-void QgsGrassUtils::addVectorLayers( QgisInterface *iface,
-                                     QString gisbase, QString location, QString mapset, QString map )
+void QgsGrassUtils::addVectorLayers( QgisInterface *iface, QString gisbase, QString location, QString mapset, QString map )
 {
   QStringList layers;
   try
@@ -41,7 +46,7 @@ void QgsGrassUtils::addVectorLayers( QgisInterface *iface,
   }
   catch ( QgsGrass::Exception &e )
   {
-    QgsDebugMsg( e.what() );
+    QgsDebugError( e.what() );
     return;
   }
 
@@ -49,23 +54,19 @@ void QgsGrassUtils::addVectorLayers( QgisInterface *iface,
   {
     QString name = QgsGrassUtils::vectorLayerName( map, layers[i], layers.size() );
 
-    QString uri = gisbase + "/" + location + "/"
-                  + mapset + "/" + map + "/" + layers[i];
+    QString uri = gisbase + "/" + location + "/" + mapset + "/" + map + "/" + layers[i];
 
-    QgsDebugMsg( QString( "layer = %1" ).arg( layers[i].toLocal8Bit().constData() ) );
-    QgsDebugMsg( QString( "uri = %1" ).arg( uri.toLocal8Bit().constData() ) );
-    QgsDebugMsg( QString( "name = %1" ).arg( name.toLocal8Bit().constData() ) );
+    QgsDebugMsgLevel( QString( "layer = %1" ).arg( layers[i].toLocal8Bit().constData() ), 3 );
+    QgsDebugMsgLevel( QString( "uri = %1" ).arg( uri.toLocal8Bit().constData() ), 3 );
+    QgsDebugMsgLevel( QString( "name = %1" ).arg( name.toLocal8Bit().constData() ), 3 );
 
-    iface->addVectorLayer( uri, name, QStringLiteral( "grass" ) );
+    iface->addVectorLayer( uri, name, u"grass"_s );
   }
 }
 
 bool QgsGrassUtils::itemExists( QString element, QString item )
 {
-  QString path = QgsGrass::getDefaultGisdbase() + "/"
-                 + QgsGrass::getDefaultLocation() + "/"
-                 + QgsGrass::getDefaultMapset() + "/"
-                 + "/" + element + "/" + item;
+  QString path = QgsGrass::getDefaultGisdbase() + "/" + QgsGrass::getDefaultLocation() + "/" + QgsGrass::getDefaultMapset() + "/" + "/" + element + "/" + item;
 
   QFileInfo fi( path );
   return fi.exists();
@@ -74,17 +75,14 @@ bool QgsGrassUtils::itemExists( QString element, QString item )
 
 QString QgsGrassUtils::htmlBrowserPath()
 {
-  return QgsApplication::libexecPath() + "grass/bin/qgis.g.browser"  + QString::number( QgsGrass::versionMajor() );
+  return QgsApplication::libexecPath() + "grass/bin/qgis.g.browser" + QString::number( QgsGrass::versionMajor() );
 }
 
 QgsGrassElementDialog::QgsGrassElementDialog( QWidget *parent )
   : mParent( parent )
-{
-}
+{}
 
-QString QgsGrassElementDialog::getItem( QString element,
-                                        QString title, QString label,
-                                        QString text, QString source, bool *ok )
+QString QgsGrassElementDialog::getItem( QString element, QString title, QString label, QString text, QString source, bool *ok )
 {
   if ( ok )
     *ok = false;
@@ -99,21 +97,21 @@ QString QgsGrassElementDialog::getItem( QString element,
   layout->addWidget( mLabel );
 
   mLineEdit = new QLineEdit( text );
-  QRegExp rx;
-  if ( element == QLatin1String( "vector" ) )
+  QRegularExpression rx;
+  if ( element == "vector"_L1 )
   {
-    rx.setPattern( QStringLiteral( "[A-Za-z_][A-Za-z0-9_]+" ) );
+    rx.setPattern( u"[A-Za-z_][A-Za-z0-9_]+"_s );
   }
   else
   {
-    rx.setPattern( QStringLiteral( "[A-Za-z0-9_.]+" ) );
+    rx.setPattern( u"[A-Za-z0-9_.]+"_s );
   }
-  QRegExpValidator *val = new QRegExpValidator( rx, this );
+  QRegularExpressionValidator *val = new QRegularExpressionValidator( rx, this );
   mLineEdit->setValidator( val );
 
   layout->addWidget( mLineEdit );
 
-  mErrorLabel = new QLabel( QStringLiteral( "X" ) );
+  mErrorLabel = new QLabel( u"X"_s );
   layout->addWidget( mErrorLabel );
   // Intention: keep fixed size - but it does not help
   mErrorLabel->adjustSize();
@@ -144,10 +142,9 @@ QString QgsGrassElementDialog::getItem( QString element,
 
 void QgsGrassElementDialog::textChanged()
 {
-
   QString text = mLineEdit->text().trimmed();
 
-  mErrorLabel->setText( QStringLiteral( "   " ) );
+  mErrorLabel->setText( u"   "_s );
   mOkButton->setText( tr( "OK" ) );
   mOkButton->setEnabled( true );
 

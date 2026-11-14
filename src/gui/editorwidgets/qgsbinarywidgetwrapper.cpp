@@ -14,31 +14,38 @@
  ***************************************************************************/
 
 #include "qgsbinarywidgetwrapper.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
+
+#include "qgsapplication.h"
 #include "qgsfileutils.h"
 #include "qgsfocuskeeper.h"
-#include "qgssettings.h"
 #include "qgsmessagebar.h"
-#include "qgsapplication.h"
-#include <QHBoxLayout>
-#include <QFileDialog>
-#include <QLabel>
-#include <QToolButton>
+#include "qgssettings.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
+
 #include <QAction>
+#include <QFileDialog>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QString>
+#include <QToolButton>
+#include <QUrl>
+
+#include "moc_qgsbinarywidgetwrapper.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsBinaryWidgetWrapper::QgsBinaryWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QWidget *parent, QgsMessageBar *messageBar )
   : QgsEditorWidgetWrapper( layer, fieldIdx, editor, parent )
   , mMessageBar( messageBar )
-{
-}
+{}
 
 
 QVariant QgsBinaryWidgetWrapper::value() const
 {
-  return mValue.isEmpty() || mValue.isNull() ? QVariant( QVariant::ByteArray ) : mValue;
+  return mValue.isEmpty() || mValue.isNull() ? QgsVariantUtils::createNullVariant( QMetaType::Type::QByteArray ) : mValue;
 }
 
 void QgsBinaryWidgetWrapper::showIndeterminateState()
@@ -111,7 +118,7 @@ bool QgsBinaryWidgetWrapper::valid() const
 
 void QgsBinaryWidgetWrapper::updateValues( const QVariant &value, const QVariantList & )
 {
-  mValue = value.isValid() && !value.isNull() && value.canConvert< QByteArray >() ? value.toByteArray() : QByteArray();
+  mValue = value.isValid() && !QgsVariantUtils::isNull( value ) && value.canConvert<QByteArray>() ? value.toByteArray() : QByteArray();
   if ( mValue.length() == 0 )
     mValue = QByteArray();
 
@@ -138,29 +145,31 @@ void QgsBinaryWidgetWrapper::saveContent()
 
   QString file;
   {
-    QgsFocusKeeper focusKeeper;
+    const QgsFocusKeeper focusKeeper;
 
-    file = QFileDialog::getSaveFileName( nullptr,
-                                         tr( "Save Contents to File" ),
-                                         defaultPath(),
-                                         tr( "All files" ) + " (*.*)" );
+    file = QFileDialog::getSaveFileName( nullptr, tr( "Save Contents to File" ), defaultPath(), tr( "All files" ) + " (*.*)" );
   }
   if ( file.isEmpty() )
   {
     return;
   }
 
-  QFileInfo fi( file );
-  s.setValue( QStringLiteral( "/UI/lastBinaryDir" ), fi.absolutePath() );
+  const QFileInfo fi( file );
+  s.setValue( u"/UI/lastBinaryDir"_s, fi.absolutePath() );
 
   QFile fileOut( file );
-  fileOut.open( QIODevice::WriteOnly );
-  fileOut.write( mValue );
-  fileOut.close();
+  if ( fileOut.open( QIODevice::WriteOnly ) )
+  {
+    fileOut.write( mValue );
+    fileOut.close();
 
-  if ( mMessageBar )
-    mMessageBar->pushSuccess( QString(), tr( "Saved content to <a href=\"%1\">%2</a>" ).arg(
-                                QUrl::fromLocalFile( file ).toString(), QDir::toNativeSeparators( file ) ) );
+    if ( mMessageBar )
+      mMessageBar->pushSuccess( QString(), tr( "Saved content to <a href=\"%1\">%2</a>" ).arg( QUrl::fromLocalFile( file ).toString(), QDir::toNativeSeparators( file ) ) );
+  }
+  else if ( mMessageBar )
+  {
+    mMessageBar->pushMessage( QString(), tr( "Error opening %1 for write" ).arg( QDir::toNativeSeparators( file ) ), Qgis::MessageLevel::Critical );
+  }
 }
 
 void QgsBinaryWidgetWrapper::setContent()
@@ -169,21 +178,18 @@ void QgsBinaryWidgetWrapper::setContent()
 
   QString file;
   {
-    QgsFocusKeeper focusKeeper;
+    const QgsFocusKeeper focusKeeper;
 
-    file = QFileDialog::getOpenFileName( nullptr,
-                                         tr( "Embed File" ),
-                                         defaultPath(),
-                                         tr( "All files" ) + " (*.*)" );
+    file = QFileDialog::getOpenFileName( nullptr, tr( "Embed File" ), defaultPath(), tr( "All files" ) + " (*.*)" );
   }
 
-  QFileInfo fi( file );
+  const QFileInfo fi( file );
   if ( file.isEmpty() || !fi.exists() )
   {
     return;
   }
 
-  s.setValue( QStringLiteral( "/UI/lastBinaryDir" ), fi.absolutePath() );
+  s.setValue( u"/UI/lastBinaryDir"_s, fi.absolutePath() );
 
   QFile fileSource( file );
   if ( !fileSource.open( QIODevice::ReadOnly ) )
@@ -198,7 +204,7 @@ void QgsBinaryWidgetWrapper::setContent()
 void QgsBinaryWidgetWrapper::clear()
 {
   {
-    QgsFocusKeeper focusKeeper;
+    const QgsFocusKeeper focusKeeper;
     if ( QMessageBox::question( nullptr, tr( "Clear Contents" ), tr( "Are you sure you want the clear this field's content?" ), QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
       return;
   }
@@ -209,6 +215,5 @@ void QgsBinaryWidgetWrapper::clear()
 
 QString QgsBinaryWidgetWrapper::defaultPath()
 {
-  return QgsSettings().value( QStringLiteral( "/UI/lastBinaryDir" ), QDir::homePath() ).toString();
+  return QgsSettings().value( u"/UI/lastBinaryDir"_s, QDir::homePath() ).toString();
 }
-

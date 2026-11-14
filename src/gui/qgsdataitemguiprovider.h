@@ -16,34 +16,33 @@
 #ifndef QGSDATAITEMGUIPROVIDER_H
 #define QGSDATAITEMGUIPROVIDER_H
 
+#include "qgis.h"
 #include "qgis_gui.h"
 #include "qgis_sip.h"
-#include "qgis.h"
+
 #include <QList>
-#include <QWidget>
+#include <QMenu>
 #include <QMimeData>
 #include <QString>
-#include <QMenu>
+#include <QWidget>
 
 class QgsDataItem;
 class QgsMessageBar;
 class QgsLayerItem;
+class QgsBrowserTreeView;
+class QgsMapCanvas;
 
 /**
  * \class QgsDataItemGuiContext
  * \ingroup gui
  *
- * Encapsulates the context in which a QgsDataItem is shown within the application GUI.
+ * \brief Encapsulates the context in which a QgsDataItem is shown within the application GUI.
  *
  * \since QGIS 3.6
  */
 class GUI_EXPORT QgsDataItemGuiContext
 {
   public:
-
-    /**
-     * Constructor for QgsDataItemGuiContext.
-     */
     QgsDataItemGuiContext() = default;
 
     /**
@@ -64,9 +63,46 @@ class GUI_EXPORT QgsDataItemGuiContext
      */
     void setMessageBar( QgsMessageBar *bar );
 
-  private:
+    /**
+     * Sets the map canvas associated with the data item.
+     *
+     * This allows the item to retrieve the current map scale and other properties from the canvas.
+     *
+     * \see mapCanvas()
+     * \since QGIS 3.44
+     */
+    void setMapCanvas( QgsMapCanvas *canvas );
 
+    /**
+     * Returns the map canvas associated with the item.
+     *
+     * \see setMapCanvas()
+     * \since QGIS 3.44
+     */
+    QgsMapCanvas *mapCanvas() const;
+
+    /**
+     * Returns the associated view.
+     *
+     * \see setView()
+     * \since QGIS 3.28
+     */
+    QgsBrowserTreeView *view() const;
+
+    /**
+     * Sets the associated \a view.
+     *
+     * \see view()
+     * \since QGIS 3.28
+     */
+    void setView( QgsBrowserTreeView *view );
+
+  private:
     QgsMessageBar *mMessageBar = nullptr;
+
+    QgsBrowserTreeView *mView = nullptr;
+
+    QgsMapCanvas *mCanvas = nullptr;
 };
 
 Q_DECLARE_METATYPE( QgsDataItemGuiContext );
@@ -75,7 +111,7 @@ Q_DECLARE_METATYPE( QgsDataItemGuiContext );
  * \class QgsDataItemGuiProvider
  * \ingroup gui
  *
- * Abstract base class for providers which affect how QgsDataItem items behave
+ * \brief Abstract base class for providers which affect how QgsDataItem items behave
  * within the application GUI.
  *
  * Providers must be registered via QgsDataItemGuiProviderRegistry.
@@ -85,7 +121,6 @@ Q_DECLARE_METATYPE( QgsDataItemGuiContext );
 class GUI_EXPORT QgsDataItemGuiProvider
 {
   public:
-
     virtual ~QgsDataItemGuiProvider() = default;
 
     /**
@@ -117,8 +152,20 @@ class GUI_EXPORT QgsDataItemGuiProvider
      *
      * The base class method has no effect.
      */
-    virtual void populateContextMenu( QgsDataItem *item, QMenu *menu,
-                                      const QList<QgsDataItem *> &selectedItems, QgsDataItemGuiContext context );
+    virtual void populateContextMenu( QgsDataItem *item, QMenu *menu, const QList<QgsDataItem *> &selectedItems, QgsDataItemGuiContext context );
+
+    /**
+     * Returns the provider's precedence to use when populating context menus via calls to populateContextMenu().
+     *
+     * Providers which return larger values will be called AFTER other providers when the menu is being populated.
+     * This allows them to nicely insert their corresponding menu items in the desired location with respect to
+     * existing items added by other providers.
+     *
+     * The default implementation returns 0.
+     *
+     * \since QGIS 3.22
+     */
+    virtual int precedenceWhenPopulatingMenus() const;
 
     /**
      * Sets a new \a name for the item, and returns TRUE if the item was successfully renamed.
@@ -187,7 +234,7 @@ class GUI_EXPORT QgsDataItemGuiProvider
      *
      * \since QGIS 3.16
      */
-    static void notify( const QString &title, const QString &message, QgsDataItemGuiContext context, Qgis::MessageLevel level = Qgis::Info, int duration = -1, QWidget *parent = nullptr );
+    static void notify( const QString &title, const QString &message, QgsDataItemGuiContext context, Qgis::MessageLevel level = Qgis::MessageLevel::Info, int duration = -1, QWidget *parent = nullptr );
 };
 
 #endif // QGSDATAITEMGUIPROVIDER_H

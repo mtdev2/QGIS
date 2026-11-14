@@ -17,7 +17,6 @@
 #define QGSCAMERAPOSE_H
 
 #include "qgis_3d.h"
-
 #include "qgsvector3d.h"
 
 #ifndef SIP_RUN
@@ -31,8 +30,10 @@ class QDomDocument;
 class QDomElement;
 
 /**
- * \ingroup 3d
- * Class that encapsulates camera pose in a 3D scene. The pose is defined with the following parameters:
+ * \ingroup qgis_3d
+ * \brief Encapsulates camera pose in a 3D scene.
+ *
+ * The pose is defined with the following parameters:
  *
  * - center point - towards which point the camera is looking
  * - distance from the center point - how far is the camera from the point towards which it is looking
@@ -44,21 +45,20 @@ class QDomElement;
 class _3D_EXPORT QgsCameraPose
 {
   public:
-
     //! Returns center point (towards which point the camera is looking)
     QgsVector3D centerPoint() const { return mCenterPoint; }
     //! Sets center point (towards which point the camera is looking)
-    void setCenterPoint( const QgsVector3D &point ) { mCenterPoint = point; }
+    void setCenterPoint( const QgsVector3D &point );
 
     //! Returns distance of the camera from the center point
     float distanceFromCenterPoint() const { return mDistanceFromCenterPoint; }
     //! Sets distance of the camera from the center point
-    void setDistanceFromCenterPoint( float distance ) { mDistanceFromCenterPoint = distance; }
+    void setDistanceFromCenterPoint( float distance );
 
     //! Returns pitch angle in degrees
     float pitchAngle() const { return mPitchAngle; }
     //! Sets pitch angle in degrees
-    void setPitchAngle( float pitch ) { mPitchAngle = pitch; }
+    void setPitchAngle( float pitch );
 
     //! Returns heading (yaw) angle in degrees
     float headingAngle() const { return mHeadingAngle; }
@@ -68,22 +68,23 @@ class _3D_EXPORT QgsCameraPose
     //! Update Qt3D camera view matrix based on the pose
     void updateCamera( Qt3DRender::QCamera *camera ) SIP_SKIP;
 
+    /**
+     * Updates camera when using a globe scene
+     * \since QGIS 3.44
+     */
+    void updateCameraGlobe( Qt3DRender::QCamera *camera, double lat, double lon ) SIP_SKIP;
+
     //! Writes configuration to a new DOM element and returns it
     QDomElement writeXml( QDomDocument &doc ) const;
     //! Reads configuration from a DOM element previously written using writeXml()
     void readXml( const QDomElement &elem );
 
+    // TODO c++20 - replace with = default
     bool operator==( const QgsCameraPose &other ) const
     {
-      return mCenterPoint == other.mCenterPoint &&
-             mDistanceFromCenterPoint == other.mDistanceFromCenterPoint &&
-             mPitchAngle == other.mPitchAngle &&
-             mHeadingAngle == other.mHeadingAngle;
+      return mCenterPoint == other.mCenterPoint && mDistanceFromCenterPoint == other.mDistanceFromCenterPoint && mPitchAngle == other.mPitchAngle && mHeadingAngle == other.mHeadingAngle;
     }
-    bool operator!=( const QgsCameraPose &other ) const
-    {
-      return !operator==( other );
-    }
+    bool operator!=( const QgsCameraPose &other ) const { return !operator==( other ); }
 
   private:
     //! ground point towards which the camera is looking
@@ -91,7 +92,12 @@ class _3D_EXPORT QgsCameraPose
     //! distance of camera from the point it is looking at
     float mDistanceFromCenterPoint = 1000;
     //! aircraft nose up/down (0 = looking straight down to the plane). angle in degrees
-    float mPitchAngle = 0;
+    // prevent bug in QgsCameraPose::updateCamera when updating camera rotation.
+    // With a mPitchAngle < 0.2 or > 179.8, QQuaternion::fromEulerAngles( mPitchAngle, mHeadingAngle, 0 )
+    // will return bad rotation angle.
+    // See https://bugreports.qt.io/browse/QTBUG-72103
+    float mPitchAngle = 0.0f;
+
     //! aircraft nose left/right. angle in degrees
     float mHeadingAngle = 0;
 };

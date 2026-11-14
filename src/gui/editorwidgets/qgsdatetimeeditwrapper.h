@@ -16,10 +16,10 @@
 #ifndef QGSDATETIMEEDITWRAPPER_H
 #define QGSDATETIMEEDITWRAPPER_H
 
-#include <QDateTimeEdit>
-
-#include "qgseditorwidgetwrapper.h"
 #include "qgis_gui.h"
+#include "qgseditorwidgetwrapper.h"
+
+#include <QDateTimeEdit>
 
 SIP_NO_FILE
 
@@ -28,7 +28,7 @@ class TestQgsDateTimeEdit;
 
 /**
  * \ingroup gui
- * Wraps a date time widget. Users will be able to choose date and time from an appropriate dialog.
+ * \brief Wraps a date time widget. Users will be able to choose date and time from an appropriate dialog.
  *
  * Options:
  * <ul>
@@ -44,7 +44,6 @@ class GUI_EXPORT QgsDateTimeEditWrapper : public QgsEditorWidgetWrapper
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsDateTimeEditWrapper.
      *
@@ -77,7 +76,7 @@ class GUI_EXPORT QgsDateTimeEditWrapper : public QgsEditorWidgetWrapper
     void setEnabled( bool enabled ) override;
 
   private:
-    void updateValues( const QVariant &value, const QVariantList  & = QVariantList() ) override;
+    void updateValues( const QVariant &value, const QVariantList & = QVariantList() ) override;
 
 
     friend class TestQgsDateTimeEdit;

@@ -14,9 +14,12 @@
  ***************************************************************************/
 
 #include "qgsfloatingwidget.h"
+
 #include <QEvent>
-#include <QStyleOption>
 #include <QPainter>
+#include <QStyleOption>
+
+#include "moc_qgsfloatingwidget.cpp"
 
 //
 // QgsFloatingWidget
@@ -93,7 +96,7 @@ void QgsFloatingWidget::paintEvent( QPaintEvent *e )
 {
   Q_UNUSED( e )
   QStyleOption opt;
-  opt.init( this );
+  opt.initFrom( this );
   QPainter p( this );
   style()->drawPrimitive( QStyle::PE_Widget, &opt, &p, this );
 }
@@ -183,7 +186,7 @@ void QgsFloatingWidget::onAnchorPointChanged()
     }
 
     // constrain x so that widget floats within parent widget
-    anchorX = qBound( 0, anchorX, parentWidget()->width() - width() );
+    anchorX = std::clamp( anchorX, 0, std::max( 0, parentWidget()->width() - width() ) );
 
     move( anchorX, anchorY );
   }
@@ -196,9 +199,7 @@ void QgsFloatingWidget::onAnchorPointChanged()
 /// @cond PRIVATE
 QgsFloatingWidgetEventFilter::QgsFloatingWidgetEventFilter( QWidget *parent )
   : QObject( parent )
-{
-
-}
+{}
 
 bool QgsFloatingWidgetEventFilter::eventFilter( QObject *object, QEvent *event )
 {

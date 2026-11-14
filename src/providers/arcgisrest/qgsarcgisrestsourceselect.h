@@ -16,15 +16,17 @@
 #ifndef QGSARCGISRESTSOURCESELECT_H
 #define QGSARCGISRESTSOURCESELECT_H
 
-#define SIP_NO_FILE
 
 #include "ui_qgsarcgisservicesourceselectbase.h"
-#include "qgsrectangle.h"
-#include "qgscoordinatereferencesystem.h"
+
 #include "qgsabstractdatasourcewidget.h"
 #include "qgsbrowserproxymodel.h"
+#include "qgscoordinatereferencesystem.h"
+#include "qgsrectangle.h"
 
 #include <QItemDelegate>
+
+#define SIP_NO_FILE
 
 class QgsBrowserModel;
 
@@ -40,14 +42,12 @@ class QgsArcGisRestBrowserProxyModel : public QgsBrowserProxyModel
     Q_OBJECT
 
   public:
-
     explicit QgsArcGisRestBrowserProxyModel( QObject *parent SIP_TRANSFERTHIS = nullptr );
 
     void setConnectionName( const QString &name );
     bool filterAcceptsRow( int sourceRow, const QModelIndex &sourceParent ) const override;
 
   private:
-
     QString mConnectionName;
 };
 
@@ -59,18 +59,17 @@ class QgsArcGisRestSourceSelect : public QgsAbstractDataSourceWidget, protected 
     Q_OBJECT
 
   public:
-
     //! Constructor
-    QgsArcGisRestSourceSelect( QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::None );
+    QgsArcGisRestSourceSelect( QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::Standalone );
 
     //! Destructor
     ~QgsArcGisRestSourceSelect() override;
 
   protected:
-
     QgsBrowserGuiModel *mBrowserModel = nullptr;
     QgsArcGisRestBrowserProxyModel *mProxyModel = nullptr;
 
+    QPushButton *mBuildQueryButton = nullptr;
     QButtonGroup *mImageEncodingGroup = nullptr;
 
     //! Updates the UI for the list of available image encodings from the specified list.
@@ -92,6 +91,7 @@ class QgsArcGisRestSourceSelect : public QgsAbstractDataSourceWidget, protected 
     void deleteEntryOfServerList();
     void modifyEntryOfServerList();
     void addButtonClicked() override;
+    void buildQueryButtonClicked();
     void updateCrsLabel();
     void updateImageEncodings();
     void connectToServer();
@@ -107,6 +107,10 @@ class QgsArcGisRestSourceSelect : public QgsAbstractDataSourceWidget, protected 
     void refreshModel( const QModelIndex &index );
 
   private:
+    QgsDataItem *indexToItem( const QModelIndex &proxyIndex );
+    QgsCoordinateReferenceSystem indexToCrs( const QModelIndex &proxyIndex );
+
+    QString indexToUri( const QModelIndex &proxyIndex, QString &layerName, Qgis::ArcGisRestServiceType &serviceType, const QgsRectangle &extent = QgsRectangle() );
 
     QString mConnectedService;
 };

@@ -18,25 +18,27 @@
 #ifndef QGSLAYOUTTABLECOLUMN_H
 #define QGSLAYOUTTABLECOLUMN_H
 
-#include <QDomDocument>
-#include <QDomElement>
-#include <QColor>
-
 #include "qgis_core.h"
 #include "qgis_sip.h"
 
+#include <QColor>
+#include <QDomDocument>
+#include <QDomElement>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 /**
  * \ingroup core
- * Stores properties of a column for a QgsLayoutTable.
+ * \brief Stores properties of a column for a QgsLayoutTable.
+ *
  * Some properties of a QgsLayoutTableColumn are applicable only in certain contexts.
  * For instance, the attribute and setAttribute methods only have an effect
  * for QgsLayoutItemAttributeTables, and have no effect for QgsLayoutItemTextTables.
- * \since QGIS 3.0
 */
 class CORE_EXPORT QgsLayoutTableColumn
 {
   public:
-
     /**
      * Constructor for QgsLayoutTableColumn.
      * \param heading column heading
@@ -163,7 +165,7 @@ class CORE_EXPORT QgsLayoutTableColumn
      * \note only applicable when used in a QgsLayoutItemAttributeTable
      * \see setSortByRank()
      * \see sortOrder()
-     * \deprecated since QGIS 3.14 the order is now hold in a dedicated model
+     * \deprecated QGIS 3.14. The order is now hold in a dedicated model.
      */
     Q_DECL_DEPRECATED int sortByRank() const SIP_DEPRECATED { return mSortByRank; }
 
@@ -178,18 +180,18 @@ class CORE_EXPORT QgsLayoutTableColumn
      * \note only applicable when used in a QgsLayoutItemAttributeTable
      * \see sortByRank()
      * \see setSortOrder()
-     * \deprecated since QGIS 3.14 the order is now hold in a dedicated model
+     * \deprecated QGIS 3.14. The order is now hold in a dedicated model.
      */
     Q_DECL_DEPRECATED void setSortByRank( int rank ) SIP_DEPRECATED { mSortByRank = rank; }
 
     /**
      * Creates a duplicate column which is a deep copy of this column.
      * \returns a new QgsLayoutTableColumn with same properties as this column.
-     * \deprecated since QGIS 3.14 use a copy instead
+     * \deprecated QGIS 3.14. Use a copy instead.
      */
-    Q_DECL_DEPRECATED QgsLayoutTableColumn *clone() SIP_DEPRECATED SIP_FACTORY {return new QgsLayoutTableColumn( *this );}
+    Q_DECL_DEPRECATED std::unique_ptr<QgsLayoutTableColumn> clone() SIP_DEPRECATED { return std::make_unique<QgsLayoutTableColumn>( *this ); }
 
-    bool operator==( const QgsLayoutTableColumn &other )
+    bool operator==( const QgsLayoutTableColumn &other ) const
     {
       return mHeading == other.mHeading
              && mAttribute == other.mAttribute
@@ -200,7 +202,24 @@ class CORE_EXPORT QgsLayoutTableColumn
              && mVAlignment == other.mVAlignment;
     }
 
-  private:
+
+#ifdef SIP_RUN
+    // clang-format off
+    SIP_PYOBJECT __repr__();
+    % MethodCode
+    QString str;
+    if ( sipCpp->heading() != sipCpp->attribute() && !sipCpp->heading().isEmpty() )
+      str = u"<QgsLayoutTableColumn: %1 (\"%2\")>"_s.arg( sipCpp->attribute(), sipCpp->heading() );
+    else
+      str = u"<QgsLayoutTableColumn: %1>"_s.arg( sipCpp->attribute() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+// clang-format on
+#endif
+
+    // clang-format off
+    private:
+    // clang-format on
 
     QString mHeading;
     QString mAttribute;
@@ -212,6 +231,5 @@ class CORE_EXPORT QgsLayoutTableColumn
     Qt::AlignmentFlag mVAlignment = Qt::AlignVCenter;
 
     friend class QgsCompositionConverter;
-
 };
 #endif //QGSLAYOUTTABLECOLUMN_H

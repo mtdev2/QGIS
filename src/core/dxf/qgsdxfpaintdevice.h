@@ -18,11 +18,14 @@
 #ifndef QGSDXFPAINTDEVICE_H
 #define QGSDXFPAINTDEVICE_H
 
-#define SIP_NO_FILE
+
+#include <memory>
+
+#include "qgis_core.h"
 
 #include <QPaintDevice>
 
-#include "qgis_core.h"
+#define SIP_NO_FILE
 
 class QgsDxfPaintEngine;
 class QgsDxfExport;
@@ -30,11 +33,11 @@ class QPaintEngine;
 
 /**
  * \ingroup core
- * A paint device for drawing into dxf files.
+ * \brief A paint device for drawing into dxf files.
  * \note not available in Python bindings
 */
 
-class CORE_EXPORT QgsDxfPaintDevice: public QPaintDevice
+class CORE_EXPORT QgsDxfPaintDevice : public QPaintDevice
 {
   public:
     QgsDxfPaintDevice( QgsDxfExport *dxf );
@@ -62,10 +65,10 @@ class CORE_EXPORT QgsDxfPaintDevice: public QPaintDevice
 
 
   private:
-    QgsDxfPaintEngine *mPaintEngine = nullptr;
+    std::unique_ptr<QgsDxfPaintEngine> mPaintEngine;
 
     QSizeF mDrawingSize; //size (in source coordinates)
-    QRectF mRectangle; //size (in dxf coordinates)
+    QRectF mRectangle;   //size (in dxf coordinates)
 };
 
 #endif // QGSDXFPAINTDEVICE_H

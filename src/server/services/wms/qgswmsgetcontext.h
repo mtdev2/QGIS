@@ -19,24 +19,24 @@
  *                                                                         *
  ***************************************************************************/
 
+class QgsServerInterface;
+class QgsProject;
+class QgsServerResponse;
+class QDomDocument;
+
 namespace QgsWms
 {
+
+  class QgsWmsRequest;
 
   /**
    * Output GetContext response
    */
-  void writeGetContext( QgsServerInterface *serverIface, const QgsProject *project,
-                        const QString &version, const QgsServerRequest &request,
-                        QgsServerResponse &response );
+  void writeGetContext( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response );
 
   /**
    * Returns XML document for the 'GetContext' request
    */
-  QDomDocument getContext( QgsServerInterface *serverIface, const QgsProject *project,
-                           const QString &version, const QgsServerRequest &request );
+  QDomDocument getContext( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request );
 
 } // namespace QgsWms
-
-
-
-

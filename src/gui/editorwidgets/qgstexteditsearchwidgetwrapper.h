@@ -16,8 +16,8 @@
 #ifndef QGSTEXTEDITSEARCHWIDGETWRAPPER_H
 #define QGSTEXTEDITSEARCHWIDGETWRAPPER_H
 
-#include "qgsdefaultsearchwidgetwrapper.h"
 #include "qgis_gui.h"
+#include "qgsdefaultsearchwidgetwrapper.h"
 
 SIP_NO_FILE
 
@@ -26,9 +26,8 @@ class QgsTextEditWidgetFactory;
 /**
  * \ingroup gui
  * \class QgsTextEditSearchWidgetWrapper
- * Wraps a text edit widget for searching.
+ * \brief Wraps a text edit widget for searching.
  * \note not available in Python bindings
- * \since QGIS 2.16
  */
 
 class GUI_EXPORT QgsTextEditSearchWidgetWrapper : public QgsDefaultSearchWidgetWrapper
@@ -36,7 +35,6 @@ class GUI_EXPORT QgsTextEditSearchWidgetWrapper : public QgsDefaultSearchWidgetW
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsTextEditSearchWidgetWrapper.
      * \param vl associated vector layer
@@ -48,7 +46,6 @@ class GUI_EXPORT QgsTextEditSearchWidgetWrapper : public QgsDefaultSearchWidgetW
     bool applyDirectly() override;
 
   private:
-
     friend class QgsTextEditWidgetFactory;
 };
 

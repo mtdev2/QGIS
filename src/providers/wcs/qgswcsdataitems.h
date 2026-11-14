@@ -15,10 +15,12 @@
 #ifndef QGSWCSDATAITEMS_H
 #define QGSWCSDATAITEMS_H
 
-#include "qgsdataitem.h"
-#include "qgsdatasourceuri.h"
-#include "qgswcscapabilities.h"
+#include "qgsconnectionsitem.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
+#include "qgsdatasourceuri.h"
+#include "qgslayeritem.h"
+#include "qgswcscapabilities.h"
 
 class QgsWCSConnectionItem : public QgsDataCollectionItem
 {
@@ -42,9 +44,9 @@ class QgsWCSLayerItem : public QgsLayerItem
 {
     Q_OBJECT
   public:
-    QgsWCSLayerItem( QgsDataItem *parent, QString name, QString path,
-                     const QgsWcsCapabilitiesProperty &capabilitiesProperty,
-                     const QgsDataSourceUri &dataSourceUri, const QgsWcsCoverageSummary &coverageSummary );
+    QgsWCSLayerItem(
+      QgsDataItem *parent, QString name, QString path, const QgsWcsCapabilitiesProperty &capabilitiesProperty, const QgsDataSourceUri &dataSourceUri, const QgsWcsCoverageSummary &coverageSummary
+    );
 
     QString createUri();
 
@@ -79,8 +81,7 @@ class QgsWcsDataItemProvider : public QgsDataItemProvider
   public:
     QString name() override;
     QString dataProviderKey() const override;
-    int capabilities() const override;
-
+    Qgis::DataItemProviderCapabilities capabilities() const override;
     QgsDataItem *createDataItem( const QString &pathIn, QgsDataItem *parentItem ) override;
 };
 

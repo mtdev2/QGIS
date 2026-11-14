@@ -1,5 +1,5 @@
 /***************************************************************************
-    qgisexpressionbuilderdialog.h - A generic expression string builder dialog.
+    qgisexpressionbuilderdialog.h - A generic expression builder dialog.
      --------------------------------------
     Date                 :  29-May-2011
     Copyright            : (C) 2011 by Nathan Woodrow
@@ -14,12 +14,21 @@
  ***************************************************************************/
 
 #include "qgsexpressionbuilderdialog.h"
-#include "qgssettings.h"
-#include "qgsguiutils.h"
+
 #include "qgsgui.h"
+#include "qgsguiutils.h"
+#include "qgssettings.h"
+
+#include <QMessageBox>
+#include <QString>
+
+#include "moc_qgsexpressionbuilderdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsExpressionBuilderDialog::QgsExpressionBuilderDialog( QgsVectorLayer *layer, const QString &startText, QWidget *parent, const QString &key, const QgsExpressionContext &context )
   : QDialog( parent )
+  , mInitialText( startText )
   , mRecentKey( key )
 {
   setupUi( this );
@@ -32,7 +41,8 @@ QgsExpressionBuilderDialog::QgsExpressionBuilderDialog( QgsVectorLayer *layer, c
   builder->setLayer( layer );
   builder->setExpressionText( startText );
   builder->expressionTree()->loadRecent( mRecentKey );
-  builder->expressionTree()->loadUserExpressions( );
+  builder->expressionTree()->loadUserExpressions();
+
 
   connect( buttonBox, &QDialogButtonBox::helpRequested, this, &QgsExpressionBuilderDialog::showHelp );
 }
@@ -83,6 +93,36 @@ void QgsExpressionBuilderDialog::accept()
   QDialog::accept();
 }
 
+void QgsExpressionBuilderDialog::reject()
+{
+  if ( builder->expressionText() != mInitialText )
+  {
+    QgsSettings settings;
+    const bool askToDiscardEditedExpression = settings.value( u"askToDiscardEditedExpression"_s, true, QgsSettings::Gui ).toBool();
+
+    if ( askToDiscardEditedExpression )
+    {
+      QMessageBox
+        confirmMessage( QMessageBox::Question, tr( "Expression was Edited" ), tr( "The changes to the expression will be discarded. Would you like to continue?" ), QMessageBox::Yes | QMessageBox::No, this );
+      confirmMessage.setCheckBox( new QCheckBox( tr( "Don't show this message again" ) ) );
+      confirmMessage.checkBox()->setChecked( false );
+      confirmMessage.button( QMessageBox::Yes )->setText( tr( "Discard changes" ) );
+
+      int res = confirmMessage.exec();
+
+      if ( confirmMessage.checkBox()->isChecked() )
+      {
+        settings.setValue( u"askToDiscardEditedExpression"_s, false, QgsSettings::Gui );
+      }
+
+      if ( res != QMessageBox::Yes )
+        return;
+    }
+  }
+
+  QDialog::reject();
+}
+
 void QgsExpressionBuilderDialog::setGeomCalculator( const QgsDistanceArea &da )
 {
   // Store in child widget only.
@@ -106,7 +146,7 @@ void QgsExpressionBuilderDialog::setAllowEvalErrors( bool allowEvalErrors )
 
 void QgsExpressionBuilderDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "working_with_vector/expression.html" ) );
+  QgsHelp::openHelp( u"working_with_vector/expression.html"_s );
 }
 
 void QgsExpressionBuilderDialog::syncOkButtonEnabledState()
@@ -115,8 +155,6 @@ void QgsExpressionBuilderDialog::syncOkButtonEnabledState()
 
   if ( builder->parserError() )
     okButton->setEnabled( false );
-  else if ( !builder->evalError() || mAllowEvalErrors )
-    okButton->setEnabled( true );
   else
     okButton->setEnabled( true );
 }

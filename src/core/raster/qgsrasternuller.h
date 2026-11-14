@@ -20,14 +20,14 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsrasterrange.h"
 #include "qgsrasterinterface.h"
+#include "qgsrasterrange.h"
 
 #include <QList>
 
 /**
  * \ingroup core
-  * Raster pipe that deals with null values.
+  * \brief Raster pipe that deals with null values.
 */
 class CORE_EXPORT QgsRasterNuller : public QgsRasterInterface
 {
@@ -36,8 +36,8 @@ class CORE_EXPORT QgsRasterNuller : public QgsRasterInterface
 
     struct NoData
     {
-      double min;
-      double max;
+        double min;
+        double max;
     };
 
     QgsRasterNuller *clone() const override SIP_FACTORY;

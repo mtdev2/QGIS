@@ -14,7 +14,10 @@
  ***************************************************************************/
 
 #include "qgsquickcoordinatetransformer.h"
+
 #include "qgslogger.h"
+
+#include "moc_qgsquickcoordinatetransformer.cpp"
 
 QgsQuickCoordinateTransformer::QgsQuickCoordinateTransformer( QObject *parent )
   : QObject( parent )
@@ -105,7 +108,7 @@ void QgsQuickCoordinateTransformer::updatePosition()
   }
   catch ( const QgsCsException &exp )
   {
-    QgsDebugMsg( exp.what() );
+    QgsDebugError( exp.what() );
   }
 
   mProjectedPosition = QgsPoint( x, y );

@@ -22,7 +22,7 @@ class QgsDevToolWidgetFactory;
 /**
  * \ingroup app
  *
- * Manages lifetime of a QgsDevToolWidgetFactory, automatically
+ * \brief Manages lifetime of a QgsDevToolWidgetFactory, automatically
  * registering and unregistering it as required.
  *
  * \since QGIS 3.14
@@ -33,10 +33,10 @@ class QgsScopedDevToolWidgetFactory
     QgsScopedDevToolWidgetFactory();
     ~QgsScopedDevToolWidgetFactory();
 
-    void reset( std::unique_ptr< QgsDevToolWidgetFactory > factory = nullptr );
+    void reset( std::unique_ptr<QgsDevToolWidgetFactory> factory = nullptr );
 
   private:
-    std::unique_ptr< QgsDevToolWidgetFactory > mFactory;
+    std::unique_ptr<QgsDevToolWidgetFactory> mFactory;
 };
 
 

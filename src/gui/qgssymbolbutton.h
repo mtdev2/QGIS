@@ -15,28 +15,34 @@
 #ifndef QGSSYMBOLBUTTON_H
 #define QGSSYMBOLBUTTON_H
 
+#include <memory>
+
+#include "qgis.h"
 #include "qgis_gui.h"
 #include "qgis_sip.h"
-#include "qgssymbol.h"
-#include <QToolButton>
+
 #include <QPointer>
-#include <memory>
+#include <QToolButton>
 
 class QgsMapCanvas;
 class QgsVectorLayer;
 class QgsExpressionContextGenerator;
 class QgsPanelWidget;
 class QgsMessageBar;
+class QMimeData;
+class QgsSymbol;
+class QgsSymbolSelectorWidget;
+class QgsColorPickerHelper;
+
 
 /**
  * \ingroup gui
  * \class QgsSymbolButton
- * A button for creating and modifying QgsSymbol settings.
+ * \brief A button for creating and modifying QgsSymbol settings.
  *
  * The button shows a preview icon for the current symbol, and will open a detailed symbol editor dialog (or
  * panel widget) when clicked.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsSymbolButton : public QToolButton
 {
@@ -45,12 +51,12 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
     Q_PROPERTY( QString dialogTitle READ dialogTitle WRITE setDialogTitle )
 
   public:
-
     /**
      * Construct a new symbol button.
      * Use \a dialogTitle string to define the title to show in the symbol settings dialog.
      */
     QgsSymbolButton( QWidget *parent SIP_TRANSFERTHIS = nullptr, const QString &dialogTitle = QString() );
+    ~QgsSymbolButton() override;
 
     QSize minimumSizeHint() const override;
     QSize sizeHint() const override;
@@ -61,13 +67,13 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
      * to a default symbol style of the new type.
      * \see symbolType()
      */
-    void setSymbolType( QgsSymbol::SymbolType type );
+    void setSymbolType( Qgis::SymbolType type );
 
     /**
      * Returns the symbol type which the button requires.
      * \see setSymbolType()
      */
-    QgsSymbol::SymbolType symbolType() const { return mType; }
+    Qgis::SymbolType symbolType() const { return mType; }
 
     /**
      * Sets the \a title for the symbol settings dialog window.
@@ -94,7 +100,7 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
     * \see changed()
     * \note Not available in Python bindings.
     */
-    template <class SymbolType> SymbolType *clonedSymbol() SIP_SKIP
+    template<class SymbolType> SymbolType *clonedSymbol() SIP_SKIP
     {
       QgsSymbol *tmpSymbol = mSymbol.get();
       SymbolType *symbolCastToType = dynamic_cast<SymbolType *>( tmpSymbol );
@@ -158,6 +164,49 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
      */
     void registerExpressionContextGenerator( QgsExpressionContextGenerator *generator );
 
+    /**
+     * Sets the default symbol for the button, which is shown in the button's drop-down menu for the
+     * "default symbol" option.
+     * \param symbol default symbol for the button. Set to NULLPTR to disable the default symbol
+     * option. Ownership of \a symbol is transferred to the button.
+     * \see defaultSymbol()
+     * \since QGIS 3.30
+     */
+    void setDefaultSymbol( QgsSymbol *symbol SIP_TRANSFER );
+
+    /**
+     * Returns the default symbol for the button, which is shown in the button's drop-down menu for the
+     * "default symbol" option.
+     * \returns default symbol for the button. Returns NULLPTR if the default symbol
+     * option is disabled.
+     * \see setDefaultSymbol()
+     * \since QGIS 3.30
+     */
+    const QgsSymbol *defaultSymbol() const;
+
+    /**
+     * Returns whether the set to null (clear) option is shown in the button's drop-down menu.
+     * \see setShowNull()
+     * \see isNull()
+     * \since QGIS 3.26
+     */
+    bool showNull() const;
+
+    /**
+     * Returns TRUE if the current symbol is null.
+     * \see setShowNull()
+     * \see showNull()
+     * \since QGIS 3.26
+     */
+    bool isNull() const;
+
+    /**
+     * Returns TRUE if the widget adopts fixed size constraints.
+     *
+     * \since QGIS 4.0
+     */
+    bool fixedSizeConstraints() const;
+
   public slots:
 
     /**
@@ -200,6 +249,42 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
      */
     void pasteColor();
 
+    /**
+     * Sets whether a set to null (clear) option is shown in the button's drop-down menu.
+     * \param showNull set to TRUE to show a null option
+     * \see showNull()
+     * \see isNull()
+     * \since QGIS 3.26
+     */
+    void setShowNull( bool showNull );
+
+    /**
+     * Sets symbol to to null.
+     * \see setShowNull()
+     * \see setToDefaultSymbol()
+     * \see showNull()
+     * \since QGIS 3.26
+     */
+    void setToNull();
+
+    /**
+     * Sets symbol to the button's default symbol, if set.
+     *
+     * \see setDefaultSymbol()
+     * \see defaultSymbol()
+     * \see setToNull()
+     *
+     * \since QGIS 3.30
+     */
+    void setToDefaultSymbol();
+
+    /**
+     * Sets whether the widget adopts fixed size constraints.
+     *
+     * \since QGIS 4.0
+     */
+    void setFixedSizeConstraints( bool fixedSizeConstraints );
+
   signals:
 
     /**
@@ -210,17 +295,15 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
     void changed();
 
   protected:
-
     void changeEvent( QEvent *e ) override;
     void showEvent( QShowEvent *e ) override;
     void resizeEvent( QResizeEvent *event ) override;
 
-    // Reimplemented to detect right mouse button clicks on the color button and allow dragging colors
+    // Reimplemented to allow dragging colors
     void mousePressEvent( QMouseEvent *e ) override;
+    void contextMenuEvent( QContextMenuEvent *e ) override;
     // Reimplemented to allow dragging colors/symbols from button
     void mouseMoveEvent( QMouseEvent *e ) override;
-    void mouseReleaseEvent( QMouseEvent *e ) override;
-    void keyPressEvent( QKeyEvent *e ) override;
     // Reimplemented to accept dragged colors
     void dragEnterEvent( QDragEnterEvent *e ) override;
 
@@ -230,11 +313,12 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
     // Reimplemented to accept dropped colors
     void dropEvent( QDropEvent *e ) override;
 
+    void wheelEvent( QWheelEvent *event ) override;
+
   private slots:
 
     void showSettingsDialog();
-    void updateSymbolFromWidget();
-    void cleanUpSymbolSelector( QgsPanelWidget *container );
+    void updateSymbolFromWidget( QgsSymbolSelectorWidget *widget );
 
     /**
      * Creates the drop-down menu entries
@@ -248,13 +332,16 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
      */
     void activatePicker();
 
-  private:
+    void onColorPicked( const QColor &color );
+    void onColorHovered( const QColor &color );
+    void colorPickingCanceled();
 
+  private:
     QSize mSizeHint;
 
     QString mDialogTitle;
 
-    QgsSymbol::SymbolType mType = QgsSymbol::Fill;
+    Qgis::SymbolType mType = Qgis::SymbolType::Fill;
 
     QgsMapCanvas *mMapCanvas = nullptr;
     QgsMessageBar *mMessageBar = nullptr;
@@ -263,15 +350,21 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
 
     QMenu *mMenu = nullptr;
 
-    QPointer< QgsVectorLayer > mLayer;
+    QPointer<QgsVectorLayer> mLayer;
 
     QSize mIconSize;
 
-    std::unique_ptr< QgsSymbol > mSymbol;
+    std::unique_ptr<QgsSymbol> mSymbol;
 
     QgsExpressionContextGenerator *mExpressionContextGenerator = nullptr;
 
-    bool mPickingColor = false;
+    bool mShowNull = false;
+
+    bool mFixedSizeConstraints = true;
+
+    std::unique_ptr<QgsSymbol> mDefaultSymbol;
+
+    QgsColorPickerHelper *mPickerHelper = nullptr;
 
     /**
      * Regenerates the text preview. If \a color is specified, a temporary color preview
@@ -295,16 +388,9 @@ class GUI_EXPORT QgsSymbolButton : public QToolButton
      */
     QPixmap createColorIcon( const QColor &color ) const;
 
-    /**
-     * Ends a color picking operation
-     * \param eventPos global position of pixel to sample color from
-     * \param samplingColor set to TRUE to actually sample the color, FALSE to just cancel
-     * the color picking operation
-     */
-    void stopPicking( QPoint eventPos, bool samplingColor = true );
-
     void showColorDialog();
 
+    void updateSizeHint();
 };
 
 #endif // QGSSYMBOLBUTTON_H

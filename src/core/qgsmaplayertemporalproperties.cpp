@@ -17,10 +17,11 @@
 
 #include "qgsmaplayertemporalproperties.h"
 
+#include "moc_qgsmaplayertemporalproperties.cpp"
+
 QgsMapLayerTemporalProperties::QgsMapLayerTemporalProperties( QObject *parent, bool enabled )
   : QgsTemporalProperty( parent, enabled )
-{
-}
+{}
 
 bool QgsMapLayerTemporalProperties::isVisibleInTemporalRange( const QgsDateTimeRange & ) const
 {
@@ -30,4 +31,9 @@ bool QgsMapLayerTemporalProperties::isVisibleInTemporalRange( const QgsDateTimeR
 QgsDateTimeRange QgsMapLayerTemporalProperties::calculateTemporalExtent( QgsMapLayer * ) const
 {
   return QgsDateTimeRange();
+}
+
+QList<QgsDateTimeRange> QgsMapLayerTemporalProperties::allTemporalRanges( QgsMapLayer * ) const
+{
+  return {};
 }

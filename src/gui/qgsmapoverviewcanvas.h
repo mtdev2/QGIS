@@ -19,8 +19,8 @@
 #ifndef QGSMAPOVERVIEWCANVAS_H
 #define QGSMAPOVERVIEWCANVAS_H
 
-#include <QWidget>
 #include <QPixmap>
+#include <QWidget>
 
 class QMouseEvent;
 class QgsMapCanvas;
@@ -33,7 +33,7 @@ class QgsMapRendererQImageJob;
 
 /**
  * \ingroup gui
- * A widget that displays an overview map.
+ * \brief A widget that displays an overview map.
  */
 class GUI_EXPORT QgsMapOverviewCanvas : public QWidget
 {
@@ -54,7 +54,11 @@ class GUI_EXPORT QgsMapOverviewCanvas : public QWidget
     //! Returns list of layers visible in the overview
     QList<QgsMapLayer *> layers() const;
 
-    void enableAntiAliasing( bool flag ) { mSettings.setFlag( QgsMapSettings::Antialiasing, flag ); }
+    void enableAntiAliasing( bool flag )
+    {
+      mSettings.setFlag( Qgis::MapSettingsFlag::Antialiasing, flag );
+      mSettings.setFlag( Qgis::MapSettingsFlag::HighQualityImageTransforms, flag );
+    }
 
     void updateFullExtent();
 
@@ -67,7 +71,6 @@ class GUI_EXPORT QgsMapOverviewCanvas : public QWidget
     void layerRepaintRequested( bool deferred = false );
 
   protected:
-
     //! used for overview canvas to reflect changed extent in main map canvas
     void drawExtentRect();
 
@@ -137,7 +140,6 @@ class QgsPanningWidget : public QWidget
     void setPolygon( const QPolygon &p );
 
     void paintEvent( QPaintEvent *pe ) override;
-
 };
 ///@endcond
 

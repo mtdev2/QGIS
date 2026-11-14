@@ -24,21 +24,23 @@
 // version without notice, or even be removed.
 //
 
-#include "qgsfeaturefilterwidget_p.h"
-
 #include "qgsapplication.h"
-#include "qgssearchwidgetwrapper.h"
-#include "qgsdualview.h"
-#include "qgsstoredexpressionmanager.h"
-#include "qgseditorwidgetregistry.h"
-#include "qgsexpressioncontextutils.h"
-#include "qgsexpressionbuilderdialog.h"
-#include "qgsgui.h"
 #include "qgsdialog.h"
+#include "qgsdualview.h"
+#include "qgseditorwidgetregistry.h"
+#include "qgsexpressionbuilderdialog.h"
+#include "qgsexpressioncontextutils.h"
 #include "qgsexpressionlineedit.h"
+#include "qgsfeaturefilterwidget_p.h"
+#include "qgsgui.h"
 #include "qgsmessagebar.h"
+#include "qgssearchwidgetwrapper.h"
+#include "qgsstoredexpressionmanager.h"
 
 #include <QMenu>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsFeatureFilterWidget::QgsFeatureFilterWidget( QWidget *parent )
   : QWidget( parent )
@@ -52,12 +54,12 @@ QgsFeatureFilterWidget::QgsFeatureFilterWidget( QWidget *parent )
   mActionStoredFilterExpressions->setMenu( mStoredFilterExpressionMenu );
 
   // Set filter icon in a couple of places
-  QIcon filterIcon = QgsApplication::getThemeIcon( "/mActionFilter2.svg" );
-  mActionShowAllFilter->setIcon( filterIcon );
-  mActionAdvancedFilter->setIcon( filterIcon );
-  mActionSelectedFilter->setIcon( filterIcon );
-  mActionVisibleFilter->setIcon( filterIcon );
-  mActionEditedFilter->setIcon( filterIcon );
+  mActionShowAllFilter->setIcon( QgsApplication::getThemeIcon( "/mActionOpenTable.svg" ) );
+  mActionAdvancedFilter->setIcon( QgsApplication::getThemeIcon( "/mActionFilter2.svg" ) );
+  mActionSelectedFilter->setIcon( QgsApplication::getThemeIcon( "/mActionOpenTableSelected.svg" ) );
+  mActionInvalidFilter->setIcon( QgsApplication::getThemeIcon( "/mActionOpenTableInvalid.svg" ) );
+  mActionVisibleFilter->setIcon( QgsApplication::getThemeIcon( "/mActionOpenTableVisible.svg" ) );
+  mActionEditedFilter->setIcon( QgsApplication::getThemeIcon( "/mActionOpenTableEdited.svg" ) );
 
 
   // Set button to store or delete stored filter expressions
@@ -71,6 +73,7 @@ QgsFeatureFilterWidget::QgsFeatureFilterWidget( QWidget *parent )
   connect( mActionAdvancedFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterExpressionBuilder );
   connect( mActionShowAllFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterShowAll );
   connect( mActionSelectedFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterSelected );
+  connect( mActionInvalidFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterInvalid );
   connect( mActionVisibleFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterVisible );
   connect( mActionEditedFilter, &QAction::triggered, this, &QgsFeatureFilterWidget::filterEdited );
   connect( mFilterQuery, &QLineEdit::returnPressed, this, &QgsFeatureFilterWidget::filterQueryAccepted );
@@ -78,8 +81,7 @@ QgsFeatureFilterWidget::QgsFeatureFilterWidget( QWidget *parent )
   connect( mFilterQuery, &QLineEdit::textChanged, this, &QgsFeatureFilterWidget::onFilterQueryTextChanged );
 }
 
-void QgsFeatureFilterWidget::init( QgsVectorLayer *layer, const QgsAttributeEditorContext &context, QgsDualView *mainView,
-                                   QgsMessageBar *messageBar, int )
+void QgsFeatureFilterWidget::init( QgsVectorLayer *layer, const QgsAttributeEditorContext &context, QgsDualView *mainView, QgsMessageBar *messageBar, int )
 {
   mMainView = mainView;
   mLayer = layer;
@@ -110,7 +112,7 @@ void QgsFeatureFilterWidget::filterShowAll()
   }
   mApplyFilterButton->setVisible( false );
   mStoreFilterExpressionButton->setVisible( false );
-  mMainView->setFilterMode( QgsAttributeTableFilterModel::ShowAll );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowAll );
 }
 
 void QgsFeatureFilterWidget::filterSelected()
@@ -120,7 +122,7 @@ void QgsFeatureFilterWidget::filterSelected()
   mFilterQuery->setVisible( false );
   mApplyFilterButton->setVisible( false );
   mStoreFilterExpressionButton->setVisible( false );
-  mMainView->setFilterMode( QgsAttributeTableFilterModel::ShowSelected );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowSelected );
 }
 
 void QgsFeatureFilterWidget::filterVisible()
@@ -136,7 +138,19 @@ void QgsFeatureFilterWidget::filterVisible()
   mFilterQuery->setVisible( false );
   mApplyFilterButton->setVisible( false );
   mStoreFilterExpressionButton->setVisible( false );
-  mMainView->setFilterMode( QgsAttributeTableFilterModel::ShowVisible );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowVisible );
+}
+
+void QgsFeatureFilterWidget::filterInvalid()
+{
+  mFilterButton->setDefaultAction( mActionInvalidFilter );
+  mFilterButton->setPopupMode( QToolButton::InstantPopup );
+  mFilterQuery->setVisible( false );
+  mApplyFilterButton->setVisible( false );
+  mStoreFilterExpressionButton->setVisible( false );
+  const QgsExpressionContext context( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
+  mMainView->filterFeatures( u"is_feature_valid() = false"_s, context );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowInvalid );
 }
 
 void QgsFeatureFilterWidget::filterEdited()
@@ -146,15 +160,14 @@ void QgsFeatureFilterWidget::filterEdited()
   mFilterQuery->setVisible( false );
   mApplyFilterButton->setVisible( false );
   mStoreFilterExpressionButton->setVisible( false );
-  mMainView->setFilterMode( QgsAttributeTableFilterModel::ShowEdited );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowEdited );
 }
 
 
 void QgsFeatureFilterWidget::filterQueryAccepted()
 {
-  if ( ( mFilterQuery->isVisible() && mFilterQuery->text().isEmpty() ) ||
-       ( mCurrentSearchWidgetWrapper && mCurrentSearchWidgetWrapper->widget()->isVisible()
-         && mCurrentSearchWidgetWrapper->expression().isEmpty() ) )
+  if ( ( mFilterQuery->isVisible() && mFilterQuery->text().isEmpty() )
+       || ( mCurrentSearchWidgetWrapper && mCurrentSearchWidgetWrapper->widget()->isVisible() && mCurrentSearchWidgetWrapper->expression().isEmpty() ) )
   {
     filterShowAll();
     return;
@@ -193,6 +206,7 @@ void QgsFeatureFilterWidget::columnBoxInit()
   {
     mFilterButton->addAction( mActionVisibleFilter );
   }
+  mFilterButton->addAction( mActionInvalidFilter );
   mFilterButton->addAction( mActionEditedFilter );
   mFilterButton->addAction( mActionFilterColumnsMenu );
   mFilterButton->addAction( mActionAdvancedFilter );
@@ -203,20 +217,20 @@ void QgsFeatureFilterWidget::columnBoxInit()
   const auto constFields = fields;
   for ( const QgsField &field : constFields )
   {
-    int idx = mLayer->fields().lookupField( field.name() );
+    const int idx = mLayer->fields().lookupField( field.name() );
     if ( idx < 0 )
       continue;
 
-    if ( QgsGui::editorWidgetRegistry()->findBest( mLayer, field.name() ).type() != QLatin1String( "Hidden" ) )
+    if ( QgsGui::editorWidgetRegistry()->findBest( mLayer, field.name() ).type() != "Hidden"_L1 )
     {
-      QIcon icon = mLayer->fields().iconForField( idx );
-      QString alias = mLayer->attributeDisplayName( idx );
+      const QIcon icon = mLayer->fields().iconForField( idx );
+      const QString alias = mLayer->attributeDisplayName( idx );
 
       // Generate action for the filter popup button
       QAction *filterAction = new QAction( icon, alias, mFilterButton );
       filterAction->setData( field.name() );
 
-      connect( filterAction, &QAction::triggered, this, [ = ] { filterColumnChanged( filterAction ); } );
+      connect( filterAction, &QAction::triggered, this, [this, filterAction] { filterColumnChanged( filterAction ); } );
       mFilterColumnsMenu->addAction( filterAction );
     }
   }
@@ -246,14 +260,11 @@ void QgsFeatureFilterWidget::storedFilterExpressionBoxInit()
     delete a;
   }
 
-  const QList< QgsStoredExpression > storedExpressions = mLayer->storedExpressionManager()->storedExpressions();
+  const QList<QgsStoredExpression> storedExpressions = mLayer->storedExpressionManager()->storedExpressions();
   for ( const QgsStoredExpression &storedExpression : storedExpressions )
   {
     QAction *storedExpressionAction = new QAction( storedExpression.name, mFilterButton );
-    connect( storedExpressionAction, &QAction::triggered, this, [ = ]()
-    {
-      setFilterExpression( storedExpression.expression, QgsAttributeForm::ReplaceFilter, true );
-    } );
+    connect( storedExpressionAction, &QAction::triggered, this, [this, storedExpression]() { setFilterExpression( storedExpression.expression, QgsAttributeForm::ReplaceFilter, true ); } );
     mStoredFilterExpressionMenu->addAction( storedExpressionAction );
   }
 }
@@ -264,7 +275,7 @@ void QgsFeatureFilterWidget::storeExpressionButtonInit()
   {
     mActionHandleStoreFilterExpression->setToolTip( tr( "Delete stored expression" ) );
     mActionHandleStoreFilterExpression->setText( tr( "Delete Stored Expression" ) );
-    mActionHandleStoreFilterExpression->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "mActionHandleStoreFilterExpressionChecked.svg" ) ) );
+    mActionHandleStoreFilterExpression->setIcon( QgsApplication::getThemeIcon( u"mActionHandleStoreFilterExpressionChecked.svg"_s ) );
     mStoreFilterExpressionButton->removeAction( mActionSaveAsStoredFilterExpression );
     mStoreFilterExpressionButton->addAction( mActionEditStoredFilterExpression );
   }
@@ -272,7 +283,7 @@ void QgsFeatureFilterWidget::storeExpressionButtonInit()
   {
     mActionHandleStoreFilterExpression->setToolTip( tr( "Save expression with the text as name" ) );
     mActionHandleStoreFilterExpression->setText( tr( "Save Expression" ) );
-    mActionHandleStoreFilterExpression->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "mActionHandleStoreFilterExpressionUnchecked.svg" ) ) );
+    mActionHandleStoreFilterExpression->setIcon( QgsApplication::getThemeIcon( u"mActionHandleStoreFilterExpressionUnchecked.svg"_s ) );
     mStoreFilterExpressionButton->addAction( mActionSaveAsStoredFilterExpression );
     mStoreFilterExpressionButton->removeAction( mActionEditStoredFilterExpression );
   }
@@ -290,14 +301,13 @@ void QgsFeatureFilterWidget::filterColumnChanged( QAction *filterAction )
     mCurrentSearchWidgetWrapper->widget()->setVisible( false );
     delete mCurrentSearchWidgetWrapper;
   }
-  QString fieldName = mFilterButton->defaultAction()->data().toString();
+  const QString fieldName = mFilterButton->defaultAction()->data().toString();
   // get the search widget
-  int fldIdx = mLayer->fields().lookupField( fieldName );
+  const int fldIdx = mLayer->fields().lookupField( fieldName );
   if ( fldIdx < 0 )
     return;
   const QgsEditorWidgetSetup setup = QgsGui::editorWidgetRegistry()->findBest( mLayer, fieldName );
-  mCurrentSearchWidgetWrapper = QgsGui::editorWidgetRegistry()->
-                                createSearchWidget( setup.type(), mLayer, fldIdx, setup.config(), mFilterContainer, mEditorContext );
+  mCurrentSearchWidgetWrapper = QgsGui::editorWidgetRegistry()->createSearchWidget( setup.type(), mLayer, fldIdx, setup.config(), mFilterContainer, mEditorContext );
   if ( mCurrentSearchWidgetWrapper->applyDirectly() )
   {
     connect( mCurrentSearchWidgetWrapper, &QgsSearchWidgetWrapper::expressionChanged, this, &QgsFeatureFilterWidget::filterQueryChanged );
@@ -317,9 +327,9 @@ void QgsFeatureFilterWidget::filterColumnChanged( QAction *filterAction )
 void QgsFeatureFilterWidget::filterExpressionBuilder()
 {
   // Show expression builder
-  QgsExpressionContext context( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
+  const QgsExpressionContext context( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
 
-  QgsExpressionBuilderDialog dlg( mLayer, mFilterQuery->text(), this, QStringLiteral( "generic" ), context );
+  QgsExpressionBuilderDialog dlg( mLayer, mFilterQuery->text(), this, u"generic"_s, context );
   dlg.setWindowTitle( tr( "Expression Based Filter" ) );
 
   QgsDistanceArea myDa;
@@ -388,7 +398,7 @@ void QgsFeatureFilterWidget::editStoredFilterExpression()
 
 void QgsFeatureFilterWidget::updateCurrentStoredFilterExpression()
 {
-  QgsStoredExpression currentStoredExpression = mLayer->storedExpressionManager()->findStoredExpressionByExpression( mFilterQuery->value() );
+  const QgsStoredExpression currentStoredExpression = mLayer->storedExpressionManager()->findStoredExpressionByExpression( mFilterQuery->value() );
 
   //set checked when it's an existing stored expression
   mActionHandleStoreFilterExpression->setChecked( !currentStoredExpression.id.isNull() );
@@ -412,11 +422,11 @@ void QgsFeatureFilterWidget::setFilterExpression( const QString &filterString, Q
         break;
 
       case QgsAttributeForm::FilterAnd:
-        filter = QStringLiteral( "(%1) AND (%2)" ).arg( mFilterQuery->text(), filterString );
+        filter = u"(%1) AND (%2)"_s.arg( mFilterQuery->text(), filterString );
         break;
 
       case QgsAttributeForm::FilterOr:
-        filter = QStringLiteral( "(%1) OR (%2)" ).arg( mFilterQuery->text(), filterString );
+        filter = u"(%1) OR (%2)"_s.arg( mFilterQuery->text(), filterString );
         break;
     }
   }
@@ -434,7 +444,6 @@ void QgsFeatureFilterWidget::setFilterExpression( const QString &filterString, Q
 
   if ( alwaysShowFilter || !mCurrentSearchWidgetWrapper || !mCurrentSearchWidgetWrapper->applyDirectly() )
   {
-
     mFilterButton->setDefaultAction( mActionAdvancedFilter );
     mFilterButton->setPopupMode( QToolButton::MenuButtonPopup );
     mFilterQuery->setVisible( true );
@@ -451,20 +460,19 @@ void QgsFeatureFilterWidget::setFilterExpression( const QString &filterString, Q
   QgsExpression filterExpression( filter );
   if ( filterExpression.hasParserError() )
   {
-    mMessageBar->pushMessage( tr( "Parsing error" ), filterExpression.parserErrorString(), Qgis::Warning );
+    mMessageBar->pushMessage( tr( "Parsing error" ), filterExpression.parserErrorString(), Qgis::MessageLevel::Warning );
     return;
   }
 
-  QgsExpressionContext context( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
+  const QgsExpressionContext context( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
 
   if ( !filterExpression.prepare( &context ) )
   {
-    mMessageBar->pushMessage( tr( "Evaluation error" ), filterExpression.evalErrorString(), Qgis::Warning );
+    mMessageBar->pushMessage( tr( "Evaluation error" ), filterExpression.evalErrorString(), Qgis::MessageLevel::Warning );
   }
 
   mMainView->filterFeatures( filterExpression, context );
-
-  mMainView->setFilterMode( QgsAttributeTableFilterModel::ShowFilteredList );
+  mMainView->setFilterMode( Qgis::AttributeTableFilterMode::ShowFilteredList );
 }
 
 void QgsFeatureFilterWidget::replaceSearchWidget( QWidget *oldw, QWidget *neww )

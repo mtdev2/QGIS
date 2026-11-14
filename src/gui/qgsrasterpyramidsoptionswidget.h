@@ -19,32 +19,43 @@
 #define QGSRASTERPYRAMIDSOPTIONSWIDGET_H
 
 #include "ui_qgsrasterpyramidsoptionswidgetbase.h"
-#include "qgis_sip.h"
+
 #include "qgis_gui.h"
+#include "qgis_sip.h"
 
 class QCheckBox;
 
 /**
  * \ingroup gui
- * A widget to select format-specific raster saving options
+ * \brief A widget to select format-specific raster saving options.
  */
-class GUI_EXPORT QgsRasterPyramidsOptionsWidget: public QWidget, private Ui::QgsRasterPyramidsOptionsWidgetBase
+class GUI_EXPORT QgsRasterPyramidsOptionsWidget : public QWidget, private Ui::QgsRasterPyramidsOptionsWidgetBase
 {
     Q_OBJECT
 
   public:
-
     //! Constructor for QgsRasterPyramidsOptionsWidget
     QgsRasterPyramidsOptionsWidget( QWidget *parent SIP_TRANSFERTHIS = nullptr, const QString &provider = "gdal" );
 
     QStringList configOptions() const { return mSaveOptionsWidget->options(); }
     QgsRasterFormatSaveOptionsWidget *createOptionsWidget() SIP_FACTORY { return mSaveOptionsWidget; }
     const QList<int> overviewList() const { return mOverviewList; }
-    QgsRaster::RasterPyramidsFormat pyramidsFormat() const
-    { return static_cast< QgsRaster::RasterPyramidsFormat >( cbxPyramidsFormat->currentIndex() ); }
+
+    /**
+     * Returns the selected pyramid format.
+     */
+    Qgis::RasterPyramidFormat pyramidsFormat() const { return cbxPyramidsFormat->currentData().value<Qgis::RasterPyramidFormat>(); }
+
     QString resamplingMethod() const;
     void setRasterLayer( QgsRasterLayer *rasterLayer ) { mSaveOptionsWidget->setRasterLayer( rasterLayer ); }
     void setRasterFileName( const QString &file ) { mSaveOptionsWidget->setRasterFileName( file ); }
+
+    /**
+     * Tune settings of the widget for the given format (in particular for COG)
+     *
+     * \since QGIS 4.0
+     */
+    void tuneForFormat( const QString &driverName );
 
   public slots:
 
@@ -59,23 +70,21 @@ class GUI_EXPORT QgsRasterPyramidsOptionsWidget: public QWidget, private Ui::Qgs
     void updateUi() SIP_FORCE;
 
   signals:
+
+    /**
+     * Emitted when the list of configured overviews is changed.
+     */
     void overviewListChanged();
-    void someValueChanged(); /* emitted when any other setting changes */
+
+    /**
+     * Emitted when settings are changed in the widget.
+     */
+    void someValueChanged();
 
   private:
-
-    // Must be in the same order as in the .ui file
-    typedef enum
-    {
-      GTIFF = 0,
-      INTERNAL = 1,
-      ERDAS = 2
-    } Format;
-
-
     QString mProvider;
-    QList< int > mOverviewList;
-    QMap< int, QCheckBox * > mOverviewCheckBoxes;
+    QList<int> mOverviewList;
+    QMap<int, QCheckBox *> mOverviewCheckBoxes;
 };
 
 // clazy:excludeall=qstring-allocations

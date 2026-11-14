@@ -16,18 +16,17 @@
 #ifndef QGSPROJECTBADLAYERHANDLER_H
 #define QGSPROJECTBADLAYERHANDLER_H
 
-#include <QDomNode>
-
 #include "qgis_core.h"
+
+#include <QDomNode>
 
 /**
  * \ingroup core
- * Interface for classes that handle missing layer files when reading project file.
+ * \brief Interface for classes that handle missing layer files when reading project files.
  */
 class CORE_EXPORT QgsProjectBadLayerHandler
 {
   public:
-
     /**
      * This method will be called whenever the project tries to load layers which
      * cannot be accessed. It should inform the user about this and if possible offer
@@ -37,14 +36,12 @@ class CORE_EXPORT QgsProjectBadLayerHandler
      * The default implementation will dismiss all bad layers and write information to the
      * log.
      *
-     * \since QGIS 3.0
      */
     virtual void handleBadLayers( const QList<QDomNode> &layers );
     virtual ~QgsProjectBadLayerHandler() = default;
 
 
   protected:
-
     //! file data representation
     enum DataType
     {
@@ -68,7 +65,6 @@ class CORE_EXPORT QgsProjectBadLayerHandler
      *
      * The Dom node should represent the state associated with a specific layer.
      *
-     * \since QGIS 3.0
      */
     DataType dataType( const QDomNode &layerNode );
 
@@ -79,7 +75,6 @@ class CORE_EXPORT QgsProjectBadLayerHandler
      *
      * Essentially dumps datasource tag.
      *
-     * \since QGIS 3.0
      */
     QString dataSource( const QDomNode &layerNode );
 
@@ -97,14 +92,12 @@ class CORE_EXPORT QgsProjectBadLayerHandler
      * it's either a database or URL.  If the datasource tag has "url=", then it's
      * URL based and if it has "dbname=">, then the layer data is in a database.
      *
-     * \since QGIS 3.0
      */
     ProviderType providerType( const QDomNode &layerNode );
 
     /**
      * Set the datasource element to the new value
      *
-     * \since QGIS 3.0
      */
     void setDataSource( QDomNode &layerNode, const QString &dataSource );
 };

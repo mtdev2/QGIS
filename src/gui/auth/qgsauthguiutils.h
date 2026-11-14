@@ -17,13 +17,15 @@
 #ifndef QGSAUTHGUIUTILS_H
 #define QGSAUTHGUIUTILS_H
 
-#include <QColor>
 #include "qgis_gui.h"
 
-class QWidget;
-class QgsMessageBar;
+#include <QColor>
 
 #define SIP_NO_FILE
+
+class QTreeWidgetItem;
+class QWidget;
+class QgsMessageBar;
 
 
 /**
@@ -34,7 +36,6 @@ class QgsMessageBar;
 class GUI_EXPORT QgsAuthGuiUtils
 {
   public:
-
     //! Green color representing valid, trusted, etc. certificate
     static QColor greenColor();
 
@@ -59,6 +60,18 @@ class GUI_EXPORT QgsAuthGuiUtils
 
     //! Verify the authentication system is active, else notify user
     static bool isDisabled( QgsMessageBar *msgbar );
+
+    /**
+     * Import authentication configurations from a XML file
+     * \since QGIS 3.20
+     */
+    static void importAuthenticationConfigs( QgsMessageBar *msgbar );
+
+    /**
+     * Exports selected authentication configurations to a XML file
+     * \since QGIS 3.20
+     */
+    static void exportSelectedAuthenticationConfigs( QStringList authenticationConfigIds, QgsMessageBar *msgbar );
 
     //! Sets the cached master password (and verifies it if its hash is in authentication database)
     static void setMasterPassword( QgsMessageBar *msgbar );
@@ -87,15 +100,17 @@ class GUI_EXPORT QgsAuthGuiUtils
     //! Remove master password from wallet
     static void passwordHelperDelete( QgsMessageBar *msgbar, QWidget *parent = nullptr );
 
-    //! Store master password into the wallet
-    static void passwordHelperSync( QgsMessageBar *msgbar );
-
     //! Sets password helper enabled (enable/disable)
     static void passwordHelperEnable( bool enabled, QgsMessageBar *msgbar );
 
     //! Sets password helper logging enabled (enable/disable)
     static void passwordHelperLoggingEnable( bool enabled, QgsMessageBar *msgbar, int timeout = 0 );
 
+    //! Call setFirstColumnSpanned(true) on the item and make its font bold
+    static void setItemBold( QTreeWidgetItem *item );
+
+    //! Remove the children of the passed item
+    static void removeChildren( QTreeWidgetItem *item );
 };
 
 // clazy:excludeall=qstring-allocations

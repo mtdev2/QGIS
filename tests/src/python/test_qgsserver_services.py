@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """
 
 From build dir, run: ctest -R PyQgsServerServices -V
@@ -20,28 +18,28 @@ From build dir, run: ctest -R PyQgsServerServices -V
 ***************************************************************************
 """
 
-__author__ = 'David Marteau'
-__date__ = 'December 2016'
-__copyright__ = '(C) 2016, David Marteau'
+__author__ = "David Marteau"
+__date__ = "December 2016"
+__copyright__ = "(C) 2016, David Marteau"
 
 """ QGIS test for server services
 """
-from qgis.PyQt.QtCore import QBuffer, QIODevice, QTextStream
-from qgis.testing import unittest
-from qgis.server import (QgsServiceRegistry,
-                         QgsService,
-                         QgsServerRequest,
-                         QgsServerResponse)
-
 from qgis.core import QgsApplication
+from qgis.PyQt.QtCore import QBuffer, QIODevice, QTextStream
+from qgis.server import (
+    QgsServerRequest,
+    QgsServerResponse,
+    QgsService,
+    QgsServiceRegistry,
+)
+from qgis.testing import unittest
 
 
 class Response(QgsServerResponse):
-
     def __init__(self):
         QgsServerResponse.__init__(self)
         self._buffer = QBuffer()
-        self._buffer.open(QIODevice.ReadWrite)
+        self._buffer.open(QIODevice.OpenModeFlag.ReadWrite)
 
     def setStatusCode(self, code):
         self.code = code
@@ -72,7 +70,6 @@ class Response(QgsServerResponse):
 
 
 class MyService(QgsService):
-
     def __init__(self, name, version, response):
         QgsService.__init__(self)
         self._response = response
@@ -91,16 +88,17 @@ class MyService(QgsService):
 
 
 class TestServices(unittest.TestCase):
-    """
-    """
+    """ """
 
     @classmethod
     def setUpClass(cls):
+        super().setUpClass()
         cls.app = QgsApplication([], False)
 
     @classmethod
     def tearDownClass(cls):
         cls.app.exitQgis()
+        super().tearDownClass()
 
     def test_register(self):
 
@@ -177,5 +175,5 @@ class TestServices(unittest.TestCase):
         self.assertIsNone(service)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

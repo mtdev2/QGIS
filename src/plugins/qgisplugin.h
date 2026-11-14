@@ -36,10 +36,10 @@
 #ifndef QGISPLUGIN_H
 #define QGISPLUGIN_H
 
-#define SIP_NO_FILE
-
 
 #include <QString>
+
+#define SIP_NO_FILE
 
 class QgisInterface;
 
@@ -54,7 +54,6 @@ class QgisInterface;
 class QgisPlugin
 {
   public:
-
     //! Interface to gui element collection object
     //virtual QgisPluginGui *gui()=0;
     //! Element types that can be added to the interface
@@ -81,11 +80,7 @@ class QgisPlugin
     /**
      * Constructor for QgisPlugin
      */
-    QgisPlugin( QString const &name = "",
-                QString const &description = "",
-                QString const &category = "",
-                QString const &version = "",
-                PluginType type = MapLayer )
+    QgisPlugin( QString const &name = "", QString const &description = "", QString const &category = "", QString const &version = "", PluginType type = MapLayer )
       : mName( name )
       , mDescription( description )
       , mCategory( category )
@@ -96,64 +91,34 @@ class QgisPlugin
     virtual ~QgisPlugin() = default;
 
     //! Gets the name of the plugin
-    QString const &name() const
-    {
-      return mName;
-    }
+    QString const &name() const { return mName; }
 
-    QString        &name()
-    {
-      return mName;
-    }
+    QString &name() { return mName; }
 
     //! Version of the plugin
-    QString const &version() const
-    {
-      return mVersion;
-    }
+    QString const &version() const { return mVersion; }
 
     //! Version of the plugin
-    QString &version()
-    {
-      return mVersion;
-    }
+    QString &version() { return mVersion; }
 
     //! A brief description of the plugin
-    QString const &description() const
-    {
-      return mDescription;
-    }
+    QString const &description() const { return mDescription; }
 
     //! A brief description of the plugin
-    QString        &description()
-    {
-      return mDescription;
-    }
+    QString &description() { return mDescription; }
 
     //! Plugin category
-    QString const &category() const
-    {
-      return mCategory;
-    }
+    QString const &category() const { return mCategory; }
 
     //! Plugin category
-    QString        &category()
-    {
-      return mCategory;
-    }
+    QString &category() { return mCategory; }
 
     //! Plugin type, either UI or map layer
-    QgisPlugin::PluginType const &type() const
-    {
-      return mType;
-    }
+    QgisPlugin::PluginType const &type() const { return mType; }
 
 
     //! Plugin type, either UI or map layer
-    QgisPlugin::PluginType        &type()
-    {
-      return mType;
-    }
+    QgisPlugin::PluginType &type() { return mType; }
 
     /// function to initialize connection to GUI
     virtual void initGui() = 0;
@@ -162,7 +127,6 @@ class QgisPlugin
     virtual void unload() = 0;
 
   private:
-
     /// plug-in name
     QString mName;
 
@@ -178,9 +142,9 @@ class QgisPlugin
     /// UI or MAPLAYER plug-in
 
     /**
-      \todo Really, might be indicative that this needs to split into
-      maplayer vs. ui plug-in vs. other kind of plug-in
-      */
+     * \todo Really, might be indicative that this needs to split into
+     * maplayer vs. ui plug-in vs. other kind of plug-in
+     */
     PluginType mType;
 
 }; // class QgisPlugin
@@ -195,30 +159,30 @@ typedef QgisPlugin *create_t( QgisInterface * );
 typedef void unload_t( QgisPlugin * );
 
 //! Typedef for getting the name of the plugin without instantiating it
-typedef QString name_t();
+typedef const QString *name_t();
 
 //! Typedef for getting the description without instantiating the plugin
-typedef QString description_t();
+typedef const QString *description_t();
 
 //! Typedef for getting the category without instantiating the plugin
-typedef QString category_t();
+typedef const QString *category_t();
 
 //! Typedef for getting the plugin type without instantiating the plugin
 typedef int type_t();
 
 //! Typedef for getting the plugin version without instantiating the plugin
-typedef QString version_t();
+typedef const QString *version_t();
 
 //! Typedef for getting the plugin icon file name without instantiating the plugin
-typedef QString icon_t();
+typedef const QString *icon_t();
 
 //! Typedef for getting the experimental status without instantiating the plugin
-typedef QString experimental_t();
+typedef const QString *experimental_t();
 
 //! Typedef for getting the create date without instantiating the plugin
-typedef QString create_date_t();
+typedef const QString *create_date_t();
 
 //! Typedef for getting the update date status without instantiating the plugin
-typedef QString update_date_t();
+typedef const QString *update_date_t();
 
 #endif // QGISPLUGIN_H

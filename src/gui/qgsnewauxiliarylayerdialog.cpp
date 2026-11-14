@@ -16,19 +16,22 @@
  ***************************************************************************/
 
 #include "qgsnewauxiliarylayerdialog.h"
+
 #include "qgsauxiliarystorage.h"
-#include "qgsproject.h"
 #include "qgsgui.h"
+#include "qgsproject.h"
 
 #include <QMessageBox>
 #include <QPushButton>
+
+#include "moc_qgsnewauxiliarylayerdialog.cpp"
 
 QgsNewAuxiliaryLayerDialog::QgsNewAuxiliaryLayerDialog( QgsVectorLayer *layer, QWidget *parent )
   : QDialog( parent )
   , mLayer( layer )
 {
   setupUi( this );
-  QgsGui::instance()->enableAutoGeometryRestore( this );
+  QgsGui::enableAutoGeometryRestore( this );
 
   const QgsFields fields = mLayer->fields();
   for ( const QgsField &field : fields )
@@ -52,6 +55,13 @@ void QgsNewAuxiliaryLayerDialog::accept()
     if ( alayer )
     {
       mLayer->setAuxiliaryLayer( alayer );
+    }
+    else
+    {
+      QDialog::close();
+      const QString errMsg = QgsProject::instance()->auxiliaryStorage()->errorString();
+      QMessageBox::critical( this, tr( "New Auxiliary Layer" ), errMsg );
+      return;
     }
   }
 

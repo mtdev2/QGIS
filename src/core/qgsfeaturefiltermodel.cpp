@@ -13,13 +13,21 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsfeaturefiltermodel.h"
+
 #include "qgsfeatureexpressionvaluesgatherer.h"
-
+#include "qgssettingsentryimpl.h"
+#include "qgssettingstree.h"
+#include "qgsvariantutils.h"
 #include "qgsvectorlayer.h"
-#include "qgsconditionalstyle.h"
-#include "qgsapplication.h"
-#include "qgssettings.h"
 
+#include <QString>
+
+#include "moc_qgsfeaturefiltermodel.cpp"
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryInteger *QgsFeatureFilterModel::settingsMaxEntriesRelationWidget
+  = new QgsSettingsEntryInteger( u"max-entries-relation-widget"_s, QgsSettingsTree::sTreeGui, 100, u"Maximum number of entries in relation widget"_s );
 
 bool qVariantListCompare( const QVariantList &a, const QVariantList &b )
 {
@@ -39,7 +47,7 @@ QgsFeatureFilterModel::QgsFeatureFilterModel( QObject *parent )
   : QgsFeaturePickerModelBase( parent )
 {
   setFetchGeometry( false );
-  setFetchLimit( QgsSettings().value( QStringLiteral( "maxEntriesRelationWidget" ), 100, QgsSettings::Gui ).toInt() );
+  setFetchLimit( settingsMaxEntriesRelationWidget->value() );
   setExtraIdentifierValueUnguarded( nullIdentifier() );
 }
 
@@ -62,17 +70,17 @@ void QgsFeatureFilterModel::requestToReloadCurrentFeature( QgsFeatureRequest &re
       conditions << QgsExpression::createFieldEqualityExpression( mIdentifierFields.at( i ), mExtraIdentifierValue.toList().at( i ) );
     }
   }
-  request.setFilterExpression( conditions.join( QLatin1String( " AND " ) ) );
+  request.setFilterExpression( conditions.join( " AND "_L1 ) );
 }
 
 QSet<QString> QgsFeatureFilterModel::requestedAttributes() const
 {
-  return qgis::listToSet( mIdentifierFields );
+  return QSet<QString>( mIdentifierFields.begin(), mIdentifierFields.end() );
 }
 
 QVariant QgsFeatureFilterModel::entryIdentifier( const QgsFeatureExpressionValuesGatherer::Entry &entry ) const
 {
-  return entry.featureId;
+  return entry.identifierFields;
 }
 
 QgsFeatureExpressionValuesGatherer::Entry QgsFeatureFilterModel::createEntry( const QVariant &identifier ) const
@@ -81,9 +89,9 @@ QgsFeatureExpressionValuesGatherer::Entry QgsFeatureFilterModel::createEntry( co
 
   QStringList values;
   for ( const QVariant &v : constValues )
-    values << QStringLiteral( "(%1)" ).arg( v.toString() );
+    values << u"(%1)"_s.arg( v.toString() );
 
-  return QgsFeatureExpressionValuesGatherer::Entry( constValues, values.join( QLatin1Char( ' ' ) ), QgsFeature( sourceLayer() ? sourceLayer()->fields() : QgsFields() ) );
+  return QgsFeatureExpressionValuesGatherer::Entry( constValues, values.join( ' '_L1 ), QgsFeature( sourceLayer() ? sourceLayer()->fields() : QgsFields() ) );
 }
 
 bool QgsFeatureFilterModel::compareEntries( const QgsFeatureExpressionValuesGatherer::Entry &a, const QgsFeatureExpressionValuesGatherer::Entry &b ) const
@@ -96,7 +104,7 @@ bool QgsFeatureFilterModel::identifierIsNull( const QVariant &identifier ) const
   const QVariantList values = identifier.toList();
   for ( const QVariant &value : values )
   {
-    if ( !value.isNull() )
+    if ( !QgsVariantUtils::isNull( value ) )
     {
       return false;
     }
@@ -108,7 +116,7 @@ QVariant QgsFeatureFilterModel::nullIdentifier() const
 {
   QVariantList nullValues;
   for ( int i = 0; i < mIdentifierFields.count(); i++ )
-    nullValues << QVariant( QVariant::Int );
+    nullValues << QgsVariantUtils::createNullVariant( QMetaType::Type::Int );
   return nullValues;
 }
 
@@ -130,7 +138,7 @@ void QgsFeatureFilterModel::setIdentifierFields( const QStringList &identifierFi
 
 QgsFeatureExpressionValuesGatherer *QgsFeatureFilterModel::createValuesGatherer( const QgsFeatureRequest &request ) const
 {
-  return new QgsFeatureExpressionValuesGatherer( sourceLayer(), displayExpression(), request, mIdentifierFields );
+  return new QgsFeatureExpressionValuesGatherer( sourceLayer(), displayExpression(), orderExpression(), request, mIdentifierFields );
 }
 
 
@@ -153,4 +161,3 @@ void QgsFeatureFilterModel::setExtraIdentifierValueToNull()
 {
   setExtraIdentifierValue( nullIdentifier() );
 }
-

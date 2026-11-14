@@ -15,28 +15,25 @@
  *                                                                         *
  ***************************************************************************/
 
-/**
- * \ingroup core
- * Class to convert from older project file versions to newer.
- * This class provides possibility to store a project file as a QDomDocument,
- * and provides the ability to specify version of the project file, and
- * perform upgrades to a more recent version
- */
-
-
 #ifndef QGSPROJECTFILETRANSFORM_H
 #define QGSPROJECTFILETRANSFORM_H
 
 #include "qgis_core.h"
-#include <QString>
-#include <QDomDocument>
 #include "qgsprojectversion.h"
 
+#include <QDomDocument>
+#include <QString>
 
 class QgsRasterLayer;
+class QgsMapLayer;
 
 /**
  * \ingroup core
+ * \brief Convert from older project file versions to newer.
+ *
+ * This class provides possibility to store a project file as a QDomDocument,
+ * and provides the ability to specify version of the project file, and
+ * perform upgrades to a more recent version
  */
 class CORE_EXPORT QgsProjectFileTransform
 {
@@ -49,8 +46,7 @@ class CORE_EXPORT QgsProjectFileTransform
      * \param domDocument The Dom document to use as content
      * \param version Version number
      */
-    QgsProjectFileTransform( QDomDocument &domDocument,
-                             const QgsProjectVersion &version )
+    QgsProjectFileTransform( QDomDocument &domDocument, const QgsProjectVersion &version )
     {
       mDom = domDocument;
       mCurrentVersion = version;
@@ -60,7 +56,7 @@ class CORE_EXPORT QgsProjectFileTransform
     bool updateRevision( const QgsProjectVersion &version );
 
     /**
-     * Prints the contents via QgsDebugMsg()
+     * Prints the contents to the console.
      */
     void dump();
 
@@ -80,12 +76,19 @@ class CORE_EXPORT QgsProjectFileTransform
      */
     QgsProjectVersion currentVersion() const;
 
-  private:
+    /**
+     * QgsSymbolLayerReference uses QgsSymbolLayer unique uuid identifier since QGIS 3.30, instead of the symbol
+     * key (rule for QgsRuleBasedRenderer for instance) and index path, so this method migrates \a mapLayers old references
+     * to new ones.
+     * \since QGIS 3.30
+     * \deprecated QGIS 3.30
+     */
+    Q_DECL_DEPRECATED static void fixOldSymbolLayerReferences( const QMap<QString, QgsMapLayer *> &mapLayers );
 
+  private:
     QDomDocument mDom;
     QgsProjectVersion mCurrentVersion;
 };
 
 
 #endif //QGSPROJECTFILETRANSFORM_H
-

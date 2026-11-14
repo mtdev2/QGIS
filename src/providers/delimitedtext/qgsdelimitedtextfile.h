@@ -18,25 +18,24 @@
 #ifndef QGSDELIMITEDTEXTFILE_H
 #define QGSDELIMITEDTEXTFILE_H
 
-#include <QStringList>
-#include <QRegExp>
-#include <QUrl>
 #include <QObject>
+#include <QRegularExpression>
+#include <QStringList>
+#include <QUrl>
 
 class QgsFeature;
 class QgsField;
 class QFile;
 class QFileSystemWatcher;
-class QTextStream;
+class QTextCodec;
 
 
 /**
-\class QgsDelimitedTextFile
-\brief Delimited text file parser extracts records from a QTextStream as a QStringList.
-*
+* \class QgsDelimitedTextFile
+* \brief Delimited text file parser extracts records from a text file as a QStringList.
 *
 * The delimited text parser is used by the QgsDelimitedTextProvider to parse
-* a QTextStream into records of QStringList.  It provides a number of variants
+* a text file into records of QStringList.  It provides a number of variants
 * for parsing each record.  The following options are supported:
 *
 * - Basic whitespace parsing.  Each line in the file is treated as a record.
@@ -75,11 +74,9 @@ class QTextStream;
 
 class QgsDelimitedTextFile : public QObject
 {
-
     Q_OBJECT
 
   public:
-
     enum Status
     {
       RecordOk,
@@ -110,10 +107,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the filename
      * \returns filename  the name of the file
      */
-    QString fileName()
-    {
-      return mFileName;
-    }
+    QString fileName() const { return mFileName; }
 
     /**
      * Set the file encoding (defuault is UTF-8)
@@ -125,7 +119,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the file encoding
      *  \returns encoding The file encoding
      */
-    QString encoding() { return mEncoding; }
+    QString encoding() const { return mEncoding; }
 
     /**
      * Decode the parser settings from a url as a string
@@ -143,7 +137,7 @@ class QgsDelimitedTextFile : public QObject
      * Encode the parser settings into a QUrl
      *  \returns url  The url into which the delimiter and delimiterType items are set
      */
-    QUrl url();
+    QUrl url() const;
 
     /**
      * Set the parser for parsing CSV files
@@ -175,14 +169,11 @@ class QgsDelimitedTextFile : public QObject
      * Returns the number of header lines to skip
      * \returns skiplines The maximum lines to skip
      */
-    int skipLines()
-    {
-      return mSkipLines;
-    }
+    int skipLines() const { return mSkipLines; }
 
     /**
      * Set reading field names from the first record
-     * \param useheaders Field names will be read if true
+     * \param useheader Field names will be read if true
      */
     void setUseHeader( bool useheader = true );
 
@@ -190,10 +181,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the option for reading field names from the first record
      * \returns useheaders Field names will be read if true
      */
-    bool useHeader()
-    {
-      return mUseHeader;
-    }
+    bool useHeader() const { return mUseHeader; }
 
     /**
      * Set the option for discarding empty fields
@@ -205,10 +193,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the option for discarding empty fields
      * \returns useheaders Empty fields will be discarded if true
      */
-    bool discardEmptyFields()
-    {
-      return mDiscardEmptyFields;
-    }
+    bool discardEmptyFields() const { return mDiscardEmptyFields; }
 
     /**
      * Set the option for trimming whitespace from fields
@@ -220,10 +205,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the option for trimming empty fields
      * \returns useheaders Empty fields will be trimmed if true
      */
-    bool trimFields()
-    {
-      return mTrimFields;
-    }
+    bool trimFields() const { return mTrimFields; }
 
     /**
      * Set the maximum number of fields that will be read from a record
@@ -236,7 +218,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the maximum number of fields that will be read
      *  \returns maxFields The maximum number of fields that will be read
      */
-    int maxFields() { return mMaxFields; }
+    int maxFields() const { return mMaxFields; }
 
     /**
      * Set the field names
@@ -268,7 +250,7 @@ class QgsDelimitedTextFile : public QObject
     int fieldIndex( const QString &name );
 
     /**
-     * Reads the next record from the stream splits into string fields.
+     * Reads the next record from the file splits into string fields.
      *  \param fields  The string list to populate with the fields
      *  \returns status The result of trying to parse a record.  RecordOk
      *                 if read successfully, RecordEOF if reached the end of the
@@ -281,10 +263,7 @@ class QgsDelimitedTextFile : public QObject
      * Returns the line number of the start of the last record read
      *  \returns linenumber  The line number of the start of the record
      */
-    int recordId()
-    {
-      return mRecordLineNumber;
-    }
+    int recordId() const { return mRecordLineNumber; }
 
     /**
      * Set the index of the next record to return.
@@ -298,7 +277,7 @@ class QgsDelimitedTextFile : public QObject
      *  serves as a record count.
      *  \returns maxRecordNumber The maximum record number
      */
-    long recordCount() { return mMaxRecordNumber; }
+    long recordCount() const { return mMaxRecordNumber; }
 
     /**
      * Reset the file to reread from the beginning
@@ -309,14 +288,14 @@ class QgsDelimitedTextFile : public QObject
      * Returns a string defining the type of the delimiter as a string
      *  \returns type The delimiter type as a string
      */
-    QString type();
+    QString type() const;
 
     /**
      * Check that provider is valid (filename and definition valid)
      *
      * \returns valid True if the provider is valid
      */
-    bool isValid();
+    bool isValid() const;
 
     /**
      * Encode characters - used to convert delimiter/quote/escape characters to
@@ -356,7 +335,6 @@ class QgsDelimitedTextFile : public QObject
     void updateFile();
 
   private:
-
     /**
      * Open the file
      *
@@ -399,12 +377,12 @@ class QgsDelimitedTextFile : public QObject
     void appendField( QStringList &record, QString field, bool quoted = false );
 
     // Pointer to the currently selected parser
-    Status( QgsDelimitedTextFile::*mParser )( QString &buffer, QStringList &fields );
+    Status ( QgsDelimitedTextFile::*mParser )( QString &buffer, QStringList &fields );
 
     QString mFileName;
     QString mEncoding;
     QFile *mFile = nullptr;
-    QTextStream *mStream = nullptr;
+    QTextCodec *mCodec = nullptr;
     bool mUseWatcher = false;
     QFileSystemWatcher *mWatcher = nullptr;
 
@@ -419,7 +397,7 @@ class QgsDelimitedTextFile : public QObject
     int mMaxNameLength = 200;
 
     // Parameters used by parsers
-    QRegExp mDelimRegexp;
+    QRegularExpression mDelimRegexp;
     bool mAnchoredRegexp = false;
     QString mDelimChars;
     QString mQuoteChar;
@@ -433,7 +411,7 @@ class QgsDelimitedTextFile : public QObject
     QString mBuffer;
     int mPosInBuffer = 0;
     int mMaxBufferSize = 0;
-    QChar mFirstEOLChar = 0; // '\r' if EOL is "\r" or "\r\n", or `\n' if EOL is "\n"
+    QChar mFirstEOLChar; // '\r' if EOL is "\r" or "\r\n", or `\n' if EOL is "\n"
     QStringList mCurrentRecord;
     bool mHoldCurrentRecord = false;
     // Maximum number of record (ie maximum record number visited)
@@ -441,7 +419,7 @@ class QgsDelimitedTextFile : public QObject
     int mMaxFieldCount = 0;
 
     QString mDefaultFieldName;
-    QRegExp mDefaultFieldRegexp;
+    QRegularExpression mDefaultFieldRegexp;
 };
 
 #endif

@@ -17,11 +17,15 @@
 
 #include "qgsalgorithmmergelines.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
 QString QgsMergeLinesAlgorithm::name() const
 {
-  return QStringLiteral( "mergelines" );
+  return u"mergelines"_s;
 }
 
 QString QgsMergeLinesAlgorithm::displayName() const
@@ -41,7 +45,7 @@ QString QgsMergeLinesAlgorithm::group() const
 
 QString QgsMergeLinesAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeometry" );
+  return u"vectorgeometry"_s;
 }
 
 QString QgsMergeLinesAlgorithm::outputName() const
@@ -49,26 +53,33 @@ QString QgsMergeLinesAlgorithm::outputName() const
   return QObject::tr( "Merged" );
 }
 
-QgsProcessing::SourceType QgsMergeLinesAlgorithm::outputLayerType() const
+Qgis::ProcessingSourceType QgsMergeLinesAlgorithm::outputLayerType() const
 {
-  return QgsProcessing::TypeVectorLine;
+  return Qgis::ProcessingSourceType::VectorLine;
 }
 
-QgsWkbTypes::Type QgsMergeLinesAlgorithm::outputWkbType( QgsWkbTypes::Type ) const
+Qgis::WkbType QgsMergeLinesAlgorithm::outputWkbType( Qgis::WkbType ) const
 {
-  return QgsWkbTypes::MultiLineString;
+  return Qgis::WkbType::MultiLineString;
 }
 
 QString QgsMergeLinesAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm joins all connected parts of MultiLineString geometries into single LineString geometries.\n\n"
-                      "If any parts of the input MultiLineString geometries are not connected, the resultant "
-                      "geometry will be a MultiLineString containing any lines which could be merged and any non-connected line parts." );
+  return QObject::tr(
+    "This algorithm joins all connected parts of MultiLineString geometries into single LineString geometries.\n\n"
+    "If any parts of the input MultiLineString geometries are not connected, the resultant "
+    "geometry will be a MultiLineString containing any lines which could be merged and any non-connected line parts."
+  );
+}
+
+QString QgsMergeLinesAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Joins all connected parts of MultiLineString geometries into single LineString geometries." );
 }
 
 QList<int> QgsMergeLinesAlgorithm::inputLayerTypes() const
 {
-  return QList<int>() << QgsProcessing::TypeVectorLine;
+  return QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::VectorLine );
 }
 
 QgsMergeLinesAlgorithm *QgsMergeLinesAlgorithm::createInstance() const
@@ -78,11 +89,13 @@ QgsMergeLinesAlgorithm *QgsMergeLinesAlgorithm::createInstance() const
 
 QgsFeatureList QgsMergeLinesAlgorithm::processFeature( const QgsFeature &feature, QgsProcessingContext &, QgsProcessingFeedback *feedback )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   if ( !feature.hasGeometry() )
     return QgsFeatureList() << feature;
 
   QgsFeature out = feature;
-  QgsGeometry outputGeometry = feature.geometry().mergeLines();
+  const QgsGeometry outputGeometry = feature.geometry().mergeLines();
   if ( outputGeometry.isNull() )
     feedback->reportError( QObject::tr( "Error merging lines for feature %1" ).arg( feature.id() ) );
 
@@ -91,5 +104,3 @@ QgsFeatureList QgsMergeLinesAlgorithm::processFeature( const QgsFeature &feature
 }
 
 ///@endcond
-
-

@@ -15,12 +15,19 @@
 
 #include "qgspresetcolorrampdialog.h"
 
-#include "qgssymbollayerutils.h"
 #include "qgscolordialog.h"
-#include <QFileDialog>
+#include "qgshelp.h"
+#include "qgssymbollayerutils.h"
+
 #include <QAbstractButton>
 #include <QDialogButtonBox>
+#include <QFileDialog>
 #include <QMessageBox>
+#include <QString>
+
+#include "moc_qgspresetcolorrampdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsPresetColorRampWidget::QgsPresetColorRampWidget( const QgsPresetSchemeColorRamp &ramp, QWidget *parent )
   : QgsPanelWidget( parent )
@@ -57,7 +64,7 @@ void QgsPresetColorRampWidget::setRamp( const QgsPresetSchemeColorRamp &ramp )
 
 void QgsPresetColorRampWidget::updatePreview()
 {
-  QSize size( 300, 40 );
+  const QSize size( 300, 40 );
   lblPreview->setPixmap( QgsSymbolLayerUtils::colorRampPreviewPixmap( &mRamp, size ) );
 }
 
@@ -81,7 +88,7 @@ void QgsPresetColorRampWidget::mButtonAddColor_clicked()
   }
   else
   {
-    QColor newColor = QgsColorDialog::getColor( QColor(), this->parentWidget(), tr( "Select Color" ), true );
+    const QColor newColor = QgsColorDialog::getColor( QColor(), this->parentWidget(), tr( "Select Color" ), true );
     if ( !newColor.isValid() )
     {
       return;
@@ -101,8 +108,8 @@ void QgsPresetColorRampWidget::schemeChanged()
 
 void QgsPresetColorRampWidget::newColorChanged( const QColor &color )
 {
-  int row = mTreeColors->model()->rowCount() - 1;
-  QModelIndex colorIndex = mTreeColors->model()->index( row, 0 );
+  const int row = mTreeColors->model()->rowCount() - 1;
+  const QModelIndex colorIndex = mTreeColors->model()->index( row, 0 );
   mTreeColors->model()->setData( colorIndex, color );
 }
 
@@ -131,5 +138,5 @@ QDialogButtonBox *QgsPresetColorRampDialog::buttonBox() const
 
 void QgsPresetColorRampDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "style_library/style_manager.html#setting-a-color-ramp" ) );
+  QgsHelp::openHelp( u"style_library/style_manager.html#setting-a-color-ramp"_s );
 }

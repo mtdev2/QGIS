@@ -1,3 +1,4 @@
+
 /***************************************************************************
                           qgsnmeaconnection.cpp  -  description
                           ---------------------
@@ -16,12 +17,18 @@
  ***************************************************************************/
 
 #include "qgsnmeaconnection.h"
+
 #include "qgslogger.h"
 
-#include <QIODevice>
 #include <QApplication>
+#include <QIODevice>
+#include <QRegularExpression>
+#include <QString>
 #include <QStringList>
 
+#include "moc_qgsnmeaconnection.cpp"
+
+using namespace Qt::StringLiterals;
 
 //from libnmea
 #include "parse.h"
@@ -35,8 +42,7 @@
 
 QgsNmeaConnection::QgsNmeaConnection( QIODevice *device )
   : QgsGpsConnection( device )
-{
-}
+{}
 
 void QgsNmeaConnection::parseData()
 {
@@ -47,7 +53,7 @@ void QgsNmeaConnection::parseData()
 
   //print out the data as a test
   qint64 numBytes = 0;
-  if ( ! mSource->isSequential() ) //necessary because of a bug in QExtSerialPort   //SLM - bytesAvailable() works on Windows, so I reversed the logic (added ! ); this is what QIODevice docs say to do; the orig impl of win_qextserialport had an (unsigned int)-1 return on error - it should be (qint64)-1, which was fixed by ?
+  if ( !mSource->isSequential() ) //necessary because of a bug in QExtSerialPort   //SLM - bytesAvailable() works on Windows, so I reversed the logic (added ! ); this is what QIODevice docs say to do; the orig impl of win_qextserialport had an (unsigned int)-1 return on error - it should be (qint64)-1, which was fixed by ?
   {
     numBytes = mSource->size();
   }
@@ -60,15 +66,24 @@ void QgsNmeaConnection::parseData()
 
   if ( numBytes >= 6 )
   {
+    QgsDebugMsgLevel( u"Got %1 NMEA bytes"_s.arg( numBytes ), 3 );
+    QgsDebugMsgLevel( u"Current NMEA device status is %1"_s.arg( mStatus ), 3 );
     if ( mStatus != GPSDataReceived )
     {
+      QgsDebugMsgLevel( u"Setting device status to DataReceived"_s, 3 );
       mStatus = DataReceived;
     }
 
     //append new data to the remaining results from last parseData() call
     mStringBuffer.append( mSource->read( numBytes ) );
     processStringBuffer();
-    emit stateChanged( mLastGPSInformation );
+    QgsDebugMsgLevel( u"Processed buffer"_s, 3 );
+
+    QgsDebugMsgLevel( u"New status is %1"_s.arg( mStatus ), 3 );
+    if ( mStatus == GPSDataReceived )
+    {
+      emit stateChanged( mLastGPSInformation );
+    }
   }
 }
 
@@ -77,91 +92,99 @@ void QgsNmeaConnection::processStringBuffer()
   int endSentenceIndex = 0;
   int dollarIndex;
 
-  while ( ( endSentenceIndex = mStringBuffer.indexOf( QLatin1String( "\r\n" ) ) ) && endSentenceIndex != -1 )
+  while ( ( endSentenceIndex = mStringBuffer.indexOf( "\r\n"_L1 ) ) && endSentenceIndex != -1 )
   {
-    endSentenceIndex = mStringBuffer.indexOf( QLatin1String( "\r\n" ) );
+    endSentenceIndex = mStringBuffer.indexOf( "\r\n"_L1 );
 
-    dollarIndex = mStringBuffer.indexOf( QLatin1Char( '$' ) );
+    dollarIndex = mStringBuffer.indexOf( '$'_L1 );
     if ( endSentenceIndex == -1 )
     {
       break;
     }
 
-
     if ( endSentenceIndex >= dollarIndex )
     {
       if ( dollarIndex != -1 )
       {
-        QString substring = mStringBuffer.mid( dollarIndex, endSentenceIndex );
+        const QString substring = mStringBuffer.mid( dollarIndex, endSentenceIndex );
         QByteArray ba = substring.toLocal8Bit();
-        if ( substring.startsWith( QLatin1String( "$GPGGA" ) ) || substring.startsWith( QLatin1String( "$GNGGA" ) ) )
+        const thread_local QRegularExpression rxSentence( u"^\\$([A-Z]{2})([A-Z]{3})"_s );
+        const QRegularExpressionMatch sentenceMatch = rxSentence.match( substring );
+        const QString sentenceId = sentenceMatch.captured( 2 );
+        if ( sentenceId == "GGA"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processGgaSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPRMC" ) ) || substring.startsWith( QLatin1String( "$GNRMC" ) ) )
+        else if ( sentenceId == "RMC"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processRmcSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPGSV" ) ) || substring.startsWith( QLatin1String( "$GNGSV" ) ) )
+        else if ( sentenceId == "GSV"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = false;
           processGsvSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPVTG" ) ) || substring.startsWith( QLatin1String( "$GNVTG" ) ) )
+        else if ( sentenceId == "VTG"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processVtgSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPGSA" ) ) || substring.startsWith( QLatin1String( "$GNGSA" ) ) )
+        else if ( sentenceId == "GSA"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
           processGsaSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPGST" ) ) || substring.startsWith( QLatin1String( "$GNGST" ) ) )
+        else if ( sentenceId == "GST"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processGstSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$GPHDT" ) ) || substring.startsWith( QLatin1String( "$GNHDT" ) ) )
+        else if ( sentenceId == "HDT"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processHdtSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
-        else if ( substring.startsWith( QLatin1String( "$HCHDG" ) ) )
+        else if ( sentenceId == "HDG"_L1 )
         {
           QgsDebugMsgLevel( substring, 2 );
+          mLastGPSInformation.satInfoComplete = true;
           processHchdgSentence( ba.data(), ba.length() );
           mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
-        }
-        else if ( substring.startsWith( QLatin1String( "$HCHDT" ) ) )
-        {
-          QgsDebugMsgLevel( substring, 2 );
-          processHchdtSentence( ba.data(), ba.length() );
-          mStatus = GPSDataReceived;
-          QgsDebugMsgLevel( QStringLiteral( "*******************GPS data received****************" ), 2 );
+          QgsDebugMsgLevel( u"*******************GPS data received****************"_s, 2 );
         }
         else
         {
-          QgsDebugMsgLevel( QStringLiteral( "unknown nmea sentence: %1" ).arg( substring ), 2 );
+          mLastGPSInformation.satInfoComplete = true;
+          QgsDebugMsgLevel( u"unknown nmea sentence: %1"_s.arg( substring ), 2 );
         }
-        emit nmeaSentenceReceived( substring );  // added to be able to save raw data
+        emit nmeaSentenceReceived( substring ); // added to be able to save raw data
+      }
+      else
+      {
+        //other text strings that do not start with '$'
+        mLastGPSInformation.satInfoComplete = true;
       }
     }
     mStringBuffer.remove( 0, endSentenceIndex + 2 );
@@ -189,8 +212,32 @@ void QgsNmeaConnection::processGgaSentence( const char *data, int len )
     mLastGPSInformation.latitude = nmea_ndeg2degree( latitude );
     mLastGPSInformation.elevation = result.elv;
     mLastGPSInformation.elevation_diff = result.diff;
+
+    const QTime time( result.utc.hour, result.utc.min, result.utc.sec, result.utc.msec );
+    if ( time.isValid() )
+    {
+      mLastGPSInformation.utcTime = time;
+      if ( mLastGPSInformation.utcDateTime.isValid() )
+      {
+        mLastGPSInformation.utcDateTime.setTimeSpec( Qt::UTC );
+        mLastGPSInformation.utcDateTime.setTime( time );
+      }
+      QgsDebugMsgLevel( u"utc time:"_s, 2 );
+      QgsDebugMsgLevel( mLastGPSInformation.utcTime.toString(), 2 );
+    }
+
     mLastGPSInformation.quality = result.sig;
-    mLastGPSInformation.satellitesUsed = result.satinuse;
+    if ( result.sig >= 0 && result.sig <= 8 )
+    {
+      mLastGPSInformation.qualityIndicator = static_cast<Qgis::GpsQualityIndicator>( result.sig );
+    }
+    else
+    {
+      mLastGPSInformation.qualityIndicator = Qgis::GpsQualityIndicator::Unknown;
+    }
+    mLastGGAQualityIndicator = mLastGPSInformation.qualityIndicator;
+
+    // use GSA for satellites in use;
   }
 }
 
@@ -200,9 +247,9 @@ void QgsNmeaConnection::processGstSentence( const char *data, int len )
   if ( nmea_parse_GPGST( data, len, &result ) )
   {
     //update mLastGPSInformation
-    double sig_lat = result.sig_lat;
-    double sig_lon = result.sig_lon;
-    double sig_alt = result.sig_alt;
+    const double sig_lat = result.sig_lat;
+    const double sig_lon = result.sig_lon;
+    const double sig_alt = result.sig_alt;
 
     // Horizontal RMS
     mLastGPSInformation.hacc = sqrt( ( pow( sig_lat, 2 ) + pow( sig_lon, 2 ) ) / 2.0 );
@@ -235,15 +282,6 @@ void QgsNmeaConnection::processHchdgSentence( const char *data, int len )
   }
 }
 
-void QgsNmeaConnection::processHchdtSentence( const char *data, int len )
-{
-  nmeaHCHDT result;
-  if ( nmea_parse_HCHDT( data, len, &result ) )
-  {
-    mLastGPSInformation.direction = result.direction;
-  }
-}
-
 void QgsNmeaConnection::processRmcSentence( const char *data, int len )
 {
   nmeaGPRMC result;
@@ -264,21 +302,96 @@ void QgsNmeaConnection::processRmcSentence( const char *data, int len )
     mLastGPSInformation.speed = KNOTS_TO_KMH * result.speed;
     if ( !std::isnan( result.direction ) )
       mLastGPSInformation.direction = result.direction;
-    mLastGPSInformation.status = result.status;  // A,V
+    mLastGPSInformation.status = result.status; // A,V
 
-    //date and time
-    QDate date( result.utc.year + 1900, result.utc.mon + 1, result.utc.day );
-    QTime time( result.utc.hour, result.utc.min, result.utc.sec, result.utc.msec ); // added msec part
+    const QDate date( result.utc.year + 1900, result.utc.mon + 1, result.utc.day );
+    const QTime time( result.utc.hour, result.utc.min, result.utc.sec, result.utc.msec );
     if ( date.isValid() && time.isValid() )
     {
+      mLastGPSInformation.utcTime = time;
       mLastGPSInformation.utcDateTime.setTimeSpec( Qt::UTC );
       mLastGPSInformation.utcDateTime.setDate( date );
       mLastGPSInformation.utcDateTime.setTime( time );
-      QgsDebugMsgLevel( QStringLiteral( "utc time:" ), 2 );
+      QgsDebugMsgLevel( u"utc date/time:"_s, 2 );
       QgsDebugMsgLevel( mLastGPSInformation.utcDateTime.toString(), 2 );
-      QgsDebugMsgLevel( QStringLiteral( "local time:" ), 2 );
+      QgsDebugMsgLevel( u"local date/time:"_s, 2 );
       QgsDebugMsgLevel( mLastGPSInformation.utcDateTime.toLocalTime().toString(), 2 );
     }
+
+    // convert mode to signal (aka quality) indicator
+    // (see https://gitlab.com/fhuberts/nmealib/-/blob/master/src/info.c#L27)
+    // UM98x Status == D  (Differential)
+    Qgis::GpsQualityIndicator rmcQualityIndicator = Qgis::GpsQualityIndicator::Invalid;
+    if ( result.status == 'A' || result.status == 'D' )
+    {
+      if ( result.mode == 'A' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::GPS;
+      }
+      else if ( result.mode == 'D' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::DGPS;
+      }
+      else if ( result.mode == 'P' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::PPS;
+      }
+      else if ( result.mode == 'R' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::RTK;
+      }
+      else if ( result.mode == 'F' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::FloatRTK;
+      }
+      else if ( result.mode == 'E' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::Estimated;
+      }
+      else if ( result.mode == 'M' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::Manual;
+      }
+      else if ( result.mode == 'S' )
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::Simulation;
+      }
+      else
+      {
+        rmcQualityIndicator = Qgis::GpsQualityIndicator::Unknown;
+      }
+    }
+    else if ( result.status == 'V' )
+    {
+      rmcQualityIndicator = Qgis::GpsQualityIndicator::Invalid;
+    }
+
+    // some GNSS devices will fail to report an RTK quality through RMC sentences,
+    // use the better quality value from GGA and RMC sentences
+    if ( mLastGGAQualityIndicator != Qgis::GpsQualityIndicator::RTK && mLastGGAQualityIndicator != Qgis::GpsQualityIndicator::FloatRTK )
+    {
+      mLastGPSInformation.quality = static_cast<int>( rmcQualityIndicator );
+      mLastGPSInformation.qualityIndicator = rmcQualityIndicator;
+    }
+
+    // for other cases: quality and qualityIndicator read by GGA
+  }
+
+  if ( result.navstatus == 'S' )
+  {
+    mLastGPSInformation.setNavigationStatus( Qgis::GpsNavigationStatus::Safe );
+  }
+  else if ( result.navstatus == 'C' )
+  {
+    mLastGPSInformation.setNavigationStatus( Qgis::GpsNavigationStatus::Caution );
+  }
+  else if ( result.navstatus == 'U' )
+  {
+    mLastGPSInformation.setNavigationStatus( Qgis::GpsNavigationStatus::Unsafe );
+  }
+  else
+  {
+    mLastGPSInformation.setNavigationStatus( Qgis::GpsNavigationStatus::NotValid );
   }
 }
 
@@ -287,27 +400,84 @@ void QgsNmeaConnection::processGsvSentence( const char *data, int len )
   nmeaGPGSV result;
   if ( nmea_parse_GPGSV( data, len, &result ) )
   {
-    //clear satellite information when a new series of packs arrives
-    if ( result.pack_index == 1 )
-    {
-      mLastGPSInformation.satellitesInView.clear();
-    }
-
     // for determining when to graph sat info
-    mLastGPSInformation.satInfoComplete = ( result.pack_index == result.pack_count );
-
     for ( int i = 0; i < NMEA_SATINPACK; ++i )
     {
-      nmeaSATELLITE currentSatellite = result.sat_data[i];
+      const nmeaSATELLITE currentSatellite = result.sat_data[i];
       QgsSatelliteInfo satelliteInfo;
       satelliteInfo.azimuth = currentSatellite.azimuth;
       satelliteInfo.elevation = currentSatellite.elv;
       satelliteInfo.id = currentSatellite.id;
-      satelliteInfo.inUse = currentSatellite.in_use; // the GSA processing below does NOT set the sats in use
+      satelliteInfo.inUse = false;
+      for ( int k = 0; k < mLastGPSInformation.satPrn.size(); ++k )
+      {
+        if ( mLastGPSInformation.satPrn.at( k ) == currentSatellite.id )
+        {
+          satelliteInfo.inUse = true;
+        }
+      }
       satelliteInfo.signal = currentSatellite.sig;
-      mLastGPSInformation.satellitesInView.append( satelliteInfo );
-    }
+      satelliteInfo.satType = result.talkerId[1];
 
+      if ( result.talkerId[0] == 'G' )
+      {
+        if ( result.talkerId[1] == 'P' )
+        {
+          satelliteInfo.mConstellation = Qgis::GnssConstellation::Gps;
+        }
+        else if ( result.talkerId[1] == 'L' )
+        {
+          satelliteInfo.mConstellation = Qgis::GnssConstellation::Glonass;
+        }
+        else if ( result.talkerId[1] == 'A' )
+        {
+          satelliteInfo.mConstellation = Qgis::GnssConstellation::Galileo;
+        }
+        else if ( result.talkerId[1] == 'B' )
+        {
+          satelliteInfo.mConstellation = Qgis::GnssConstellation::BeiDou;
+        }
+        else if ( result.talkerId[1] == 'Q' )
+        {
+          satelliteInfo.mConstellation = Qgis::GnssConstellation::Qzss;
+        }
+      }
+
+      if ( satelliteInfo.satType == 'P' && satelliteInfo.id > 32 )
+      {
+        satelliteInfo.mConstellation = Qgis::GnssConstellation::Sbas;
+        satelliteInfo.satType = 'S';
+        satelliteInfo.id = currentSatellite.id + 87;
+      }
+
+      bool idAlreadyPresent = false;
+      if ( mLastGPSInformation.satellitesInView.size() > NMEA_SATINPACK )
+      {
+        for ( int i = 0; i < mLastGPSInformation.satellitesInView.size(); ++i )
+        {
+          QgsSatelliteInfo &existingSatInView = mLastGPSInformation.satellitesInView[i];
+          if ( existingSatInView.id == currentSatellite.id )
+          {
+            idAlreadyPresent = true;
+            // Signal averaging
+            if ( existingSatInView.signal == 0 )
+            {
+              existingSatInView.signal = currentSatellite.sig;
+            }
+            else if ( currentSatellite.sig != 0 )
+            {
+              existingSatInView.signal = ( existingSatInView.signal + currentSatellite.sig ) / 2;
+            }
+            break;
+          }
+        }
+      }
+
+      if ( !idAlreadyPresent && currentSatellite.azimuth > 0 && currentSatellite.elv > 0 )
+      {
+        mLastGPSInformation.satellitesInView.append( satelliteInfo );
+      }
+    }
   }
 }
 
@@ -317,23 +487,78 @@ void QgsNmeaConnection::processVtgSentence( const char *data, int len )
   if ( nmea_parse_GPVTG( data, len, &result ) )
   {
     mLastGPSInformation.speed = result.spk;
+    if ( !std::isnan( result.dir ) )
+      mLastGPSInformation.direction = result.dir;
   }
 }
 
 void QgsNmeaConnection::processGsaSentence( const char *data, int len )
 {
+  if ( mLastGPSInformation.satInfoComplete )
+  {
+    //clear satellite information when a new series of packs arrives
+    mLastGPSInformation.satPrn.clear();
+    mLastGPSInformation.satellitesInView.clear();
+    mLastGPSInformation.satellitesUsed = 0;
+    mLastGPSInformation.satInfoComplete = false;
+  }
   nmeaGPGSA result;
   if ( nmea_parse_GPGSA( data, len, &result ) )
   {
-    mLastGPSInformation.satPrn.clear();
+    // clear() on GGA
     mLastGPSInformation.hdop = result.HDOP;
     mLastGPSInformation.pdop = result.PDOP;
     mLastGPSInformation.vdop = result.VDOP;
     mLastGPSInformation.fixMode = result.fix_mode;
     mLastGPSInformation.fixType = result.fix_type;
+
+    Qgis::GnssConstellation commonConstellation = Qgis::GnssConstellation::Unknown;
+    bool mixedConstellation = false;
     for ( int i = 0; i < NMEA_MAXSAT; i++ )
     {
-      mLastGPSInformation.satPrn.append( result.sat_prn[ i ] );
+      if ( result.sat_prn[i] > 0 )
+      {
+        mLastGPSInformation.satPrn.append( result.sat_prn[i] );
+        mLastGPSInformation.satellitesUsed += 1;
+
+        Qgis::GnssConstellation constellation = Qgis::GnssConstellation::Unknown;
+        if ( ( result.talkerId[0] == 'G' && result.talkerId[1] == 'L' ) || result.sat_prn[i] > 64 )
+          constellation = Qgis::GnssConstellation::Glonass;
+        else if ( result.sat_prn[i] >= 1 && result.sat_prn[i] <= 32 )
+          constellation = Qgis::GnssConstellation::Gps;
+        else if ( result.sat_prn[i] > 32 && result.sat_prn[i] <= 64 )
+          constellation = Qgis::GnssConstellation::Sbas;
+
+        // cppcheck-suppress identicalInnerCondition
+        if ( result.sat_prn[i] > 0 )
+        {
+          if ( mixedConstellation || ( commonConstellation != Qgis::GnssConstellation::Unknown && commonConstellation != constellation ) )
+          {
+            mixedConstellation = true;
+          }
+          else
+          {
+            commonConstellation = constellation;
+          }
+        }
+      }
+    }
+    if ( mixedConstellation )
+      commonConstellation = Qgis::GnssConstellation::Unknown;
+
+    switch ( result.fix_type )
+    {
+      case 1:
+        mLastGPSInformation.mConstellationFixStatus[commonConstellation] = Qgis::GpsFixStatus::NoFix;
+        break;
+
+      case 2:
+        mLastGPSInformation.mConstellationFixStatus[commonConstellation] = Qgis::GpsFixStatus::Fix2D;
+        break;
+
+      case 3:
+        mLastGPSInformation.mConstellationFixStatus[commonConstellation] = Qgis::GpsFixStatus::Fix3D;
+        break;
     }
   }
 }

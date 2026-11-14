@@ -13,17 +13,20 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QObject>
-
 #include "qgsclassificationequalinterval.h"
+
 #include "qgsapplication.h"
 
-const QString QgsClassificationEqualInterval::METHOD_ID = QStringLiteral( "EqualInterval" );
+#include <QObject>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+const QString QgsClassificationEqualInterval::METHOD_ID = u"EqualInterval"_s;
 
 QgsClassificationEqualInterval::QgsClassificationEqualInterval()
   : QgsClassificationMethod( SymmetricModeAvailable, 0 /*codeComplexity*/ )
-{
-}
+{}
 
 QString QgsClassificationEqualInterval::name() const
 {
@@ -35,17 +38,17 @@ QString QgsClassificationEqualInterval::id() const
   return METHOD_ID;
 }
 
-QList<double> QgsClassificationEqualInterval::calculateBreaks( double &minimum, double &maximum,
-    const QList<double> &values, int nclasses )
+QList<double> QgsClassificationEqualInterval::calculateBreaks( double &minimum, double &maximum, const QList<double> &values, int nclasses, QString &error )
 {
   Q_UNUSED( values )
+  Q_UNUSED( error )
 
   // Equal interval algorithm
   // Returns breaks based on dividing the range ('minimum' to 'maximum') into 'classes' parts.
   QList<double> breaks;
   if ( !symmetricModeEnabled() ) // normal mode
   {
-    double step = ( maximum - minimum ) / nclasses;
+    const double step = ( maximum - minimum ) / nclasses;
 
     double value = minimum;
     breaks.reserve( nclasses );
@@ -60,8 +63,8 @@ QList<double> QgsClassificationEqualInterval::calculateBreaks( double &minimum, 
   }
   else // symmetric mode
   {
-    double distBelowSymmetricValue = std::abs( minimum - symmetryPoint() );
-    double distAboveSymmetricValue = std::abs( maximum - symmetryPoint() ) ;
+    const double distBelowSymmetricValue = std::abs( minimum - symmetryPoint() );
+    const double distAboveSymmetricValue = std::abs( maximum - symmetryPoint() );
 
     if ( symmetryAstride() )
     {
@@ -73,10 +76,10 @@ QList<double> QgsClassificationEqualInterval::calculateBreaks( double &minimum, 
       if ( nclasses % 2 == 1 ) // we want even number of classes
         ++nclasses;
     }
-    double step = 2 * std::min( distBelowSymmetricValue, distAboveSymmetricValue ) / nclasses;
+    const double step = 2 * std::min( distBelowSymmetricValue, distAboveSymmetricValue ) / nclasses;
 
     breaks.reserve( nclasses );
-    double value = ( distBelowSymmetricValue < distAboveSymmetricValue ) ?  minimum : maximum - nclasses * step;
+    double value = ( distBelowSymmetricValue < distAboveSymmetricValue ) ? minimum : maximum - nclasses * step;
 
     for ( int i = 0; i < nclasses; i++ )
     {
@@ -90,10 +93,10 @@ QList<double> QgsClassificationEqualInterval::calculateBreaks( double &minimum, 
 }
 
 
-QgsClassificationMethod *QgsClassificationEqualInterval::clone() const
+std::unique_ptr< QgsClassificationMethod > QgsClassificationEqualInterval::clone() const
 {
-  QgsClassificationEqualInterval *c = new QgsClassificationEqualInterval();
-  copyBase( c );
+  auto c = std::make_unique< QgsClassificationEqualInterval >();
+  copyBase( c.get() );
   return c;
 }
 
@@ -101,4 +104,3 @@ QIcon QgsClassificationEqualInterval::icon() const
 {
   return QgsApplication::getThemeIcon( "classification_methods/mClassificationEqualInterval.svg" );
 }
-

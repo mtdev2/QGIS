@@ -20,14 +20,19 @@
 #include "qgsexpressionnode.h"
 #include "qgsinterval.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+class QgsExpressionFunction;
+
 /**
  * \ingroup core
- * A unary node is either negative as in boolean (not) or as in numbers (minus).
+ * \brief A unary node is either negative as in boolean (not) or as in numbers (minus).
  */
 class CORE_EXPORT QgsExpressionNodeUnaryOperator : public QgsExpressionNode
 {
   public:
-
     /**
      * \brief list of unary operators
      * \note if any change is made here, the definition of QgsExpression::UnaryOperatorText[] must be adapted.
@@ -45,17 +50,30 @@ class CORE_EXPORT QgsExpressionNodeUnaryOperator : public QgsExpressionNode
       : mOp( op )
       , mOperand( operand )
     {}
-    ~QgsExpressionNodeUnaryOperator() override { delete mOperand; }
 
-    /**
+    // clang-format off
+#ifdef SIP_RUN
+    SIP_PYOBJECT __repr__();
+    % MethodCode QString str = u"<QgsExpressionNodeUnaryOperator: %1>"_s.arg( sipCpp->text() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+#endif
+
+        // clang-format on
+
+
+        /**
      * Returns the unary operator.
      */
-    QgsExpressionNodeUnaryOperator::UnaryOperator op() const { return mOp; }
+        QgsExpressionNodeUnaryOperator::UnaryOperator op() const
+    {
+      return mOp;
+    }
 
     /**
      * Returns the node the operator will operate upon.
      */
-    QgsExpressionNode *operand() const { return mOperand; }
+    QgsExpressionNode *operand() const { return mOperand.get(); }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -65,10 +83,10 @@ class CORE_EXPORT QgsExpressionNodeUnaryOperator : public QgsExpressionNode
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
-    QList<const QgsExpressionNode *> nodes() const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
-
+    QgsExpressionNode *simplifiedNode() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
 
     /**
@@ -78,20 +96,26 @@ class CORE_EXPORT QgsExpressionNodeUnaryOperator : public QgsExpressionNode
     QString text() const;
 
   private:
+    QgsExpressionNodeUnaryOperator( const QgsExpressionNodeUnaryOperator &other ) = delete;
+    QgsExpressionNodeUnaryOperator &operator=( const QgsExpressionNodeUnaryOperator &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeUnaryOperator( const QgsExpressionNodeUnaryOperator &other );
+#endif
+
     UnaryOperator mOp;
-    QgsExpressionNode *mOperand = nullptr;
+    std::unique_ptr<QgsExpressionNode> mOperand;
 
     static const char *UNARY_OPERATOR_TEXT[];
 };
 
 /**
- * A binary expression operator, which operates on two values.
+ * \brief A binary expression operator, which operates on two values.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
 {
   public:
-
     /**
      * \brief list of binary operators
      * \note if any change is made here, the definition of QgsExpression::BinaryOperatorText[] must be adapted.
@@ -103,12 +127,12 @@ class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
       boAnd,
 
       // comparison
-      boEQ,  //!< =
-      boNE,  //!< <>
-      boLE,  //!< <=
-      boGE,  //!< >=
-      boLT,  //!< <
-      boGT,  //!< >
+      boEQ, //!< =
+      boNE, //!< <>
+      boLE, //!< <=
+      boGE, //!< >=
+      boLT, //!< <
+      boGT, //!< >
       boRegexp,
       boLike,
       boNotLike,
@@ -138,24 +162,33 @@ class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
       , mOpLeft( opLeft )
       , mOpRight( opRight )
     {}
-    ~QgsExpressionNodeBinaryOperator() override { delete mOpLeft; delete mOpRight; }
 
-    /**
+#ifdef SIP_RUN
+    SIP_PYOBJECT __repr__();
+    % MethodCode QString str = u"<QgsExpressionNodeBinaryOperator: %1>"_s.arg( sipCpp->text() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+#endif
+
+        /**
      * Returns the binary operator.
      */
-    QgsExpressionNodeBinaryOperator::BinaryOperator op() const { return mOp; }
+        QgsExpressionNodeBinaryOperator::BinaryOperator op() const
+    {
+      return mOp;
+    }
 
     /**
      * Returns the node to the left of the operator.
      * \see opRight()
      */
-    QgsExpressionNode *opLeft() const { return mOpLeft; }
+    QgsExpressionNode *opLeft() const { return mOpLeft.get(); }
 
     /**
      * Returns the node to the right of the operator.
      * \see opLeft()
      */
-    QgsExpressionNode *opRight() const { return mOpRight; }
+    QgsExpressionNode *opRight() const { return mOpRight.get(); }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -165,11 +198,12 @@ class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
-    QList<const QgsExpressionNode *> nodes( ) const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
 
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+    QgsExpressionNode *simplifiedNode() const override SIP_FACTORY;
 
     /**
      * Returns the precedence index for the operator. Higher values have higher precedence.
@@ -188,7 +222,12 @@ class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
     QString text() const;
 
   private:
-    bool compare( double diff );
+    QgsExpressionNodeBinaryOperator( const QgsExpressionNodeBinaryOperator &other ) = delete;
+    QgsExpressionNodeBinaryOperator &operator=( const QgsExpressionNodeBinaryOperator &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeBinaryOperator( const QgsExpressionNodeBinaryOperator &other );
+#endif
     qlonglong computeInt( qlonglong x, qlonglong y );
     double computeDouble( double x, double y );
 
@@ -199,22 +238,26 @@ class CORE_EXPORT QgsExpressionNodeBinaryOperator : public QgsExpressionNode
      */
     QDateTime computeDateTimeFromInterval( const QDateTime &d, QgsInterval *i );
 
+    /**
+     * Compares two values, which are guaranteed to be non-null, using the specified operator.
+     */
+    static QVariant compareNonNullValues( QgsExpression *parent, const QgsExpressionContext *context, const QVariant &vL, const QVariant &vR, BinaryOperator op );
+
     BinaryOperator mOp;
-    QgsExpressionNode *mOpLeft = nullptr;
-    QgsExpressionNode *mOpRight = nullptr;
+    std::unique_ptr<QgsExpressionNode> mOpLeft;
+    std::unique_ptr<QgsExpressionNode> mOpRight;
 
     static const char *BINARY_OPERATOR_TEXT[];
 };
 
 /**
- * A indexing expression operator, which allows use of square brackets [] to reference map and array items.
+ * \brief An indexing expression operator, which allows use of square brackets [] to reference map and array items.
  * \ingroup core
  * \since QGIS 3.6
  */
 class CORE_EXPORT QgsExpressionNodeIndexOperator : public QgsExpressionNode
 {
   public:
-
     /**
      * Constructor for QgsExpressionNodeIndexOperator.
      */
@@ -222,19 +265,18 @@ class CORE_EXPORT QgsExpressionNodeIndexOperator : public QgsExpressionNode
       : mContainer( container )
       , mIndex( index )
     {}
-    ~QgsExpressionNodeIndexOperator() override { delete mContainer; delete mIndex; }
 
     /**
      * Returns the container node, representing an array or map value.
      * \see index()
      */
-    QgsExpressionNode *container() const { return mContainer; }
+    QgsExpressionNode *container() const { return mContainer.get(); }
 
     /**
      * Returns the index node, representing an array element index or map key.
      * \see container()
      */
-    QgsExpressionNode *index() const { return mIndex; }
+    QgsExpressionNode *index() const { return mIndex.get(); }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -244,27 +286,100 @@ class CORE_EXPORT QgsExpressionNodeIndexOperator : public QgsExpressionNode
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
-    QList<const QgsExpressionNode *> nodes( ) const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
 
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
 
   private:
+    QgsExpressionNodeIndexOperator( const QgsExpressionNodeIndexOperator &other ) = delete;
+    QgsExpressionNodeIndexOperator &operator=( const QgsExpressionNodeIndexOperator &other ) = delete;
 
-    QgsExpressionNode *mContainer = nullptr;
-    QgsExpressionNode *mIndex = nullptr;
+#ifdef SIP_RUN
+    QgsExpressionNodeIndexOperator( const QgsExpressionNodeIndexOperator &other );
+#endif
 
+    std::unique_ptr<QgsExpressionNode> mContainer;
+    std::unique_ptr<QgsExpressionNode> mIndex;
 };
 
 /**
- * An expression node for value IN or NOT IN clauses.
+ * \brief SQL-like BETWEEN and NOT BETWEEN predicates.
+ * \ingroup core
+ * \since QGIS 3.26
+ */
+class CORE_EXPORT QgsExpressionNodeBetweenOperator : public QgsExpressionNode
+{
+  public:
+    /**
+     * This node tests if the result of \a node is between the result of \a nodeLowerBound and \a nodeHigherBound nodes. Optionally it can be inverted with \a negate which by default is FALSE.
+     */
+    QgsExpressionNodeBetweenOperator( QgsExpressionNode *node SIP_TRANSFER, QgsExpressionNode *nodeLowerBound SIP_TRANSFER, QgsExpressionNode *nodeHigherBound SIP_TRANSFER, bool negate = false )
+      : mNode( node )
+      , mLowerBound( nodeLowerBound )
+      , mHigherBound( nodeHigherBound )
+      , mNegate( negate )
+    {}
+
+    ~QgsExpressionNodeBetweenOperator() override;
+
+    /**
+     * Returns the expression node.
+     */
+    QgsExpressionNode *node() const { return mNode.get(); }
+
+
+    QgsExpressionNode::NodeType nodeType() const override;
+    bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
+    QVariant evalNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
+    QString dump() const override;
+
+    QSet<QString> referencedColumns() const override;
+    QSet<QString> referencedVariables() const override;
+    QSet<QString> referencedFunctions() const override;
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
+    bool needsGeometry() const override;
+    QgsExpressionNode *clone() const override SIP_FACTORY;
+    bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+
+    /**
+     * Returns the lower bound expression node of the range.
+     */
+    QgsExpressionNode *lowerBound() const;
+
+    /**
+     * Returns the higher bound expression node of the range.
+     */
+    QgsExpressionNode *higherBound() const;
+
+    /**
+     * Returns TRUE if the predicate is an exclusion test (NOT BETWEEN).
+     */
+    bool negate() const;
+
+  private:
+    QgsExpressionNodeBetweenOperator( const QgsExpressionNodeBetweenOperator &other ) = delete;
+    QgsExpressionNodeBetweenOperator &operator=( const QgsExpressionNodeBetweenOperator &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeBetweenOperator( const QgsExpressionNodeBetweenOperator &other );
+#endif
+
+
+    std::unique_ptr<QgsExpressionNode> mNode;
+    std::unique_ptr<QgsExpressionNode> mLowerBound;
+    std::unique_ptr<QgsExpressionNode> mHigherBound;
+    bool mNegate = false;
+};
+
+/**
+ * \brief An expression node for value IN or NOT IN clauses.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeInOperator : public QgsExpressionNode
 {
   public:
-
     /**
      * This node tests if the result of \a node is in the result of \a list. Optionally it can be inverted with \a notin which by default is FALSE.
      */
@@ -278,7 +393,7 @@ class CORE_EXPORT QgsExpressionNodeInOperator : public QgsExpressionNode
     /**
      * Returns the expression node.
      */
-    QgsExpressionNode *node() const { return mNode; }
+    QgsExpressionNode *node() const { return mNode.get(); }
 
     /**
      * Returns TRUE if this node is a "NOT IN" operator, or FALSE if the node is a normal "IN" operator.
@@ -288,7 +403,7 @@ class CORE_EXPORT QgsExpressionNodeInOperator : public QgsExpressionNode
     /**
      * Returns the list of nodes to search for matching values within.
      */
-    QgsExpressionNode::NodeList *list() const { return mList; }
+    QgsExpressionNode::NodeList *list() const { return mList.get(); }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -298,42 +413,84 @@ class CORE_EXPORT QgsExpressionNodeInOperator : public QgsExpressionNode
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
-    QList<const QgsExpressionNode *> nodes() const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+    QgsExpressionNode *simplifiedNode() const override SIP_FACTORY;
 
   private:
-    QgsExpressionNode *mNode = nullptr;
-    QgsExpressionNodeInOperator::NodeList *mList = nullptr;
+    QgsExpressionNodeInOperator( const QgsExpressionNodeInOperator &other ) = delete;
+    QgsExpressionNodeInOperator &operator=( const QgsExpressionNodeInOperator &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeInOperator( const QgsExpressionNodeInOperator &other );
+#endif
+
+    std::unique_ptr<QgsExpressionNode> mNode;
+    std::unique_ptr<QgsExpressionNodeInOperator::NodeList> mList;
     bool mNotIn;
 };
 
 /**
- * An expression node for expression functions.
+ * \brief An expression node for expression functions.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeFunction : public QgsExpressionNode
 {
   public:
-
     /**
      * A function node consists of an index of the function in the global function array and
      * a list of arguments that will be passed to it.
      */
     QgsExpressionNodeFunction( int fnIndex, QgsExpressionNode::NodeList *args SIP_TRANSFER );
 
+    /**
+     * Constructor for QgsExpressionNodeFunction, using a shared_ptr to the function.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 4.4
+     */
+    SIP_SKIP QgsExpressionNodeFunction( std::shared_ptr<QgsExpressionFunction> function, QgsExpressionNode::NodeList *args SIP_TRANSFER );
+
     ~QgsExpressionNodeFunction() override;
 
-    /**
+#ifdef SIP_RUN
+    SIP_PYOBJECT __repr__();
+    % MethodCode QString function;
+    std::shared_ptr<QgsExpressionFunction> fd = sipCpp->function();
+    if ( fd )
+    {
+      function = fd->name();
+    }
+    else
+    {
+      function = u"invalid"_s;
+    }
+
+    QString str = u"<QgsExpressionNodeFunction: %1>"_s.arg( function );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+#endif
+
+      /**
      * Returns the index of the node's function.
+    */
+      int fnIndex() const;
+
+    /**
+     * Returns a reference to the node's function.
+     *
+     * \note Not available in Python bindings.
+     *
+     * \since QGIS 4.4
      */
-    int fnIndex() const { return mFnIndex; }
+    SIP_SKIP std::shared_ptr<QgsExpressionFunction> function() const;
 
     /**
      * Returns a list of arguments specified for the function.
      */
-    QgsExpressionNode::NodeList *args() const { return mArgs; }
+    QgsExpressionNode::NodeList *args() const { return mArgs.get(); }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -344,27 +501,34 @@ class CORE_EXPORT QgsExpressionNodeFunction : public QgsExpressionNode
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
 
-    QList<const QgsExpressionNode *> nodes() const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+    QgsExpressionNode *simplifiedNode() const override SIP_FACTORY;
 
     //! Tests whether the provided argument list is valid for the matching function
     static bool validateParams( int fnIndex, QgsExpressionNode::NodeList *args, QString &error );
 
   private:
-    int mFnIndex;
-    NodeList *mArgs = nullptr;
+    QgsExpressionNodeFunction( const QgsExpressionNodeFunction &other ) = delete;
+    QgsExpressionNodeFunction &operator=( const QgsExpressionNodeFunction &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeFunction( const QgsExpressionNodeFunction &other );
+#endif
+
+    std::shared_ptr<QgsExpressionFunction> mFunction = nullptr;
+    std::unique_ptr<NodeList> mArgs;
 };
 
 /**
- * An expression node for literal values.
+ * \brief An expression node for literal values.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeLiteral : public QgsExpressionNode
 {
   public:
-
     /**
      * Constructor for QgsExpressionNodeLiteral, with the specified literal \a value.
      */
@@ -372,8 +536,18 @@ class CORE_EXPORT QgsExpressionNodeLiteral : public QgsExpressionNode
       : mValue( value )
     {}
 
-    //! The value of the literal.
-    inline QVariant value() const { return mValue; }
+#ifdef SIP_RUN
+    SIP_PYOBJECT __repr__();
+    % MethodCode QString str = u"<QgsExpressionNodeLiteral: %1>"_s.arg( sipCpp->valueAsString() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+#endif
+
+      //! The value of the literal.
+      inline QVariant value() const
+    {
+      return mValue;
+    }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -384,34 +558,49 @@ class CORE_EXPORT QgsExpressionNodeLiteral : public QgsExpressionNode
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
 
-    QList<const QgsExpressionNode *> nodes() const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+
+    /**
+     * Returns a string representation of the node's literal value.
+     *
+     * \since QGIS 3.20
+     */
+    QString valueAsString() const;
 
   private:
     QVariant mValue;
 };
 
 /**
- * An expression node which takes it value from a feature's field.
+ * \brief An expression node which takes its value from a feature's field.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeColumnRef : public QgsExpressionNode
 {
   public:
-
     /**
      * Constructor for QgsExpressionNodeColumnRef, referencing the column
      * with the specified \a name.
      */
     QgsExpressionNodeColumnRef( const QString &name )
       : mName( name )
-      , mIndex( -1 )
     {}
 
-    //! The name of the column.
-    QString name() const { return mName; }
+#ifdef SIP_RUN
+    SIP_PYOBJECT __repr__();
+    % MethodCode QString str = u"<QgsExpressionNodeColumnRef: \"%1\">"_s.arg( sipCpp->name() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+#endif
+
+        //! The name of the column.
+        QString name() const
+    {
+      return mName;
+    }
 
     QgsExpressionNode::NodeType nodeType() const override;
     bool prepareNode( QgsExpression *parent, const QgsExpressionContext *context ) override;
@@ -421,7 +610,7 @@ class CORE_EXPORT QgsExpressionNodeColumnRef : public QgsExpressionNode
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
-    QList<const QgsExpressionNode *> nodes( ) const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
 
     bool needsGeometry() const override;
 
@@ -430,60 +619,56 @@ class CORE_EXPORT QgsExpressionNodeColumnRef : public QgsExpressionNode
 
   private:
     QString mName;
-    int mIndex;
+    int mIndex = -1;
 };
 
 /**
- * An expression node for CASE WHEN clauses.
+ * \brief An expression node for CASE WHEN clauses.
  * \ingroup core
  */
 class CORE_EXPORT QgsExpressionNodeCondition : public QgsExpressionNode
 {
   public:
-
     /**
-     * Represents a "WHEN... THEN..." portation of a CASE WHEN clause in an expression.
+     * \brief Represents a "WHEN... THEN..." portation of a CASE WHEN clause in an expression.
      * \ingroup core
      */
     class CORE_EXPORT WhenThen
     {
       public:
-
         /**
          * A combination of when and then. Simple as that.
          */
         WhenThen( QgsExpressionNode *whenExp, QgsExpressionNode *thenExp );
         ~WhenThen();
 
-        //! WhenThen nodes cannot be copied.
         WhenThen( const WhenThen &rh ) = delete;
-        //! WhenThen nodes cannot be copied.
         WhenThen &operator=( const WhenThen &rh ) = delete;
 
         /**
          * Gets a deep copy of this WhenThen combination.
          */
-        QgsExpressionNodeCondition::WhenThen *clone() const SIP_FACTORY;
+        std::unique_ptr<QgsExpressionNodeCondition::WhenThen> clone() const;
 
         /**
          * The expression that makes the WHEN part of the condition.
          * \return The expression node that makes the WHEN part of the condition check.
          */
-        QgsExpressionNode *whenExp() const { return mWhenExp; }
+        QgsExpressionNode *whenExp() const { return mWhenExp.get(); }
 
         /**
          * The expression node that makes the THEN result part of the condition.
          * \return The expression node that makes the THEN result part of the condition.
          */
 
-        QgsExpressionNode *thenExp() const { return mThenExp; }
+        QgsExpressionNode *thenExp() const { return mThenExp.get(); }
 
       private:
 #ifdef SIP_RUN
         WhenThen( const QgsExpressionNodeCondition::WhenThen &rh );
 #endif
-        QgsExpressionNode *mWhenExp = nullptr;
-        QgsExpressionNode *mThenExp = nullptr;
+        std::unique_ptr<QgsExpressionNode> mWhenExp;
+        std::unique_ptr<QgsExpressionNode> mThenExp;
 
         friend class QgsExpressionNodeCondition;
     };
@@ -497,10 +682,7 @@ class CORE_EXPORT QgsExpressionNodeCondition : public QgsExpressionNode
     /**
      * Create a new node with the given list of \a conditions and an optional \a elseExp expression.
      */
-    QgsExpressionNodeCondition( const QgsExpressionNodeCondition::WhenThenList &conditions, QgsExpressionNode *elseExp = nullptr ) SIP_SKIP
-  : mConditions( conditions )
-    , mElseExp( elseExp )
-    {}
+    QgsExpressionNodeCondition( const QgsExpressionNodeCondition::WhenThenList &conditions, QgsExpressionNode *elseExp = nullptr ) SIP_SKIP : mConditions( conditions ), mElseExp( elseExp ) {}
 
     ~QgsExpressionNodeCondition() override;
 
@@ -519,21 +701,30 @@ class CORE_EXPORT QgsExpressionNodeCondition : public QgsExpressionNode
      * The ELSE expression used for the condition.
      * \return The ELSE expression used for the condition.
      */
-    QgsExpressionNode *elseExp() const { return mElseExp; }
+    QgsExpressionNode *elseExp() const { return mElseExp.get(); }
 
     QSet<QString> referencedColumns() const override;
     QSet<QString> referencedVariables() const override;
     QSet<QString> referencedFunctions() const override;
 
-    QList<const QgsExpressionNode *> nodes() const override; SIP_SKIP
+    QList<const QgsExpressionNode *> nodes() const override SIP_SKIP;
 
     bool needsGeometry() const override;
     QgsExpressionNode *clone() const override SIP_FACTORY;
     bool isStatic( QgsExpression *parent, const QgsExpressionContext *context ) const override;
+    QgsExpressionNode *simplifiedNode() const override SIP_FACTORY;
 
   private:
+    QgsExpressionNodeCondition( const QgsExpressionNodeCondition &other ) = delete;
+    QgsExpressionNodeCondition &operator=( const QgsExpressionNodeCondition &other ) = delete;
+
+#ifdef SIP_RUN
+    QgsExpressionNodeCondition( const QgsExpressionNodeCondition &other );
+#endif
+
+
     WhenThenList mConditions;
-    QgsExpressionNode *mElseExp = nullptr;
+    std::unique_ptr<QgsExpressionNode> mElseExp;
 };
 
 

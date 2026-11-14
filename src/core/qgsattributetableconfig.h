@@ -16,50 +16,57 @@
 #ifndef QGSATTRIBUTETABLECONFIG_H
 #define QGSATTRIBUTETABLECONFIG_H
 
-#include <QString>
-#include <QVector>
-#include <QDomNode>
-#include <QVariant>
-
-#include "qgis_sip.h"
 #include "qgis_core.h"
+#include "qgis_sip.h"
+
+#include <QDomNode>
+#include <QString>
+#include <QVariant>
+#include <QVector>
 
 class QgsFields;
 
 /**
  * \ingroup core
- * This is a container for configuration of the attribute table.
+ * \brief A container for configuration of the attribute table.
+ *
  * The configuration is specific for one vector layer.
- * \since QGIS 2.16
  */
-
 class CORE_EXPORT QgsAttributeTableConfig
 {
-  public:
+    Q_GADGET
 
+  public:
     /**
      * The type of an attribute table column.
      */
     enum Type
     {
-      Field,    //!< This column represents a field
-      Action    //!< This column represents an action widget
+      Field, //!< This column represents a field
+      Action //!< This column represents an action widget
     };
 
     /**
      * Defines the configuration of a column in the attribute table.
      */
-    struct ColumnConfig
+    struct CORE_EXPORT ColumnConfig
     {
-      //! Constructor for ColumnConfig
-      ColumnConfig() = default;
+        ColumnConfig() = default;
 
-      bool operator== ( const QgsAttributeTableConfig::ColumnConfig &other ) const SIP_SKIP;
+        // TODO c++20 - replace with = default
+        bool operator==( const QgsAttributeTableConfig::ColumnConfig &other ) const SIP_SKIP;
 
-      QgsAttributeTableConfig::Type type = Field;    //!< The type of this column.
-      QString name; //!< The name of the attribute if this column represents a field
-      bool hidden = false;  //!< Flag that controls if the column is hidden
-      int width = -1; //!< Width of column, or -1 for default width
+        //! The type of this column.
+        QgsAttributeTableConfig::Type type = Field;
+
+        //! The name of the attribute if this column represents a field
+        QString name;
+
+        //! Flag that controls if the column is hidden
+        bool hidden = false;
+
+        //! Width of column, or -1 for default width
+        int width = -1;
     };
 
     /**
@@ -67,13 +74,22 @@ class CORE_EXPORT QgsAttributeTableConfig
      */
     enum ActionWidgetStyle
     {
-      ButtonList,   //!< A list of buttons
-      DropDown      //!< A tool button with a drop-down to select the current action
+      ButtonList, //!< A list of buttons
+      DropDown    //!< A tool button with a drop-down to select the current action
     };
 
     /**
-     * Constructor for QgsAttributeTableConfig.
-     */
+    * The way to add features in the attribute table
+    */
+    enum class AddFeatureMethod : int
+    {
+      Unset, //!< No method set for current layer
+      Form,  //!< Opens a new Attributeform-Dialog
+      Table  //!< Adds a new row (or a form embedded in the attribute table depending on the view)
+    };
+    Q_ENUM( AddFeatureMethod )
+
+
     QgsAttributeTableConfig() = default;
 
     /**
@@ -84,15 +100,33 @@ class CORE_EXPORT QgsAttributeTableConfig
 
     /**
      * Returns TRUE if the configuration is empty, ie it contains no columns.
+     *
+     * \see size()
      */
     bool isEmpty() const;
 
     /**
+     * Returns the number of columns in the configuration.
+     *
+     * \since QGIS 3.22
+     */
+    int size() const;
+
+#ifdef SIP_RUN
+    // clang-format off
+    int __len__() const;
+    % MethodCode
+    sipRes = sipCpp->size();
+    % End
+// clang-format on
+#endif
+
+      /**
      * Maps a visible column index to its original column index.
      * \param visibleColumn index of visible column
      * \returns corresponding index when hidden columns are considered
      */
-    int mapVisibleColumnToIndex( int visibleColumn ) const;
+      int mapVisibleColumnToIndex( int visibleColumn ) const;
 
     /**
      * Set the list of columns visible in the attribute table.
@@ -149,11 +183,54 @@ class CORE_EXPORT QgsAttributeTableConfig
     void setSortExpression( const QString &sortExpression );
 
     /**
+     * Returns the method that defines how features are added (single form or embedded in a table).
+     * \see setAddFeatureMethod()
+     * \since QGIS 4.2
+     */
+    AddFeatureMethod addFeatureMethod() const;
+
+    /**
+     * Sets the \a addFeatureMethod that defines how features are added (single form or embedded in a table).
+     * \see addFeatureMethod()
+     * \since QGIS 4.2
+    */
+    void setAddFeatureMethod( const AddFeatureMethod addFeatureMethod );
+
+#ifndef SIP_RUN
+
+    /**
      * Returns the width of a column, or -1 if column should use default width.
      * \param column column index
      * \see setColumnWidth()
      */
     int columnWidth( int column ) const;
+#else
+    // clang-format off
+
+    /**
+     * Returns the width of a column, or -1 if column should use default width.
+     * \param column column index
+     * \throws IndexError if the column is not found
+     * \see setColumnWidth()
+     */
+    int columnWidth( int column ) const;
+    % MethodCode
+    {
+      if ( a0 < 0 || a0 >= sipCpp->size() )
+      {
+        PyErr_SetString( PyExc_IndexError, QByteArray::number( a0 ) );
+        sipIsErr = 1;
+      }
+      else
+      {
+        return PyLong_FromLong( sipCpp->columnWidth( a0 ) );
+      }
+    }
+    % End
+// clang-format on
+#endif
+
+#ifndef SIP_RUN
 
     /**
      * Sets the width of a column.
@@ -162,6 +239,32 @@ class CORE_EXPORT QgsAttributeTableConfig
      * \see columnWidth()
      */
     void setColumnWidth( int column, int width );
+#else
+      // clang-format off
+
+    /**
+     * Sets the width of a column.
+     * \param column column index
+     * \param width column width in pixels, or -1 if column should use default width
+     * \throws IndexError if the column is not found
+     * \see columnWidth()
+     */
+    void setColumnWidth( int column, int width );
+    % MethodCode
+    if ( a0 < 0 || a0 >= sipCpp->size() )
+    {
+      PyErr_SetString( PyExc_IndexError, QByteArray::number( a0 ) );
+      sipIsErr = 1;
+    }
+    else
+    {
+      sipCpp->setColumnWidth( a0, a1 );
+    }
+    % End
+// clang-format on
+#endif
+
+#ifndef SIP_RUN
 
     /**
      * Returns TRUE if the specified column is hidden.
@@ -169,6 +272,33 @@ class CORE_EXPORT QgsAttributeTableConfig
      * \see setColumnHidden()
      */
     bool columnHidden( int column ) const;
+#else
+      // clang-format off
+
+    /**
+     * Returns TRUE if the specified column is hidden.
+     * \param column column index
+     * \throws IndexError if the column is not found
+     * \see setColumnHidden()
+     */
+    bool columnHidden( int column ) const;
+    % MethodCode
+    {
+      if ( a0 < 0 || a0 >= sipCpp->size() )
+      {
+        PyErr_SetString( PyExc_IndexError, QByteArray::number( a0 ) );
+        sipIsErr = 1;
+      }
+      else
+      {
+        return PyBool_FromLong( sipCpp->columnHidden( a0 ) );
+      }
+    }
+    % End
+// clang-format on
+#endif
+
+#ifndef SIP_RUN
 
     /**
      * Sets whether the specified column should be hidden.
@@ -177,16 +307,38 @@ class CORE_EXPORT QgsAttributeTableConfig
      * \see columnHidden()
      */
     void setColumnHidden( int column, bool hidden );
+#else
+      // clang-format off
+
+    /**
+     * Sets whether the specified column should be hidden.
+     * \param column column index
+     * \param hidden set to TRUE to hide column
+     * \throws IndexError if the column is not found
+     * \see columnHidden()
+     */
+    void setColumnHidden( int column, bool hidden );
+    % MethodCode
+    if ( a0 < 0 || a0 >= sipCpp->size() )
+    {
+      PyErr_SetString( PyExc_IndexError, QByteArray::number( a0 ) );
+      sipIsErr = 1;
+    }
+    else
+    {
+      sipCpp->setColumnHidden( a0, a1 );
+    }
+    % End
+// clang-format on
+#endif
 
     /**
      * Gets the sort order
-     * \since QGIS 2.16
      */
     Qt::SortOrder sortOrder() const;
 
     /**
      * Set the sort order
-     * \since QGIS 2.16
      */
     void setSortOrder( Qt::SortOrder sortOrder );
 
@@ -196,16 +348,14 @@ class CORE_EXPORT QgsAttributeTableConfig
      */
     bool hasSameColumns( const QgsAttributeTableConfig &other ) const;
 
-    /**
-     * Compare this configuration to other.
-     */
-    bool operator!= ( const QgsAttributeTableConfig &other ) const;
+    bool operator!=( const QgsAttributeTableConfig &other ) const;
 
   private:
     QVector<ColumnConfig> mColumns;
     ActionWidgetStyle mActionWidgetStyle = DropDown;
     QString mSortExpression;
     Qt::SortOrder mSortOrder = Qt::AscendingOrder;
+    AddFeatureMethod mAddFeatureMethod = AddFeatureMethod::Unset;
 };
 
 Q_DECLARE_METATYPE( QgsAttributeTableConfig::ColumnConfig )

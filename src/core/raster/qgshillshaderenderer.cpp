@@ -15,35 +15,38 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QColor>
-
 #include "qgshillshaderenderer.h"
-#include "qgsrastertransparency.h"
-#include "qgsrasterinterface.h"
-#include "qgsrasterblock.h"
-#include "qgsrectangle.h"
-#include "qgsmessagelog.h"
+
 #include <memory>
+
+#include "qgsmessagelog.h"
+#include "qgsrasterblock.h"
+#include "qgsrasterinterface.h"
+#include "qgsrastertransparency.h"
+#include "qgsrectangle.h"
+#include "qgssldexportcontext.h"
+
+#include <QColor>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 #ifdef HAVE_OPENCL
 #ifdef QGISDEBUG
 #include <chrono>
-#include "qgssettings.h"
+#include "qgsmaprendererjob.h"
+#include "qgssettingsentryimpl.h"
 #endif
 #include "qgsexception.h"
 #include "qgsopenclutils.h"
 #endif
 
-QgsHillshadeRenderer::QgsHillshadeRenderer( QgsRasterInterface *input, int band, double lightAzimuth, double lightAngle ):
-  QgsRasterRenderer( input, QStringLiteral( "hillshade" ) )
+QgsHillshadeRenderer::QgsHillshadeRenderer( QgsRasterInterface *input, int band, double lightAzimuth, double lightAngle )
+  : QgsRasterRenderer( input, u"hillshade"_s )
   , mBand( band )
-  , mZFactor( 1 )
   , mLightAngle( lightAngle )
   , mLightAzimuth( lightAzimuth )
-  , mMultiDirectional( false )
-{
-
-}
+{}
 
 QgsHillshadeRenderer *QgsHillshadeRenderer::clone() const
 {
@@ -55,19 +58,24 @@ QgsHillshadeRenderer *QgsHillshadeRenderer::clone() const
   return r;
 }
 
-QgsRasterRenderer *QgsHillshadeRenderer::create( const QDomElement &elem, QgsRasterInterface *input )
+Qgis::RasterRendererFlags QgsHillshadeRenderer::flags() const
+{
+  return Qgis::RasterRendererFlag::InternalLayerOpacityHandling;
+}
+
+std::unique_ptr<QgsRasterRenderer> QgsHillshadeRenderer::create( const QDomElement &elem, QgsRasterInterface *input )
 {
   if ( elem.isNull() )
   {
     return nullptr;
   }
 
-  int band = elem.attribute( QStringLiteral( "band" ), QStringLiteral( "0" ) ).toInt();
-  double azimuth = elem.attribute( QStringLiteral( "azimuth" ), QStringLiteral( "315" ) ).toDouble();
-  double angle = elem.attribute( QStringLiteral( "angle" ), QStringLiteral( "45" ) ).toDouble();
-  double zFactor = elem.attribute( QStringLiteral( "zfactor" ), QStringLiteral( "1" ) ).toDouble();
-  bool multiDirectional = elem.attribute( QStringLiteral( "multidirection" ), QStringLiteral( "0" ) ).toInt();
-  QgsHillshadeRenderer *r = new QgsHillshadeRenderer( input, band, azimuth, angle );
+  int band = elem.attribute( u"band"_s, u"0"_s ).toInt();
+  double azimuth = elem.attribute( u"azimuth"_s, u"315"_s ).toDouble();
+  double angle = elem.attribute( u"angle"_s, u"45"_s ).toDouble();
+  double zFactor = elem.attribute( u"zfactor"_s, u"1"_s ).toDouble();
+  bool multiDirectional = elem.attribute( u"multidirection"_s, u"0"_s ).toInt();
+  auto r = std::make_unique<QgsHillshadeRenderer>( input, band, azimuth, angle );
   r->readXml( elem );
 
   r->setZFactor( zFactor );
@@ -82,24 +90,24 @@ void QgsHillshadeRenderer::writeXml( QDomDocument &doc, QDomElement &parentElem 
     return;
   }
 
-  QDomElement rasterRendererElem = doc.createElement( QStringLiteral( "rasterrenderer" ) );
+  QDomElement rasterRendererElem = doc.createElement( u"rasterrenderer"_s );
   _writeXml( doc, rasterRendererElem );
 
-  rasterRendererElem.setAttribute( QStringLiteral( "band" ), mBand );
-  rasterRendererElem.setAttribute( QStringLiteral( "azimuth" ), QString::number( mLightAzimuth ) );
-  rasterRendererElem.setAttribute( QStringLiteral( "angle" ), QString::number( mLightAngle ) );
-  rasterRendererElem.setAttribute( QStringLiteral( "zfactor" ), QString::number( mZFactor ) );
-  rasterRendererElem.setAttribute( QStringLiteral( "multidirection" ), QString::number( mMultiDirectional ) );
+  rasterRendererElem.setAttribute( u"band"_s, mBand );
+  rasterRendererElem.setAttribute( u"azimuth"_s, QString::number( mLightAzimuth ) );
+  rasterRendererElem.setAttribute( u"angle"_s, QString::number( mLightAngle ) );
+  rasterRendererElem.setAttribute( u"zfactor"_s, QString::number( mZFactor ) );
+  rasterRendererElem.setAttribute( u"multidirection"_s, QString::number( mMultiDirectional ) );
   parentElem.appendChild( rasterRendererElem );
 }
 
 QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &extent, int width, int height, QgsRasterBlockFeedback *feedback )
 {
   Q_UNUSED( bandNo )
-  std::unique_ptr< QgsRasterBlock > outputBlock( new QgsRasterBlock() );
+  auto outputBlock = std::make_unique<QgsRasterBlock>();
   if ( !mInput )
   {
-    QgsDebugMsg( QStringLiteral( "No input raster!" ) );
+    QgsDebugError( u"No input raster!"_s );
     return outputBlock.release();
   }
 
@@ -107,7 +115,7 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
 
   if ( !inputBlock || inputBlock->isEmpty() )
   {
-    QgsDebugMsg( QStringLiteral( "No raster data!" ) );
+    QgsDebugError( u"No raster data!"_s );
     return outputBlock.release();
   }
 
@@ -127,10 +135,13 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
     alphaBlock = inputBlock;
   }
 
-  if ( !outputBlock->reset( Qgis::ARGB32_Premultiplied, width, height ) )
+  if ( !outputBlock->reset( Qgis::DataType::ARGB32_Premultiplied, width, height ) )
   {
     return outputBlock.release();
   }
+
+  if ( width == 0 || height == 0 )
+    return outputBlock.release();
 
   // Starting the computation
 
@@ -162,20 +173,16 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
 #ifdef HAVE_OPENCL
 
   // Use OpenCL? For now OpenCL is enabled in the default configuration only
-  bool useOpenCL( QgsOpenClUtils::enabled()
-                  && QgsOpenClUtils::available()
-                  && ( ! mRasterTransparency || mRasterTransparency->isEmpty() )
-                  && mAlphaBand <= 0
-                  && inputBlock->dataTypeSize() <= 4 );
+  bool useOpenCL( QgsOpenClUtils::enabled() && QgsOpenClUtils::available() && ( !mRasterTransparency || mRasterTransparency->isEmpty() ) && mAlphaBand <= 0 && inputBlock->dataTypeSize() <= 4 );
   // Check for sources
   QString source;
   if ( useOpenCL )
   {
-    source = QgsOpenClUtils::sourceFromBaseName( QStringLiteral( "hillshade_renderer" ) );
+    source = QgsOpenClUtils::sourceFromBaseName( u"hillshade_renderer"_s );
     if ( source.isEmpty() )
     {
       useOpenCL = false;
-      QgsMessageLog::logMessage( QObject::tr( "Error loading OpenCL program source from path %1" ).arg( QgsOpenClUtils::sourcePath() ), QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::Critical );
+      QgsMessageLog::logMessage( QObject::tr( "Error loading OpenCL program source from path %1" ).arg( QgsOpenClUtils::sourcePath() ), QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::MessageLevel::Critical );
     }
   }
 
@@ -185,7 +192,6 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
 
   if ( useOpenCL )
   {
-
     try
     {
       std::size_t inputDataTypeSize = inputBlock->dataTypeSize();
@@ -195,30 +201,30 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
       switch ( inputBlock->dataType() )
       {
         case Qgis::DataType::Byte:
-          typeName = QStringLiteral( "unsigned char" );
+          typeName = u"unsigned char"_s;
           break;
         case Qgis::DataType::UInt16:
-          typeName = QStringLiteral( "unsigned int" );
+          typeName = u"unsigned int"_s;
           break;
         case Qgis::DataType::Int16:
-          typeName = QStringLiteral( "short" );
+          typeName = u"short"_s;
           break;
         case Qgis::DataType::UInt32:
-          typeName = QStringLiteral( "unsigned int" );
+          typeName = u"unsigned int"_s;
           break;
         case Qgis::DataType::Int32:
-          typeName = QStringLiteral( "int" );
+          typeName = u"int"_s;
           break;
         case Qgis::DataType::Float32:
-          typeName = QStringLiteral( "float" );
+          typeName = u"float"_s;
           break;
         default:
-          throw QgsException( QStringLiteral( "Unsupported data type for OpenCL processing." ) );
+          throw QgsException( u"Unsupported data type for OpenCL processing."_s );
       }
 
       if ( inputBlock->dataType() != Qgis::DataType::Float32 )
       {
-        source.replace( QLatin1String( "__global float *scanLine" ), QStringLiteral( "__global %1 *scanLine" ).arg( typeName ) );
+        source.replace( "__global float *scanLine"_L1, u"__global %1 *scanLine"_s.arg( typeName ) );
       }
 
       // Data type for input is Float32 (4 bytes)
@@ -232,7 +238,7 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
       // Buffer scanlines, 1px height, 2px wider
       // Data type for input is Float32 (4 bytes)
       // keep only three scanlines in memory at a time, make room for initial and final nodata
-      std::unique_ptr<QgsRasterBlock> scanLine = qgis::make_unique<QgsRasterBlock>( inputBlock->dataType(), scanLineWidth, 1 );
+      auto scanLine = std::make_unique<QgsRasterBlock>( inputBlock->dataType(), scanLineWidth, 1 );
       // Note: output block is not 2px wider and it is an image
       // Prepare context and queue
       cl::Context ctx = QgsOpenClUtils::context();
@@ -250,18 +256,18 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
       // For fast formula from GDAL DEM
       rasterParams.push_back( cos_az_mul_cos_alt_mul_z_mul_254 ); // 6
       rasterParams.push_back( sin_az_mul_cos_alt_mul_z_mul_254 ); // 7
-      rasterParams.push_back( square_z ); // 8
-      rasterParams.push_back( sin_altRadians_mul_254 ); // 9
+      rasterParams.push_back( square_z );                         // 8
+      rasterParams.push_back( sin_altRadians_mul_254 );           // 9
 
       // For multidirectional fast formula
-      rasterParams.push_back( sin_altRadians_mul_127 ); // 10
+      rasterParams.push_back( sin_altRadians_mul_127 );              // 10
       rasterParams.push_back( cos225_az_mul_cos_alt_mul_z_mul_127 ); // 11
-      rasterParams.push_back( cos_alt_mul_z_mul_127 ); // 12
+      rasterParams.push_back( cos_alt_mul_z_mul_127 );               // 12
 
       // Default color for nodata (BGR components)
-      rasterParams.push_back( static_cast<float>( qBlue( defaultNodataColor ) ) ); // 13
-      rasterParams.push_back( static_cast<float>( qGreen( defaultNodataColor ) ) ); // 14
-      rasterParams.push_back( static_cast<float>( qRed( defaultNodataColor ) ) ); // 15
+      rasterParams.push_back( static_cast<float>( qBlue( defaultNodataColor ) ) );           // 13
+      rasterParams.push_back( static_cast<float>( qGreen( defaultNodataColor ) ) );          // 14
+      rasterParams.push_back( static_cast<float>( qRed( defaultNodataColor ) ) );            // 15
       rasterParams.push_back( static_cast<float>( qAlpha( defaultNodataColor ) ) / 255.0f ); // 16
 
       // Whether use multidirectional
@@ -271,13 +277,13 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
       cl::Buffer scanLine1Buffer( ctx, CL_MEM_READ_ONLY, bufferSize, nullptr, nullptr );
       cl::Buffer scanLine2Buffer( ctx, CL_MEM_READ_ONLY, bufferSize, nullptr, nullptr );
       cl::Buffer scanLine3Buffer( ctx, CL_MEM_READ_ONLY, bufferSize, nullptr, nullptr );
-      cl::Buffer *scanLineBuffer[3] = {&scanLine1Buffer, &scanLine2Buffer, &scanLine3Buffer};
+      cl::Buffer *scanLineBuffer[3] = { &scanLine1Buffer, &scanLine2Buffer, &scanLine3Buffer };
       // Note that result buffer is an image
       cl::Buffer resultLineBuffer( ctx, CL_MEM_WRITE_ONLY, outputDataTypeSize * width, nullptr, nullptr );
 
       static std::map<Qgis::DataType, cl::Program> programCache;
       cl::Program program = programCache[inputBlock->dataType()];
-      if ( ! program.get() )
+      if ( !program.get() )
       {
         // Create a program from the kernel source
         programCache[inputBlock->dataType()] = QgsOpenClUtils::buildProgram( source, QgsOpenClUtils::ExceptionBehavior::Throw );
@@ -288,17 +294,11 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
       // program = QgsOpenClUtils::buildProgram( ctx, source, QgsOpenClUtils::ExceptionBehavior::Throw );
 
       // Create the OpenCL kernel
-      auto kernel =  cl::KernelFunctor <
-                     cl::Buffer &,
-                     cl::Buffer &,
-                     cl::Buffer &,
-                     cl::Buffer &,
-                     cl::Buffer &
-                     > ( program, "processNineCellWindow" );
+      auto kernel = cl::KernelFunctor< cl::Buffer &, cl::Buffer &, cl::Buffer &, cl::Buffer &, cl::Buffer & >( program, "processNineCellWindow" );
 
 
       // Rotating buffer index
-      std::vector<int> rowIndex = {0, 1, 2};
+      std::vector<int> rowIndex = { 0, 1, 2 };
 
       for ( int i = 0; i < height; i++ )
       {
@@ -316,13 +316,13 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
         {
           // Fill scanline 1 with (input) nodata for the values above the first row and feed scanline2 with the first row
           scanLine->resetNoDataValue();
-          queue.enqueueWriteBuffer( scanLine1Buffer, CL_TRUE, 0, bufferSize, scanLine->bits( ) );
+          queue.enqueueWriteBuffer( scanLine1Buffer, CL_TRUE, 0, bufferSize, scanLine->bits() );
           // Read first row
           memcpy( scanLine->bits( 0, 1 ), inputBlock->bits( i, 0 ), inputSize );
-          queue.enqueueWriteBuffer( scanLine2Buffer, CL_TRUE, 0, bufferSize, scanLine->bits( ) ); // row 0
+          queue.enqueueWriteBuffer( scanLine2Buffer, CL_TRUE, 0, bufferSize, scanLine->bits() ); // row 0
           // Second row
           memcpy( scanLine->bits( 0, 1 ), inputBlock->bits( i + 1, 0 ), inputSize );
-          queue.enqueueWriteBuffer( scanLine3Buffer, CL_TRUE, 0, bufferSize, scanLine->bits( ) ); //
+          queue.enqueueWriteBuffer( scanLine3Buffer, CL_TRUE, 0, bufferSize, scanLine->bits() ); //
         }
         else
         {
@@ -331,7 +331,7 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
           if ( i == inputBlock->height() - 1 )
           {
             scanLine->resetNoDataValue();
-            queue.enqueueWriteBuffer( *scanLineBuffer[rowIndex[2]], CL_TRUE, 0, bufferSize, scanLine->bits( ) );
+            queue.enqueueWriteBuffer( *scanLineBuffer[rowIndex[2]], CL_TRUE, 0, bufferSize, scanLine->bits() );
           }
           else // Overwrite from input, skip first and last
           {
@@ -339,108 +339,110 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
           }
         }
 
-        kernel( cl::EnqueueArgs(
-                  queue,
-                  cl::NDRange( width )
-                ),
-                *scanLineBuffer[rowIndex[0]],
-                *scanLineBuffer[rowIndex[1]],
-                *scanLineBuffer[rowIndex[2]],
-                resultLineBuffer,
-                rasterParamsBuffer
-              );
+        kernel( cl::EnqueueArgs( queue, cl::NDRange( width ) ), *scanLineBuffer[rowIndex[0]], *scanLineBuffer[rowIndex[1]], *scanLineBuffer[rowIndex[2]], resultLineBuffer, rasterParamsBuffer );
 
-        queue.enqueueReadBuffer( resultLineBuffer, CL_TRUE, 0, outputDataTypeSize * outputBlock->width( ), outputBlock->bits( i, 0 ) );
+        queue.enqueueReadBuffer( resultLineBuffer, CL_TRUE, 0, outputDataTypeSize * outputBlock->width(), outputBlock->bits( i, 0 ) );
         std::rotate( rowIndex.begin(), rowIndex.begin() + 1, rowIndex.end() );
       }
     }
     catch ( cl::Error &e )
     {
-      QgsMessageLog::logMessage( QObject::tr( "Error running OpenCL program: %1 - %2" ).arg( e.what( ) ).arg( QgsOpenClUtils::errorText( e.err( ) ) ),
-                                 QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::Critical );
+      QgsMessageLog::logMessage( QObject::tr( "Error running OpenCL program: %1 - %2" ).arg( e.what() ).arg( QgsOpenClUtils::errorText( e.err() ) ), QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::MessageLevel::Critical );
       QgsOpenClUtils::setEnabled( false );
-      QgsMessageLog::logMessage( QObject::tr( "OpenCL has been disabled, you can re-enable it in the options dialog." ),
-                                 QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::Critical );
+      QgsMessageLog::logMessage( QObject::tr( "OpenCL has been disabled, you can re-enable it in the options dialog." ), QgsOpenClUtils::LOGMESSAGE_TAG, Qgis::MessageLevel::Critical );
     }
 
   } // End of OpenCL processing path
-  else  // Use the CPU and the original algorithm
+  else // Use the CPU and the original algorithm
   {
-
 #endif
 
-    for ( qgssize i = 0; i < static_cast<qgssize>( height ); i++ )
+    double pixelValues[9] { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    bool isNoData[9] { false, false, false, false, false, false, false, false, false };
+
+    for ( int row = 0; row < height; row++ )
     {
-
-      for ( qgssize j = 0; j < static_cast<qgssize>( width ); j++ )
+      for ( int col = 0; col < width; col++ )
       {
-
-        if ( inputBlock->isNoData( i,  j ) )
+        int iUp = row - 1;
+        int iDown = row + 1;
+        if ( row == 0 )
         {
-          outputBlock->setColor( static_cast<int>( i ), static_cast<int>( j ), defaultNodataColor );
+          iUp = row;
+        }
+        else if ( row == height - 1 )
+        {
+          iDown = row;
+        }
+
+        if ( col == 0 )
+        {
+          // seed the matrix with the values from the first column
+          pixelValues[0] = inputBlock->valueAndNoData( iUp, 0, isNoData[0] );
+          pixelValues[1] = pixelValues[0];
+          isNoData[1] = isNoData[0];
+          pixelValues[2] = pixelValues[0];
+          isNoData[2] = isNoData[0];
+
+          pixelValues[3] = inputBlock->valueAndNoData( row, 0, isNoData[3] );
+          pixelValues[4] = pixelValues[3];
+          isNoData[4] = isNoData[3];
+          pixelValues[5] = pixelValues[3];
+          isNoData[5] = isNoData[3];
+
+          pixelValues[6] = inputBlock->valueAndNoData( iDown, 0, isNoData[6] );
+          pixelValues[7] = pixelValues[6];
+          isNoData[7] = isNoData[6];
+          pixelValues[8] = pixelValues[6];
+          isNoData[8] = isNoData[6];
+        }
+        else
+        {
+          // shift matrices left
+          pixelValues[0] = pixelValues[1];
+          pixelValues[1] = pixelValues[2];
+          pixelValues[3] = pixelValues[4];
+          pixelValues[4] = pixelValues[5];
+          pixelValues[6] = pixelValues[7];
+          pixelValues[7] = pixelValues[8];
+          isNoData[0] = isNoData[1];
+          isNoData[1] = isNoData[2];
+          isNoData[3] = isNoData[4];
+          isNoData[4] = isNoData[5];
+          isNoData[6] = isNoData[7];
+          isNoData[7] = isNoData[8];
+        }
+
+        // calculate new values
+        if ( col < width - 1 )
+        {
+          pixelValues[2] = inputBlock->valueAndNoData( iUp, col + 1, isNoData[2] );
+          pixelValues[5] = inputBlock->valueAndNoData( row, col + 1, isNoData[5] );
+          pixelValues[8] = inputBlock->valueAndNoData( iDown, col + 1, isNoData[8] );
+        }
+
+        if ( isNoData[4] )
+        {
+          outputBlock->setColor( row, col, defaultNodataColor );
           continue;
         }
 
-        qgssize iUp, iDown, jLeft, jRight;
-        if ( i == 0 )
-        {
-          iUp = i;
-          iDown = i + 1;
-        }
-        else if ( i < static_cast<qgssize>( height ) - 1 )
-        {
-          iUp = i - 1;
-          iDown = i + 1;
-        }
-        else
-        {
-          iUp = i - 1;
-          iDown = i;
-        }
+        // This is center cell. Use this in place of nodata neighbors
+        const double x22 = pixelValues[4];
 
-        if ( j == 0 )
-        {
-          jLeft = j;
-          jRight = j + 1;
-        }
-        else if ( j <  static_cast<qgssize>( width ) - 1 )
-        {
-          jLeft = j - 1;
-          jRight = j + 1;
-        }
-        else
-        {
-          jLeft = j - 1;
-          jRight = j;
-        }
-
-        double x11;
-        double x21;
-        double x31;
-        double x12;
-        double x22; // Working cell
-        double x32;
-        double x13;
-        double x23;
-        double x33;
-
-        // This is center cell. It is not nodata. Use this in place of nodata neighbors
-        x22 = inputBlock->value( i, j );
-
-        x11 = inputBlock->isNoData( iUp, jLeft )  ? x22 : inputBlock->value( iUp, jLeft );
-        x21 = inputBlock->isNoData( i, jLeft )     ? x22 : inputBlock->value( i, jLeft );
-        x31 = inputBlock->isNoData( iDown, jLeft ) ? x22 : inputBlock->value( iDown, jLeft );
-
-        x12 = inputBlock->isNoData( iUp, j )       ? x22 : inputBlock->value( iUp, j );
+        const double x11 = isNoData[0] ? x22 : pixelValues[0];
+        const double x21 = isNoData[3] ? x22 : pixelValues[3];
+        const double x31 = isNoData[6] ? x22 : pixelValues[6];
+        const double x12 = isNoData[1] ? x22 : pixelValues[1];
         // x22
-        x32 = inputBlock->isNoData( iDown, j )     ? x22 : inputBlock->value( iDown, j );
+        const double x32 = isNoData[7] ? x22 : pixelValues[7];
+        const double x13 = isNoData[2] ? x22 : pixelValues[2];
+        const double x23 = isNoData[5] ? x22 : pixelValues[5];
+        const double x33 = isNoData[8] ? x22 : pixelValues[8];
 
-        x13 = inputBlock->isNoData( iUp, jRight )   ? x22 : inputBlock->value( iUp, jRight );
-        x23 = inputBlock->isNoData( i, jRight )     ? x22 : inputBlock->value( i, jRight );
-        x33 = inputBlock->isNoData( iDown, jRight ) ? x22 : inputBlock->value( iDown, jRight );
-
-        double derX = calcFirstDerX( x11, x21, x31, x12, x22, x32, x13, x23, x33, cellXSize );
-        double derY = calcFirstDerY( x11, x21, x31, x12, x22, x32, x13, x23, x33, cellYSize );
+        // Calculates the first order derivative in x-direction according to Horn (1981)
+        const double derX = ( ( x13 + x23 + x23 + x33 ) - ( x11 + x21 + x21 + x31 ) ) / ( 8 * cellXSize );
+        const double derY = ( ( x31 + x32 + x32 + x33 ) - ( x11 + x12 + x12 + x13 ) ) / ( 8 * -cellYSize );
 
         // Fast formula
 
@@ -448,11 +450,8 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
         if ( !mMultiDirectional )
         {
           // Standard single direction hillshade
-          grayValue = qBound( 0.0, ( sin_altRadians_mul_254 -
-                                     ( derY * cos_az_mul_cos_alt_mul_z_mul_254 -
-                                       derX * sin_az_mul_cos_alt_mul_z_mul_254 ) ) /
-                              std::sqrt( 1 + square_z * ( derX * derX + derY * derY ) )
-                              , 255.0 );
+          grayValue
+            = std::clamp( ( sin_altRadians_mul_254 - ( derY * cos_az_mul_cos_alt_mul_z_mul_254 - derX * sin_az_mul_cos_alt_mul_z_mul_254 ) ) / std::sqrt( 1 + square_z * ( derX * derX + derY * derY ) ), 0.0, 255.0 );
         }
         else
         {
@@ -464,22 +463,18 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
           // Flat?
           if ( xx_plus_yy == 0.0 )
           {
-            grayValue = qBound( 0.0f, static_cast<float>( 1.0 + sin_altRadians_mul_254 ), 255.0f );
+            grayValue = std::clamp( static_cast<float>( 1.0 + sin_altRadians_mul_254 ), 0.0f, 255.0f );
           }
           else
           {
             // ... then the shade value from different azimuth
-            float val225_mul_127 = sin_altRadians_mul_127 +
-                                   ( derX - derY ) * cos225_az_mul_cos_alt_mul_z_mul_127;
+            float val225_mul_127 = sin_altRadians_mul_127 + ( derX - derY ) * cos225_az_mul_cos_alt_mul_z_mul_127;
             val225_mul_127 = ( val225_mul_127 <= 0.0 ) ? 0.0 : val225_mul_127;
-            float val270_mul_127 = sin_altRadians_mul_127 -
-                                   derX * cos_alt_mul_z_mul_127;
+            float val270_mul_127 = sin_altRadians_mul_127 - derX * cos_alt_mul_z_mul_127;
             val270_mul_127 = ( val270_mul_127 <= 0.0 ) ? 0.0 : val270_mul_127;
-            float val315_mul_127 = sin_altRadians_mul_127 +
-                                   ( derX + derY ) * cos225_az_mul_cos_alt_mul_z_mul_127;
+            float val315_mul_127 = sin_altRadians_mul_127 + ( derX + derY ) * cos225_az_mul_cos_alt_mul_z_mul_127;
             val315_mul_127 = ( val315_mul_127 <= 0.0 ) ? 0.0 : val315_mul_127;
-            float val360_mul_127 = sin_altRadians_mul_127 -
-                                   derY * cos_alt_mul_z_mul_127;
+            float val360_mul_127 = sin_altRadians_mul_127 - derY * cos_alt_mul_z_mul_127;
             val360_mul_127 = ( val360_mul_127 <= 0.0 ) ? 0.0 : val360_mul_127;
 
             // ... then the weighted shading
@@ -487,34 +482,30 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
             const float weight_270 = xx;
             const float weight_315 = xx_plus_yy - weight_225;
             const float weight_360 = yy;
-            const float cang_mul_127 = (
-                                         ( weight_225 * val225_mul_127 +
-                                           weight_270 * val270_mul_127 +
-                                           weight_315 * val315_mul_127 +
-                                           weight_360 * val360_mul_127 ) / xx_plus_yy ) /
-                                       ( 1 + square_z * xx_plus_yy );
+            const float cang_mul_127 = ( ( weight_225 * val225_mul_127 + weight_270 * val270_mul_127 + weight_315 * val315_mul_127 + weight_360 * val360_mul_127 ) / xx_plus_yy )
+                                       / ( 1 + square_z * xx_plus_yy );
 
-            grayValue = qBound( 0.0f, 1.0f + cang_mul_127, 255.0f );
+            grayValue = std::clamp( 1.0f + cang_mul_127, 0.0f, 255.0f );
           }
         }
 
         double currentAlpha = mOpacity;
         if ( mRasterTransparency )
         {
-          currentAlpha = mRasterTransparency->alphaValue( x22, mOpacity * 255 ) / 255.0;
+          currentAlpha *= mRasterTransparency->opacityForValue( x22 );
         }
         if ( mAlphaBand > 0 )
         {
-          currentAlpha *= alphaBlock->value( i ) / 255.0;
+          currentAlpha *= alphaBlock->value( static_cast<qgssize>( row ) * width + col ) / 255.0;
         }
 
         if ( qgsDoubleNear( currentAlpha, 1.0 ) )
         {
-          outputBlock->setColor( i, j, qRgba( grayValue, grayValue, grayValue, 255 ) );
+          outputBlock->setColor( row, col, qRgba( grayValue, grayValue, grayValue, 255 ) );
         }
         else
         {
-          outputBlock->setColor( i, j, qRgba( currentAlpha * grayValue, currentAlpha * grayValue, currentAlpha * grayValue, currentAlpha * 255 ) );
+          outputBlock->setColor( row, col, qRgba( currentAlpha * grayValue, currentAlpha * grayValue, currentAlpha * grayValue, currentAlpha * 255 ) );
         }
       }
     }
@@ -523,14 +514,15 @@ QgsRasterBlock *QgsHillshadeRenderer::block( int bandNo, const QgsRectangle &ext
   } // End of switch in case OpenCL is not available or enabled
 
 #ifdef QGISDEBUG
-  if ( QgsSettings().value( QStringLiteral( "Map/logCanvasRefreshEvent" ), false ).toBool() )
+  if ( QgsMapRendererJob::settingsLogCanvasRefreshEvent->value() )
   {
-    QgsMessageLog::logMessage( QStringLiteral( "%1 processing time for hillshade (%2 x %3 ): %4 ms" )
-                               .arg( useOpenCL ? QStringLiteral( "OpenCL" ) : QStringLiteral( "CPU" ) )
-                               .arg( width )
-                               .arg( height )
-                               .arg( std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::system_clock::now() - startTime ).count() ),
-                               tr( "Rendering" ) );
+    QgsMessageLog::logMessage(
+      u"%1 processing time for hillshade (%2 x %3 ): %4 ms"_s.arg( useOpenCL ? u"OpenCL"_s : u"CPU"_s )
+        .arg( width )
+        .arg( height )
+        .arg( std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::system_clock::now() - startTime ).count() ),
+      tr( "Rendering" )
+    );
   }
 #endif
 #endif
@@ -546,43 +538,49 @@ QList<int> QgsHillshadeRenderer::usesBands() const
     bandList << mBand;
   }
   return bandList;
+}
 
+int QgsHillshadeRenderer::inputBand() const
+{
+  return mBand;
 }
 
 void QgsHillshadeRenderer::setBand( int bandNo )
 {
-  if ( bandNo > mInput->bandCount() || bandNo <= 0 )
+  setInputBand( bandNo );
+}
+
+bool QgsHillshadeRenderer::setInputBand( int band )
+{
+  if ( !mInput )
   {
-    return;
+    mBand = band;
+    return true;
   }
-  mBand = bandNo;
-}
-
-double QgsHillshadeRenderer::calcFirstDerX( double x11, double x21, double x31, double x12, double x22, double x32, double x13, double x23, double x33, double cellsize )
-{
-  Q_UNUSED( x12 )
-  Q_UNUSED( x22 )
-  Q_UNUSED( x32 )
-  return ( ( x13 + x23 + x23 + x33 ) - ( x11 + x21 + x21 + x31 ) ) / ( 8 * cellsize );
-}
-
-double QgsHillshadeRenderer::calcFirstDerY( double x11, double x21, double x31, double x12, double x22, double x32, double x13, double x23, double x33, double cellsize )
-{
-  Q_UNUSED( x21 )
-  Q_UNUSED( x22 )
-  Q_UNUSED( x23 )
-  return ( ( x31 + x32 + x32 + x33 ) - ( x11 + x12 + x12 + x13 ) ) / ( 8 * -cellsize );
+  else if ( band > 0 && band <= mInput->bandCount() )
+  {
+    mBand = band;
+    return true;
+  }
+  return false;
 }
 
 void QgsHillshadeRenderer::toSld( QDomDocument &doc, QDomElement &element, const QVariantMap &props ) const
 {
+  QgsSldExportContext context;
+  context.setExtraProperties( props );
+  toSld( doc, element, context );
+}
+
+bool QgsHillshadeRenderer::toSld( QDomDocument &doc, QDomElement &element, QgsSldExportContext &context ) const
+{
   // create base structure
-  QgsRasterRenderer::toSld( doc, element, props );
+  QgsRasterRenderer::toSld( doc, element, context );
 
   // look for RasterSymbolizer tag
-  QDomNodeList elements = element.elementsByTagName( QStringLiteral( "sld:RasterSymbolizer" ) );
+  QDomNodeList elements = element.elementsByTagName( u"sld:RasterSymbolizer"_s );
   if ( elements.size() == 0 )
-    return;
+    return false;
 
   // there SHOULD be only one
   QDomElement rasterSymbolizerElem = elements.at( 0 ).toElement();
@@ -590,17 +588,17 @@ void QgsHillshadeRenderer::toSld( QDomDocument &doc, QDomElement &element, const
   // add Channel Selection tags (if band is not default 1)
   // Need to insert channelSelection in the correct sequence as in SLD standard e.g.
   // after opacity or geometry or as first element after sld:RasterSymbolizer
-  if ( band() != 1 )
+  if ( mBand != 1 )
   {
-    QDomElement channelSelectionElem = doc.createElement( QStringLiteral( "sld:ChannelSelection" ) );
-    elements = rasterSymbolizerElem.elementsByTagName( QStringLiteral( "sld:Opacity" ) );
+    QDomElement channelSelectionElem = doc.createElement( u"sld:ChannelSelection"_s );
+    elements = rasterSymbolizerElem.elementsByTagName( u"sld:Opacity"_s );
     if ( elements.size() != 0 )
     {
       rasterSymbolizerElem.insertAfter( channelSelectionElem, elements.at( 0 ) );
     }
     else
     {
-      elements = rasterSymbolizerElem.elementsByTagName( QStringLiteral( "sld:Geometry" ) );
+      elements = rasterSymbolizerElem.elementsByTagName( u"sld:Geometry"_s );
       if ( elements.size() != 0 )
       {
         rasterSymbolizerElem.insertAfter( channelSelectionElem, elements.at( 0 ) );
@@ -612,44 +610,46 @@ void QgsHillshadeRenderer::toSld( QDomDocument &doc, QDomElement &element, const
     }
 
     // for gray band
-    QDomElement channelElem = doc.createElement( QStringLiteral( "sld:GrayChannel" ) );
+    QDomElement channelElem = doc.createElement( u"sld:GrayChannel"_s );
     channelSelectionElem.appendChild( channelElem );
 
     // set band
-    QDomElement sourceChannelNameElem = doc.createElement( QStringLiteral( "sld:SourceChannelName" ) );
-    sourceChannelNameElem.appendChild( doc.createTextNode( QString::number( band() ) ) );
+    QDomElement sourceChannelNameElem = doc.createElement( u"sld:SourceChannelName"_s );
+    sourceChannelNameElem.appendChild( doc.createTextNode( QString::number( mBand ) ) );
     channelElem.appendChild( sourceChannelNameElem );
   }
 
   // add ShadedRelief tag
-  QDomElement shadedReliefElem = doc.createElement( QStringLiteral( "sld:ShadedRelief" ) );
+  QDomElement shadedReliefElem = doc.createElement( u"sld:ShadedRelief"_s );
   rasterSymbolizerElem.appendChild( shadedReliefElem );
 
   // brightnessOnly tag
-  QDomElement brightnessOnlyElem = doc.createElement( QStringLiteral( "sld:BrightnessOnly" ) );
-  brightnessOnlyElem.appendChild( doc.createTextNode( QStringLiteral( "true" ) ) );
+  QDomElement brightnessOnlyElem = doc.createElement( u"sld:BrightnessOnly"_s );
+  brightnessOnlyElem.appendChild( doc.createTextNode( u"true"_s ) );
   shadedReliefElem.appendChild( brightnessOnlyElem );
 
   // ReliefFactor tag
-  QDomElement reliefFactorElem = doc.createElement( QStringLiteral( "sld:ReliefFactor" ) );
+  QDomElement reliefFactorElem = doc.createElement( u"sld:ReliefFactor"_s );
   reliefFactorElem.appendChild( doc.createTextNode( QString::number( zFactor() ) ) );
   shadedReliefElem.appendChild( reliefFactorElem );
 
   // altitude VendorOption tag
-  QDomElement altitudeVendorOptionElem = doc.createElement( QStringLiteral( "sld:VendorOption" ) );
-  altitudeVendorOptionElem.setAttribute( QStringLiteral( "name" ), QStringLiteral( "altitude" ) );
+  QDomElement altitudeVendorOptionElem = doc.createElement( u"sld:VendorOption"_s );
+  altitudeVendorOptionElem.setAttribute( u"name"_s, u"altitude"_s );
   altitudeVendorOptionElem.appendChild( doc.createTextNode( QString::number( altitude() ) ) );
   shadedReliefElem.appendChild( altitudeVendorOptionElem );
 
   // azimuth VendorOption tag
-  QDomElement azimutVendorOptionElem = doc.createElement( QStringLiteral( "sld:VendorOption" ) );
-  azimutVendorOptionElem.setAttribute( QStringLiteral( "name" ), QStringLiteral( "azimuth" ) );
+  QDomElement azimutVendorOptionElem = doc.createElement( u"sld:VendorOption"_s );
+  azimutVendorOptionElem.setAttribute( u"name"_s, u"azimuth"_s );
   azimutVendorOptionElem.appendChild( doc.createTextNode( QString::number( azimuth() ) ) );
   shadedReliefElem.appendChild( azimutVendorOptionElem );
 
   // multidirectional VendorOption tag
-  QDomElement multidirectionalVendorOptionElem = doc.createElement( QStringLiteral( "sld:VendorOption" ) );
-  multidirectionalVendorOptionElem.setAttribute( QStringLiteral( "name" ), QStringLiteral( "multidirectional" ) );
+  QDomElement multidirectionalVendorOptionElem = doc.createElement( u"sld:VendorOption"_s );
+  multidirectionalVendorOptionElem.setAttribute( u"name"_s, u"multidirectional"_s );
   multidirectionalVendorOptionElem.appendChild( doc.createTextNode( QString::number( multiDirectional() ) ) );
   shadedReliefElem.appendChild( multidirectionalVendorOptionElem );
+
+  return true;
 }

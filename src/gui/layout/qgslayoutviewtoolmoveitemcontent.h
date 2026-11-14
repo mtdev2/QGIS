@@ -16,22 +16,19 @@
 #ifndef QGSLAYOUTVIEWTOOLMOVEITEMCONTENT_H
 #define QGSLAYOUTVIEWTOOLMOVEITEMCONTENT_H
 
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
 #include "qgslayoutviewtool.h"
 
 /**
  * \ingroup gui
- * Layout view tool for moving and zooming item content.
- * \since QGIS 3.0
+ * \brief Layout view tool for moving and zooming item content.
  */
 class GUI_EXPORT QgsLayoutViewToolMoveItemContent : public QgsLayoutViewTool
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutViewToolMoveItemContent.
      */
@@ -43,7 +40,6 @@ class GUI_EXPORT QgsLayoutViewToolMoveItemContent : public QgsLayoutViewTool
     void wheelEvent( QWheelEvent *event ) override;
 
   private:
-
     //! Item to move content
     QgsLayoutItem *mMoveContentItem = nullptr;
 

@@ -16,16 +16,27 @@
  ***************************************************************************/
 
 #include "qgsanimationexportdialog.h"
-#include "qgsmapcanvas.h"
-#include "qgsdecorationitem.h"
+
 #include "qgsexpressioncontextutils.h"
-#include "qgstemporalnavigationobject.h"
+#include "qgshelp.h"
+#include "qgsmapcanvas.h"
+#include "qgsmapdecoration.h"
 #include "qgsprojecttimesettings.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingsregistrygui.h"
+#include "qgstemporalnavigationobject.h"
 #include "qgstemporalutils.h"
+#include "qgsunittypes.h"
 
-Q_GUI_EXPORT extern int qt_defaultDpiX();
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QString>
 
-QgsAnimationExportDialog::QgsAnimationExportDialog( QWidget *parent, QgsMapCanvas *mapCanvas, const QList< QgsMapDecoration * > &decorations )
+#include "moc_qgsanimationexportdialog.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsAnimationExportDialog::QgsAnimationExportDialog( QWidget *parent, QgsMapCanvas *mapCanvas, const QList<QgsMapDecoration *> &decorations )
   : QDialog( parent )
   , mMapCanvas( mapCanvas )
 {
@@ -55,73 +66,84 @@ QgsAnimationExportDialog::QgsAnimationExportDialog( QWidget *parent, QgsMapCanva
     if ( activeDecorations.isEmpty() )
       activeDecorations = decoration->displayName().toLower();
     else
-      activeDecorations += QStringLiteral( ", %1" ).arg( decoration->displayName().toLower() );
+      activeDecorations += u", %1"_s.arg( decoration->displayName().toLower() );
   }
   mDrawDecorations->setText( tr( "Draw active decorations: %1" ).arg( !activeDecorations.isEmpty() ? activeDecorations : tr( "none" ) ) );
 
-  QgsSettings settings;
+  const QgsSettings settings;
 
-  const QString templateText = settings.value( QStringLiteral( "ExportAnimation/fileNameTemplate" ),
-                               QStringLiteral( "%1####.png" ).arg( QgsProject::instance()->baseName() )
-                               , QgsSettings::App ).toString();
+  const QString templateText = settings.value( u"ExportAnimation/fileNameTemplate"_s, u"%1####.png"_s.arg( QgsProject::instance()->baseName() ), QgsSettings::App ).toString();
   mTemplateLineEdit->setText( templateText );
-  QRegExp rx( QStringLiteral( "\\w+#+\\.{1}\\w+" ) ); //e.g. anyprefix#####.png
-  QValidator *validator = new QRegExpValidator( rx, this );
+  const thread_local QRegularExpression rx( u"^\\w+#+\\.{1}\\w+$"_s ); //e.g. anyprefix#####.png
+  QValidator *validator = new QRegularExpressionValidator( rx, this );
   mTemplateLineEdit->setValidator( validator );
 
-  connect( mTemplateLineEdit, &QLineEdit::textChanged, this, [ = ]
-  {
+  connect( mTemplateLineEdit, &QLineEdit::textChanged, this, [this] {
     QgsSettings settings;
-    settings.setValue( QStringLiteral( "ExportAnimation/fileNameTemplate" ), mTemplateLineEdit->text() );
+    settings.setValue( u"ExportAnimation/fileNameTemplate"_s, mTemplateLineEdit->text() );
   } );
 
   mOutputDirFileWidget->setStorageMode( QgsFileWidget::GetDirectory );
   mOutputDirFileWidget->setDialogTitle( tr( "Select Directory for Animation Frames" ) );
   mOutputDirFileWidget->lineEdit()->setShowClearButton( false );
-  mOutputDirFileWidget->setDefaultRoot( settings.value( QStringLiteral( "ExportAnimation/lastDir" ), QString(), QgsSettings::App ).toString() );
-  mOutputDirFileWidget->setFilePath( settings.value( QStringLiteral( "ExportAnimation/lastDir" ), QString(), QgsSettings::App ).toString() );
+  mOutputDirFileWidget->setDefaultRoot( settings.value( u"ExportAnimation/lastDir"_s, QString(), QgsSettings::App ).toString() );
+  mOutputDirFileWidget->setFilePath( settings.value( u"ExportAnimation/lastDir"_s, QString(), QgsSettings::App ).toString() );
 
-  connect( mOutputDirFileWidget, &QgsFileWidget::fileChanged, this, [ = ]
-  {
+  connect( mOutputDirFileWidget, &QgsFileWidget::fileChanged, this, [this] {
     QgsSettings settings;
-    settings.setValue( QStringLiteral( "ExportAnimation/lastDir" ), mOutputDirFileWidget->filePath(), QgsSettings::App );
+    settings.setValue( u"ExportAnimation/lastDir"_s, mOutputDirFileWidget->filePath(), QgsSettings::App );
   } );
 
-  for ( QgsUnitTypes::TemporalUnit u :
-        {
-          QgsUnitTypes::TemporalMilliseconds,
-          QgsUnitTypes::TemporalSeconds,
-          QgsUnitTypes::TemporalMinutes,
-          QgsUnitTypes::TemporalHours,
-          QgsUnitTypes::TemporalDays,
-          QgsUnitTypes::TemporalWeeks,
-          QgsUnitTypes::TemporalMonths,
-          QgsUnitTypes::TemporalYears,
-          QgsUnitTypes::TemporalDecades,
-          QgsUnitTypes::TemporalCenturies
-        } )
+  for ( const Qgis::TemporalUnit u :
+        { Qgis::TemporalUnit::Milliseconds,
+          Qgis::TemporalUnit::Seconds,
+          Qgis::TemporalUnit::Minutes,
+          Qgis::TemporalUnit::Hours,
+          Qgis::TemporalUnit::Days,
+          Qgis::TemporalUnit::Weeks,
+          Qgis::TemporalUnit::Months,
+          Qgis::TemporalUnit::Years,
+          Qgis::TemporalUnit::Decades,
+          Qgis::TemporalUnit::Centuries,
+          Qgis::TemporalUnit::IrregularStep } )
   {
-    mTimeStepsComboBox->addItem( QgsUnitTypes::toString( u ), u );
+    mTimeStepsComboBox->addItem( QgsUnitTypes::toString( u ), static_cast<int>( u ) );
   }
 
-  if ( const QgsTemporalNavigationObject *controller = qobject_cast< const QgsTemporalNavigationObject * >( mMapCanvas->temporalController() ) )
+  if ( const QgsTemporalNavigationObject *controller = qobject_cast<const QgsTemporalNavigationObject *>( mMapCanvas->temporalController() ) )
   {
     mStartDateTime->setDateTime( controller->temporalExtents().begin() );
     mEndDateTime->setDateTime( controller->temporalExtents().end() );
+    mMode = controller->navigationMode();
+    mTotalMovieFrames = controller->totalMovieFrames();
   }
   mFrameDurationSpinBox->setClearValue( 1 );
   mFrameDurationSpinBox->setValue( QgsProject::instance()->timeSettings()->timeStep() );
-  mTimeStepsComboBox->setCurrentIndex( QgsProject::instance()->timeSettings()->timeStepUnit() );
+  mTimeStepsComboBox->setCurrentIndex( mTimeStepsComboBox->findData( static_cast<int>( QgsProject::instance()->timeSettings()->timeStepUnit() ) ) );
+  mCumulativeTemporalRange->setChecked( QgsProject::instance()->timeSettings()->isTemporalRangeCumulative() );
 
-  connect( mOutputWidthSpinBox, &QSpinBox::editingFinished, this, [ = ] { updateOutputWidth( mOutputWidthSpinBox->value() );} );
-  connect( mOutputHeightSpinBox, &QSpinBox::editingFinished, this, [ = ] { updateOutputHeight( mOutputHeightSpinBox->value() );} );
+  switch ( mMode )
+  {
+    case Qgis::TemporalNavigationMode::Disabled:
+    case Qgis::TemporalNavigationMode::Animated:
+    case Qgis::TemporalNavigationMode::FixedRange:
+      break;
+
+    case Qgis::TemporalNavigationMode::Movie:
+      mTemporalSettingsGroupBox->hide();
+      break;
+  }
+
+  connect( mOutputWidthSpinBox, &QSpinBox::editingFinished, this, [this] { updateOutputWidth( mOutputWidthSpinBox->value() ); } );
+  connect( mOutputHeightSpinBox, &QSpinBox::editingFinished, this, [this] { updateOutputHeight( mOutputHeightSpinBox->value() ); } );
   connect( mExtentGroupBox, &QgsExtentGroupBox::extentChanged, this, &QgsAnimationExportDialog::updateExtent );
   connect( mLockAspectRatio, &QgsRatioLockButton::lockChanged, this, &QgsAnimationExportDialog::lockChanged );
 
   connect( mSetToProjectTimeButton, &QPushButton::clicked, this, &QgsAnimationExportDialog::setToProjectTime );
 
-  connect( buttonBox, &QDialogButtonBox::accepted, this, [ = ]
-  {
+  connect( buttonBox, &QDialogButtonBox::helpRequested, this, [] { QgsHelp::openHelp( u"map_views/map_view.html#maptimecontrol"_s ); } );
+
+  connect( buttonBox, &QDialogButtonBox::accepted, this, [this] {
     emit startExport();
     accept();
   } );
@@ -131,8 +153,8 @@ QgsAnimationExportDialog::QgsAnimationExportDialog( QWidget *parent, QgsMapCanva
 
 void QgsAnimationExportDialog::updateOutputWidth( int width )
 {
-  double scale = static_cast<double>( width ) / mSize.width();
-  double adjustment = ( ( mExtent.width() * scale ) - mExtent.width() ) / 2;
+  const double scale = static_cast<double>( width ) / mSize.width();
+  const double adjustment = ( ( mExtent.width() * scale ) - mExtent.width() ) / 2;
 
   mSize.setWidth( width );
 
@@ -141,9 +163,9 @@ void QgsAnimationExportDialog::updateOutputWidth( int width )
 
   if ( mLockAspectRatio->locked() )
   {
-    int height = width * mExtentGroupBox->ratio().height() / mExtentGroupBox->ratio().width();
-    double scale = static_cast<double>( height ) / mSize.height();
-    double adjustment = ( ( mExtent.height() * scale ) - mExtent.height() ) / 2;
+    const int height = width * mExtentGroupBox->ratio().height() / mExtentGroupBox->ratio().width();
+    const double scale = static_cast<double>( height ) / mSize.height();
+    const double adjustment = ( ( mExtent.height() * scale ) - mExtent.height() ) / 2;
 
     whileBlocking( mOutputHeightSpinBox )->setValue( height );
     mSize.setHeight( height );
@@ -157,8 +179,8 @@ void QgsAnimationExportDialog::updateOutputWidth( int width )
 
 void QgsAnimationExportDialog::updateOutputHeight( int height )
 {
-  double scale = static_cast<double>( height ) / mSize.height();
-  double adjustment = ( ( mExtent.height() * scale ) - mExtent.height() ) / 2;
+  const double scale = static_cast<double>( height ) / mSize.height();
+  const double adjustment = ( ( mExtent.height() * scale ) - mExtent.height() ) / 2;
 
   mSize.setHeight( height );
 
@@ -167,9 +189,9 @@ void QgsAnimationExportDialog::updateOutputHeight( int height )
 
   if ( mLockAspectRatio->locked() )
   {
-    int width = height * mExtentGroupBox->ratio().width() / mExtentGroupBox->ratio().height();
-    double scale = static_cast<double>( width ) / mSize.width();
-    double adjustment = ( ( mExtent.width() * scale ) - mExtent.width() ) / 2;
+    const int width = height * mExtentGroupBox->ratio().width() / mExtentGroupBox->ratio().height();
+    const double scale = static_cast<double>( width ) / mSize.width();
+    const double adjustment = ( ( mExtent.width() * scale ) - mExtent.width() ) / 2;
 
     whileBlocking( mOutputWidthSpinBox )->setValue( width );
     mSize.setWidth( width );
@@ -227,16 +249,27 @@ QgsDateTimeRange QgsAnimationExportDialog::animationRange() const
 
 QgsInterval QgsAnimationExportDialog::frameInterval() const
 {
-  return QgsInterval( mFrameDurationSpinBox->value(), static_cast< QgsUnitTypes::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) );
+  return QgsInterval( mFrameDurationSpinBox->value(), static_cast<Qgis::TemporalUnit>( mTimeStepsComboBox->currentData().toInt() ) );
+}
+
+Qgis::TemporalNavigationMode QgsAnimationExportDialog::mode() const
+{
+  return mMode;
+}
+
+bool QgsAnimationExportDialog::temporalRangeCumulative() const
+{
+  return mCumulativeTemporalRange->isChecked();
 }
 
 void QgsAnimationExportDialog::applyMapSettings( QgsMapSettings &mapSettings )
 {
-  QgsSettings settings;
+  const QgsSettings settings;
 
-  mapSettings.setFlag( QgsMapSettings::Antialiasing, settings.value( QStringLiteral( "qgis/enable_anti_aliasing" ), true ).toBool() );
-  mapSettings.setFlag( QgsMapSettings::DrawEditingInfo, false );
-  mapSettings.setFlag( QgsMapSettings::DrawSelection, false );
+  mapSettings.setFlag( Qgis::MapSettingsFlag::Antialiasing, QgsSettingsRegistryGui::settingsEnableAntiAliasing->value() );
+  mapSettings.setFlag( Qgis::MapSettingsFlag::HighQualityImageTransforms, QgsSettingsRegistryGui::settingsEnableAntiAliasing->value() );
+  mapSettings.setFlag( Qgis::MapSettingsFlag::DrawEditingInfo, false );
+  mapSettings.setFlag( Qgis::MapSettingsFlag::DrawSelection, false );
   mapSettings.setSelectionColor( mMapCanvas->mapSettings().selectionColor() );
   mapSettings.setDestinationCrs( mMapCanvas->mapSettings().destinationCrs() );
   mapSettings.setExtent( extent() );
@@ -251,9 +284,7 @@ void QgsAnimationExportDialog::applyMapSettings( QgsMapSettings &mapSettings )
 
   //build the expression context
   QgsExpressionContext expressionContext;
-  expressionContext << QgsExpressionContextUtils::globalScope()
-                    << QgsExpressionContextUtils::projectScope( QgsProject::instance() )
-                    << QgsExpressionContextUtils::mapSettingsScope( mapSettings );
+  expressionContext << QgsExpressionContextUtils::globalScope() << QgsExpressionContextUtils::projectScope( QgsProject::instance() ) << QgsExpressionContextUtils::mapSettingsScope( mapSettings );
 
   mapSettings.setExpressionContext( expressionContext );
 }

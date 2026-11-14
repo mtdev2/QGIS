@@ -13,21 +13,23 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
-
 #include "qgisapp.h"
 #include "qgsgeometry.h"
-#include "qgsmapcanvas.h"
-#include "qgssettings.h"
-#include "qgsvectorlayer.h"
-#include "qgsmaptooladdfeature.h"
 #include "qgsgeometryutils.h"
-
+#include "qgsmapcanvas.h"
+#include "qgsmaptooladdfeature.h"
+#include "qgsmaptoolshaperegularpolygon2points.h"
+#include "qgsmaptoolshaperegularpolygoncentercorner.h"
+#include "qgsmaptoolshaperegularpolygoncenterpoint.h"
+#include "qgssettingsregistrycore.h"
+#include "qgstest.h"
+#include "qgsvectorlayer.h"
 #include "testqgsmaptoolutils.h"
-#include "qgsmaptoolregularpolygon2points.h"
-#include "qgsmaptoolregularpolygoncenterpoint.h"
-#include "qgsmaptoolregularpolygoncentercorner.h"
 
+#include <QSignalSpy>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQgsMapToolRegularPolygon : public QObject
 {
@@ -39,19 +41,30 @@ class TestQgsMapToolRegularPolygon : public QObject
   private slots:
     void initTestCase();
     void cleanupTestCase();
+    void cleanup();
 
     void testRegularPolygonFrom2Points();
     void testRegularPolygonFrom2PointsWithDeletedVertex();
+    void testRegularPolygonFrom2PointsNotEnoughPoints();
     void testRegularPolygonFromCenterAndPoint();
     void testRegularPolygonFromCenterAndPointWithDeletedVertex();
-    void testRegularPolygonFromCenterAndCroner();
-    void testRegularPolygonFromCenterAndCronerWithDeletedVertex();
+    void testRegularPolygonFromCenterAndPointNotEnoughPoints();
+    void testRegularPolygonFromCenterAndCorner();
+    void testRegularPolygonFromCenterAndCornerWithDeletedVertex();
+    void testRegularPolygonFromCenterAndCornerNotEnoughPoints();
+    void testTransientGeometrySignal2Points();
+    void testTransientGeometrySignal2PointsLine();
+    void testTransientGeometrySignalCenterPoint();
+    void testTransientGeometrySignalCenterCorner();
 
   private:
+    void resetMapTool( QgsMapToolShapeMetadata *metadata, QgsMapToolCapture::CaptureMode mode );
+
     QgisApp *mQgisApp = nullptr;
-    QgsMapToolCapture *mParentTool = nullptr;
+    QgsMapToolCapture *mMapTool = nullptr;
     QgsMapCanvas *mCanvas = nullptr;
     QgsVectorLayer *mLayer = nullptr;
+    QgsVectorLayer *mPolygonLayer = nullptr;
 };
 
 TestQgsMapToolRegularPolygon::TestQgsMapToolRegularPolygon() = default;
@@ -66,174 +79,355 @@ void TestQgsMapToolRegularPolygon::initTestCase()
   mQgisApp = new QgisApp();
 
   mCanvas = new QgsMapCanvas();
-  mCanvas->setDestinationCrs( QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:27700" ) ) );
+  mCanvas->setDestinationCrs( QgsCoordinateReferenceSystem( u"EPSG:27700"_s ) );
 
   // make testing layers
-  mLayer = new QgsVectorLayer( QStringLiteral( "LineStringZ?crs=EPSG:27700" ), QStringLiteral( "layer line Z" ), QStringLiteral( "memory" ) );
+  mLayer = new QgsVectorLayer( u"LineStringZ?crs=EPSG:27700"_s, u"layer line Z"_s, u"memory"_s );
   QVERIFY( mLayer->isValid() );
   QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mLayer );
+  mPolygonLayer = new QgsVectorLayer( u"PolygonZ?crs=EPSG:27700"_s, u"layer line Z"_s, u"memory"_s );
+  QVERIFY( mPolygonLayer->isValid() );
+  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mPolygonLayer );
 
   // set layers in canvas
-  mCanvas->setLayers( QList<QgsMapLayer *>() << mLayer );
+  mCanvas->setLayers( QList<QgsMapLayer *>() << mLayer << mPolygonLayer );
   mCanvas->setCurrentLayer( mLayer );
 
-  mParentTool = new QgsMapToolAddFeature( mCanvas, QgsMapToolCapture::CaptureLine );
+  mMapTool = new QgsMapToolAddFeature( mCanvas, QgisApp::instance()->cadDockWidget(), QgsMapToolCapture::CaptureLine );
+  mMapTool->setCurrentCaptureTechnique( Qgis::CaptureTechnique::Shape );
+  mCanvas->setMapTool( mMapTool );
 }
 
 void TestQgsMapToolRegularPolygon::cleanupTestCase()
 {
   QgsApplication::exitQgis();
+  delete mMapTool;
+}
+
+void TestQgsMapToolRegularPolygon::cleanup()
+{
+  mMapTool->clean();
+}
+
+void TestQgsMapToolRegularPolygon::resetMapTool( QgsMapToolShapeMetadata *metadata, QgsMapToolCapture::CaptureMode mode )
+{
+  delete mMapTool;
+  mMapTool = new QgsMapToolAddFeature( mCanvas, QgisApp::instance()->cadDockWidget(), mode );
+  mMapTool->setCurrentCaptureTechnique( Qgis::CaptureTechnique::Shape );
+  mCanvas->setMapTool( mMapTool );
+  mMapTool->setCurrentShapeMapTool( metadata );
 }
 
 void TestQgsMapToolRegularPolygon::testRegularPolygonFrom2Points()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 333 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 333 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygon2Points mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygon2PointsMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (0 0 333, 2 1 333, 4 0 333, 4 -2 333, 2 -3 333, 0 -2 333, 0 0 333)";
+  const QString wkt = "LineString Z (0 0 333, 2 1 333, 4 0 333, 4 -2 333, 2 -3 333, 0 -2 333, 0 0 333)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
 }
 void TestQgsMapToolRegularPolygon::testRegularPolygonFrom2PointsWithDeletedVertex()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 333 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 333 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygon2Points mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygon2PointsMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 4, 1, Qt::LeftButton );
   utils.keyClick( Qt::Key_Backspace );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (0 0 333, 2 1 333, 4 0 333, 4 -2 333, 2 -3 333, 0 -2 333, 0 0 333)";
+  const QString wkt = "LineString Z (0 0 333, 2 1 333, 4 0 333, 4 -2 333, 2 -3 333, 0 -2 333, 0 0 333)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
+}
+
+void TestQgsMapToolRegularPolygon::testRegularPolygonFrom2PointsNotEnoughPoints()
+{
+  const long long count = mLayer->featureCount();
+  mLayer->startEditing();
+
+  QgsMapToolShapeRegularPolygon2PointsMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  utils.keyClick( Qt::Key_Escape );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  mLayer->rollBack();
 }
 
 
 void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndPoint()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 222 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 222 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygonCenterPoint mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygonCenterPointMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (1 2 222, 3 0 222, 1 -2 222, -1 -2 222, -3 0 222, -1 2 222, 1 2 222)";
+  const QString wkt = "LineString Z (1 2 222, 3 0 222, 1 -2 222, -1 -2 222, -3 0 222, -1 2 222, 1 2 222)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
 }
 void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndPointWithDeletedVertex()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 222 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 222 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygonCenterPoint mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygonCenterPointMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 4, 1, Qt::LeftButton );
   utils.keyClick( Qt::Key_Backspace );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (1 2 222, 3 0 222, 1 -2 222, -1 -2 222, -3 0 222, -1 2 222, 1 2 222)";
+  const QString wkt = "LineString Z (1 2 222, 3 0 222, 1 -2 222, -1 -2 222, -3 0 222, -1 2 222, 1 2 222)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
+}
+
+void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndPointNotEnoughPoints()
+{
+  const long long count = mLayer->featureCount();
+  mLayer->startEditing();
+
+  QgsMapToolShapeRegularPolygonCenterPointMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  utils.keyClick( Qt::Key_Escape );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  mLayer->rollBack();
 }
 
 
-void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndCroner()
+void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndCorner()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 111 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 111 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygonCenterCorner mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygonCenterCornerMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (2 1 111, 2 -1 111, 0 -2 111, -2 -1 111, -2 1 111, 0 2 111, 2 1 111)";
+  const QString wkt = "LineString Z (2 1 111, 2 -1 111, 0 -2 111, -2 -1 111, -2 1 111, 0 2 111, 2 1 111)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
 }
-void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndCronerWithDeletedVertex()
+
+void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndCornerWithDeletedVertex()
 {
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 111 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 111 );
   mLayer->startEditing();
 
-  QgsMapToolRegularPolygonCenterCorner mapTool( mParentTool, mCanvas );
-  mCanvas->setMapTool( &mapTool );
+  QgsMapToolShapeRegularPolygonCenterCornerMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
 
-  TestQgsMapToolAdvancedDigitizingUtils utils( &mapTool );
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
   utils.mouseClick( 4, 1, Qt::LeftButton );
   utils.keyClick( Qt::Key_Backspace );
   utils.mouseClick( 0, 0, Qt::LeftButton );
   utils.mouseMove( 2, 1 );
   utils.mouseClick( 2, 1, Qt::RightButton );
-  QgsFeatureId newFid = utils.newFeatureId();
+  const QgsFeatureId newFid = utils.newFeatureId();
 
-  QCOMPARE( mLayer->featureCount(), ( long )1 );
-  QgsFeature f = mLayer->getFeature( newFid );
+  QCOMPARE( mLayer->featureCount(), ( long ) 1 );
+  const QgsFeature f = mLayer->getFeature( newFid );
 
-  QString wkt = "LineStringZ (2 1 111, 2 -1 111, 0 -2 111, -2 -1 111, -2 1 111, 0 2 111, 2 1 111)";
+  const QString wkt = "LineString Z (2 1 111, 2 -1 111, 0 -2 111, -2 -1 111, -2 1 111, 0 2 111, 2 1 111)";
   QCOMPARE( f.geometry().asWkt( 0 ), wkt );
 
   mLayer->rollBack();
-  QgsSettings().setValue( QStringLiteral( "/qgis/digitizing/default_z_value" ), 0 );
+  QgsSettingsRegistryCore::settingsDigitizingDefaultZValue->setValue( 0 );
 }
 
+void TestQgsMapToolRegularPolygon::testRegularPolygonFromCenterAndCornerNotEnoughPoints()
+{
+  const long long count = mLayer->featureCount();
+  mLayer->startEditing();
+
+  QgsMapToolShapeRegularPolygonCenterCornerMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  utils.keyClick( Qt::Key_Escape );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseClick( 0, 0, Qt::RightButton );
+  QCOMPARE( mLayer->featureCount(), count );
+
+  mLayer->rollBack();
+}
+
+void TestQgsMapToolRegularPolygon::testTransientGeometrySignal2Points()
+{
+  mPolygonLayer->startEditing();
+  mCanvas->setCurrentLayer( mPolygonLayer );
+
+  QgsMapToolShapeRegularPolygon2PointsMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CapturePolygon );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  QSignalSpy spy( mMapTool, &QgsMapToolCapture::transientGeometryChanged );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseMove( 2, 1 );
+
+  QCOMPARE( spy.count(), 1 );
+  QCOMPARE( spy.at( 0 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((0 0 0, 2 1 0, 3.9 -0.2 0, 3.7 -2.5 0, 1.7 -3.5 0, -0.1 -2.2 0, 0 0 0))"_s );
+
+  utils.mouseMove( 3, 2 );
+  QCOMPARE( spy.count(), 2 );
+  QCOMPARE( spy.at( 1 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((0 0 0, 3 2 0, 6.2 0.4 0, 6.5 -3.2 0, 3.5 -5.2 0, 0.2 -3.6 0, 0 0 0))"_s );
+
+  utils.mouseClick( 2, 1, Qt::RightButton );
+  mPolygonLayer->rollBack();
+}
+
+void TestQgsMapToolRegularPolygon::testTransientGeometrySignal2PointsLine()
+{
+  mLayer->startEditing();
+  mCanvas->setCurrentLayer( mLayer );
+
+  QgsMapToolShapeRegularPolygon2PointsMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CaptureLine );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  QSignalSpy spy( mMapTool, &QgsMapToolCapture::transientGeometryChanged );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseMove( 2, 1 );
+
+  QCOMPARE( spy.count(), 1 );
+  QCOMPARE( spy.at( 0 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"LineString Z (0 0 0, 2 1 0, 3.9 -0.2 0, 3.7 -2.5 0, 1.7 -3.5 0, -0.1 -2.2 0, 0 0 0)"_s );
+
+  utils.mouseMove( 3, 2 );
+  QCOMPARE( spy.count(), 2 );
+  QCOMPARE( spy.at( 1 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"LineString Z (0 0 0, 3 2 0, 6.2 0.4 0, 6.5 -3.2 0, 3.5 -5.2 0, 0.2 -3.6 0, 0 0 0)"_s );
+
+  utils.mouseClick( 2, 1, Qt::RightButton );
+  mLayer->rollBack();
+}
+
+void TestQgsMapToolRegularPolygon::testTransientGeometrySignalCenterPoint()
+{
+  mPolygonLayer->startEditing();
+  mCanvas->setCurrentLayer( mPolygonLayer );
+
+  QgsMapToolShapeRegularPolygonCenterPointMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CapturePolygon );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  QSignalSpy spy( mMapTool, &QgsMapToolCapture::transientGeometryChanged );
+
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseMove( 2, 1 );
+  QCOMPARE( spy.count(), 1 );
+  QCOMPARE( spy.at( 0 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((1.4 2.2 0, 2.6 -0.2 0, 1.2 -2.3 0, -1.4 -2.2 0, -2.6 0.2 0, -1.2 2.3 0, 1.4 2.2 0))"_s );
+
+  utils.mouseMove( 3, 2 );
+  QCOMPARE( spy.count(), 2 );
+  QCOMPARE( spy.at( 1 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((1.8 3.7 0, 4.2 0.3 0, 2.3 -3.5 0, -1.8 -3.7 0, -4.2 -0.3 0, -2.3 3.5 0, 1.8 3.7 0))"_s );
+
+  utils.mouseClick( 2, 1, Qt::RightButton );
+  mPolygonLayer->rollBack();
+}
+
+void TestQgsMapToolRegularPolygon::testTransientGeometrySignalCenterCorner()
+{
+  mPolygonLayer->startEditing();
+  mCanvas->setCurrentLayer( mPolygonLayer );
+
+  QgsMapToolShapeRegularPolygonCenterCornerMetadata md;
+  resetMapTool( &md, QgsMapToolCapture::CapturePolygon );
+
+  TestQgsMapToolAdvancedDigitizingUtils utils( mMapTool );
+  QSignalSpy spy( mMapTool, &QgsMapToolCapture::transientGeometryChanged );
+  utils.mouseClick( 0, 0, Qt::LeftButton );
+  utils.mouseMove( 2, 1 );
+
+  QCOMPARE( spy.count(), 1 );
+  QCOMPARE( spy.at( 0 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((2 1 0, 1.9 -1.2 0, -0.1 -2.2 0, -2 -1 0, -1.9 1.2 0, 0.1 2.2 0, 2 1 0))"_s );
+
+  utils.mouseMove( 3, 2 );
+  QCOMPARE( spy.count(), 2 );
+  QCOMPARE( spy.at( 1 ).at( 0 ).value< QgsReferencedGeometry >().asWkt( 1 ), u"Polygon Z ((3 2 0, 3.2 -1.6 0, 0.2 -3.6 0, -3 -2 0, -3.2 1.6 0, -0.2 3.6 0, 3 2 0))"_s );
+
+  utils.mouseClick( 2, 1, Qt::RightButton );
+  mPolygonLayer->rollBack();
+}
 
 QGSTEST_MAIN( TestQgsMapToolRegularPolygon )
 #include "testqgsmaptoolregularpolygon.moc"

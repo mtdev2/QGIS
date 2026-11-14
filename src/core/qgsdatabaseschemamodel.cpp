@@ -13,9 +13,12 @@
 *                                                                         *
 ***************************************************************************/
 #include "qgsdatabaseschemamodel.h"
-#include "qgsproviderregistry.h"
-#include "qgsprovidermetadata.h"
+
 #include "qgsabstractdatabaseproviderconnection.h"
+#include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
+
+#include "moc_qgsdatabaseschemamodel.cpp"
 
 QgsDatabaseSchemaModel::QgsDatabaseSchemaModel( const QString &provider, const QString &connection, QObject *parent )
   : QAbstractItemModel( parent )
@@ -71,7 +74,7 @@ QVariant QgsDatabaseSchemaModel::data( const QModelIndex &index, int role ) cons
 
   if ( index.row() == 0 && mAllowEmpty )
   {
-    if ( role == RoleEmpty )
+    if ( role == static_cast< int >( CustomRole::Empty ) )
       return true;
 
     return QVariant();
@@ -80,7 +83,7 @@ QVariant QgsDatabaseSchemaModel::data( const QModelIndex &index, int role ) cons
   const QString schemaName = mSchemas.value( index.row() - ( mAllowEmpty ? 1 : 0 ) );
   switch ( role )
   {
-    case RoleEmpty:
+    case static_cast< int >( CustomRole::Empty ):
       return false;
 
     case Qt::DisplayRole:
@@ -132,7 +135,7 @@ void QgsDatabaseSchemaModel::refresh()
   {
     if ( !newSchemas.contains( oldSchema ) )
     {
-      int r = mSchemas.indexOf( oldSchema ) ;
+      const int r = mSchemas.indexOf( oldSchema );
       beginRemoveRows( QModelIndex(), r + ( mAllowEmpty ? 1 : 0 ), r + ( mAllowEmpty ? 1 : 0 ) );
       mSchemas.removeAt( r );
       endRemoveRows();

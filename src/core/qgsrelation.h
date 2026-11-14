@@ -16,21 +16,18 @@
 #ifndef QGSRELATION_H
 #define QGSRELATION_H
 
-#include <QList>
-#include <QDomNode>
-#include <QPair>
-
 #include "qgis_core.h"
-#include "qgsfields.h"
+#include "qgis_sip.h"
+#include "qgsattributes.h"
 #include "qgsreadwritecontext.h"
 #include "qgsrelationcontext.h"
 
-#include "qgis_sip.h"
+#include <QDomNode>
+#include <QList>
+#include <QPair>
 
 class QgsFeatureIterator;
-class QgsFeature;
 class QgsFeatureRequest;
-class QgsAttributes;
 class QgsVectorLayer;
 class QgsRelationPrivate;
 class QgsPolymorphicRelation;
@@ -38,47 +35,33 @@ class QgsPolymorphicRelation;
 /**
  * \ingroup core
  * \class QgsRelation
+ *
+ * \brief Represents a relationship between two vector layers.
  */
 class CORE_EXPORT QgsRelation
 {
     Q_GADGET
 
     Q_PROPERTY( QString id READ id WRITE setId )
+    Q_PROPERTY( QString referencingLayerId READ referencingLayerId WRITE setReferencingLayer )
     Q_PROPERTY( QgsVectorLayer *referencingLayer READ referencingLayer )
+    Q_PROPERTY( QList<int> referencingFields READ referencedFields )
+    Q_PROPERTY( QString referencedLayerId READ referencedLayerId WRITE setReferencedLayer )
     Q_PROPERTY( QgsVectorLayer *referencedLayer READ referencedLayer )
+    Q_PROPERTY( QList<int> referencedFields READ referencedFields )
     Q_PROPERTY( QString name READ name WRITE setName )
     Q_PROPERTY( bool isValid READ isValid )
+    Q_PROPERTY( Qgis::RelationshipStrength strength READ strength WRITE setStrength )
     Q_PROPERTY( QString polymorphicRelationId READ polymorphicRelationId WRITE setPolymorphicRelationId )
     Q_PROPERTY( QgsPolymorphicRelation polymorphicRelation READ polymorphicRelation )
 
   public:
-
-    /**
-     * Enum holding the relations type
-     */
-    enum RelationType
-    {
-      Normal, //!< A normal relation
-      Generated, //!< A generated relation is a child of a polymorphic relation
-    };
-    Q_ENUM( RelationType )
-
-    /**
-    * enum for the relation strength
-    * Association, Composition
-    */
-    enum RelationStrength
-    {
-      Association, //!< Loose relation, related elements are not part of the parent and a parent copy will not copy any children.
-      Composition  //!< Fix relation, related elements are part of the parent and a parent copy will copy any children or delete of parent will delete children
-    };
-    Q_ENUM( RelationStrength )
-
 #ifndef SIP_RUN
 
     /**
      * \ingroup core
-     * Defines a relation between matching fields of the two involved tables of a relation.
+     * \brief Defines a relation between matching fields of the two involved tables of a relation.
+     *
      * Often, a relation is only defined by just one FieldPair with the name of the foreign key
      * column of the referencing (child) table as first element and the name of the primary key column
      * of the referenced (parent) table as the second element.
@@ -92,7 +75,8 @@ class CORE_EXPORT QgsRelation
 
         //! Constructor which takes two fields
         FieldPair( const QString &referencingField, const QString &referencedField )
-          : QPair< QString, QString >( referencingField, referencedField ) {}
+          : QPair< QString, QString >( referencingField, referencedField )
+        {}
 
         //! Gets the name of the referencing (child) field
         QString referencingField() const { return first; }
@@ -120,6 +104,7 @@ class CORE_EXPORT QgsRelation
      * changed.
      */
     QgsRelation( const QgsRelation &other );
+    SIP_SKIP QgsRelation( QgsRelation &&other );
 
     /**
      * Copies a relation.
@@ -127,6 +112,19 @@ class CORE_EXPORT QgsRelation
      * changed.
      */
     QgsRelation &operator=( const QgsRelation &other );
+    QgsRelation &operator=( QgsRelation &&other );
+
+    // TODO QGIS 5.0 -- Remove the deprecated createFromXml method without the relationContext parameter
+    /**
+     * Creates a relation from an XML structure. Used for reading .qgs projects.
+     *
+     * \param node The dom node containing the relation information
+     * \param context to pass project translator
+     *
+     * \returns A relation
+     * \deprecated QGIS 4.4. Use createFromXml( const QDomNode &node, QgsReadWriteContext &context, const QgsRelationContext &relationContext ) instead.
+     */
+    Q_DECL_DEPRECATED static QgsRelation createFromXml( const QDomNode &node, QgsReadWriteContext &context ) SIP_DEPRECATED;
 
     /**
      * Creates a relation from an XML structure. Used for reading .qgs projects.
@@ -137,7 +135,7 @@ class CORE_EXPORT QgsRelation
      *
      * \returns A relation
      */
-    static QgsRelation createFromXml( const QDomNode &node, QgsReadWriteContext &context, const QgsRelationContext &relationContext = QgsRelationContext() );
+    static QgsRelation createFromXml( const QDomNode &node, QgsReadWriteContext &context, const QgsRelationContext &relationContext );
 
     /**
      * Writes a relation to an XML structure. Used for saving .qgs projects
@@ -159,9 +157,8 @@ class CORE_EXPORT QgsRelation
 
     /**
      * Set a strength for this relation
-     * \since QGIS 3.0
      */
-    void setStrength( RelationStrength strength );
+    void setStrength( Qgis::RelationshipStrength strength );
 
     /**
      * Set the referencing (child) layer id. This layer will be searched in the registry.
@@ -181,7 +178,7 @@ class CORE_EXPORT QgsRelation
      * \param referencingField  The field name on the referencing (child) layer (FK)
      * \param referencedField   The field name on the referenced (parent) layer  (PK)
      */
-    void addFieldPair( const QString &referencingField, const QString &referencedField );
+    Q_INVOKABLE void addFieldPair( const QString &referencingField, const QString &referencedField );
 
     /**
      * Add a field pair which is part of this relation
@@ -224,9 +221,8 @@ class CORE_EXPORT QgsRelation
      * \returns expression filter string for all the referencing features
      * \see getRelatedFeatures()
      * \see getRelatedFeaturesRequest()
-     * \since QGIS 2.16
      */
-    QString getRelatedFeaturesFilter( const QgsFeature &feature ) const;
+    Q_INVOKABLE QString getRelatedFeaturesFilter( const QgsFeature &feature ) const;
 
     /**
      * Creates a request to return the feature on the referenced (parent) layer
@@ -254,9 +250,10 @@ class CORE_EXPORT QgsRelation
      *
      * \param feature A feature from the referencing (child) layer
      *
-     * \returns A request the referenced feature
+     * \returns The referenced (parent) feature, or an invalid feature if no matching feature
+     * was found
      */
-    QgsFeature getReferencedFeature( const QgsFeature &feature ) const;
+    Q_INVOKABLE QgsFeature getReferencedFeature( const QgsFeature &feature ) const;
 
     /**
      * Returns a human readable name for this relation. Mostly used as title for the children.
@@ -271,9 +268,8 @@ class CORE_EXPORT QgsRelation
      * Returns the relation strength as a string
      *
      * \returns strength
-     * \since QGIS 3.0
      */
-    RelationStrength strength() const;
+    Qgis::RelationshipStrength strength() const;
 
     /**
      * A (project-wide) unique id for this relation
@@ -284,7 +280,6 @@ class CORE_EXPORT QgsRelation
 
     /**
      * Generate a (project-wide) unique id for this relation
-     * \since QGIS 3.0
      */
     void generateId();
 
@@ -328,6 +323,7 @@ class CORE_EXPORT QgsRelation
 #ifndef SIP_RUN
     QList< QgsRelation::FieldPair > fieldPairs() const;
 #else
+    // clang-format off
     QMap< QString, QString > fieldPairs() const;
     % MethodCode
     const QList< QgsRelation::FieldPair > &pairs = sipCpp->fieldPairs();
@@ -337,6 +333,7 @@ class CORE_EXPORT QgsRelation
       sipRes->insert( pair.first, pair.second );
     }
     % End
+// clang-format on
 #endif
 
     /**
@@ -356,33 +353,48 @@ class CORE_EXPORT QgsRelation
     QgsAttributeList referencingFields() const;
 
     /**
+     * Returns TRUE if none of the referencing fields has a NOT NULL constraint.
+     * \since QGIS 3.28
+     */
+    bool referencingFieldsAllowNull() const;
+
+    /**
      * Returns the validity of this relation. Don't use the information if it's not valid.
      * A relation is considered valid if both referenced and referencig layers are valid.
      *
      * \returns TRUE if the relation is valid
+     *
+     * \see validationError()
      */
     bool isValid() const;
+
+    /**
+     * Returns a user-friendly explanation for why the relationship is invalid.
+     *
+     * Returns an empty string if the relationship isValid().
+     *
+     * \see isValid()
+     * \since QGIS 3.28
+     */
+    QString validationError() const;
 
     /**
      * Compares the two QgsRelation, ignoring the name and the ID.
      *
      * \param other The other relation
      * \returns TRUE if they are similar
-     * \since QGIS 3.0
      */
     bool hasEqualDefinition( const QgsRelation &other ) const;
 
     /**
      * Gets the referenced field counterpart given a referencing field.
      *
-     * \since QGIS 3.0
      */
     Q_INVOKABLE QString resolveReferencedField( const QString &referencingField ) const;
 
     /**
      * Gets the referencing field counterpart given a referenced field.
      *
-     * \since QGIS 3.0
      */
     Q_INVOKABLE QString resolveReferencingField( const QString &referencedField ) const;
 
@@ -416,10 +428,23 @@ class CORE_EXPORT QgsRelation
      * Returns the type of the relation
      * \since QGIS 3.18
      */
-    RelationType type() const;
+    Qgis::RelationshipType type() const;
+
+    /**
+     * Returns a user-friendly translated string representing a relationship \a cardinality.
+     *
+     * \since QGIS 3.28
+     */
+    static QString cardinalityToDisplayString( Qgis::RelationshipCardinality cardinality );
+
+    /**
+     * Returns a user-friendly translated string representing a relationship \a strength.
+     *
+     * \since QGIS 3.28
+     */
+    static QString strengthToDisplayString( Qgis::RelationshipStrength strength );
 
   private:
-
     mutable QExplicitlySharedDataPointer<QgsRelationPrivate> d;
 
     QgsRelationContext mContext;
@@ -427,6 +452,5 @@ class CORE_EXPORT QgsRelation
 
 // Register QgsRelation for usage with QVariant
 Q_DECLARE_METATYPE( QgsRelation )
-Q_DECLARE_METATYPE( QgsRelation::RelationStrength )
 
 #endif // QGSRELATION_H

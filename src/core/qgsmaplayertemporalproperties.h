@@ -21,18 +21,19 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgstemporalproperty.h"
-#include "qgsreadwritecontext.h"
 #include "qgsrange.h"
+#include "qgsreadwritecontext.h"
+#include "qgstemporalproperty.h"
 
 #include <QDomElement>
 
+class QgsMapLayer;
 class QgsDataProviderTemporalCapabilities;
 
 /**
  * \class QgsMapLayerTemporalProperties
  * \ingroup core
- * Base class for storage of map layer temporal properties.
+ * \brief Base class for storage of map layer temporal properties.
  *
  * QgsMapLayerTemporalProperties exposes user-configurable settings for controlling
  * how an individual QgsMapLayer behaves in a temporal context, e.g. while animating a map object.
@@ -41,11 +42,9 @@ class QgsDataProviderTemporalCapabilities;
  */
 class CORE_EXPORT QgsMapLayerTemporalProperties : public QgsTemporalProperty
 {
-#ifdef SIP_RUN
-#include "qgsrasterlayertemporalproperties.h"
-#include "qgsmeshlayertemporalproperties.h"
-#include "qgsvectorlayertemporalproperties.h"
-#endif
+    //SIP_TYPEHEADER_INCLUDE( "qgsrasterlayertemporalproperties.h" );
+    //SIP_TYPEHEADER_INCLUDE( "qgsmeshlayertemporalproperties.h" );
+    //SIP_TYPEHEADER_INCLUDE( "qgsvectorlayertemporalproperties.h" );
 
     Q_OBJECT
 
@@ -67,7 +66,7 @@ class CORE_EXPORT QgsMapLayerTemporalProperties : public QgsTemporalProperty
     {
       sipType = 0;
     }
-    SIP_END
+  SIP_END
 #endif
 
   public:
@@ -105,7 +104,7 @@ class CORE_EXPORT QgsMapLayerTemporalProperties : public QgsTemporalProperty
     virtual void setDefaultsFromDataProviderTemporalCapabilities( const QgsDataProviderTemporalCapabilities *capabilities ) = 0;
 
 #ifndef SIP_RUN
-// sip gets confused with this, refuses to compile
+    // sip gets confused with this, refuses to compile
 
     /**
      * Attempts to calculate the overall temporal extent for the specified \a layer, using
@@ -117,6 +116,16 @@ class CORE_EXPORT QgsMapLayerTemporalProperties : public QgsTemporalProperty
      */
     virtual QgsDateTimeRange calculateTemporalExtent( QgsMapLayer *layer ) const;
 #endif
+
+    /**
+     * Attempts to calculate the overall list of all temporal extents which are contained in the specified \a layer, using
+     * the settings defined by the temporal properties object.
+     *
+     * May return an empty list if the ranges could not be calculated.
+     *
+     * \since QGIS 3.20
+     */
+    virtual QList< QgsDateTimeRange > allTemporalRanges( QgsMapLayer *layer ) const;
 };
 
 #endif // QGSMAPLAYERTEMPORALPROPERTIES_H

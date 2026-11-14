@@ -18,27 +18,29 @@
 #ifndef QGSMESHDATASETGROUPSTORE_H
 #define QGSMESHDATASETGROUPSTORE_H
 
-#define SIP_NO_FILE
 
 #include "qgsmeshdataprovider.h"
 #include "qgsmeshdataset.h"
+
+#define SIP_NO_FILE
 
 class QgsMeshLayer;
 
 /**
  * \ingroup core
  *
- * Class that can be used to store and access extra dataset group, like memory dataset (temporary)
+ * \brief Stores and accesses extra dataset groups for meshes.
+ *
+ * This class can be used to store and access extra dataset group, like memory dataset (temporary)
  * Derived from QgsMeshDatasetSourceInterface, this class has same methods as QgsMeshDataProvider to access to the datasets.
  *
  * \since QGIS 3.16
  */
-class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
+class QgsMeshExtraDatasetStore : public QgsMeshDatasetSourceInterface
 {
   public:
-
     //! Adds a dataset group, returns the index of the added dataset group
-    int addDatasetGroup( QgsMeshDatasetGroup *datasetGroup );
+    int addDatasetGroup( std::unique_ptr< QgsMeshDatasetGroup > datasetGroup );
 
     //! Removes the dataset group with the local \a index
     void removeDatasetGroup( int index );
@@ -47,7 +49,7 @@ class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
     bool hasTemporalCapabilities() const;
 
     //! Returns the relative times of the dataset index with \a index, returned value in milliseconds
-    quint64 datasetRelativeTime( QgsMeshDatasetIndex index );
+    qint64 datasetRelativeTime( QgsMeshDatasetIndex index ) const;
 
     //! Returns information related to the dataset group with \a groupIndex
     QString description( int groupIndex ) const;
@@ -61,7 +63,7 @@ class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
     QgsMeshDatasetMetadata datasetMetadata( QgsMeshDatasetIndex index ) const override;
     QgsMeshDatasetValue datasetValue( QgsMeshDatasetIndex index, int valueIndex ) const override;
     QgsMeshDataBlock datasetValues( QgsMeshDatasetIndex index, int valueIndex, int count ) const override;
-    QgsMesh3dDataBlock dataset3dValues( QgsMeshDatasetIndex index, int faceIndex, int count ) const override;
+    QgsMesh3DDataBlock dataset3dValues( QgsMeshDatasetIndex index, int faceIndex, int count ) const override;
     bool isFaceActive( QgsMeshDatasetIndex index, int faceIndex ) const override;
     QgsMeshDataBlock areFacesActive( QgsMeshDatasetIndex index, int faceIndex, int count ) const override;
 
@@ -71,19 +73,19 @@ class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
     //! Not implemented, always returns empty list
     QStringList extraDatasets() const override;
 
+    using QgsMeshDatasetSourceInterface::persistDatasetGroup;
     //! Not implemented, always returns true
-    bool persistDatasetGroup( const QString &outputFilePath,
-                              const QString &outputDriver,
-                              const QgsMeshDatasetGroupMetadata &meta,
-                              const QVector<QgsMeshDataBlock> &datasetValues,
-                              const QVector<QgsMeshDataBlock> &datasetActive,
-                              const QVector<double> &times ) override;
+    bool persistDatasetGroup(
+      const QString &outputFilePath,
+      const QString &outputDriver,
+      const QgsMeshDatasetGroupMetadata &meta,
+      const QVector<QgsMeshDataBlock> &datasetValues,
+      const QVector<QgsMeshDataBlock> &datasetActive,
+      const QVector<double> &times
+    ) override;
 
     //! Not implemented, always returns true
-    bool persistDatasetGroup( const QString &outputFilePath,
-                              const QString &outputDriver,
-                              QgsMeshDatasetSourceInterface *source,
-                              int datasetGroupIndex ) override;
+    bool persistDatasetGroup( const QString &outputFilePath, const QString &outputDriver, QgsMeshDatasetSourceInterface *source, int datasetGroupIndex ) override;
 
     //! Writes the store's information in a DOM document
     QDomElement writeXml( int groupIndex, QDomDocument &doc, const QgsReadWriteContext &context );
@@ -98,7 +100,7 @@ class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
 /**
  * \ingroup core
  *
- * Class used to register and access all the dataset groups related to a mesh layer
+ * \brief Registers and accesses all the dataset groups related to a mesh layer.
  *
  * The registered dataset group are :
  *
@@ -112,34 +114,33 @@ class QgsMeshExtraDatasetStore: public QgsMeshDatasetSourceInterface
  * The native group index is not exposed and global index can be obtained with datasetGroupIndexes() that returns the list of global index available.
  * The dataset index is the same than in the native source (data provider or other dataset source)
  *
- * This class as also the responsibility to handle the dataset group tree item that contain information to display the available dataset (\see QgsMeshDatasetGroupTreeItem)
+ * This class also has the responsibility to handle the dataset group tree item that contain information to display the available dataset (\see QgsMeshDatasetGroupTreeItem)
  *
  * \since QGIS 3.16
  */
-class QgsMeshDatasetGroupStore: public QObject
+class QgsMeshDatasetGroupStore : public QObject
 {
     Q_OBJECT
 
-    //! Contains a pointer to the dataset source inerface and the index on this dataset groups container
+    //! Contains a pointer to the dataset source interface and the index on this dataset groups container
     typedef QPair<QgsMeshDatasetSourceInterface *, int> DatasetGroup;
 
   public:
     //! Constructor
-    QgsMeshDatasetGroupStore( QgsMeshLayer *layer );
+    explicit QgsMeshDatasetGroupStore( QgsMeshLayer *layer );
 
-    //! Sets the persistent mesh data provider
-    void setPersistentProvider( QgsMeshDataProvider *provider );
+    //!  Sets the persistent mesh data provider with the path of its extra dataset to be loaded by the provider
+    void setPersistentProvider( QgsMeshDataProvider *provider, const QStringList &extraDatasetUri );
 
     //! Adds persistent datasets from a file with \a path
     bool addPersistentDatasets( const QString &path );
 
     /**
-     * Adds a extra dataset \a group, take ownership
+     * Adds a extra dataset \a group, take ownership, returns True if the group is effectively added.
      *
-     * \note as QgsMeshDatasetGroup doesn't support reference time,
-     * the dataset group is supposed to have the same reference time than the pesristent provider
+     * If returns False, the object will be immediately deleted.
      */
-    bool addDatasetGroup( QgsMeshDatasetGroup *group );
+    bool addDatasetGroup( std::unique_ptr< QgsMeshDatasetGroup > group );
 
     //! Saves on a file with \a filePath the dataset groups index with \a groupIndex with the specified \a driver
     bool saveDatasetGroup( QString filePath, int groupIndex, QString driver );
@@ -150,8 +151,12 @@ class QgsMeshDatasetGroupStore: public QObject
     //! Returns a pointer to the root of the dataset groups tree item
     QgsMeshDatasetGroupTreeItem *datasetGroupTreeItem() const;
 
-    //! Sets the root of the dataset groups tree item, doesn't take onwnershib but clone the root item
-    void setDatasetGroupTreeItem( QgsMeshDatasetGroupTreeItem *rootItem );
+    /**
+     * Sets the root of the dataset groups tree item.
+     *
+     * The \a rootItem is cloned (ownership is not transferred).
+     */
+    void setDatasetGroupTreeItem( const QgsMeshDatasetGroupTreeItem *rootItem );
 
     //! Returns a list of all group indexes
     QList<int> datasetGroupIndexes() const;
@@ -185,7 +190,7 @@ class QgsMeshDatasetGroupStore: public QObject
     QgsMeshDataBlock datasetValues( const QgsMeshDatasetIndex &index, int valueIndex, int count ) const;
 
     //! Returns \a count 3D values of the dataset with global \a index and from \a valueIndex
-    QgsMesh3dDataBlock dataset3dValues( const QgsMeshDatasetIndex &index, int faceIndex, int count ) const;
+    QgsMesh3DDataBlock dataset3dValues( const QgsMeshDatasetIndex &index, int faceIndex, int count ) const;
 
     //! Returns whether faces are active for particular dataset
     QgsMeshDataBlock areFacesActive( const QgsMeshDatasetIndex &index, int faceIndex, int count ) const;
@@ -194,9 +199,14 @@ class QgsMeshDatasetGroupStore: public QObject
     bool isFaceActive( const QgsMeshDatasetIndex &index, int faceIndex ) const;
 
     //! Returns the global dataset index of the dataset int the dataset group with \a groupIndex, corresponding to the relative \a time and the check \a method
-    QgsMeshDatasetIndex datasetIndexAtTime( qint64 time,
-                                            int groupIndex,
-                                            QgsMeshDataProviderTemporalCapabilities::MatchingTemporalDatasetMethod method ) const;
+    QgsMeshDatasetIndex datasetIndexAtTime( qint64 time, int groupIndex, QgsMeshDataProviderTemporalCapabilities::MatchingTemporalDatasetMethod method ) const;
+
+    /**
+     * Returns the global dataset index of the dataset int the dataset group with \a groupIndex, that is between relative times \a time1 and \a time2
+     *
+     * \since QGIS 3.22
+     */
+    QList<QgsMeshDatasetIndex> datasetIndexInTimeInterval( qint64 time1, qint64 time2, int groupIndex ) const;
 
     //! Returns the relative time of the dataset from the persistent provider reference time
     qint64 datasetRelativeTime( const QgsMeshDatasetIndex &index ) const;
@@ -210,6 +220,35 @@ class QgsMeshDatasetGroupStore: public QObject
     //! Reads the store's information from a DOM document
     void readXml( const QDomElement &storeElem, const QgsReadWriteContext &context );
 
+    /**
+     * Returns the global dataset group index of the dataset group with native index \a nativeGroupIndex in the \a source
+     * Returns -1 if the group or the source is not registered
+     *
+     * \since QGIS 3.22
+     */
+    int globalDatasetGroupIndexInSource( QgsMeshDatasetSourceInterface *source, int nativeGroupIndex ) const;
+
+    /**
+     * Returns the global dataset group index of the dataset with name \a groupName
+     *
+     * \since QGIS 3.30.2
+     */
+    int indexFromGroupName( const QString &groupName ) const;
+
+    /**
+     * Returns the name of the dataset group with global index \a groupIndex
+     *
+     * \since QGIS 3.30.2
+     */
+    QString groupName( int groupIndex ) const;
+
+    /**
+     * Removes dataset group with global index \a groupIndex
+     *
+     * \since QGIS 3.42
+     */
+    void removeDatasetGroup( int groupIndex );
+
   signals:
     //! Emitted after dataset groups are added
     void datasetGroupsAdded( QList<int> indexes );
@@ -220,17 +259,23 @@ class QgsMeshDatasetGroupStore: public QObject
   private:
     QgsMeshLayer *mLayer = nullptr;
     QgsMeshDataProvider *mPersistentProvider = nullptr;
-    std::unique_ptr<QgsMeshExtraDatasetStore> mExtraDatasets;
-    QMap < int, DatasetGroup> mRegistery;
+    QgsMeshExtraDatasetStore mExtraDatasets;
+    QMap< int, DatasetGroup> mRegistry;
+    QList<int> mPersistentExtraDatasetGroupIndexes;
+    QMap<QString, int> mGroupNameToGlobalIndex;
     std::unique_ptr<QgsMeshDatasetGroupTreeItem> mDatasetGroupTreeRootItem;
 
     void removePersistentProvider();
 
+    //! reindex dataset group stores variables from provider and extra datasets, to keep data in sync after removal of dataset group
+    void reindexDatasetGroups();
+
     DatasetGroup datasetGroup( int index ) const;
+
+    //! Returns a index that is not already used
     int newIndex();
 
     int registerDatasetGroup( const DatasetGroup &group );
-    int nativeIndexToGroupIndex( QgsMeshDatasetSourceInterface *source, int providerIndex );
     void createDatasetGroupTreeItems( const QList<int> &indexes );
 
     //! Erases from the where this is store, not from the store (registry and tree item), for persistent dataset group, do nothing

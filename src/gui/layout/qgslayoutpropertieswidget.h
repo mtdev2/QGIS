@@ -18,23 +18,25 @@
 #define QGSLAYOUTPROPERTIESWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslayoutwidgetbase.h"
 
 #include "qgis_gui.h"
-#include "ui_qgslayoutwidgetbase.h"
 #include "qgspanelwidget.h"
+
+#define SIP_NO_FILE
 
 class QgsLayout;
 class QgsMasterLayoutInterface;
 
 /**
  * \ingroup gui
- * Widget for configuring the properties of a layout.
+ * \brief Widget for configuring the properties of a layout.
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
  */
-class GUI_EXPORT QgsLayoutPropertiesWidget: public QgsPanelWidget, private Ui::QgsLayoutWidgetBase
+class GUI_EXPORT QgsLayoutPropertiesWidget : public QgsPanelWidget, private Ui::QgsLayoutWidgetBase
 {
     Q_OBJECT
   public:
@@ -52,10 +54,10 @@ class GUI_EXPORT QgsLayoutPropertiesWidget: public QgsPanelWidget, private Ui::Q
   private slots:
 
     void gridResolutionChanged( double d );
-    void gridResolutionUnitsChanged( QgsUnitTypes::LayoutUnit unit );
+    void gridResolutionUnitsChanged( Qgis::LayoutUnit unit );
     void gridOffsetXChanged( double d );
     void gridOffsetYChanged( double d );
-    void gridOffsetUnitsChanged( QgsUnitTypes::LayoutUnit unit );
+    void gridOffsetUnitsChanged( Qgis::LayoutUnit unit );
     void snapToleranceChanged( int tolerance );
     void resizeMarginsChanged();
     void resizeToContents();
@@ -68,13 +70,11 @@ class GUI_EXPORT QgsLayoutPropertiesWidget: public QgsPanelWidget, private Ui::Q
     void updateVariables();
 
   private:
-
     QgsLayout *mLayout = nullptr;
 
     void updateSnappingElements();
     void blockSignals( bool block );
     bool mBlockVariableUpdates = false;
-
 };
 
 #endif // QGSLAYOUTPROPERTIESWIDGET_H

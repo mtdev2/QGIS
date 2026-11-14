@@ -19,29 +19,66 @@
 #ifndef QGSFCGISERVERRESPONSE_H
 #define QGSFCGISERVERRESPONSE_H
 
-#define SIP_NO_FILE
 
+#include <mutex>
+#include <thread>
 
 #include "qgsserverrequest.h"
 #include "qgsserverresponse.h"
 
 #include <QBuffer>
 
+#define SIP_NO_FILE
+
+/**
+ * \ingroup server
+ * \class QgsSocketMonitoringThread
+ * \brief Thread used to monitor the fcgi socket
+ * \since QGIS 3.36
+ */
+class QgsSocketMonitoringThread
+{
+  public:
+    /**
+     * Constructor for QgsSocketMonitoringThread
+     * \param  feedback used to cancel rendering jobs when socket timedout
+     */
+    QgsSocketMonitoringThread( std::shared_ptr<QgsFeedback> feedback );
+
+    /**
+     * main thread function
+     */
+    void run();
+
+    /**
+     * Stop the thread
+     */
+    void stop();
+
+  private:
+    std::atomic_bool mShouldStop;
+    std::shared_ptr<QgsFeedback> mFeedback;
+    int mIpcFd = -1;
+
+    // used to synchronize socket monitoring thread and fcgi response
+    std::timed_mutex mMutex;
+};
+
 /**
  * \ingroup server
  * \class QgsFcgiServerResponse
- * \brief Class defining fcgi response
- * \since QGIS 3.0
+ * \brief Defines fcgi responses.
  */
-class SERVER_EXPORT QgsFcgiServerResponse: public QgsServerResponse
+class SERVER_EXPORT QgsFcgiServerResponse : public QgsServerResponse
 {
   public:
-
     /**
      * Constructor for QgsFcgiServerResponse.
      * \param method The HTTP method (Get by default)
      */
     QgsFcgiServerResponse( QgsServerRequest::Method method = QgsServerRequest::GetMethod );
+
+    ~QgsFcgiServerResponse() override;
 
     void setHeader( const QString &key, const QString &value ) override;
 
@@ -49,7 +86,11 @@ class SERVER_EXPORT QgsFcgiServerResponse: public QgsServerResponse
 
     QString header( const QString &key ) const override;
 
-    QMap<QString, QString> headers() const override { return mHeaders; }
+    QMap<QString, QString> headers() const override;
+
+    QList<QString> fullHeader( const QString &key ) const override;
+
+    QMap<QString, QList<QString>> fullHeaders() const override { return mHeaders; }
 
     bool headersSent() const override;
 
@@ -57,7 +98,7 @@ class SERVER_EXPORT QgsFcgiServerResponse: public QgsServerResponse
 
     int statusCode() const override { return mStatusCode; }
 
-    void sendError( int code,  const QString &message ) override;
+    void sendError( int code, const QString &message ) override;
 
     QIODevice *io() override;
 
@@ -76,13 +117,28 @@ class SERVER_EXPORT QgsFcgiServerResponse: public QgsServerResponse
      */
     void setDefaultHeaders();
 
+    /**
+     * Returns socket feedback if any
+     * \since QGIS 3.36
+     */
+    QgsFeedback *feedback() const override { return mFeedback.get(); }
+
+    void addHeader( const QString &key, const QString &value ) override;
+
   private:
-    QMap<QString, QString> mHeaders;
+    QMap<QString, QList<QString>> mHeaders;
     QBuffer mBuffer;
-    bool mFinished    = false;
+    bool mFinished = false;
     bool mHeadersSent = false;
     QgsServerRequest::Method mMethod;
     int mStatusCode = 0;
+
+    // encapsulate thread data
+    std::unique_ptr<QgsSocketMonitoringThread> mSocketMonitoringThread;
+    // real thread object. Used to join.
+    std::thread mThread;
+    // Used to cancel rendering jobs
+    std::shared_ptr<QgsFeedback> mFeedback;
 };
 
 #endif

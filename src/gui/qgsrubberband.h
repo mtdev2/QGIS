@@ -15,32 +15,80 @@
 #ifndef QGSRUBBERBAND_H
 #define QGSRUBBERBAND_H
 
-#include "qgsmapcanvasitem.h"
+#include "qgis_gui.h"
 #include "qgis_sip.h"
+#include "qgscoordinatereferencesystem.h"
 #include "qgsgeometry.h"
+#include "qgsmapcanvasitem.h"
 
 #include <QBrush>
-#include <QVector>
-#include <QPen>
-#include <QPolygon>
 #include <QObject>
+#include <QPen>
+#include <QPointer>
+#include <QPolygon>
 #include <QSvgRenderer>
+#include <QVector>
 
-#include "qgis_gui.h"
-
+class QgsMapLayer;
 class QgsVectorLayer;
+class QgsMapLayer;
 class QPaintEvent;
+class QgsSymbol;
 
 #ifdef SIP_RUN
-% ModuleHeaderCode
+//%ModuleHeaderCode
 // For ConvertToSubClassCode.
 #include <qgsrubberband.h>
-% End
+//%End
 #endif
+
+class QgsRubberBand;
 
 /**
  * \ingroup gui
- * A class for drawing transient features (e.g. digitizing lines) on the map.
+ * \brief Abstract interface for rendering custom preview overlays attached to a QgsRubberBand.
+ *
+ * \since QGIS 4.4
+ */
+class GUI_EXPORT QgsRubberBandPreviewItem
+{
+  public:
+    virtual ~QgsRubberBandPreviewItem() = default;
+
+    /**
+     * Returns the rubber band associated with the item.
+     */
+    QgsRubberBand *rubberBand();
+
+    /**
+     * Renders the custom preview overlay using the specified render \a context.
+    */
+    virtual void render( QgsRenderContext &context ) = 0;
+
+    /**
+     * Returns the bounding rect required for drawing the preview item.
+     *
+     * If non-empty, these bounds will be combined with the parent rubber band's bounds in order
+     * to avoid graphical artifacts when the band is moved.
+     *
+     * The default implementation returns an empty rect.
+     */
+    virtual QRectF boundingRect() const;
+
+  protected:
+    /**
+     * Constructor for a QgsRubberBandPreviewItem, attached to the specified \a rubberBand.
+     */
+    QgsRubberBandPreviewItem( QgsRubberBand *rubberBand );
+
+  private:
+    QPointer< QgsRubberBand > mRubberBand;
+};
+
+
+/**
+ * \ingroup gui
+ * \brief Responsible for drawing transient features (e.g. digitizing lines) on the map.
  *
  * The QgsRubberBand class provides a transparent overlay widget
  * for tracking the mouse while drawing polylines or polygons.
@@ -57,71 +105,23 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( dynamic_cast<QgsRubberBand *>( sipCpp ) )
+    {
       sipType = sipType_QgsRubberBand;
+      // We need to tweak the pointer as sip believes it is single inheritance
+      // from QgsMapCanvasItem, but the raw address of QgsRubberBand (sipCpp)
+      // is actually a QObject
+      *sipCppRet = dynamic_cast<QgsRubberBand *>( sipCpp );
+    }
     else
       sipType = nullptr;
-    SIP_END
+  SIP_END
 #endif
   public:
-
     Q_PROPERTY( QColor fillColor READ fillColor WRITE setFillColor )
     Q_PROPERTY( QColor strokeColor READ strokeColor WRITE setStrokeColor )
     Q_PROPERTY( int iconSize READ iconSize WRITE setIconSize )
     Q_PROPERTY( QColor secondaryStrokeColor READ secondaryStrokeColor WRITE setSecondaryStrokeColor )
     Q_PROPERTY( int width READ width WRITE setWidth )
-
-    //! Icons
-    enum IconType
-    {
-
-      /**
-       * No icon is used
-       */
-      ICON_NONE,
-
-      /**
-       * A cross is used to highlight points (+)
-       */
-      ICON_CROSS,
-
-      /**
-       * A cross is used to highlight points (x)
-       */
-      ICON_X,
-
-      /**
-       * A box is used to highlight points (□)
-       */
-      ICON_BOX,
-
-      /**
-       * A circle is used to highlight points (○)
-       */
-      ICON_CIRCLE,
-
-      /**
-       * A full box is used to highlight points (■)
-       */
-      ICON_FULL_BOX,
-
-      /**
-       * A diamond is used to highlight points (◇)
-       * \since QGIS 3.0
-       */
-      ICON_DIAMOND,
-
-      /**
-       * A diamond is used to highlight points (◆)
-       * \since QGIS 3.0
-       */
-      ICON_FULL_DIAMOND,
-
-      /**
-       * An svg image is used to highlight points
-       * \since QGIS 3.10
-       */
-      ICON_SVG
-    };
 
     /**
      * Creates a new RubberBand.
@@ -129,9 +129,10 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      *         Its CRS will be used to map points onto screen coordinates.
      * The ownership is transferred to this canvas.
      *  \param geometryType Defines how the data should be drawn onto the screen.
-     *         QgsWkbTypes::LineGeometry, QgsWkbTypes::PolygonGeometry or QgsWkbTypes::PointGeometry
+     *         Qgis::GeometryType::Line, Qgis::GeometryType::Polygon or Qgis::GeometryType::Point
      */
-    QgsRubberBand( QgsMapCanvas *mapCanvas SIP_TRANSFERTHIS, QgsWkbTypes::GeometryType geometryType = QgsWkbTypes::LineGeometry );
+    QgsRubberBand( QgsMapCanvas *mapCanvas SIP_TRANSFERTHIS, Qgis::GeometryType geometryType = Qgis::GeometryType::Line );
+    ~QgsRubberBand() override;
 
     /**
      * Sets the color for the rubberband.
@@ -143,7 +144,6 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
     /**
      * Sets the fill color for the rubberband
      *  \param color  The color used to render this rubberband
-     *  \since QGIS 2.6
      */
     void setFillColor( const QColor &color );
 
@@ -155,7 +155,6 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
     /**
      * Sets the stroke color for the rubberband
      *  \param color  The color used to render this rubberband
-     *  \since QGIS 2.6
      */
     void setStrokeColor( const QColor &color );
 
@@ -168,7 +167,6 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * Sets a secondary stroke color for the rubberband which will be drawn under the main stroke color.
      * Set to an invalid color to avoid drawing the secondary stroke.
      *  \param color  The color used to render a secondary stroke color to this rubberband
-     *  \since QGIS 3.0
      */
     void setSecondaryStrokeColor( const QColor &color );
 
@@ -181,7 +179,7 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * Sets the width of the line. Stroke width for polygon.
      *  \param width The width for any lines painted for this rubberband
      */
-    void setWidth( int width );
+    void setWidth( double width );
 
     /**
      * Returns the current width of the line or stroke width for polygon.
@@ -192,7 +190,7 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * Sets the icon type to highlight point geometries.
      *  \param icon The icon to visualize point geometries
      */
-    void setIcon( IconType icon );
+    void setIcon( Qgis::RubberBandIconType icon );
 
     /**
      * Set the path to the svg file to use to draw points.
@@ -207,17 +205,17 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
     /**
      * Returns the current icon type to highlight point geometries.
      */
-    IconType icon() const { return mIconType; }
+    Qgis::RubberBandIconType icon() const { return mIconType; }
 
     /**
      * Sets the size of the point icons
      */
-    void setIconSize( int iconSize );
+    void setIconSize( double iconSize );
 
     /**
      * Returns the current icon size of the point icons.
      */
-    int iconSize() const { return mIconSize; }
+    double iconSize() const { return mIconSize; }
 
     /**
      * Sets the style of the line
@@ -234,7 +232,25 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * Sets the representation type according to geometryType.
      *  \param geometryType Defines how the data should be drawn onto the screen. (Use Qgis::Line, Qgis::Polygon or Qgis::Point)
      */
-    void reset( QgsWkbTypes::GeometryType geometryType = QgsWkbTypes::LineGeometry );
+    void reset( Qgis::GeometryType geometryType = Qgis::GeometryType::Line );
+
+    /**
+     * Adds a custom preview \a item decorator to the rubber band.
+     *
+     * Ownership of the item is transferred to the rubber band.
+     *
+     * \see clearPreviewItems()
+     * \since QGIS 4.4
+     */
+    void addPreviewItem( QgsRubberBandPreviewItem *item SIP_TRANSFER );
+
+    /**
+     * Clears all registered preview items.
+     *
+     * \see addPreviewItem()
+     * \since QGIS 4.4
+     */
+    void clearPreviewItems();
 
     /**
      * Adds a vertex to the rubberband and update canvas.
@@ -253,7 +269,6 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * \param doUpdate set to TRUE to update the map canvas immediately
      * \param geometryIndex The index of the feature part (in case of multipart geometries)
      * \param ringIndex     The index of the polygon ring (in case of polygons with holes)
-     * \since QGIS 2.16
      */
     void closePoints( bool doUpdate = true, int geometryIndex = 0, int ringIndex = 0 );
 
@@ -318,17 +333,27 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
     void setToCanvasRectangle( QRect rect );
 
     /**
+     * Copies the points from another rubber band.
+     *
+     * \since QGIS 3.22
+     */
+    void copyPointsFrom( const QgsRubberBand *other );
+
+    /**
      * Adds the geometry of an existing feature to a rubberband
      * This is useful for multi feature highlighting.
      * As of 2.0, this method does not change the GeometryType any more. You need to set the GeometryType
      * of the rubberband explicitly by calling reset() or setToGeometry() with appropriate arguments.
      * setToGeometry() is also to be preferred for backwards-compatibility.
      *
+     * If additional geometries are to be added then set \a doUpdate to FALSE to defer costly repaint and bounding rectangle calculations for better performance.
+     * After adding the final geometry updatePosition() should be called.
+     *
      *  \param geometry the geometry object. Will be treated as a collection of vertices.
-     *  \param layer the layer containing the feature, used for coord transformation to map
-     *               crs. If \a layer is NULLPTR, the coordinates are not going to be transformed.
+     *  \param layer the layer associated with the geometry. This is used for transforming the geometry from the layer's CRS to the map crs. If \a layer is NULLPTR no coordinate transformation will occur.
+     *  \param doUpdate set to FALSE to defer updates of the rubber band.
      */
-    void addGeometry( const QgsGeometry &geometry, QgsVectorLayer *layer );
+    void addGeometry( const QgsGeometry &geometry, QgsMapLayer *layer, bool doUpdate = true );
 
     /**
      * Adds a \a geometry to the rubberband.
@@ -336,9 +361,11 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      * If \a crs is specified, the geometry will be automatically reprojected from \a crs
      * to the canvas CRS.
      *
-     * \since QGIS 3.0
+     * If additional geometries are to be added then set \a doUpdate to FALSE to defer costly repaint and bounding rectangle calculations for better performance.
+     * After adding the final geometry updatePosition() should be called.
+     *
      */
-    void addGeometry( const QgsGeometry &geometry, const QgsCoordinateReferenceSystem &crs = QgsCoordinateReferenceSystem() );
+    void addGeometry( const QgsGeometry &geometry, const QgsCoordinateReferenceSystem &crs = QgsCoordinateReferenceSystem(), bool doUpdate = true );
 
     /**
      * Adds translation to original coordinates (all in map coordinates)
@@ -359,8 +386,8 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
      */
     int numberOfVertices() const;
 
-    // TODO QGIS 4: rename i to geometryIndex, j to vertexIndex
-    // TODO QGIS 4: reorder parameters to geom, ring, ring
+    // TODO QGIS 5: rename i to geometryIndex, j to vertexIndex
+    // TODO QGIS 5: reorder parameters to geom, ring, ring
 
     /**
      * Returns a vertex
@@ -378,7 +405,48 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
 
     void updatePosition() override;
 
+    /**
+     * Returns the symbol used for rendering the rubberband, if set.
+     *
+     * \see setSymbol()
+     * \since QGIS 3.20
+     */
+    QgsSymbol *symbol() const;
+
+    /**
+     * Sets the \a symbol used for rendering the rubberband.
+     *
+     * Ownership of \a symbol is transferred to the rubberband.
+     *
+     * \warning Only line and fill symbols are currently supported.
+     *
+     * \note Setting a symbol for the rubberband overrides any other appearance setting,
+     * such as the strokeColor() or width().
+     *
+     * \see setSymbol()
+     * \since QGIS 3.20
+     */
+    void setSymbol( QgsSymbol *symbol SIP_TRANSFER );
+
+    /**
+     * Returns the rubber band components that will be rendered for this band.
+     *
+     * \see setRenderedComponents()
+     * \since QGIS 4.4
+     */
+    Qgis::RubberBandComponents renderedComponents() const;
+
+    /**
+     * Sets the rubber band \a components that should be rendered for this band.
+     *
+     * \see renderedComponents()
+     * \since QGIS 4.4
+     */
+    void setRenderedComponents( Qgis::RubberBandComponents components );
+    QRectF boundingRect() const override;
+
   protected:
+    using QgsMapCanvasItem::paint;
 
     /**
      * Paints the rubber band in response to an update event.
@@ -409,23 +477,27 @@ class GUI_EXPORT QgsRubberBand : public QgsMapCanvasItem
     QPen mSecondaryPen;
 
     //! The size of the icon for points.
-    int mIconSize = 5;
+    double mIconSize = 5;
 
     //! Icon to be shown.
-    IconType mIconType = ICON_CIRCLE;
+    Qgis::RubberBandIconType mIconType = Qgis::RubberBandIconType::Circle;
+    Qgis::RubberBandComponents mComponentsToRender = Qgis::RubberBandComponent::Symbol | Qgis::RubberBandComponent::PreviewItems;
     std::unique_ptr<QSvgRenderer> mSvgRenderer;
     QPoint mSvgOffset;
+
+    std::unique_ptr<QgsSymbol> mSymbol;
 
     /**
      * Nested lists used for multitypes
      */
-    QVector< QVector< QVector <QgsPointXY> > > mPoints;
-    QgsWkbTypes::GeometryType mGeometryType = QgsWkbTypes::PolygonGeometry;
+    QVector<QVector<QVector<QgsPointXY>>> mPoints;
+    Qgis::GeometryType mGeometryType = Qgis::GeometryType::Polygon;
     double mTranslationOffsetX = 0.0;
     double mTranslationOffsetY = 0.0;
 
-    QgsRubberBand();
+    std::vector<std::unique_ptr<QgsRubberBandPreviewItem>> mPreviewItems;
 
+    QgsRubberBand();
 };
 
 #endif

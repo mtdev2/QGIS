@@ -18,73 +18,96 @@
 #ifndef QGSPOINTCLOUDLAYERRENDERER_H
 #define QGSPOINTCLOUDLAYERRENDERER_H
 
-#include "qgis_core.h"
-#include "qgscolorramp.h"
-#include "qgsmaplayerrenderer.h"
-#include "qgsreadwritecontext.h"
-#include "qgspointcloudindex.h"
-#include "qgsgeometry.h"
+#include <optional>
 
-#include "qgserror.h"
-#include "qgspointcloudindex.h"
-#include "qgsidentifycontext.h"
-#include "qgspointcloudrenderer.h"
+#include "qgis_core.h"
+#include "qgsgeometry.h"
 #include "qgsmapclippingregion.h"
+#include "qgsmaplayerrenderer.h"
+#include "qgspointcloudindex.h"
+#include "qgsrange.h"
 
 #include <QDomElement>
-#include <QString>
+#include <QElapsedTimer>
 #include <QPainter>
-
-class QgsRenderContext;
-class QgsPointCloudLayer;
-class QgsPointCloudRenderer;
-class QgsPointCloudRenderContext;
+#include <QString>
 
 #define SIP_NO_FILE
+
+class QgsPointCloudExtentRenderer;
+class QgsPointCloudLayer;
+class QgsPointCloudRenderContext;
+class QgsPointCloudRenderer;
+class QgsPointCloudSubIndex;
+class QgsRenderContext;
+
 
 /**
  * \ingroup core
  *
- * Implementation of threaded rendering for point cloud layers.
+ * \brief Implementation of threaded rendering for point cloud layers.
  *
  * \note The API is considered EXPERIMENTAL and can be changed without a notice
  * \note Not available in Python bindings
  *
  * \since QGIS 3.18
  */
-class CORE_EXPORT QgsPointCloudLayerRenderer: public QgsMapLayerRenderer
+class CORE_EXPORT QgsPointCloudLayerRenderer : public QgsMapLayerRenderer
 {
   public:
-
     //! Ctor
     explicit QgsPointCloudLayerRenderer( QgsPointCloudLayer *layer, QgsRenderContext &context );
-    ~QgsPointCloudLayerRenderer();
+    ~QgsPointCloudLayerRenderer() override;
 
     bool render() override;
+    Qgis::MapLayerRendererFlags flags() const override;
     bool forceRasterRender() const override;
     void setLayerRenderingTimeHint( int time ) override;
 
-  private:
-    QVector<IndexedPointCloudNode> traverseTree( const QgsPointCloudIndex *pc, const QgsRenderContext &context, IndexedPointCloudNode n, double maxErrorPixels, double nodeErrorPixels );
+    QgsFeedback *feedback() const override { return mFeedback.get(); }
 
-    QgsPointCloudLayer *mLayer = nullptr;
+  private:
+    QVector<QgsPointCloudNodeId> traverseTree( const QgsPointCloudIndex &pc, const QgsRenderContext &context, QgsPointCloudNodeId n, double maxErrorPixels, double nodeErrorPixels );
+    int renderNodesSync( const QVector<QgsPointCloudNodeId> &nodes, QgsPointCloudIndex &pc, QgsPointCloudRenderContext &context, QgsPointCloudRequest &request, bool &canceled );
+    int renderNodesAsync( const QVector<QgsPointCloudNodeId> &nodes, QgsPointCloudIndex &pc, QgsPointCloudRenderContext &context, QgsPointCloudRequest &request, bool &canceled );
+    int renderNodesSorted(
+      const QVector<QgsPointCloudNodeId> &nodes, QgsPointCloudIndex &pc, QgsPointCloudRenderContext &context, QgsPointCloudRequest &request, bool &canceled, Qgis::PointCloudDrawOrder order
+    );
+    void renderTriangulatedSurface( QgsPointCloudRenderContext &context );
+    bool renderIndex( QgsPointCloudIndex &pc );
+
+    QgsPointCloudIndex mIndex;
+    QString mLayerName;
 
     std::unique_ptr< QgsPointCloudRenderer > mRenderer;
+    std::unique_ptr< QgsPointCloudExtentRenderer > mSubIndexExtentRenderer;
 
     QgsVector3D mScale;
     QgsVector3D mOffset;
     double mZOffset = 0;
     double mZScale = 1.0;
 
+    QgsDoubleRange mMapCrsZFilter;
+
     QgsPointCloudAttributeCollection mLayerAttributes;
     QgsPointCloudAttributeCollection mAttributes;
     QgsGeometry mCloudExtent;
     QList< QgsMapClippingRegion > mClippingRegions;
 
+    bool mIsVpc = false;
+    const QVector< QgsPointCloudSubIndex > mSubIndexes;
+    QVector<QgsPointCloudIndex> mOverviewIndexes;
+    double mAverageSubIndexWidth = 0;
+    double mAverageSubIndexHeight = 0;
+
     int mRenderTimeHint = 0;
     bool mBlockRenderUpdates = false;
     QElapsedTimer mElapsedTimer;
 
+    std::unique_ptr<QgsFeedback> mFeedback = nullptr;
+
+    bool mEnableProfile = false;
+    quint64 mPreparationTime = 0;
 };
 
 #endif // QGSPOINTCLOUDLAYERRENDERER_H

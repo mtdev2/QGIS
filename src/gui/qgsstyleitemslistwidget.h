@@ -18,12 +18,15 @@
 
 #include "ui_qgsstyleitemslistwidgetbase.h"
 
-#include "qgsstylemodel.h"
-#include <QWidget>
 #include "qgis_gui.h"
+#include "qgsstylemodel.h"
+
+#include <QStyledItemDelegate>
+#include <QWidget>
 
 class QgsStyle;
 class QMenu;
+class QgsCombinedStyleModel;
 
 
 #ifndef SIP_RUN
@@ -32,20 +35,42 @@ class QgsReadOnlyStyleModel : public QgsStyleProxyModel
 {
     Q_OBJECT
   public:
-
     explicit QgsReadOnlyStyleModel( QgsStyleModel *sourceModel, QObject *parent = nullptr );
     explicit QgsReadOnlyStyleModel( QgsStyle *style, QObject *parent = nullptr );
+    explicit QgsReadOnlyStyleModel( QgsCombinedStyleModel *style, QObject *parent = nullptr );
+
     Qt::ItemFlags flags( const QModelIndex &index ) const override;
     QVariant data( const QModelIndex &index, int role ) const override;
-
 };
+
+/**
+ * \ingroup gui
+ * \class QgsStyleModelDelegate
+ * \brief Custom delegate for formatting style models.
+ * \note Not available in Python bindings
+ * \since QGIS 3.26
+ */
+class QgsStyleModelDelegate : public QStyledItemDelegate
+{
+    Q_OBJECT
+
+  public:
+    /**
+     * Constructor for QgsStyleModelDelegate, with the specified \a parent object.
+     */
+    QgsStyleModelDelegate( QObject *parent );
+
+    QSize sizeHint( const QStyleOptionViewItem &option, const QModelIndex &index ) const override;
+    void paint( QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index ) const override;
+};
+
 #endif
 ///@endcond
 
 /**
  * \ingroup gui
  * \class QgsStyleItemsListWidget
- * A reusable widget for showing a filtered list of entities from a QgsStyle database.
+ * \brief A reusable widget for showing a filtered list of entities from a QgsStyle database.
  * \since QGIS 3.10
  */
 class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleItemsListWidgetBase
@@ -53,7 +78,6 @@ class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleI
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsStyleItemsListWidget, with the specified \a parent widget.
      */
@@ -86,15 +110,15 @@ class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleI
      *
      * \see setEntityType()
      */
-    void setSymbolType( QgsSymbol::SymbolType type );
+    void setSymbolType( Qgis::SymbolType type );
 
     /**
-     * Sets the layer \a type to show in the widget. Set \a type to QgsWkbTypes::UnknownGeometry if no
+     * Sets the layer \a type to show in the widget. Set \a type to Qgis::GeometryType::Unknown if no
      * layer type filter is desired.
      *
      * This setting only applies to label settings and 3d style entities.
      */
-    void setLayerType( QgsWkbTypes::GeometryType type );
+    void setLayerType( Qgis::GeometryType type );
 
     /**
      * Returns the current tag filter set for the widget, if any is set.
@@ -143,8 +167,14 @@ class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleI
      */
     QgsStyle::StyleEntity currentEntityType() const;
 
-  protected:
+    /**
+     * Returns the associated proxy model.
+     *
+     * \since QGIS 4.2
+     */
+    QgsStyleProxyModel *proxyModel();
 
+  protected:
     void showEvent( QShowEvent *event ) override;
 
   signals:
@@ -155,6 +185,16 @@ class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleI
      * \param type Newly selected item type
      */
     void selectionChanged( const QString &name, QgsStyle::StyleEntity type );
+
+    /**
+     * Emitted when the selected item is changed in the widget.
+     * \param name Newly selected item name
+     * \param type Newly selected item type
+     * \param stylePath file path to associated style database
+     *
+     * \since QGIS 3.26
+     */
+    void selectionChangedWithStylePath( const QString &name, QgsStyle::StyleEntity type, const QString &stylePath );
 
     /**
      * Emitted when the user has opted to save a new entity to the style
@@ -168,17 +208,15 @@ class GUI_EXPORT QgsStyleItemsListWidget : public QWidget, private Ui::QgsStyleI
   private slots:
     void groupsCombo_currentIndexChanged( int index );
     void updateModelFilters();
-    void onSelectionChanged( const QModelIndex &index );
+    void onSelectionChanged( const QModelIndex &index, const QModelIndex &previous );
     void populateGroups();
     void openStyleManager();
 
   private:
     QgsStyle *mStyle = nullptr;
     QgsStyleProxyModel *mModel = nullptr;
+    QgsStyleModelDelegate *mDelegate = nullptr;
     bool mUpdatingGroups = false;
 };
 
 #endif //QGSSTYLEITEMSLISTWIDGET_H
-
-
-

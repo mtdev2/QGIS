@@ -15,35 +15,58 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgslogger.h"
-#include "qgsrasterblock.h"
 #include "qgsrasterdrawer.h"
+
+#include "qgslogger.h"
+#include "qgsmaptopixel.h"
+#include "qgspainting.h"
+#include "qgsrasterblock.h"
 #include "qgsrasterinterface.h"
 #include "qgsrasteriterator.h"
 #include "qgsrasterviewport.h"
-#include "qgsmaptopixel.h"
 #include "qgsrendercontext.h"
+
 #include <QImage>
 #include <QPainter>
-#ifndef QT_NO_PRINTER
-#include <QPrinter>
-#endif
+#include <QPdfWriter>
+#include <QString>
 
-QgsRasterDrawer::QgsRasterDrawer( QgsRasterIterator *iterator ): mIterator( iterator )
+using namespace Qt::StringLiterals;
+
+QgsRasterDrawer::QgsRasterDrawer( QgsRasterIterator *iterator, double dpiTarget )
+  : mIterator( iterator )
+  , mDpiTarget( dpiTarget )
+{}
+
+QgsRasterDrawer::QgsRasterDrawer( QgsRasterIterator *iterator )
+  : mIterator( iterator )
+{}
+
+void QgsRasterDrawer::draw( QgsRenderContext &context, QgsRasterViewPort *viewPort, QgsRasterBlockFeedback *feedback )
 {
+  mDpiScaleFactor = context.dpiTarget() >= 0.0 ? context.dpiTarget() / ( context.scaleFactor() * 25.4 ) : 1.0;
+  mDevicePixelRatio = context.devicePixelRatio();
+
+  draw( context.painter(), viewPort, &context.mapToPixel(), feedback );
 }
 
 void QgsRasterDrawer::draw( QPainter *p, QgsRasterViewPort *viewPort, const QgsMapToPixel *qgsMapToPixel, QgsRasterBlockFeedback *feedback )
 {
-  QgsDebugMsgLevel( QStringLiteral( "Entered" ), 4 );
+  QgsDebugMsgLevel( u"Entered"_s, 4 );
   if ( !p || !mIterator || !viewPort || !qgsMapToPixel )
   {
     return;
   }
 
+  if ( mDpiTarget >= 0 )
+  {
+    mDpiScaleFactor = mDpiTarget / p->device()->logicalDpiX();
+  }
+
   // last pipe filter has only 1 band
-  int bandNumber = 1;
-  mIterator->startRasterRead( bandNumber, viewPort->mWidth, viewPort->mHeight, viewPort->mDrawnExtent, feedback );
+  const int bandNumber = 1;
+  mIterator
+    ->startRasterRead( bandNumber, std::floor( static_cast<double>( viewPort->mWidth ) * mDevicePixelRatio ), std::floor( static_cast<double>( viewPort->mHeight ) * mDevicePixelRatio ), viewPort->mDrawnExtent, feedback );
 
   //number of cols/rows in output pixels
   int nCols = 0;
@@ -57,28 +80,26 @@ void QgsRasterDrawer::draw( QPainter *p, QgsRasterViewPort *viewPort, const QgsM
   std::unique_ptr< QgsRasterBlock > block;
 
   // readNextRasterPart calcs and resets  nCols, nRows, topLeftCol, topLeftRow
-  while ( mIterator->readNextRasterPart( bandNumber, nCols, nRows,
-                                         block, topLeftCol, topLeftRow ) )
+  while ( mIterator->readNextRasterPart( bandNumber, nCols, nRows, block, topLeftCol, topLeftRow ) )
   {
     if ( !block )
     {
-      QgsDebugMsg( QStringLiteral( "Cannot get block" ) );
+      QgsDebugError( u"Cannot get block"_s );
       continue;
     }
 
     QImage img = block->image();
 
-#ifndef QT_NO_PRINTER
     // Because of bug in Acrobat Reader we must use "white" transparent color instead
     // of "black" for PDF. See #9101.
-    QPrinter *printer = dynamic_cast<QPrinter *>( p->device() );
-    if ( printer && printer->outputFormat() == QPrinter::PdfFormat )
+    QPdfWriter *pdfWriter = dynamic_cast<QPdfWriter *>( p->device() );
+    if ( pdfWriter )
     {
-      QgsDebugMsgLevel( QStringLiteral( "PdfFormat" ), 4 );
+      QgsDebugMsgLevel( u"PdfFormat"_s, 4 );
 
       img = img.convertToFormat( QImage::Format_ARGB32 );
-      QRgb transparentBlack = qRgba( 0, 0, 0, 0 );
-      QRgb transparentWhite = qRgba( 255, 255, 255, 0 );
+      const QRgb transparentBlack = qRgba( 0, 0, 0, 0 );
+      const QRgb transparentWhite = qRgba( 255, 255, 255, 0 );
       for ( int x = 0; x < img.width(); x++ )
       {
         for ( int y = 0; y < img.height(); y++ )
@@ -90,7 +111,6 @@ void QgsRasterDrawer::draw( QPainter *p, QgsRasterViewPort *viewPort, const QgsM
         }
       }
     }
-#endif
 
     if ( feedback && feedback->renderPartialOutput() )
     {
@@ -122,38 +142,42 @@ void QgsRasterDrawer::drawImage( QPainter *p, QgsRasterViewPort *viewPort, const
     return;
   }
 
-  //top left position in device coords
-  QPoint tlPoint = QPoint( viewPort->mTopLeftPoint.x() + topLeftCol, viewPort->mTopLeftPoint.y() + topLeftRow );
-  QgsScopedQPainterState painterState( p );
-  p->setRenderHint( QPainter::Antialiasing, false );
+  // top left position in device coords
+  const QPoint tlPoint
+    = QPoint( std::floor( viewPort->mTopLeftPoint.x() + topLeftCol / mDpiScaleFactor / mDevicePixelRatio ), std::floor( viewPort->mTopLeftPoint.y() + topLeftRow / mDpiScaleFactor / mDevicePixelRatio ) );
+  const QgsScopedQPainterState painterState( p );
+
+  // Improve rendering of rasters on high DPI screens with Qt's auto scaling enabled
+  if ( !qgsDoubleNear( mDevicePixelRatio, 1.0 ) || !qgsDoubleNear( mDpiScaleFactor, 1.0 ) )
+  {
+    p->setRenderHint( QPainter::SmoothPixmapTransform, true );
+  }
 
   // Blending problem was reported with PDF output if background color has alpha < 255
   // in #7766, it seems to be a bug in Qt, setting a brush with alpha 255 is a workaround
   // which should not harm anything
   p->setBrush( QBrush( QColor( Qt::white ), Qt::NoBrush ) );
-
   if ( qgsMapToPixel )
   {
-    int w = qgsMapToPixel->mapWidth();
-    int h = qgsMapToPixel->mapHeight();
-
-    double rotation = qgsMapToPixel->mapRotation();
+    const int w = qgsMapToPixel->mapWidth();
+    const int h = qgsMapToPixel->mapHeight();
+    const double rotation = qgsMapToPixel->mapRotation();
     if ( rotation )
     {
       // both viewPort and image sizes are dependent on scale
-      double cx = w / 2.0;
-      double cy = h / 2.0;
+      const double cx = w / 2.0;
+      const double cy = h / 2.0;
       p->translate( cx, cy );
       p->rotate( rotation );
       p->translate( -cx, -cy );
     }
   }
 
-  p->drawImage( tlPoint, img );
+  p->drawImage( QRect( tlPoint.x(), tlPoint.y(), std::ceil( img.width() / mDpiScaleFactor / mDevicePixelRatio ), std::ceil( img.height() / mDpiScaleFactor / mDevicePixelRatio ) ), img );
 
 #if 0
   // For debugging:
-  QRectF br = QRectF( tlPoint, img.size() );
+  QRectF br = QRectF( tlPoint, img.size() / mDpiScaleFactor / devicePixelRatio );
   QPointF c = br.center();
   double rad = std::max( br.width(), br.height() ) / 10;
   p->drawRoundedRect( br, rad, rad );
@@ -171,4 +195,3 @@ void QgsRasterDrawer::drawImage( QPainter *p, QgsRasterViewPort *viewPort, const
   p->drawRoundedRect( br, rad, rad );
 #endif
 }
-

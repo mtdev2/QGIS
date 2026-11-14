@@ -15,11 +15,17 @@
 
 #include "qgslegendfilterbutton.h"
 
-#include <QMenu>
-#include <QAction>
-
 #include "qgsapplication.h"
 #include "qgsexpressionbuilderdialog.h"
+#include "qgsexpressioncontextutils.h"
+
+#include <QAction>
+#include <QMenu>
+#include <QString>
+
+#include "moc_qgslegendfilterbutton.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLegendFilterButton::QgsLegendFilterButton( QWidget *parent )
   : QToolButton( parent )
@@ -37,7 +43,7 @@ QgsLegendFilterButton::QgsLegendFilterButton( QWidget *parent )
   mMenu->addAction( mClearExpressionAction );
 
   setCheckable( true );
-  setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mIconExpressionFilter.svg" ) ) );
+  setIcon( QgsApplication::getThemeIcon( u"/mIconExpressionFilter.svg"_s ) );
   setPopupMode( QToolButton::MenuButtonPopup );
 
   setMenu( mMenu );
@@ -58,7 +64,14 @@ void QgsLegendFilterButton::onToggle( bool checked )
 
 void QgsLegendFilterButton::onSetLegendFilterExpression()
 {
-  QgsExpressionBuilderDialog dlg( mLayer, mExpression );
+  QgsExpressionContext context;
+  if ( mExpressionContextGenerator )
+    context = mExpressionContextGenerator->createExpressionContext();
+  else
+  {
+    context.appendScopes( QgsExpressionContextUtils::globalProjectLayerScopes( mLayer ) );
+  }
+  QgsExpressionBuilderDialog dlg( mLayer, mExpression, nullptr, u"generic"_s, context );
   if ( dlg.exec() )
   {
     setExpressionText( dlg.expressionText() );
@@ -77,6 +90,11 @@ void QgsLegendFilterButton::onSetLegendFilterExpression()
     if ( emitSignal )
       emit toggled( isChecked() );
   }
+}
+
+void QgsLegendFilterButton::registerExpressionContextGenerator( QgsExpressionContextGenerator *generator )
+{
+  mExpressionContextGenerator = generator;
 }
 
 void QgsLegendFilterButton::onClearFilterExpression()

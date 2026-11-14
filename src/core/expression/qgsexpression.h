@@ -16,20 +16,27 @@
 #ifndef QGSEXPRESSION_H
 #define QGSEXPRESSION_H
 
-#include "qgis_core.h"
-#include <QMetaType>
-#include <QStringList>
-#include <QVariant>
-#include <QList>
-#include <QDomDocument>
-#include <QCoreApplication>
-#include <QSet>
 #include <functional>
 
 #include "qgis.h"
-#include "qgsunittypes.h"
-#include "qgsinterval.h"
+#include "qgis_core.h"
 #include "qgsexpressionnode.h"
+#include "qgsinterval.h"
+#include "qgsproject.h"
+#include "qgsthreadingutils.h"
+
+#include <QCoreApplication>
+#include <QDomDocument>
+#include <QList>
+#include <QMetaType>
+#include <QReadWriteLock>
+#include <QRecursiveMutex>
+#include <QSet>
+#include <QString>
+#include <QStringList>
+#include <QVariant>
+
+using namespace Qt::StringLiterals;
 
 class QgsFeature;
 class QgsGeometry;
@@ -44,114 +51,240 @@ class QgsExpressionContext;
 class QgsExpressionPrivate;
 class QgsExpressionFunction;
 
+#ifndef SIP_RUN
+///@cond PRIVATE
+struct HelpArg
+{
+    HelpArg( const QString &arg, const QString &desc, bool descOnly = false, bool syntaxOnly = false, bool optional = false, const QString &defaultVal = QString() )
+      : mArg( arg )
+      , mDescription( desc )
+      , mDescOnly( descOnly )
+      , mSyntaxOnly( syntaxOnly )
+      , mOptional( optional )
+      , mDefaultVal( defaultVal )
+    {}
+
+    QString mArg;
+    QString mDescription;
+    bool mDescOnly;
+    bool mSyntaxOnly;
+    bool mOptional;
+    QString mDefaultVal;
+};
+
+struct HelpExample
+{
+    HelpExample( const QString &expression, const QString &returns, const QString &note = QString() )
+      : mExpression( expression )
+      , mReturns( returns )
+      , mNote( note )
+    {}
+
+    QString mExpression;
+    QString mReturns;
+    QString mNote;
+};
+
+
+struct HelpVariant
+{
+    HelpVariant(
+      const QString &name,
+      const QString &description,
+      const QList<HelpArg> &arguments = QList<HelpArg>(),
+      bool variableLenArguments = false,
+      const QList<HelpExample> &examples = QList<HelpExample>(),
+      const QString &notes = QString(),
+      const QStringList &tags = QStringList()
+    )
+      : mName( name )
+      , mDescription( description )
+      , mArguments( arguments )
+      , mVariableLenArguments( variableLenArguments )
+      , mExamples( examples )
+      , mNotes( notes )
+      , mTags( tags )
+    {}
+
+    QString mName;
+    QString mDescription;
+    QList<HelpArg> mArguments;
+    bool mVariableLenArguments;
+    QList<HelpExample> mExamples;
+    QString mNotes;
+    QStringList mTags;
+};
+
+
+struct Help
+{
+    Help() = default;
+
+    Help( const QString &name, const QString &type, const QString &description, const QList<HelpVariant> &variants )
+      : mName( name )
+      , mType( type )
+      , mDescription( description )
+      , mVariants( variants )
+    {}
+
+    QString mName;
+    QString mType;
+    QString mDescription;
+    QList<HelpVariant> mVariants;
+};
+
+typedef QHash<QString, Help> HelpTextHash;
+
+///@endcond PRIVATE
+#endif
+
 /**
  * \ingroup core
-Class for parsing and evaluation of expressions (formerly called "search strings").
-The expressions try to follow both syntax and semantics of SQL expressions.
-
-Usage:
-\code{.py}
-  exp = QgsExpression("gid*2 > 10 and type not in ('D','F')")
-  if exp.hasParserError():
-      # show error message with parserErrorString() and exit
-
-  result = exp.evaluate(feature, fields)
-  if exp.hasEvalError():
-      # show error message with evalErrorString()
-  else:
-      # examine the result
-\endcode
-
-\section value_logic Three Value Logic
-
-Similarly to SQL, this class supports three-value logic: true/false/unknown.
-Unknown value may be a result of operations with missing data (NULL). Please note
-that NULL is different value than zero or an empty string. For example
-3 > NULL returns unknown.
-
-There is no special (three-value) 'boolean' type: true/false is represented as
-1/0 integer, unknown value is represented the same way as NULL values: NULL QVariant.
-
-\section performance Performance
-
-For better performance with many evaluations you may first call prepare(fields) function
-to find out indices of columns and then repeatedly call evaluate(feature).
-
-\section type_conversion Type conversion
-
-Operators and functions that expect arguments to be of a particular
-type automatically convert the arguments to that type, e.g. sin('2.1') will convert
-the argument to a double, length(123) will first convert the number to a string.
-Explicit conversion can be achieved with to_int, to_real, to_string functions.
-If implicit or explicit conversion is invalid, the evaluation returns an error.
-Comparison operators do numeric comparison in case both operators are numeric (int/double)
-or they can be converted to numeric types.
-
-\section implicit_sharing Implicit sharing
-
-This class is implicitly shared, copying has a very low overhead.
-It is normally preferable to call `QgsExpression( otherExpression )` instead of
-`QgsExpression( otherExpression.expression() )`. A deep copy will only be made
-when prepare() is called. For usage this means mainly, that you should
-normally keep an unprepared master copy of a QgsExpression and whenever using it
-with a particular QgsFeatureIterator copy it just before and prepare it using the
-same context as the iterator.
-
-Implicit sharing was added in 2.14
-
+ * \brief Handles parsing and evaluation of expressions (formerly called "search strings").
+ *
+ * The expressions try to follow both syntax and semantics of SQL expressions.
+ *
+ * Usage:
+ * \code{.py}
+ *   exp = QgsExpression("gid*2 > 10 and type not in ('D','F')")
+ *   if exp.hasParserError():
+ *       # show error message with parserErrorString() and exit
+ *
+ *   result = exp.evaluate(feature, fields)
+ *   if exp.hasEvalError():
+ *       # show error message with evalErrorString()
+ *   else:
+ *       # examine the result
+ * \endcode
+ *
+ * \section value_logic Three Value Logic
+ *
+ * Similarly to SQL, this class supports three-value logic: true/false/unknown.
+ * Unknown value may be a result of operations with missing data (NULL). Please note
+ * that NULL is different value than zero or an empty string. For example
+ * 3 > NULL returns unknown.
+ *
+ * There is no special (three-value) 'boolean' type: true/false is represented as
+ * 1/0 integer, unknown value is represented the same way as NULL values: NULL QVariant.
+ *
+ * \section performance Performance
+ *
+ * For better performance with many evaluations you may first call prepare(fields) function
+ * to find out indices of columns and then repeatedly call evaluate(feature).
+ *
+ * \section type_conversion Type conversion
+ *
+ * Operators and functions that expect arguments to be of a particular
+ * type automatically convert the arguments to that type, e.g. sin('2.1') will convert
+ * the argument to a double, length(123) will first convert the number to a string.
+ * Explicit conversion can be achieved with to_int, to_real, to_string functions.
+ * If implicit or explicit conversion is invalid, the evaluation returns an error.
+ * Comparison operators do numeric comparison in case both operators are numeric (int/double)
+ * or they can be converted to numeric types.
+ *
+ * \section implicit_sharing Implicit sharing
+ *
+ * This class is implicitly shared, copying has a very low overhead.
+ * It is normally preferable to call `QgsExpression( otherExpression )` instead of
+ * `QgsExpression( otherExpression.expression() )`. A deep copy will only be made
+ * when prepare() is called. For usage this means mainly, that you should
+ * normally keep an unprepared master copy of a QgsExpression and whenever using it
+ * with a particular QgsFeatureIterator copy it just before and prepare it using the
+ * same context as the iterator.
+ *
+ * Implicit sharing was added in 2.14
 */
-
 class CORE_EXPORT QgsExpression
 {
     Q_DECLARE_TR_FUNCTIONS( QgsExpression )
   public:
+#ifndef SIP_RUN
+    using SharedFunctionPtr = std::shared_ptr<QgsExpressionFunction>;
+
+    /**
+     * \ingroup core
+     * A thread-safe container of shared pointers to registered functions.
+     *
+     * \since QGIS 4.4
+     */
+    class CORE_EXPORT SharedFunctionPtrList : public QList< SharedFunctionPtr >
+    {
+      public:
+        /**
+         * Returns the index of the function in the list.
+         *
+         * Name matching is case-insensitive, and applied against function aliases too.
+         *
+         * The returned index applies to this container only, and may differ from indices for other
+         * SharedFunctionPtrList instances.
+         */
+        int functionIndex( const QString &name ) const;
+
+        /**
+         * Returns a shared pointer for the function with the specified \a index.
+         */
+        SharedFunctionPtr getFunction( int index ) const;
+
+        /**
+         * Updates the map of function names to indices.
+         *
+         * This should be called ONLY after initially populating a new instance of the list,
+         * while only a single reference to the list is held.
+         */
+        void updateFunctionNameMap();
+
+      private:
+        QMap< QString, int> mFunctionIndexMap;
+    };
+
+    using FunctionListSnapshot = std::shared_ptr< const SharedFunctionPtrList >;
+#endif
 
     /**
      * Details about any parser errors that were found when parsing the expression.
-     * \since QGIS 3.0
      */
     struct CORE_EXPORT ParserError
     {
-      enum ParserErrorType
-      {
-        Unknown = 0,  //!< Unknown error type.
-        FunctionUnknown = 1, //!< Function was unknown.
-        FunctionWrongArgs = 2, //!< Function was called with the wrong number of args.
-        FunctionInvalidParams = 3, //!< Function was called with invalid args.
-        FunctionNamedArgsError = 4 //!< Non named function arg used after named arg.
-      };
+        enum ParserErrorType
+        {
+          Unknown = 0,               //!< Unknown error type.
+          FunctionUnknown = 1,       //!< Function was unknown.
+          FunctionWrongArgs = 2,     //!< Function was called with the wrong number of args.
+          FunctionInvalidParams = 3, //!< Function was called with invalid args.
+          FunctionNamedArgsError = 4 //!< Non named function arg used after named arg.
+        };
 
-      /**
+        /**
        * The type of parser error that was found.
        */
-      ParserErrorType errorType = ParserErrorType::Unknown;
+        QgsExpression::ParserError::ParserErrorType errorType = QgsExpression::ParserError::ParserErrorType::Unknown;
 
-      /**
+        /**
        * The message for the error at this location.
        */
-      QString errorMsg;
+        QString errorMsg;
 
-      /**
+        /**
        * The first line that contained the error in the parser.
        * Depending on the error sometimes this doesn't mean anything.
        */
-      int firstLine = 0;
+        int firstLine = 0;
 
-      /**
+        /**
        * The first column that contained the error in the parser.
        * Depending on the error sometimes this doesn't mean anything.
        */
-      int firstColumn = 0;
+        int firstColumn = 0;
 
-      /**
+        /**
        * The last line that contained the error in the parser.
        */
-      int lastLine = 0;
+        int lastLine = 0;
 
-      /**
+        /**
        * The last column that contained the error in the parser.
        */
-      int lastColumn = 0;
+        int lastColumn = 0;
     };
 
     /**
@@ -179,14 +312,12 @@ class CORE_EXPORT QgsExpression
     /**
      * Automatically convert this expression to a string where requested.
      *
-     * \since QGIS 3.0
      */
     operator QString() const SIP_SKIP;
 
     /**
      * Create an empty expression.
      *
-     * \since QGIS 3.0
      */
     QgsExpression();
 
@@ -196,7 +327,6 @@ class CORE_EXPORT QgsExpression
      * Compares two expressions. The operator returns TRUE
      * if the expression string is equal.
      *
-     * \since QGIS 3.0
      */
     bool operator==( const QgsExpression &other ) const;
 
@@ -204,7 +334,6 @@ class CORE_EXPORT QgsExpression
      * Checks if this expression is valid.
      * A valid expression could be parsed but does not necessarily evaluate properly.
      *
-     * \since QGIS 3.0
      */
     bool isValid() const;
 
@@ -215,7 +344,6 @@ class CORE_EXPORT QgsExpression
 
     /**
      * Returns parser error details including location of error.
-     * \since QGIS 3.0
      */
     QList<QgsExpression::ParserError> parserErrors() const;
 
@@ -229,7 +357,6 @@ class CORE_EXPORT QgsExpression
     /**
      * Gets the expression ready for evaluation - find out column indexes.
      * \param context context for preparing expression
-     * \since QGIS 2.12
      */
     bool prepare( const QgsExpressionContext *context );
 
@@ -254,14 +381,13 @@ class CORE_EXPORT QgsExpression
 
     /**
      * Returns a list of all variables which are used in this expression.
-     * If the list contains a NULL QString, there is a variable name used
+     * If the list contains an empty QString, there is a variable name used
      * which is determined at runtime.
      *
      * \note In contrast to the referencedColumns() function this method
      * is not affected by any previous calls to QgsExpression::prepare(),
      * or QgsExpressionNode::prepare().
      *
-     * \since QGIS 3.0
      */
     QSet<QString> referencedVariables() const;
 
@@ -284,7 +410,7 @@ class CORE_EXPORT QgsExpression
      * \note not available in Python bindings
      * \since QGIS 3.2
      */
-    QList<const QgsExpressionNode *> nodes( ) const;
+    QList<const QgsExpressionNode *> nodes() const;
 
     /**
      * Returns a list of all nodes of the given class which are used in this expression
@@ -292,8 +418,7 @@ class CORE_EXPORT QgsExpression
      * \note not available in Python bindings
      * \since QGIS 3.2
      */
-    template <class T>
-    QList<const T *> findNodes( ) const
+    template<class T> QList<const T *> findNodes() const
     {
       QList<const T *> lst;
       const QList<const QgsExpressionNode *> allNodes( nodes() );
@@ -318,7 +443,6 @@ class CORE_EXPORT QgsExpression
      * If you are seeking to use these functions to introspect an expression you must
      * take care to do this with an unprepared expression.
      *
-     * \since QGIS 3.0
      */
     QSet<int> referencedAttributeIndexes( const QgsFields &fields ) const;
 
@@ -330,7 +454,6 @@ class CORE_EXPORT QgsExpression
     /**
      * Evaluate the feature and return the result.
      * \note this method does not expect that prepare() has been called on this instance
-     * \since QGIS 2.12
      */
     QVariant evaluate();
 
@@ -338,7 +461,6 @@ class CORE_EXPORT QgsExpression
      * Evaluate the expression against the specified context and return the result.
      * \param context context for evaluating expression
      * \note prepare() should be called before calling this method.
-     * \since QGIS 2.12
      */
     QVariant evaluate( const QgsExpressionContext *context );
 
@@ -351,9 +473,38 @@ class CORE_EXPORT QgsExpression
 
     /**
      * Checks whether an expression consists only of a single field reference
-     * \since QGIS 2.9
+     *
+     * \see expressionToLayerFieldIndex()
      */
     bool isField() const;
+
+    /**
+     * Attempts to resolve an expression to a field index from the given \a layer.
+     *
+     * Given a string which may either directly match a field name from a layer, OR may
+     * be an expression which consists only of a single field reference for that layer, this
+     * method will return the corresponding field index.
+     *
+     * \returns field index if found, or -1 if \a expression does not represent a field from the layer.
+     *
+     * \see isField()
+     * \since QGIS 3.22
+     */
+    static int expressionToLayerFieldIndex( const QString &expression, const QgsVectorLayer *layer );
+
+    /**
+     * Validate if the expression is a field in the \a layer and ensure it is quoted.
+     *
+     * Given a string which may either directly match a field name from a layer, OR may
+     * be an expression which consists only of a single field reference for that layer, this
+     * method will return the quoted field.
+     *
+     * \returns the \a expression if not a field or quotes are not required, otherwise returns a quoted field.
+     *
+     * \see expressionToLayerFieldIndex()
+     * \since QGIS 3.24
+     */
+    static QString quoteFieldExpression( const QString &expression, const QgsVectorLayer *layer );
 
     /**
      * Tests whether a string is a valid expression.
@@ -361,14 +512,12 @@ class CORE_EXPORT QgsExpression
      * \param context optional expression context
      * \param errorMessage will be filled with any error message from the validation
      * \returns TRUE if string is a valid expression
-     * \since QGIS 2.12
      */
     static bool checkExpression( const QString &text, const QgsExpressionContext *context, QString &errorMessage SIP_OUT );
 
     /**
      * Set the expression string, will reset the whole internal structure.
      *
-     * \since QGIS 3.0
      */
     void setExpression( const QString &expression );
 
@@ -416,9 +565,8 @@ class CORE_EXPORT QgsExpression
      * \note distances are only converted when a geomCalculator() has been set
      * \see setDistanceUnits()
      * \see areaUnits()
-     * \since QGIS 2.14
      */
-    QgsUnitTypes::DistanceUnit distanceUnits() const;
+    Qgis::DistanceUnit distanceUnits() const;
 
     /**
      * Sets the desired distance units for calculations involving geomCalculator(), e.g., "$length" and "$perimeter".
@@ -427,18 +575,16 @@ class CORE_EXPORT QgsExpression
      * \note distances are only converted when a geomCalculator() has been set
      * \see distanceUnits()
      * \see setAreaUnits()
-     * \since QGIS 2.14
      */
-    void setDistanceUnits( QgsUnitTypes::DistanceUnit unit );
+    void setDistanceUnits( Qgis::DistanceUnit unit );
 
     /**
      * Returns the desired areal units for calculations involving geomCalculator(), e.g., "$area".
      * \note areas are only converted when a geomCalculator() has been set
      * \see setAreaUnits()
      * \see distanceUnits()
-     * \since QGIS 2.14
      */
-    QgsUnitTypes::AreaUnit areaUnits() const;
+    Qgis::AreaUnit areaUnits() const;
 
     /**
      * Sets the desired areal units for calculations involving geomCalculator(), e.g., "$area".
@@ -447,9 +593,8 @@ class CORE_EXPORT QgsExpression
      * \note areas are only converted when a geomCalculator() has been set
      * \see areaUnits()
      * \see setDistanceUnits()
-     * \since QGIS 2.14
      */
-    void setAreaUnits( QgsUnitTypes::AreaUnit unit );
+    void setAreaUnits( Qgis::AreaUnit unit );
 
     /**
      * This function replaces each expression between [% and %]
@@ -460,10 +605,8 @@ class CORE_EXPORT QgsExpression
      * \param context Expression context
      * \param distanceArea Optional QgsDistanceArea. If specified, the QgsDistanceArea is used for distance
      * and area conversion
-     * \since QGIS 2.12
      */
-    static QString replaceExpressionText( const QString &action, const QgsExpressionContext *context,
-                                          const QgsDistanceArea *distanceArea = nullptr );
+    static QString replaceExpressionText( const QString &action, const QgsExpressionContext *context, const QgsDistanceArea *distanceArea = nullptr );
 
     /**
      * This function returns variables in each expression between [% and %].
@@ -474,6 +617,7 @@ class CORE_EXPORT QgsExpression
      */
     static QSet<QString> referencedVariables( const QString &text );
 
+    // TODO QGIS 5.0 -- remove this function in favour of version with explicit context
     /**
      * Attempts to evaluate a text string as an expression to a resultant double
      * value.
@@ -482,9 +626,24 @@ class CORE_EXPORT QgsExpression
      * \returns evaluated double value, or fallback value
      * \note this method is inefficient for bulk evaluation of expressions, it is intended
      * for one-off evaluations only.
-     * \since QGIS 2.7
+     *
+     * \deprecated QGIS 4.4
      */
-    static double evaluateToDouble( const QString &text, double fallbackValue );
+    Q_DECL_DEPRECATED static double evaluateToDouble( const QString &text, double fallbackValue ) SIP_DEPRECATED;
+
+    /**
+     * Attempts to evaluate a text string as an expression to a resultant double
+     * value.
+     * \param text text to evaluate as expression
+     * \param fallbackValue value to return if text can not be evaluated as a double
+     * \param context expression context to use for evaluation
+     * \returns evaluated double value, or fallback value
+     * \note this method is inefficient for bulk evaluation of expressions, it is intended
+     * for one-off evaluations only.
+     *
+     * \since QGIS 4.4
+     */
+    static double evaluateToDouble( const QString &text, double fallbackValue, const QgsExpressionContext *context );
 
     enum SpatialOperator
     {
@@ -499,9 +658,28 @@ class CORE_EXPORT QgsExpression
       soWithin,
     };
 
-    static const QList<QgsExpressionFunction *> &Functions();
+    /**
+     * Returns a thread-safe snapshot of all registered functions.
+     *
+     * \since QGIS 4.4
+     */
+    SIP_SKIP static const FunctionListSnapshot getFunctionsSnapshot();
 
-    static const QStringList &BuiltinFunctions();
+    // NOTE tagged as deprecated as we don't want this used from c++ code
+    /**
+     * Returns a list of all registered functions.
+     *
+     * \warning This is not thread safe, and should not be called from outside the main thread.
+     * \deprecated QGIS 4.4. For use in Python code only, not thread safe.
+     */
+    Q_DECL_DEPRECATED static QList<QgsExpressionFunction *> Functions();
+
+    /**
+     * Returns a list of the names of all built-in functions.
+     *
+     * The list also includes aliases of the built-in functions.
+     */
+    static QStringList BuiltinFunctions();
 
     /**
      * Registers a function to the expression engine. This is required to allow expressions to utilize the function.
@@ -521,15 +699,20 @@ class CORE_EXPORT QgsExpression
 
     /**
      * Deletes all registered functions whose ownership have been transferred to the expression engine.
-     * \since QGIS 2.12
      */
     static void cleanRegisteredFunctions();
 
     //! tells whether the identifier is a name of existing function
     static bool isFunctionName( const QString &name );
 
-    //! Returns index of the function in Functions array
-    static int functionIndex( const QString &name );
+    // NOTE tagged as deprecated as we don't want this used from c++ code
+    /**
+     * Returns index of the function in Functions array.
+     *
+     * \warning This is not thread safe, and should not be called from outside the main thread.
+     * \deprecated QGIS 4.4. For use in Python code only, not thread safe.
+     */
+    Q_DECL_DEPRECATED static int functionIndex( const QString &name );
 
     /**
      * Returns the number of functions defined in the parser
@@ -557,7 +740,6 @@ class CORE_EXPORT QgsExpression
      * \param value value to convert to a string representation
      * \see quotedString()
      * \see quotedColumnRef()
-     * \since QGIS 2.14
      */
     static QString quotedValue( const QVariant &value );
 
@@ -568,11 +750,27 @@ class CORE_EXPORT QgsExpression
      * \param type value type
      * \see quotedString()
      * \see quotedColumnRef()
-     * \since QGIS 2.14
      */
-    static QString quotedValue( const QVariant &value, QVariant::Type type );
+    static QString quotedValue( const QVariant &value, QMetaType::Type type );
+
+    /**
+     * Returns a string representation of a literal value, including appropriate
+     * quotations where required.
+     * \param value value to convert to a string representation
+     * \param type value type
+     * \see quotedString()
+     * \see quotedColumnRef()
+     * \deprecated QGIS 3.38. Use the method with a QMetaType::Type argument instead.
+     */
+    Q_DECL_DEPRECATED static QString quotedValue( const QVariant &value, QVariant::Type type ) SIP_DEPRECATED;
 
     //////
+
+#ifndef SIP_RUN
+    ///@cond PRIVATE
+    static HelpTextHash &functionHelpTexts();
+    ///@endcond PRIVATE
+#endif
 
     /**
      * Returns the help text for a specified function.
@@ -590,10 +788,24 @@ class CORE_EXPORT QgsExpression
     static QStringList tags( const QString &name );
 
     /**
+     * Adds a help string for a custom variable.
+     *
+     * The specified variable \a name should not have an existing help string set. If a help string is already present then
+     * FALSE will be returned and no changes will occur.
+     *
+     * \param name variable name
+     * \param description the help string to add. This is user visible, and should be a translated string.
+     * \returns TRUE if the help string was successfully added
+     * \see variableHelpText()
+     * \since QGIS 3.22
+     */
+    static bool addVariableHelpText( const QString name, const QString &description );
+
+    /**
      * Returns the help text for a specified variable.
      * \param variableName name of variable
      * \see helpText()
-     * \since QGIS 2.12
+     * \see addVariableHelpText()
      */
     static QString variableHelpText( const QString &variableName );
 
@@ -604,7 +816,6 @@ class CORE_EXPORT QgsExpression
      * \param value current value of variable to show in help text
      * \see helpText()
      * \see variableHelpText()
-     * \since QGIS 3.0
      */
     static QString formatVariableHelp( const QString &description, bool showValue = true, const QVariant &value = QVariant() );
 
@@ -621,7 +832,6 @@ class CORE_EXPORT QgsExpression
      * \param htmlOutput set to TRUE to allow HTML formatting, or FALSE for plain text output
      * \param maximumPreviewLength define the maximum character length of the preview
      * \returns formatted string, may contain HTML formatting characters if \a htmlOutput is TRUE
-     * \since QGIS 2.14
      */
     static QString formatPreviewString( const QVariant &value, bool htmlOutput = true, int maximumPreviewLength = 60 );
 
@@ -630,10 +840,21 @@ class CORE_EXPORT QgsExpression
      *  value. The value may be null.
      * \param fieldName the name of the field
      * \param value the value of the field
+     * \param fieldType the type of the field on the left side used to quote the value. If not given, the value type is used instead
      * \returns the expression to evaluate field equality
-     * \since QGIS 3.0
      */
-    static QString createFieldEqualityExpression( const QString &fieldName, const QVariant &value );
+    static QString createFieldEqualityExpression( const QString &fieldName, const QVariant &value, QMetaType::Type fieldType = QMetaType::Type::UnknownType );
+
+    /**
+     * Create an expression allowing to evaluate if a field is equal to a
+     *  value. The value may be null.
+     * \param fieldName the name of the field
+     * \param value the value of the field
+     * \param fieldType the type of the field on the left side used to quote the value. If not given, the value type is used instead
+     * \returns the expression to evaluate field equality
+     * \deprecated QGIS 3.38. Use the method with a QMetaType::Type argument instead.
+     */
+    Q_DECL_DEPRECATED static QString createFieldEqualityExpression( const QString &fieldName, const QVariant &value, QVariant::Type fieldType ) SIP_DEPRECATED;
 
     /**
      * Returns TRUE if the given \a expression is a simple "field=value" type expression.
@@ -663,15 +884,29 @@ class CORE_EXPORT QgsExpression
      */
     static bool attemptReduceToInClause( const QStringList &expressions, QString &result SIP_OUT );
 
+    /**
+     * Returns an expression which is the simplest direct equivalent of this expression
+     *
+     * Eg. an expression like ``1 + 2`` can be effectively replaced by the expression ``3``, or a nested expression like
+     * ``coalesce(coalesce("field_a", "field_b"), "field_c")`` could be replaced by a single ``coalesce("field_a", "field_b", "field_c")``
+     * expression.
+     *
+     * \since QGIS 4.4
+     */
+    QgsExpression simplified() const;
+
+    // clang-format off
 #ifdef SIP_RUN
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsExpression: '%1'>" ).arg( sipCpp->expression() );
+    QString str = u"<QgsExpression: '%1'>"_s.arg( sipCpp->expression() );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
-    % End
+  % End
 #endif
 
   private:
+    // clang-format on
+
     void initGeomCalculator( const QgsExpressionContext *context );
 
     /**
@@ -684,10 +919,27 @@ class CORE_EXPORT QgsExpression
 
     QgsExpressionPrivate *d = nullptr;
 
+    static HelpTextHash sFunctionHelpTexts;
+
     //! \note not available in Python bindings
     static void initFunctionHelp() SIP_SKIP;
     //! \note not available in Python bindings
+    static void buildFunctionHelp() SIP_SKIP;
+    //! \note not available in Python bindings
     static void initVariableHelp() SIP_SKIP;
+    //! \note not available in Python bindings
+    static void buildVariableHelp() SIP_SKIP;
+
+    friend class QgsExpressionNodeFunction;
+
+#if defined( __clang__ )
+    static AtomicSharedPtr<FunctionListSnapshot> sFunctions;
+#else
+    static std::atomic<FunctionListSnapshot> sFunctions;
+#endif
+    static QMutex sFunctionWriteMutex;
+
+    static QStringList sBuiltinFunctionNames;
 
     friend class QgsOgcUtils;
 };

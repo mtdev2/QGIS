@@ -17,18 +17,20 @@
 #define QGSPOINTCLOUD3DSYMBOL_H
 
 #include "qgis_3d.h"
-
-#include <Qt3DRender/QMaterial>
-
 #include "qgsabstract3dsymbol.h"
 #include "qgscolorrampshader.h"
-#include "qgspointcloudlayer.h"
 #include "qgscontrastenhancement.h"
 #include "qgspointcloudclassifiedrenderer.h"
 
+#include <QString>
+
+class QgsMaterial;
+
+using namespace Qt::StringLiterals;
+
 /**
- * \ingroup 3d
- * 3D symbol that draws point cloud geometries as 3D objects.
+ * \ingroup qgis_3d
+ * \brief 3D symbol that draws point cloud geometries as 3D objects.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -38,7 +40,6 @@
 class _3D_EXPORT QgsPointCloud3DSymbol : public QgsAbstract3DSymbol SIP_ABSTRACT
 {
   public:
-
     /**
      * How to render the point cloud
      */
@@ -51,15 +52,16 @@ class _3D_EXPORT QgsPointCloud3DSymbol : public QgsAbstract3DSymbol SIP_ABSTRACT
       //! Render the point cloud with a color ramp
       ColorRamp,
       //! Render the RGB colors of the point cloud
-      RgbRendering
+      RgbRendering,
+      //! Render the point cloud with classified colors
+      Classification
     };
 
-    //! Constructor for QgsPointCloud3DSymbol
     QgsPointCloud3DSymbol();
-    //! Destructor for QgsPointCloud3DSymbol
     ~QgsPointCloud3DSymbol() override;
 
     QString type() const override { return "pointcloud"; }
+    QgsPointCloud3DSymbol *clone() const override = 0 SIP_FACTORY;
 
     /**
      * Returns a unique string identifier of the symbol type.
@@ -81,15 +83,124 @@ class _3D_EXPORT QgsPointCloud3DSymbol : public QgsAbstract3DSymbol SIP_ABSTRACT
     //! Returns the byte stride for the geometries used to for the vertex buffer
     virtual unsigned int byteStride() = 0;
     //! Used to fill material object with necessary QParameters (and consequently opengl uniforms)
-    virtual void fillMaterial( Qt3DRender::QMaterial *material ) = 0 SIP_SKIP;
+    virtual void fillMaterial( QgsMaterial *material ) SIP_SKIP = 0;
+
+    /**
+     * Returns whether points are triangulated to render solid surface
+     *
+     * \since QGIS 3.26
+     */
+    bool renderAsTriangles() const;
+
+    /**
+     * Sets whether points are triangulated to render solid surface
+     *
+     * \since QGIS 3.26
+     */
+    void setRenderAsTriangles( bool asTriangles );
+
+    /**
+     * Returns whether triangles are filtered by horizontal size for rendering. If the triangles are horizontally filtered by size,
+     * triangles with a horizontal side size greater than a threshold value will not be rendered, see horizontalFilterThreshold().
+     *
+     * \since QGIS 3.26
+     */
+    bool horizontalTriangleFilter() const;
+
+    /**
+     * Sets whether whether triangles are filtered by horizontal size for rendering. If the triangles are horizontally filtered by size,
+     * triangles with a horizontal side size greater than a threshold value will not be rendered, see setHorizontalFilterThreshold().
+     *
+     * \since QGIS 3.26
+     */
+    void setHorizontalTriangleFilter( bool horizontalTriangleFilter );
+
+    /**
+     * Returns the threshold horizontal size value for filtering triangles. If the triangles are horizontally filtered by size,
+     * triangles with a horizontal side size greater than a threshold value will not be rendered, see horizontalTriangleFilter().
+     *
+     * \since QGIS 3.26
+     */
+    float horizontalFilterThreshold() const;
+
+    /**
+     * Sets the threshold horizontal size value for filtering triangles. If the triangles are horizontally filtered by size,
+     * triangles with a horizontal side size greater than a threshold value will not be rendered, see setHorizontalTriangleFilter().
+     *
+     * \since QGIS 3.26
+     */
+    void setHorizontalFilterThreshold( float horizontalFilterThreshold );
+
+    /**
+     * Returns whether triangles are filtered by vertical height for rendering. If the triangles are vertically filtered, triangles with a vertical height greater
+     * than a threshold value will not be rendered, see verticalFilterThreshold().
+     *
+     * \since QGIS 3.26
+     */
+    bool verticalTriangleFilter() const;
+
+    /**
+     * Sets whether triangles are filtered by vertical height for rendering. If the triangles are vertically filtered, triangles with a vertical height greater
+     * than a threshold value will not be rendered, see setVerticalFilterThreshold().
+     *
+     * \since QGIS 3.26
+     */
+    void setVerticalTriangleFilter( bool verticalTriangleFilter );
+
+    /**
+     * Returns the threshold vertical height value for filtering triangles. If the triangles are filtered vertically, triangles with a vertical height greater
+     * than this threshold value will not be rendered, see verticalTriangleFilter().
+     *
+     * \since QGIS 3.26
+     */
+    float verticalFilterThreshold() const;
+
+    /**
+     * Sets the threshold vertical height value for filtering triangles. If the triangles are filtered vertically, triangles with a vertical height greater
+     * than this threshold value will not be rendered, see setVerticalTriangleFilter().
+     *
+     * \since QGIS 3.26
+     */
+    void setVerticalFilterThreshold( float verticalFilterThreshold );
+
+    void copyBaseSettings( QgsAbstract3DSymbol *destination ) const override;
+
+    /**
+     * This function has no effect.
+     *
+     * This function performs no operation and always throws an exception
+     * when called.
+     *
+     * \throws QgsSettingsException
+     */
+    void setMaterialSettings( QgsAbstractMaterialSettings *materialSettings SIP_TRANSFER ) override SIP_SKIP;
 
   protected:
-    float mPointSize = 2.0;
+    float mPointSize = 3.0;
+    bool mRenderAsTriangles = false;
+    bool mHorizontalTriangleFilter = false;
+    float mHorizontalFilterThreshold = 10.0;
+    bool mVerticalTriangleFilter = false;
+    float mVerticalFilterThreshold = 10.0;
+
+    /**
+     * Writes symbol configuration of this class to the given DOM element
+     *
+     * \since QGIS 3.26
+     */
+    void writeBaseXml( QDomElement &elem, const QgsReadWriteContext &context ) const;
+
+    /**
+     * Reads symbol configuration of this class from the given DOM element
+     *
+     * \since QGIS 3.26
+     */
+    void readBaseXml( const QDomElement &elem, const QgsReadWriteContext &context );
 };
 
 /**
- * \ingroup 3d
- * 3D symbol that draws point cloud geometries as 3D objects.using one color
+ * \ingroup qgis_3d
+ * \brief 3D symbol that draws point cloud geometries as 3D objects using one color.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -99,11 +210,10 @@ class _3D_EXPORT QgsPointCloud3DSymbol : public QgsAbstract3DSymbol SIP_ABSTRACT
 class _3D_EXPORT QgsSingleColorPointCloud3DSymbol : public QgsPointCloud3DSymbol
 {
   public:
-    //! Constructor for QgsSingleColorPointCloud3DSymbol
     QgsSingleColorPointCloud3DSymbol();
 
     QString symbolType() const override;
-    QgsAbstract3DSymbol *clone() const override SIP_FACTORY;
+    QgsSingleColorPointCloud3DSymbol *clone() const override SIP_FACTORY;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;
@@ -121,7 +231,7 @@ class _3D_EXPORT QgsSingleColorPointCloud3DSymbol : public QgsPointCloud3DSymbol
     void setSingleColor( QColor color );
 
     unsigned int byteStride() override { return 3 * sizeof( float ); }
-    void fillMaterial( Qt3DRender::QMaterial *material ) override SIP_SKIP;
+    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
 
   private:
@@ -129,8 +239,8 @@ class _3D_EXPORT QgsSingleColorPointCloud3DSymbol : public QgsPointCloud3DSymbol
 };
 
 /**
- * \ingroup 3d
- * 3D symbol that draws point cloud geometries as 3D objects.using color ramp shader
+ * \ingroup qgis_3d
+ * \brief 3D symbol that draws point cloud geometries as 3D objects using color ramp shader.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -140,10 +250,9 @@ class _3D_EXPORT QgsSingleColorPointCloud3DSymbol : public QgsPointCloud3DSymbol
 class _3D_EXPORT QgsColorRampPointCloud3DSymbol : public QgsPointCloud3DSymbol
 {
   public:
-    //! Constructor for QgsColorRampPointCloud3DSymbol
     QgsColorRampPointCloud3DSymbol();
 
-    QgsAbstract3DSymbol *clone() const override SIP_FACTORY;
+    QgsColorRampPointCloud3DSymbol *clone() const override SIP_FACTORY;
     QString symbolType() const override;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
@@ -187,12 +296,13 @@ class _3D_EXPORT QgsColorRampPointCloud3DSymbol : public QgsPointCloud3DSymbol
 
     /**
      * Sets the minimum and maximum values used when classifying colors in the color ramp shader
-     * \see colorRampShaderMin() colorRampShaderMax()
+     * \see colorRampShaderMin()
+     * \see colorRampShaderMax()
      */
     void setColorRampShaderMinMax( double min, double max );
 
     unsigned int byteStride() override { return 4 * sizeof( float ); }
-    void fillMaterial( Qt3DRender::QMaterial *material ) override SIP_SKIP;
+    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
   private:
     QString mRenderingParameter;
@@ -202,8 +312,8 @@ class _3D_EXPORT QgsColorRampPointCloud3DSymbol : public QgsPointCloud3DSymbol
 };
 
 /**
- * \ingroup 3d
- * 3D symbol that draws point cloud geometries as 3D objects using RGB colors in the dataset
+ * \ingroup qgis_3d
+ * \brief 3D symbol that draws point cloud geometries as 3D objects using RGB colors in the dataset.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -213,7 +323,6 @@ class _3D_EXPORT QgsColorRampPointCloud3DSymbol : public QgsPointCloud3DSymbol
 class _3D_EXPORT QgsRgbPointCloud3DSymbol : public QgsPointCloud3DSymbol
 {
   public:
-    //! Constructor for QgsRGBPointCloud3DSymbol
     QgsRgbPointCloud3DSymbol();
 
     //! QgsRgbPointCloud3DSymbol cannot be copied - use clone() instead
@@ -223,13 +332,13 @@ class _3D_EXPORT QgsRgbPointCloud3DSymbol : public QgsPointCloud3DSymbol
     QgsRgbPointCloud3DSymbol &operator=( const QgsRgbPointCloud3DSymbol &other ) = delete;
 
     QString symbolType() const override;
-    QgsAbstract3DSymbol *clone() const override SIP_FACTORY;
+    QgsRgbPointCloud3DSymbol *clone() const override SIP_FACTORY;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;
 
     unsigned int byteStride() override { return 6 * sizeof( float ); }
-    void fillMaterial( Qt3DRender::QMaterial *material ) override SIP_SKIP;
+    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
     /**
      * Returns the attribute to use for the red channel.
@@ -346,24 +455,22 @@ class _3D_EXPORT QgsRgbPointCloud3DSymbol : public QgsPointCloud3DSymbol
     void setBlueContrastEnhancement( QgsContrastEnhancement *enhancement SIP_TRANSFER );
 
   private:
-
 #ifdef SIP_RUN
     QgsRgbPointCloud3DSymbol( const QgsRgbPointCloud3DSymbol &other );
 #endif
 
-    QString mRedAttribute = QStringLiteral( "Red" );
-    QString mGreenAttribute = QStringLiteral( "Green" );
-    QString mBlueAttribute = QStringLiteral( "Blue" );
+    QString mRedAttribute = u"Red"_s;
+    QString mGreenAttribute = u"Green"_s;
+    QString mBlueAttribute = u"Blue"_s;
 
-    std::unique_ptr< QgsContrastEnhancement > mRedContrastEnhancement;
-    std::unique_ptr< QgsContrastEnhancement > mGreenContrastEnhancement;
-    std::unique_ptr< QgsContrastEnhancement > mBlueContrastEnhancement;
-
+    std::unique_ptr<QgsContrastEnhancement> mRedContrastEnhancement;
+    std::unique_ptr<QgsContrastEnhancement> mGreenContrastEnhancement;
+    std::unique_ptr<QgsContrastEnhancement> mBlueContrastEnhancement;
 };
 
 /**
- * \ingroup 3d
- * 3D symbol that draws point cloud geometries as 3D objects using classification of the dataset
+ * \ingroup qgis_3d
+ * \brief 3D symbol that draws point cloud geometries as 3D objects using classification of the dataset.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -373,10 +480,9 @@ class _3D_EXPORT QgsRgbPointCloud3DSymbol : public QgsPointCloud3DSymbol
 class _3D_EXPORT QgsClassificationPointCloud3DSymbol : public QgsPointCloud3DSymbol
 {
   public:
-    //! Constructor for QgsClassificationPointCloud3DSymbol
     QgsClassificationPointCloud3DSymbol();
 
-    QgsAbstract3DSymbol *clone() const override SIP_FACTORY;
+    QgsClassificationPointCloud3DSymbol *clone() const override SIP_FACTORY;
     QString symbolType() const override;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
@@ -408,12 +514,13 @@ class _3D_EXPORT QgsClassificationPointCloud3DSymbol : public QgsPointCloud3DSym
 
     /**
      * Gets the list of categories of the classification that should not be rendered
-     * \see categoriesList() setCategoriesList()
+     * \see categoriesList()
+     * \see setCategoriesList()
      */
     QgsPointCloudCategoryList getFilteredOutCategories() const;
 
-    unsigned int byteStride() override { return 4 * sizeof( float ); }
-    void fillMaterial( Qt3DRender::QMaterial *material ) override SIP_SKIP;
+    unsigned int byteStride() override { return 5 * sizeof( float ); }
+    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
   private:
     QString mRenderingParameter;

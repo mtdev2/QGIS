@@ -18,31 +18,29 @@
 
 #include "qgis_3d.h"
 #include "qgis_sip.h"
-
 #include "qgs3drendererregistry.h"
-#include "qgsabstract3drenderer.h"
+#include "qgsabstractpointcloud3drenderer.h"
+#include "qgsfeedback.h"
 #include "qgsmaplayerref.h"
 
 #include <QObject>
 
 class QgsPointCloudLayer;
 #include "qgspointcloud3dsymbol.h"
-#include "qgsfeature3dhandler_p.h"
-
+#include "qgs3drendercontext.h"
 #ifndef SIP_RUN
 
 /**
  * \ingroup core
  * \class QgsPointCloud3DRenderContext
  *
- * Encapsulates the render context for a 3D point cloud rendering operation.
+ * \brief Encapsulates the render context for a 3D point cloud rendering operation.
  *
  * \since QGIS 3.18
  */
 class _3D_NO_EXPORT QgsPointCloud3DRenderContext : public Qgs3DRenderContext
 {
   public:
-
     /**
      * Constructor for QgsPointCloud3DRenderContext.
      *
@@ -52,13 +50,11 @@ class _3D_NO_EXPORT QgsPointCloud3DRenderContext : public Qgs3DRenderContext
      * The \a zValueFixedOffset argument specifies any constant offset value which must be added to z values
      * taken from the point cloud index.
      */
-    QgsPointCloud3DRenderContext( const Qgs3DMapSettings &map, std::unique_ptr< QgsPointCloud3DSymbol > symbol,
-                                  double zValueScale, double zValueFixedOffset );
+    QgsPointCloud3DRenderContext(
+      const Qgs3DRenderContext &context, const QgsCoordinateTransform &coordinateTransform, std::unique_ptr<QgsPointCloud3DSymbol> symbol, double zValueScale, double zValueFixedOffset
+    );
 
-    //! QgsPointCloudRenderContext cannot be copied.
     QgsPointCloud3DRenderContext( const QgsPointCloud3DRenderContext &rh ) = delete;
-
-    //! QgsPointCloudRenderContext cannot be copied.
     QgsPointCloud3DRenderContext &operator=( const QgsPointCloud3DRenderContext & ) = delete;
 
     /**
@@ -105,33 +101,45 @@ class _3D_NO_EXPORT QgsPointCloud3DRenderContext : public Qgs3DRenderContext
      * Retrieves the attribute \a value from \a data at the specified \a offset, where
      * \a type indicates the original data type for the attribute.
      */
-    template <typename T>
-    void getAttribute( const char *data, std::size_t offset, QgsPointCloudAttribute::DataType type, T &value ) const
+    template<typename T> void getAttribute( const char *data, std::size_t offset, QgsPointCloudAttribute::DataType type, T &value ) const
     {
       switch ( type )
       {
+        case QgsPointCloudAttribute::UChar:
+          value = *reinterpret_cast<const unsigned char *>( data + offset );
+          return;
         case QgsPointCloudAttribute::Char:
           value = *( data + offset );
           return;
 
         case QgsPointCloudAttribute::Int32:
-          value = *reinterpret_cast< const qint32 * >( data + offset );
+          value = *reinterpret_cast<const qint32 *>( data + offset );
+          return;
+        case QgsPointCloudAttribute::UInt32:
+          value = *reinterpret_cast<const quint32 *>( data + offset );
+          return;
+
+        case QgsPointCloudAttribute::Int64:
+          value = *reinterpret_cast<const qint64 *>( data + offset );
+          return;
+        case QgsPointCloudAttribute::UInt64:
+          value = *reinterpret_cast<const quint64 *>( data + offset );
           return;
 
         case QgsPointCloudAttribute::Short:
-          value = *reinterpret_cast< const short * >( data + offset );
+          value = *reinterpret_cast<const short *>( data + offset );
           return;
 
         case QgsPointCloudAttribute::UShort:
-          value = *reinterpret_cast< const unsigned short * >( data + offset );
+          value = *reinterpret_cast<const unsigned short *>( data + offset );
           return;
 
         case QgsPointCloudAttribute::Float:
-          value = *reinterpret_cast< const float * >( data + offset );
+          value = *reinterpret_cast<const float *>( data + offset );
           return;
 
         case QgsPointCloudAttribute::Double:
-          value = *reinterpret_cast< const double * >( data + offset );
+          value = *reinterpret_cast<const double *>( data + offset );
           return;
       }
     }
@@ -151,16 +159,40 @@ class _3D_NO_EXPORT QgsPointCloud3DRenderContext : public Qgs3DRenderContext
     double zValueFixedOffset() const { return mZValueFixedOffset; }
 
     /**
-     * Sets the function to call to test if the rendering is canceled.
-     */
-    void setIsCanceledCallback( const std::function< bool() > &callback ) { mIsCanceledCallback = callback; }
-
-    /**
      * Returns TRUE if the rendering is canceled.
      */
-    bool isCanceled() const { return mIsCanceledCallback(); }
+    bool isCanceled() const;
+
+    /**
+     * Cancels rendering.
+     * \see isCanceled()
+     */
+    void cancelRendering() const;
+
+    /**
+     * Sets the coordinate transform used to transform points from layer CRS to the map CRS
+     */
+    void setCoordinateTransform( const QgsCoordinateTransform &coordinateTransform );
+
+    /**
+     * Returns the coordinate transform used to transform points from layer CRS to the map CRS
+     */
+    QgsCoordinateTransform coordinateTransform() const { return mCoordinateTransform; }
+
+    /**
+     * Returns the feedback object used to cancel rendering and check if rendering was canceled.
+     */
+    QgsFeedback *feedback() const { return mFeedback.get(); }
+
+    /**
+     * Returns the 3D scene's extent in layer crs.
+     * \since QGIS 3.30
+     */
+    QgsRectangle layerExtent() const { return mLayerExtent; }
 
   private:
+    //! Recalculates the 3D scene's extent in layer's crs
+    void updateExtent();
 #ifdef SIP_RUN
     QgsPointCloudRenderContext( const QgsPointCloudRenderContext &rh );
 #endif
@@ -169,15 +201,15 @@ class _3D_NO_EXPORT QgsPointCloud3DRenderContext : public Qgs3DRenderContext
     QgsPointCloudCategoryList mFilteredOutCategories;
     double mZValueScale = 1.0;
     double mZValueFixedOffset = 0;
-
-    std::function< bool() > mIsCanceledCallback;
-
+    QgsCoordinateTransform mCoordinateTransform;
+    std::unique_ptr<QgsFeedback> mFeedback;
+    QgsRectangle mLayerExtent;
 };
 
 
 /**
  * \ingroup core
- * Metadata for point cloud layer 3D renderer to allow creation of its instances from XML
+ * \brief Metadata for point cloud layer 3D renderer to allow creation of its instances from XML
  *
  * \note Not available in Python bindings
  *
@@ -196,11 +228,11 @@ class _3D_EXPORT QgsPointCloudLayer3DRendererMetadata : public Qgs3DRendererAbst
 
 /**
  * \ingroup core
- * 3D renderer that renders all points from a point cloud layer
+ * \brief 3D renderer that renders all points from a point cloud layer.
  *
  * \since QGIS 3.18
  */
-class _3D_EXPORT QgsPointCloudLayer3DRenderer : public QgsAbstract3DRenderer
+class _3D_EXPORT QgsPointCloudLayer3DRenderer : public QgsAbstractPointCloud3DRenderer
 {
   public:
     //! Takes ownership of the symbol object
@@ -213,7 +245,7 @@ class _3D_EXPORT QgsPointCloudLayer3DRenderer : public QgsAbstract3DRenderer
 
     QString type() const override;
     QgsPointCloudLayer3DRenderer *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( const Qgs3DMapSettings &map ) const override SIP_SKIP;
+    Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
 
     /**
      * Sets the 3D \a symbol associated with the renderer.
@@ -270,12 +302,45 @@ class _3D_EXPORT QgsPointCloudLayer3DRenderer : public QgsAbstract3DRenderer
      */
     void setPointRenderingBudget( int budget );
 
+    bool convertFrom2DRenderer( QgsPointCloudRenderer *renderer ) override;
+
+    /**
+      * Sets the renderer behavior when zoomed out
+      * \since QGIS 3.42
+      */
+    void setZoomOutBehavior( const Qgis::PointCloudZoomOutRenderBehavior behavior ) { mZoomOutBehavior = behavior; }
+
+    /**
+      * Returns the renderer behavior when zoomed out
+      * \since QGIS 3.42
+      */
+    Qgis::PointCloudZoomOutRenderBehavior zoomOutBehavior() const { return mZoomOutBehavior; }
+
+    /**
+      * Sets the overview switching scale
+      *
+      * Used to determine when point clouds
+      * switch from rendering bounding boxes to displaying full point data.
+      * The value is compared against screen space error (SSE) calculated from
+      * camera distance and node size.
+      * \since QGIS 4.0
+      */
+    void setOverviewSwitchingScale( double scale ) { mOverviewSwitchingScale = scale; }
+
+    /**
+      * Returns the overview switching scale
+      * \since QGIS 4.0
+      */
+    double overviewSwitchingScale() const { return mOverviewSwitchingScale; }
+
   private:
     QgsMapLayerRef mLayerRef; //!< Layer used to extract mesh data from
-    std::unique_ptr< QgsPointCloud3DSymbol > mSymbol;
-    double mMaximumScreenError = 1.0;
+    std::unique_ptr<QgsPointCloud3DSymbol> mSymbol;
+    double mMaximumScreenError = 3.0;
     bool mShowBoundingBoxes = false;
-    int mPointBudget = 1000000;
+    int mPointBudget = 5000000;
+    Qgis::PointCloudZoomOutRenderBehavior mZoomOutBehavior = Qgis::PointCloudZoomOutRenderBehavior::RenderExtents;
+    double mOverviewSwitchingScale = 1.0;
 
   private:
 #ifdef SIP_RUN

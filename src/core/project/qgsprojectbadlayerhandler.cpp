@@ -14,58 +14,64 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsprojectbadlayerhandler.h"
+
+#include "qgsapplication.h"
+#include "qgsdatasourceuri.h"
 #include "qgslogger.h"
 #include "qgsmessagelog.h"
-#include "qgsapplication.h"
 
 #include <QFileInfo>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 void QgsProjectBadLayerHandler::handleBadLayers( const QList<QDomNode> &layers )
 {
-  QgsApplication::messageLog()->logMessage( QObject::tr( "%1 unavailable layers found:" ).arg( layers.size() ) );
-  const auto constLayers = layers;
-  for ( const QDomNode &layer : constLayers )
+  if ( !layers.empty() )
+    QgsMessageLog::logMessage( QObject::tr( "%n unavailable layer(s) found:", nullptr, layers.size() ) );
+
+  for ( const QDomNode &layer : layers )
   {
-    QgsApplication::messageLog()->logMessage( QObject::tr( " * %1" ).arg( dataSource( layer ) ) );
+    QgsMessageLog::logMessage( QObject::tr( " * %1" ).arg( QgsDataSourceUri::removePassword( dataSource( layer ), true ) ) );
   }
 }
 
 QgsProjectBadLayerHandler::DataType QgsProjectBadLayerHandler::dataType( const QDomNode &layerNode )
 {
-  QString type = layerNode.toElement().attribute( QStringLiteral( "type" ) );
+  const QString type = layerNode.toElement().attribute( u"type"_s );
 
   if ( type.isNull() )
   {
-    QgsDebugMsg( QStringLiteral( "cannot find ``type'' attribute" ) );
+    QgsDebugError( u"cannot find ``type'' attribute"_s );
 
     return IS_BOGUS;
   }
 
   if ( "raster" == type )
   {
-    QgsDebugMsg( QStringLiteral( "is a raster" ) );
+    QgsDebugMsgLevel( u"is a raster"_s, 2 );
 
     return IS_RASTER;
   }
   else if ( "vector" == type )
   {
-    QgsDebugMsg( QStringLiteral( "is a vector" ) );
+    QgsDebugMsgLevel( u"is a vector"_s, 2 );
 
     return IS_VECTOR;
   }
 
-  QgsDebugMsg( "is unknown type " + type );
+  QgsDebugMsgLevel( "is unknown type " + type, 2 );
 
   return IS_BOGUS;
 }
 
 QString QgsProjectBadLayerHandler::dataSource( const QDomNode &layerNode )
 {
-  QDomNode dataSourceNode = layerNode.namedItem( QStringLiteral( "datasource" ) );
+  const QDomNode dataSourceNode = layerNode.namedItem( u"datasource"_s );
 
   if ( dataSourceNode.isNull() )
   {
-    QgsDebugMsg( QStringLiteral( "cannot find datasource node" ) );
+    QgsDebugError( u"cannot find datasource node"_s );
 
     return QString();
   }
@@ -81,15 +87,15 @@ QgsProjectBadLayerHandler::ProviderType QgsProjectBadLayerHandler::providerType(
   {
     case IS_VECTOR:
     {
-      QString ds = dataSource( layerNode );
+      const QString ds = dataSource( layerNode );
 
-      QgsDebugMsg( "datasource is " + ds );
+      QgsDebugMsgLevel( "datasource is " + ds, 2 );
 
-      if ( ds.contains( QLatin1String( "host=" ) ) )
+      if ( ds.contains( "host="_L1 ) )
       {
         return IS_URL;
       }
-      else if ( ds.contains( QLatin1String( "dbname=" ) ) )
+      else if ( ds.contains( "dbname="_L1 ) )
       {
         return IS_DATABASE;
       }
@@ -99,12 +105,12 @@ QgsProjectBadLayerHandler::ProviderType QgsProjectBadLayerHandler::providerType(
       return IS_FILE;
     }
 
-    case IS_RASTER:         // rasters are currently only accessed as
+    case IS_RASTER: // rasters are currently only accessed as
       // physical files
       return IS_FILE;
 
     default:
-      QgsDebugMsg( QStringLiteral( "unknown ``type'' attribute" ) );
+      QgsDebugError( u"unknown ``type'' attribute"_s );
   }
 
   return IS_Unknown;
@@ -112,13 +118,13 @@ QgsProjectBadLayerHandler::ProviderType QgsProjectBadLayerHandler::providerType(
 
 void QgsProjectBadLayerHandler::setDataSource( QDomNode &layerNode, const QString &dataSource )
 {
-  QDomNode dataSourceNode = layerNode.namedItem( QStringLiteral( "datasource" ) );
-  QDomElement dataSourceElement = dataSourceNode.toElement();
+  const QDomNode dataSourceNode = layerNode.namedItem( u"datasource"_s );
+  const QDomElement dataSourceElement = dataSourceNode.toElement();
   QDomText dataSourceText = dataSourceElement.firstChild().toText();
 
-  QgsDebugMsg( "datasource changed from " + dataSourceText.data() );
+  QgsDebugMsgLevel( "datasource changed from " + dataSourceText.data(), 2 );
 
   dataSourceText.setData( dataSource );
 
-  QgsDebugMsg( "to " + dataSourceText.data() );
+  QgsDebugMsgLevel( "to " + dataSourceText.data(), 2 );
 }

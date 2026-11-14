@@ -15,9 +15,9 @@
 #ifndef QGSSINGLESYMBOLRENDERERWIDGET_H
 #define QGSSINGLESYMBOLRENDERERWIDGET_H
 
-#include "qgsrendererwidget.h"
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsrendererwidget.h"
 
 class QgsSingleSymbolRenderer;
 class QgsSymbolSelectorWidget;
@@ -27,6 +27,7 @@ class QMenu;
 /**
  * \ingroup gui
  * \class QgsSingleSymbolRendererWidget
+ * \brief A widget for configuring QgsSingleSymbolRenderer.
  */
 class GUI_EXPORT QgsSingleSymbolRendererWidget : public QgsRendererWidget
 {
@@ -41,13 +42,11 @@ class GUI_EXPORT QgsSingleSymbolRendererWidget : public QgsRendererWidget
     QgsFeatureRenderer *renderer() override;
 
     void setContext( const QgsSymbolWidgetContext &context ) override;
-
-    /**
-     * Set the widget in dock mode which tells the widget to emit panel
-     * widgets and not open dialogs
-     * \param dockMode TRUE to enable dock mode.
-     */
     void setDockMode( bool dockMode ) override;
+    void disableSymbolLevels() override SIP_SKIP;
+
+  protected:
+    void setSymbolLevels( const QList<QgsLegendSymbolItem> &levels, bool enabled ) override;
 
   private slots:
     void changeSingleSymbol();
@@ -57,10 +56,10 @@ class GUI_EXPORT QgsSingleSymbolRendererWidget : public QgsRendererWidget
     void dataDefinedSizeLegend();
 
   private:
-
-    QgsSingleSymbolRenderer *mRenderer = nullptr;
+    std::unique_ptr<QgsSingleSymbolRenderer> mRenderer;
     QgsSymbolSelectorWidget *mSelector = nullptr;
-    QgsSymbol *mSingleSymbol = nullptr;
+    std::unique_ptr<QgsSymbol> mSingleSymbol;
+    QAction *mActionLevels = nullptr;
 };
 
 

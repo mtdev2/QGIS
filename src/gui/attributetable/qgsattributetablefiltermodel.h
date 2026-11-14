@@ -17,12 +17,14 @@
 #ifndef QGSATTRIBUTETABLEFILTERMODEL_H
 #define QGSATTRIBUTETABLEFILTERMODEL_H
 
-#include <QSortFilterProxyModel>
-#include <QModelIndex>
-
+#include "qgis.h"
+#include "qgis_gui.h"
 #include "qgsattributetablemodel.h"
 #include "qgsfeaturemodel.h"
-#include "qgis_gui.h"
+
+#include <QModelIndex>
+#include <QSortFilterProxyModel>
+#include <QTimer>
 
 class QgsVectorLayerCache;
 class QgsMapCanvas;
@@ -31,47 +33,13 @@ class QItemSelectionModel;
 /**
  * \ingroup gui
  * \class QgsAttributeTableFilterModel
+ * \brief A proxy model for filtering an attribute table model.
  */
-class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, public QgsFeatureModel
+class GUI_EXPORT QgsAttributeTableFilterModel : public QSortFilterProxyModel, public QgsFeatureModel
 {
     Q_OBJECT
 
   public:
-
-    /**
-     * The filter mode defines how the rows should be filtered.
-     */
-    enum FilterMode
-    {
-      ShowAll,          //!< Show all features
-      ShowSelected,     //!< Show only selected features
-      ShowVisible,      //!< Show only visible features (depends on the map canvas)
-      ShowFilteredList, //!< Show only features whose ids are on the filter list. {\see setFilteredFeatures}
-      ShowEdited        //!< Show only features which have unsaved changes
-    };
-    Q_ENUM( FilterMode )
-
-    /**
-     * The type of a column.
-     */
-    enum ColumnType
-    {
-      ColumnTypeField,       //!< This column shows a field
-      ColumnTypeActionButton //!< This column shows action buttons
-    };
-    Q_ENUM( ColumnType )
-
-    /**
-     * The additional roles defined by this filter model.
-     * The values of these roles start just after the roles defined by
-     * QgsAttributeTableModel so they do not conflict.
-     */
-    enum Role
-    {
-      TypeRole = QgsAttributeTableModel::UserRole //!< The type of a given column
-    };
-
-
     /**
      * Make sure, the master model is already loaded, so the selection will get synchronized.
      *
@@ -81,14 +49,22 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
      */
     QgsAttributeTableFilterModel( QgsMapCanvas *canvas, QgsAttributeTableModel *sourceModel, QObject *parent SIP_TRANSFERTHIS = nullptr );
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Woverloaded-virtual"
+#endif
+
     /**
      * Set the attribute table model that backs this model
      *
      * \param sourceModel The model
      *
-     * \since QGIS 2.0
      */
     void setSourceModel( QgsAttributeTableModel *sourceModel );
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
     /**
      * Changes the sort order of the features. If set to TRUE, selected features
@@ -118,14 +94,14 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
      *
      * \returns A list of feature ids
      */
-    QgsFeatureIds filteredFeatures();
+    QgsFeatureIds filteredFeatures() const;
 
     /**
      * Set the filter mode the filter will use.
      *
      * \param filterMode Sets the current mode of the filter
      */
-    void setFilterMode( FilterMode filterMode );
+    void setFilterMode( Qgis::AttributeTableFilterMode filterMode );
 
     /**
      * Disconnect the connections set for the current filterMode
@@ -135,12 +111,12 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
     /**
      * Disconnect the connections set for the new \a filterMode
      */
-    void connectFilterModeConnections( FilterMode filterMode );
+    void connectFilterModeConnections( Qgis::AttributeTableFilterMode filterMode );
 
     /**
      * The current filterModel
      */
-    FilterMode filterMode() { return mFilterMode; }
+    Qgis::AttributeTableFilterMode filterMode() { return mFilterMode; }
 
     /**
      * Returns the layer this filter acts on.
@@ -170,21 +146,15 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
      *
      * \returns The feature id of the feature visible in the provided row
      */
-    QgsFeatureId rowToId( const QModelIndex &row );
+    QgsFeatureId rowToId( const QModelIndex &row ) const;
 
     QModelIndex fidToIndex( QgsFeatureId fid ) override;
 
     QModelIndexList fidToIndexList( QgsFeatureId fid );
 
-    inline QModelIndex mapToMaster( const QModelIndex &proxyIndex ) const { return mapToSource( proxyIndex ); }
+    QModelIndex mapToMaster( const QModelIndex &proxyIndex ) const;
 
     inline QModelIndex mapFromMaster( const QModelIndex &sourceIndex ) const { return mapFromSource( sourceIndex ); }
-
-    QModelIndex mapToSource( const QModelIndex &proxyIndex ) const override;
-
-    QModelIndex mapFromSource( const QModelIndex &sourceIndex ) const override;
-
-    Qt::ItemFlags flags( const QModelIndex &index ) const override;
 
     /**
      * Sort by the given column using the given order.
@@ -212,24 +182,22 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
     //! Returns the map canvas
     QgsMapCanvas *mapCanvas() const { return mCanvas; }
 
-    QVariant data( const QModelIndex &index, int role ) const override;
-
-    QVariant headerData( int section, Qt::Orientation orientation, int role ) const override;
-
     /**
      * Gets the index of the first column that contains an action widget.
      * Returns -1 if none is defined.
+     *
+     * \deprecated QGIS 4.4
      */
-    int actionColumnIndex() const;
-
-    int columnCount( const QModelIndex &parent ) const override;
+    Q_DECL_DEPRECATED int actionColumnIndex() const SIP_DEPRECATED;
 
     /**
      * Set the attribute table configuration to control which fields are shown,
      * in which order they are shown as well as if and where an action column
      * is shown.
+     * \param config attribute table config
+     * \param force default FALSE, if TRUE the attribute table configuration will be reset even if it is not changed.
      */
-    void setAttributeTableConfig( const QgsAttributeTableConfig &config );
+    void setAttributeTableConfig( const QgsAttributeTableConfig &config, bool force SIP_PYARGREMOVE = false );
 
     /**
      * Set the \a expression and the \a context to be stored in case of the features
@@ -238,6 +206,13 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
      * \since QGIS 3.10.3
      */
     void setFilterExpression( const QgsExpression &expression, const QgsExpressionContext &context );
+
+    /**
+     * Returns the stored filter expression string.
+     *
+     * \since QGIS 3.28.0
+     */
+    QString filterExpression() const { return mFilterExpression; };
 
   signals:
 
@@ -265,7 +240,6 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
     void filterError( const QString &errorMessage );
 
   protected:
-
     /**
      * Returns TRUE if the source row will be accepted
      *
@@ -292,7 +266,7 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
      * Is called upon every change of the visible extents on the map canvas.
      * When a change is signalled, the filter is updated and invalidated if needed.
      *
-     * \deprecated since QGIS 3.10.3 - made private as reloadVisible()
+     * \deprecated QGIS 3.10.3. Made private as reloadVisible().
      */
     Q_DECL_DEPRECATED void extentsChanged();
 
@@ -314,17 +288,14 @@ class GUI_EXPORT QgsAttributeTableFilterModel: public QSortFilterProxyModel, pub
   private:
     QgsFeatureIds mFilteredFeatures;
     QgsMapCanvas *mCanvas = nullptr;
-    FilterMode mFilterMode = FilterMode::ShowAll;
+    Qgis::AttributeTableFilterMode mFilterMode = Qgis::AttributeTableFilterMode::ShowAll;
     bool mSelectedOnTop = false;
     QgsAttributeTableModel *mTableModel = nullptr;
 
     QgsAttributeTableConfig mConfig;
-    QVector<int> mColumnMapping;
+
     QgsExpression mFilterExpression;
     QgsExpressionContext mFilterExpressionContext;
-
-    int mapColumnToSource( int column ) const;
-    int mapColumnFromSource( int column ) const;
 
     QTimer mReloadVisibleTimer;
     QTimer mFilterFeaturesTimer;

@@ -18,38 +18,78 @@
 #ifndef QGSNATIVE_H
 #define QGSNATIVE_H
 
-#include "qgis_native.h"
-#include <QImage>
-#include <QVariant>
 #include <vector>
+
+#include "qgis_native.h"
+
+#include <QImage>
 #include <QObject>
+#include <QPointer>
+#include <QVariant>
+#include <QWindow>
 
 class QString;
-class QWindow;
 
 /**
  * \class QgsNative
  * \ingroup native
- * Base class for implementing methods for native system calls that
+ * \brief Abstract base class for an object which constrains the movement of a mouse cursor.
+ *
+ * \since QGIS 4.4
+ */
+class NATIVE_EXPORT QgsPointerLocker : public QObject
+{
+    Q_OBJECT
+  public:
+    /**
+     * Constructor for QgsPointerLocker, with the specified \a parent.
+     */
+    QgsPointerLocker( QWindow *window, QObject *parent );
+
+    /**
+     * Locks the pointer.
+     */
+    virtual bool lock() = 0;
+
+    /**
+     * Unlocks the pointer.
+     */
+    virtual bool unlock() = 0;
+
+  signals:
+
+    /**
+     * Emitted when the pointer has a (virtual) relative movement.
+     */
+    void pointerMoved( double dx, double dy );
+
+  protected:
+    QPointer< QWindow > mWindow;
+};
+
+
+/**
+ * \class QgsNative
+ * \ingroup native
+ * \brief Base class for implementing methods for native system calls that
  * are implemented in subclasses to provide platform abstraction.
- * \since QGIS 3.0
  */
 class NATIVE_EXPORT QgsNative : public QObject
 {
     Q_OBJECT
 
   public:
-
     //! Native interface capabilities
-    enum Capability
+    enum class Capability : int
     {
       NativeDesktopNotifications = 1 << 1, //!< Native desktop notifications are supported. See showDesktopNotification().
       NativeFilePropertiesDialog = 1 << 2, //!< Platform can show a native "file" (or folder) properties dialog.
-      NativeOpenTerminalAtPath = 1 << 3, //!< Platform can open a terminal (command line) at a specific path
+      NativeOpenTerminalAtPath = 1 << 3,   //!< Platform can open a terminal (command line) at a specific path
+      NativePointerLock = 1 << 4,          //!< Platform has native method to handle pointer lock/cursor warping \since QGIS 4.4
     };
     Q_DECLARE_FLAGS( Capabilities, Capability )
 
-    virtual ~QgsNative() = default;
+    ~QgsNative() override = default;
 
     /**
      * Called on QGIS exit, allowing the native interface to gracefully
@@ -72,10 +112,7 @@ class NATIVE_EXPORT QgsNative : public QObject
      *
      * \since QGIS 3.4
      */
-    virtual void initializeMainWindow( QWindow *window,
-                                       const QString &applicationName,
-                                       const QString &organizationName,
-                                       const QString &version );
+    virtual void initializeMainWindow( QWindow *window, const QString &applicationName, const QString &organizationName, const QString &version );
 
     /**
      * Brings the QGIS app to front. The default implementation does nothing.
@@ -167,22 +204,22 @@ class NATIVE_EXPORT QgsNative : public QObject
      */
     struct NotificationSettings
     {
-      NotificationSettings() {}
+        NotificationSettings() {}
 
-      //! Optional image to show in notification
-      QImage image;
+        //! Optional image to show in notification
+        QImage image;
 
-      //! Whether the notification should be transient (the meaning varies depending on platform)
-      bool transient = true;
+        //! Whether the notification should be transient (the meaning varies depending on platform)
+        bool transient = true;
 
-      //! Path to application icon in SVG format
-      QString svgAppIconPath;
+        //! Path to application icon in SVG format
+        QString svgAppIconPath;
 
-      //! Path to application icon in png format
-      QString pngAppIconPath;
+        //! Path to application icon in png format
+        QString pngAppIconPath;
 
-      //! Message ID, used to replace existing messages
-      QVariant messageId;
+        //! Message ID, used to replace existing messages
+        QVariant messageId;
     };
 
     /**
@@ -190,13 +227,13 @@ class NATIVE_EXPORT QgsNative : public QObject
      */
     struct NotificationResult
     {
-      NotificationResult() {}
+        NotificationResult() {}
 
-      //! True if notification was successfully sent.
-      bool successful = false;
+        //! True if notification was successfully sent.
+        bool successful = false;
 
-      //! Unique notification message ID, used by some platforms to identify the notification
-      QVariant messageId;
+        //! Unique notification message ID, used by some platforms to identify the notification
+        QVariant messageId;
     };
 
     /**
@@ -221,17 +258,17 @@ class NATIVE_EXPORT QgsNative : public QObject
      */
     struct RecentProjectProperties
     {
-      //! Project name (will be project title if set, otherwise project filename)
-      QString name;
+        //! Project name (will be project title if set, otherwise project filename)
+        QString name;
 
-      //! Project title, if set
-      QString title;
+        //! Project title, if set
+        QString title;
 
-      //! Project filename
-      QString fileName;
+        //! Project filename
+        QString fileName;
 
-      //! Full project path
-      QString path;
+        //! Full project path
+        QString path;
     };
 
     /**
@@ -244,7 +281,16 @@ class NATIVE_EXPORT QgsNative : public QObject
      *
      * \since QGIS 3.4
      */
-    virtual void onRecentProjectsChanged( const std::vector< RecentProjectProperties > &recentProjects );
+    virtual void onRecentProjectsChanged( const std::vector<RecentProjectProperties> &recentProjects );
+
+    /**
+     * Creates a new pointer locker, with the specified \a parent object.
+     *
+     * Will return NULLPTR if the NativePointerLock capability is not present.
+     *
+     * \since QGIS 4.4
+     */
+    virtual QgsPointerLocker *createPointerLocker( QWindow *window, QObject *parent );
 
   signals:
 
@@ -259,7 +305,6 @@ class NATIVE_EXPORT QgsNative : public QObject
      * \since QGIS 3.4
      */
     void usbStorageNotification( const QString &path, bool inserted );
-
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsNative::Capabilities )

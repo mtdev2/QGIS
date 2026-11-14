@@ -24,6 +24,12 @@
 
 #include <QDomDocument>
 
+class QgsServerInterface;
+class QgsProject;
+class QgsServerRequest;
+class QgsServerResponse;
+class QgsServerSettings;
+
 namespace QgsWfs
 {
   namespace v1_0_0
@@ -37,7 +43,7 @@ namespace QgsWfs
     /**
      * Create Capability element for get capabilities document
      */
-    QDomElement getCapabilityElement( QDomDocument &doc, const QgsProject *project, const QgsServerRequest &request );
+    QDomElement getCapabilityElement( QDomDocument &doc, const QgsProject *project, const QgsServerRequest &request, const QgsServerSettings *settings );
 
     /**
      * Create Service element for get capabilities document
@@ -47,19 +53,14 @@ namespace QgsWfs
     /**
      * Create get capabilities document
      */
-    QDomDocument createGetCapabilitiesDocument( QgsServerInterface *serverIface,
-        const QgsProject *project, const QString &version,
-        const QgsServerRequest &request );
+    QDomDocument createGetCapabilitiesDocument( QgsServerInterface *serverIface, const QgsProject *project, const QString &version, const QgsServerRequest &request );
 
     /**
      * Output WFS GetCapabilities response
      */
-    void writeGetCapabilities( QgsServerInterface *serverIface, const QgsProject *project,
-                               const QString &version, const QgsServerRequest &request,
-                               QgsServerResponse &response );
+    void writeGetCapabilities( QgsServerInterface *serverIface, const QgsProject *project, const QString &version, const QgsServerRequest &request, QgsServerResponse &response );
 
   } // namespace v1_0_0
 } // namespace QgsWfs
 
 #endif
-

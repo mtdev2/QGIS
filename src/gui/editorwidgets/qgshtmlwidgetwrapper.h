@@ -16,14 +16,14 @@
 #ifndef QGSHTMLWIDGETWRAPPER_H
 #define QGSHTMLWIDGETWRAPPER_H
 
-#include "qgswidgetwrapper.h"
-#include "qgswebview.h"
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgswebview.h"
+#include "qgswidgetwrapper.h"
 
 /**
  * \ingroup gui
- * Wraps a QQuickWidget to display HTML code
+ * \brief Wraps a QQuickWidget to display HTML code.
  * \since QGIS 3.4
  */
 class GUI_EXPORT QgsHtmlWidgetWrapper : public QgsWidgetWrapper
@@ -31,7 +31,6 @@ class GUI_EXPORT QgsHtmlWidgetWrapper : public QgsWidgetWrapper
     Q_OBJECT
 
   public:
-
     /**
      * Create a html widget wrapper
      *
@@ -53,48 +52,28 @@ class GUI_EXPORT QgsHtmlWidgetWrapper : public QgsWidgetWrapper
     //! Sets the HTML code to \a htmlCode
     void setHtmlCode( const QString &htmlCode );
 
+    /**
+     * Returns true if the widget needs feature geometry
+     * \since QGIS 3.20
+     */
+    bool needsGeometry() const;
+
   public slots:
     void setFeature( const QgsFeature &feature ) override;
 
   private slots:
-    //! sets the html context with the current values
-    void setHtmlContext( );
-#ifdef WITH_QTWEBKIT
-    void fixHeight();
-#endif
+    //! Updates the HTML code with the current values
+    void updateHtmlCode();
 
   private:
     QString mHtmlCode;
     QgsWebView *mWidget = nullptr;
     QgsFeature mFeature;
+    bool mNeedsGeometry = false;
+    QgsFeature mFormFeature;
+    bool mRequiresFormScope = false;
+
+    friend class TestQgsHtmlWidgetWrapper;
 };
-
-
-#ifndef SIP_RUN
-///@cond PRIVATE
-
-/**
- * \ingroup gui
- * To pass the QgsExpression functionality and it's context to the context of the QWebView
- * \since QGIS 3.8
- */
-class HtmlExpression : public QObject
-{
-    Q_OBJECT
-
-  public:
-    //! set the \a context of the expression
-    void setExpressionContext( const QgsExpressionContext &context );
-
-  public:
-
-    //! evaluates the value regarding the \a expression and the context
-    Q_INVOKABLE QString evaluate( const QString &expression ) const;
-
-  private:
-    QgsExpressionContext mExpressionContext;
-};
-///@endcond
-#endif //SIP_RUN
 
 #endif // QGSHTMLWIDGETWRAPPER_H

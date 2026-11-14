@@ -20,13 +20,13 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsrange.h"
 #include "qgsdataprovidertemporalcapabilities.h"
+#include "qgsrange.h"
 
 /**
  * \class QgsVectorDataProviderTemporalCapabilities
  * \ingroup core
- * Implementation of data provider temporal properties for QgsVectorDataProviders.
+ * \brief Implementation of data provider temporal properties for QgsVectorDataProviders.
  *
  * Data provider temporal capabilities reflect the temporal capabilities of a QgsDataProvider.
  * Unlike QgsMapLayerTemporalProperties, these settings are not user-configurable,
@@ -37,17 +37,6 @@
 class CORE_EXPORT QgsVectorDataProviderTemporalCapabilities : public QgsDataProviderTemporalCapabilities
 {
   public:
-
-    /**
-     * Provider temporal handling mode
-     **/
-    enum TemporalMode
-    {
-      ProviderHasFixedTemporalRange = 0, //!< Entire dataset from provider has a fixed start and end datetime.
-      ProviderStoresFeatureDateTimeInstantInField, //!< Dataset has feature datetime instants stored in a single field
-      ProviderStoresFeatureDateTimeStartAndEndInSeparateFields, //!< Dataset stores feature start and end datetimes in separate fields
-    };
-
     /**
      * Constructor for QgsVectorDataProviderTemporalCapabilities.
      *
@@ -59,15 +48,15 @@ class CORE_EXPORT QgsVectorDataProviderTemporalCapabilities : public QgsDataProv
      * Returns the temporal properties mode.
      *
      *\see setMode()
-    **/
-    TemporalMode mode() const;
+    */
+    Qgis::VectorDataProviderTemporalMode mode() const;
 
     /**
      * Sets the temporal properties \a mode.
      *
      *\see mode()
-    **/
-    void setMode( TemporalMode mode );
+    */
+    void setMode( Qgis::VectorDataProviderTemporalMode mode );
 
     /**
      * Sets the datetime \a range extent from which temporal data is available from the provider.
@@ -120,7 +109,6 @@ class CORE_EXPORT QgsVectorDataProviderTemporalCapabilities : public QgsDataProv
     void setEndField( const QString &field );
 
   private:
-
     /**
      * Represents available data provider datetime range.
      *
@@ -131,11 +119,10 @@ class CORE_EXPORT QgsVectorDataProviderTemporalCapabilities : public QgsDataProv
      */
     QgsDateTimeRange mAvailableTemporalRange;
 
-    TemporalMode mMode = ProviderHasFixedTemporalRange;
+    Qgis::VectorDataProviderTemporalMode mMode = Qgis::VectorDataProviderTemporalMode::HasFixedTemporalRange;
 
     QString mStartField;
     QString mEndField;
-
 };
 
 #endif // QGSVECTORDATAPROVIDERTEMPORALCAPABILITIES_H

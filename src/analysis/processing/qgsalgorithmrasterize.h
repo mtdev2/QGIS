@@ -25,12 +25,11 @@
 #ifndef QGSRASTERIZEALGORITHM_H
 #define QGSRASTERIZEALGORITHM_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
-#include "qgsrasterprojector.h"
-#include "qgsmapsettings.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -43,7 +42,7 @@ class QgsRasterizeAlgorithm : public QgsProcessingAlgorithm
     QString name() const override;
     QString displayName() const override;
     QStringList tags() const override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString group() const override;
     QString groupId() const override;
     QString shortHelpString() const override;
@@ -51,17 +50,17 @@ class QgsRasterizeAlgorithm : public QgsProcessingAlgorithm
     QgsRasterizeAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 
     bool prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 
-  private:
+    void checkLayersUsagePolicy( QgsProcessingFeedback *feedback );
 
+  private:
+    QgsCoordinateReferenceSystem mCrs;
+    QgsMapSettings mMapSettings;
     QMap<QString, QString> mMapThemeStyleOverrides;
     std::vector<std::unique_ptr<QgsMapLayer>> mMapLayers;
-
 };
 
 ///@endcond PRIVATE

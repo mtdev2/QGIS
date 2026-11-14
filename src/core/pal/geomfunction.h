@@ -30,25 +30,26 @@
 #ifndef PAL_GEOM_FUNCTION
 #define PAL_GEOM_FUNCTION
 
-#define SIP_NO_FILE
 
+#include <cmath>
 
 #include "qgis_core.h"
-#include <cmath>
 #include "qgsgeos.h"
+
+#define SIP_NO_FILE
 
 namespace pal
 {
 
   /**
    * \ingroup core
+   * \brief Pal labeling engine geometry functions.
    * \class pal::GeomFunction
    * \note not available in Python bindings
    */
   class CORE_EXPORT GeomFunction
   {
     public:
-
       /*
        *           o(x2,y2)
        *          /
@@ -58,52 +59,52 @@ namespace pal
        *      /
        *     o (x1, y1)
        */
-      static inline double cross_product( double x1, double y1, double x2, double y2, double x3, double y3 )
-      {
-        return ( x2 - x1 ) * ( y3 - y1 ) - ( x3 - x1 ) * ( y2 - y1 );
-      }
+      static inline double cross_product( double x1, double y1, double x2, double y2, double x3, double y3 ) { return ( x2 - x1 ) * ( y3 - y1 ) - ( x3 - x1 ) * ( y2 - y1 ); }
 
-      static inline double dist_euc2d( double x1, double y1, double x2, double y2 )
-      {
-        return std::sqrt( ( x2 - x1 ) * ( x2 - x1 ) + ( y2 - y1 ) * ( y2 - y1 ) );
-      }
-
-      static inline double dist_euc2d_sq( double x1, double y1, double x2, double y2 )
-      {
-        return ( x2 - x1 ) * ( x2 - x1 ) + ( y2 - y1 ) * ( y2 - y1 );
-      }
-
-      static void findLineCircleIntersection( double cx, double cy, double radius,
-                                              double x1, double y1, double x2, double y2,
-                                              double &xRes, double &yRes );
+      static void findLineCircleIntersection( double cx, double cy, double radius, double x1, double y1, double x2, double y2, double &xRes, double &yRes );
 
       /**
        * \brief Compute the convex hull in O(n·log(n))
        * \param id set of point (i.e. point no 0 is (x,y) = x[id[0]],y[id[0]])
        * \param x x coordinates
        * \param y y coordinates
-       * \param n Size of subset (vector id)
-       * \param cHull returns the point id (id of id's vector...) whom are parts of the convex hull
-       * \returns convexHull's size
+       * \returns convexHull vertex ids
        */
-      static int convexHullId( int *id, const std::vector< double > &x, const std::vector< double > &y, int n, int *&cHull );
+      static std::vector< int > convexHullId( std::vector<int> &id, const std::vector< double > &x, const std::vector< double > &y );
 
       /**
        * Returns TRUE if the two segments intersect.
        */
-      static bool isSegIntersects( double x1, double y1, double x2, double y2,  // 1st segment
-                                   double x3, double y3, double x4, double y4 ); // 2nd segment
+      static bool isSegIntersects(
+        double x1,
+        double y1,
+        double x2,
+        double y2, // 1st segment
+        double x3,
+        double y3,
+        double x4,
+        double y4
+      ); // 2nd segment
 
       /**
        * Compute the point where two lines intersect.
        * \returns TRUE if the lines intersect, or FALSE if the lines are parallel
        */
-      static bool computeLineIntersection( double x1, double y1, double x2, double y2,  // 1st line (segment)
-                                           double x3, double y3, double x4, double y4,  // 2nd line segment
-                                           double *x, double *y );
+      static bool computeLineIntersection(
+        double x1,
+        double y1,
+        double x2,
+        double y2, // 1st line (segment)
+        double x3,
+        double y3,
+        double x4,
+        double y4, // 2nd line segment
+        double *x,
+        double *y
+      );
 
       //! Reorder points to have cross prod ((x,y)[i], (x,y)[i+1), point) > 0 when point is outside
-      static int reorderPolygon( int nbPoints, std::vector< double > &x, std::vector< double> &y );
+      static bool reorderPolygon( std::vector< double > &x, std::vector< double> &y );
 
       /**
        * Returns TRUE if a GEOS prepared geometry totally contains a label candidate.
@@ -116,8 +117,7 @@ namespace pal
        * \returns TRUE if candidate is totally contained
        */
       static bool containsCandidate( const GEOSPreparedGeometry *geom, double x, double y, double width, double height, double alpha );
-
   };
-} //namespace
+} //namespace pal
 
 #endif

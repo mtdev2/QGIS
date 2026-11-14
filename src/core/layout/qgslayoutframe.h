@@ -25,20 +25,19 @@ class QgsLayoutMultiFrame;
 
 /**
  * \ingroup core
- * Base class for frame items, which form a layout multiframe item.
- * \since QGIS 3.0
+ * \brief Base class for frame items, which form a layout multiframe item.
 */
-class CORE_EXPORT QgsLayoutFrame: public QgsLayoutItem
+class CORE_EXPORT QgsLayoutFrame : public QgsLayoutItem
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutFrame, with the specified parent \a layout
      * and belonging to a \a multiFrame.
      */
     QgsLayoutFrame( QgsLayout *layout, QgsLayoutMultiFrame *multiFrame );
+    ~QgsLayoutFrame() override;
 
     /**
      * Creates a new QgsLayoutFrame belonging to the specified \a layout.
@@ -113,7 +112,7 @@ class CORE_EXPORT QgsLayoutFrame: public QgsLayoutItem
     ExportLayerBehavior exportLayerBehavior() const override;
 
   protected:
-
+    void paint( QPainter *painter, const QStyleOptionGraphicsItem *itemStyle, QWidget *pWidget ) override;
     void draw( QgsLayoutItemRenderContext &context ) override;
     void drawFrame( QgsRenderContext &context ) override;
     void drawBackground( QgsRenderContext &context ) override;
@@ -132,7 +131,6 @@ class CORE_EXPORT QgsLayoutFrame: public QgsLayoutItem
     bool mHideBackgroundIfEmpty = false;
 
     friend class QgsLayoutMultiFrame;
-
 };
 
 #endif // QGSLAYOUTFRAME_H

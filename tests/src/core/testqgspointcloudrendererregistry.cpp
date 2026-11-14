@@ -15,25 +15,27 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgspointcloudrendererregistry.h"
 #include "qgspointcloudrenderer.h"
-#include "qgsrendercontext.h"
+#include "qgspointcloudrendererregistry.h"
 #include "qgsreadwritecontext.h"
+#include "qgsrendercontext.h"
+#include "qgstest.h"
 
 #include <QObject>
-#include "qgstest.h"
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 //dummy renderer for testing
 class DummyRenderer : public QgsPointCloudRenderer
 {
   public:
     DummyRenderer() = default;
-    QString type() const override { return QStringLiteral( "dummy" ); }
+    QString type() const override { return u"dummy"_s; }
     QgsPointCloudRenderer *clone() const override { return new DummyRenderer(); }
-    static QgsPointCloudRenderer *create( QDomElement &, const QgsReadWriteContext & ) { return new DummyRenderer(); }
+    static std::unique_ptr<QgsPointCloudRenderer> create( QDomElement &, const QgsReadWriteContext & ) { return std::make_unique<DummyRenderer>(); }
     void renderBlock( const QgsPointCloudBlock *, QgsPointCloudRenderContext & ) override {}
-    QDomElement save( QDomDocument &doc, const QgsReadWriteContext & ) const override { return doc.createElement( QStringLiteral( "test" ) ); }
-
+    QDomElement save( QDomDocument &doc, const QgsReadWriteContext & ) const override { return doc.createElement( u"test"_s ); }
 };
 
 class TestQgsPointCloudRendererRegistry : public QObject
@@ -52,7 +54,6 @@ class TestQgsPointCloudRendererRegistry : public QObject
     void fetchTypes();
 
   private:
-
 };
 
 void TestQgsPointCloudRendererRegistry::initTestCase()
@@ -67,25 +68,20 @@ void TestQgsPointCloudRendererRegistry::cleanupTestCase()
 }
 
 void TestQgsPointCloudRendererRegistry::init()
-{
-
-}
+{}
 
 void TestQgsPointCloudRendererRegistry::cleanup()
-{
-
-}
+{}
 
 void TestQgsPointCloudRendererRegistry::metadata()
 {
-  QgsPointCloudRendererMetadata metadata = QgsPointCloudRendererMetadata( QStringLiteral( "name" ), QStringLiteral( "display name" ), DummyRenderer::create, QIcon() );
+  QgsPointCloudRendererMetadata metadata = QgsPointCloudRendererMetadata( u"name"_s, u"display name"_s, DummyRenderer::create, QIcon() );
   QCOMPARE( metadata.name(), QString( "name" ) );
   QCOMPARE( metadata.visibleName(), QString( "display name" ) );
 
   //test creating renderer from metadata
-  QVariantMap map;
   QDomElement elem;
-  std::unique_ptr< QgsPointCloudRenderer > renderer( metadata.createRenderer( elem, QgsReadWriteContext() ) );
+  const std::unique_ptr<QgsPointCloudRenderer> renderer( metadata.createRenderer( elem, QgsReadWriteContext() ) );
   QVERIFY( renderer );
   DummyRenderer *dummyRenderer = dynamic_cast<DummyRenderer *>( renderer.get() );
   QVERIFY( dummyRenderer );
@@ -108,13 +104,13 @@ void TestQgsPointCloudRendererRegistry::instanceHasDefaultRenderers()
 void TestQgsPointCloudRendererRegistry::addRenderer()
 {
   QgsPointCloudRendererRegistry *registry = QgsApplication::pointCloudRendererRegistry();
-  int previousCount = registry->renderersList().length();
+  const int previousCount = registry->renderersList().length();
 
-  registry->addRenderer( new QgsPointCloudRendererMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy renderer" ), DummyRenderer::create, QIcon() ) );
+  registry->addRenderer( new QgsPointCloudRendererMetadata( u"Dummy"_s, u"Dummy renderer"_s, DummyRenderer::create, QIcon() ) );
   QCOMPARE( registry->renderersList().length(), previousCount + 1 );
   //try adding again, should have no effect
-  QgsPointCloudRendererMetadata *dupe = new QgsPointCloudRendererMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy callout" ), DummyRenderer::create, QIcon() );
-  QVERIFY( ! registry->addRenderer( dupe ) );
+  QgsPointCloudRendererMetadata *dupe = new QgsPointCloudRendererMetadata( u"Dummy"_s, u"Dummy callout"_s, DummyRenderer::create, QIcon() );
+  QVERIFY( !registry->addRenderer( dupe ) );
   QCOMPARE( registry->renderersList().length(), previousCount + 1 );
   delete dupe;
 
@@ -126,15 +122,15 @@ void TestQgsPointCloudRendererRegistry::addRenderer()
 void TestQgsPointCloudRendererRegistry::fetchTypes()
 {
   QgsPointCloudRendererRegistry *registry = QgsApplication::pointCloudRendererRegistry();
-  QStringList types = registry->renderersList();
+  const QStringList types = registry->renderersList();
 
   QVERIFY( types.contains( "Dummy" ) );
 
-  QgsPointCloudRendererAbstractMetadata *metadata = registry->rendererMetadata( QStringLiteral( "Dummy" ) );
+  QgsPointCloudRendererAbstractMetadata *metadata = registry->rendererMetadata( u"Dummy"_s );
   QCOMPARE( metadata->name(), QString( "Dummy" ) );
 
   //metadata for bad renderer
-  metadata = registry->rendererMetadata( QStringLiteral( "bad renderer" ) );
+  metadata = registry->rendererMetadata( u"bad renderer"_s );
   QVERIFY( !metadata );
 }
 

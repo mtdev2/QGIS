@@ -16,13 +16,18 @@
  ***************************************************************************/
 
 #include "qgsalgorithmfilter.h"
+
 #include "qgsapplication.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsFilterAlgorithm::name() const
 {
-  return QStringLiteral( "filter" );
+  return u"filter"_s;
 }
 
 QString QgsFilterAlgorithm::displayName() const
@@ -37,22 +42,27 @@ QStringList QgsFilterAlgorithm::tags() const
 
 QString QgsFilterAlgorithm::group() const
 {
-  return QObject::tr( "Vector table" );
+  return QObject::tr( "Modeler tools" );
 }
 
 QString QgsFilterAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectortable" );
+  return u"modelertools"_s;
 }
 
-QgsProcessingAlgorithm::Flags QgsFilterAlgorithm::flags() const
+Qgis::ProcessingAlgorithmFlags QgsFilterAlgorithm::flags() const
 {
-  return FlagHideFromToolbox;
+  return Qgis::ProcessingAlgorithmFlag::HideFromToolbox;
 }
 
 QString QgsFilterAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm filters features from the input layer and redirects them to one or several outputs." );
+  return QObject::tr( "This algorithm filters features from the input layer and redirects them to one or more outputs." );
+}
+
+QString QgsFilterAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Filters features from the input layer and redirects them to one or more outputs." );
 }
 
 QgsFilterAlgorithm *QgsFilterAlgorithm::createInstance() const
@@ -67,35 +77,37 @@ QgsFilterAlgorithm::~QgsFilterAlgorithm()
 
 void QgsFilterAlgorithm::initAlgorithm( const QVariantMap &configuration )
 {
-  addParameter( new QgsProcessingParameterFeatureSource( QStringLiteral( "INPUT" ), QObject::tr( "Input layer" ) ) );
+  addParameter( new QgsProcessingParameterFeatureSource( u"INPUT"_s, QObject::tr( "Input layer" ) ) );
 
-  const QVariantList outputs = configuration.value( QStringLiteral( "outputs" ) ).toList();
+  const QVariantList outputs = configuration.value( u"outputs"_s ).toList();
   for ( const QVariant &output : outputs )
   {
     const QVariantMap outputDef = output.toMap();
-    const QString name = QStringLiteral( "OUTPUT_%1" ).arg( outputDef.value( QStringLiteral( "name" ) ).toString() );
-    QgsProcessingParameterFeatureSink *outputParam = new QgsProcessingParameterFeatureSink( name, outputDef.value( QStringLiteral( "name" ) ).toString() );
-    QgsProcessingParameterDefinition::Flags flags = QgsProcessingParameterDefinition::Flags();
-    flags |= QgsProcessingParameterDefinition::FlagHidden;
-    if ( outputDef.value( QStringLiteral( "isModelOutput" ) ).toBool() )
-      flags |= QgsProcessingParameterDefinition::FlagIsModelOutput;
+    const QString name = u"OUTPUT_%1"_s.arg( outputDef.value( u"name"_s ).toString() );
+    QgsProcessingParameterFeatureSink *outputParam = new QgsProcessingParameterFeatureSink( name, outputDef.value( u"name"_s ).toString() );
+    Qgis::ProcessingParameterFlags flags;
+    flags |= Qgis::ProcessingParameterFlag::Hidden;
+    if ( outputDef.value( u"isModelOutput"_s ).toBool() )
+      flags |= Qgis::ProcessingParameterFlag::IsModelOutput;
     outputParam->setFlags( flags );
     addParameter( outputParam );
-    mOutputs.append( new Output( name, outputDef.value( QStringLiteral( "expression" ) ).toString() ) );
+    mOutputs.append( new Output( name, outputDef.value( u"expression"_s ).toString() ) );
   }
 }
 
 
 QVariantMap QgsFilterAlgorithm::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  std::unique_ptr< QgsProcessingFeatureSource > source( parameterAsSource( parameters, QStringLiteral( "INPUT" ), context ) );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  std::unique_ptr<QgsProcessingFeatureSource> source( parameterAsSource( parameters, u"INPUT"_s, context ) );
   if ( !source )
-    throw QgsProcessingException( invalidSourceError( parameters, QStringLiteral( "INPUT" ) ) );
+    throw QgsProcessingException( invalidSourceError( parameters, u"INPUT"_s ) );
 
   QgsExpressionContext expressionContext = createExpressionContext( parameters, context, source.get() );
-  for ( Output *output : qgis::as_const( mOutputs ) )
+  for ( Output *output : std::as_const( mOutputs ) )
   {
-    output->sink.reset( parameterAsSink( parameters, output->name, context, output->destinationIdentifier, source->fields(), source->wkbType(), source->sourceCrs() ) );
+    output->sink = parameterAsSink( parameters, output->name, context, output->destinationIdentifier, source->fields(), source->wkbType(), source->sourceCrs() );
     if ( !output->sink )
       throw QgsProcessingException( invalidSinkError( parameters, output->name ) );
     output->expression.prepare( &expressionContext );
@@ -104,7 +116,7 @@ QVariantMap QgsFilterAlgorithm::processAlgorithm( const QVariantMap &parameters,
   long count = source->featureCount();
 
   QgsFeature f;
-  QgsFeatureIterator it = source->getFeatures( QgsFeatureRequest(), QgsProcessingFeatureSource::FlagSkipGeometryValidityChecks );
+  QgsFeatureIterator it = source->getFeatures( QgsFeatureRequest(), Qgis::ProcessingFeatureSourceFlag::SkipGeometryValidityChecks );
 
   double step = count > 0 ? 100.0 / count : 1;
   int current = 0;
@@ -118,11 +130,14 @@ QVariantMap QgsFilterAlgorithm::processAlgorithm( const QVariantMap &parameters,
 
     expressionContext.setFeature( f );
 
-    for ( Output *output : qgis::as_const( mOutputs ) )
+    for ( Output *output : std::as_const( mOutputs ) )
     {
       if ( output->expression.evaluate( &expressionContext ).toBool() )
       {
-        output->sink->addFeature( f, QgsFeatureSink::FastInsert );
+        if ( !output->sink->addFeature( f, QgsFeatureSink::FastInsert ) )
+          throw QgsProcessingException( writeFeatureError( output->sink.get(), parameters, output->name ) );
+        else
+          feedback->featureAddedToSink( output->name );
       }
     }
 
@@ -131,8 +146,10 @@ QVariantMap QgsFilterAlgorithm::processAlgorithm( const QVariantMap &parameters,
   }
 
   QVariantMap outputs;
-  for ( const Output *output : qgis::as_const( mOutputs ) )
+  for ( const Output *output : std::as_const( mOutputs ) )
   {
+    output->sink->finalize();
+    feedback->featureSinkFinalized( output->name );
     outputs.insert( output->name, output->destinationIdentifier );
   }
   qDeleteAll( mOutputs );

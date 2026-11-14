@@ -14,12 +14,15 @@
  ***************************************************************************/
 
 #include "qgsdataitemguiprovider.h"
-#include "qgsdataitem.h"
-#include "qgsproviderregistry.h"
-#include "qgsprovidermetadata.h"
+
 #include "qgsabstractdatabaseproviderconnection.h"
+#include "qgsdataitem.h"
 #include "qgsmessagebar.h"
+#include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
+
 #include <QMessageBox>
+
 //
 // QgsDataItemGuiContext
 //
@@ -34,13 +37,36 @@ void QgsDataItemGuiContext::setMessageBar( QgsMessageBar *messageBar )
   mMessageBar = messageBar;
 }
 
+void QgsDataItemGuiContext::setMapCanvas( QgsMapCanvas *canvas )
+{
+  mCanvas = canvas;
+}
+
+QgsMapCanvas *QgsDataItemGuiContext::mapCanvas() const
+{
+  return mCanvas;
+}
+
+QgsBrowserTreeView *QgsDataItemGuiContext::view() const
+{
+  return mView;
+}
+
+void QgsDataItemGuiContext::setView( QgsBrowserTreeView *view )
+{
+  mView = view;
+}
+
 //
 // QgsDataItemGuiProvider
 //
 
 void QgsDataItemGuiProvider::populateContextMenu( QgsDataItem *, QMenu *, const QList<QgsDataItem *> &, QgsDataItemGuiContext )
-{
+{}
 
+int QgsDataItemGuiProvider::precedenceWhenPopulatingMenus() const
+{
+  return 0;
 }
 
 bool QgsDataItemGuiProvider::rename( QgsDataItem *, const QString &, QgsDataItemGuiContext )
@@ -84,7 +110,7 @@ void QgsDataItemGuiProvider::notify( const QString &title, const QString &messag
     switch ( level )
     {
       case Qgis::MessageLevel::Info:
-      case Qgis::MessageLevel::None:
+      case Qgis::MessageLevel::NoLevel:
       {
         QMessageBox::information( parent, title, message );
         break;

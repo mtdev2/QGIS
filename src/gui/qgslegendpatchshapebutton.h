@@ -15,21 +15,23 @@
 #ifndef QGSLEGENDPATCHSHAPEBUTTON_H
 #define QGSLEGENDPATCHSHAPEBUTTON_H
 
+#include <memory>
+
 #include "qgis_gui.h"
 #include "qgis_sip.h"
-#include "qgssymbol.h"
 #include "qgslegendpatchshape.h"
-#include <QToolButton>
+
 #include <QPointer>
-#include <memory>
+#include <QToolButton>
 
 class QgsPanelWidget;
 class QgsMessageBar;
+class QgsSymbol;
 
 /**
  * \ingroup gui
  * \class QgsLegendPatchShapeButton
- * A button for creating and modifying QgsLegendPatchShape settings.
+ * \brief A button for creating and modifying QgsLegendPatchShape settings.
  *
  * \since QGIS 3.14
  */
@@ -38,12 +40,12 @@ class GUI_EXPORT QgsLegendPatchShapeButton : public QToolButton
     Q_OBJECT
 
   public:
-
     /**
      * Construct a new patch shape button with the specified \a parent widget.
      * Use \a dialogTitle string to define the title to show in the legend patch shape widget.
      */
     QgsLegendPatchShapeButton( QWidget *parent SIP_TRANSFERTHIS = nullptr, const QString &dialogTitle = QString() );
+    ~QgsLegendPatchShapeButton() override;
 
     QSize minimumSizeHint() const override;
     QSize sizeHint() const override;
@@ -54,13 +56,13 @@ class GUI_EXPORT QgsLegendPatchShapeButton : public QToolButton
      * to a default symbol style of the new type.
      * \see symbolType()
      */
-    void setSymbolType( QgsSymbol::SymbolType type );
+    void setSymbolType( Qgis::SymbolType type );
 
     /**
      * Returns the symbol type which the button requires.
      * \see setSymbolType()
      */
-    QgsSymbol::SymbolType symbolType() const { return mType; }
+    Qgis::SymbolType symbolType() const { return mType; }
 
     /**
      * Sets the symbol to use for previewing the legend patch shape.
@@ -128,13 +130,10 @@ class GUI_EXPORT QgsLegendPatchShapeButton : public QToolButton
     void changed();
 
   protected:
-
     void changeEvent( QEvent *e ) override;
     void showEvent( QShowEvent *e ) override;
     void resizeEvent( QResizeEvent *event ) override;
-
-    // Reimplemented to detect right mouse button clicks on the button
-    void mousePressEvent( QMouseEvent *e ) override;
+    void contextMenuEvent( QContextMenuEvent *e ) override;
 
   private slots:
 
@@ -148,16 +147,15 @@ class GUI_EXPORT QgsLegendPatchShapeButton : public QToolButton
     void loadPatchFromStyle( const QString &name );
 
   private:
-
     QgsLegendPatchShape mShape;
 
     QSize mSizeHint;
 
     QString mDialogTitle;
 
-    QgsSymbol::SymbolType mType = QgsSymbol::Fill;
+    Qgis::SymbolType mType = Qgis::SymbolType::Fill;
 
-    std::unique_ptr< QgsSymbol > mPreviewSymbol;
+    std::unique_ptr<QgsSymbol> mPreviewSymbol;
 
     QgsMessageBar *mMessageBar = nullptr;
 
@@ -171,7 +169,6 @@ class GUI_EXPORT QgsLegendPatchShapeButton : public QToolButton
      * Regenerates the shape preview.
      */
     void updatePreview();
-
 };
 
 #endif // QGSLEGENDPATCHSHAPEBUTTON_H

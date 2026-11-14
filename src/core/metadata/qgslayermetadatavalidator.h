@@ -18,8 +18,9 @@
 #ifndef QGSLAYERMETADATAVALIDATOR_H
 #define QGSLAYERMETADATAVALIDATOR_H
 
-#include "qgis_sip.h"
 #include "qgis_core.h"
+#include "qgis_sip.h"
+
 #include <QString>
 #include <QVariant>
 
@@ -30,24 +31,18 @@ class QgsLayerMetadata;
  * \ingroup core
  * \class QgsAbstractMetadataBaseValidator
  * \brief Abstract base class for metadata validators.
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsAbstractMetadataBaseValidator
 {
-
   public:
-
     /**
      * \ingroup core
      * \brief Contains the parameters describing a metadata validation failure.
-     * \since QGIS 3.0
      */
     class ValidationResult
     {
-
       public:
-
         /**
          * Constructor for ValidationResult.
          */
@@ -60,11 +55,7 @@ class CORE_EXPORT QgsAbstractMetadataBaseValidator
         //! Metadata section which failed the validation
         QString section;
 
-        // TODO QGIS 4.0 - fix this
-
-#ifdef SIP_RUN
-        SIP_PROPERTY( name = identifier, get = _identifier, set = _setIdentifier )
-#endif
+        // TODO QGIS 5.0 - remove compatibility code
 
         /**
          * Returns the optional identifier for the failed metadata item.
@@ -72,7 +63,7 @@ class CORE_EXPORT QgsAbstractMetadataBaseValidator
          * will be set to the list index of the failed metadata
          * item.
          */
-        QVariant _identifier() const { return mIdentifier; }
+        QVariant identifier() const SIP_PYNAME( _identifier ) { return mIdentifier; }
 
         /**
          * Sets the optional \a identifier for the failed metadata item.
@@ -80,13 +71,12 @@ class CORE_EXPORT QgsAbstractMetadataBaseValidator
          * will be set to the list index of the failed metadata
          * item.
          */
-        void _setIdentifier( QVariant identifier ) { mIdentifier = identifier; }
+        void setIdentifier( const QVariant &identifier ) { mIdentifier = identifier; }
 
         //! The reason behind the validation failure.
         QString note;
 
       private:
-
         QVariant mIdentifier;
     };
 
@@ -100,7 +90,6 @@ class CORE_EXPORT QgsAbstractMetadataBaseValidator
      * to fix the metadata.
      */
     virtual bool validate( const QgsAbstractMetadataBase *metadata, QList< QgsAbstractMetadataBaseValidator::ValidationResult > &results SIP_OUT ) const = 0;
-
 };
 
 /**
@@ -112,16 +101,10 @@ class CORE_EXPORT QgsAbstractMetadataBaseValidator
 
 class CORE_EXPORT QgsNativeMetadataBaseValidator : public QgsAbstractMetadataBaseValidator
 {
-
   public:
-
-    /**
-     * Constructor for QgsNativeMetadataBaseValidator.
-     */
     QgsNativeMetadataBaseValidator() = default;
 
     bool validate( const QgsAbstractMetadataBase *metadata, QList< QgsAbstractMetadataBaseValidator::ValidationResult > &results SIP_OUT ) const override;
-
 };
 
 
@@ -129,21 +112,14 @@ class CORE_EXPORT QgsNativeMetadataBaseValidator : public QgsAbstractMetadataBas
  * \ingroup core
  * \class QgsNativeMetadataValidator
  * \brief A validator for the native QGIS layer metadata schema definition.
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsNativeMetadataValidator : public QgsNativeMetadataBaseValidator
 {
-
   public:
-
-    /**
-     * Constructor for QgsNativeMetadataValidator.
-     */
     QgsNativeMetadataValidator() = default;
 
     bool validate( const QgsAbstractMetadataBase *metadata, QList< QgsAbstractMetadataBaseValidator::ValidationResult > &results SIP_OUT ) const override;
-
 };
 
 /**
@@ -155,16 +131,10 @@ class CORE_EXPORT QgsNativeMetadataValidator : public QgsNativeMetadataBaseValid
 
 class CORE_EXPORT QgsNativeProjectMetadataValidator : public QgsNativeMetadataBaseValidator
 {
-
   public:
-
-    /**
-     * Constructor for QgsNativeProjectMetadataValidator.
-     */
     QgsNativeProjectMetadataValidator() = default;
 
     bool validate( const QgsAbstractMetadataBase *metadata, QList< QgsAbstractMetadataBaseValidator::ValidationResult > &results SIP_OUT ) const override;
-
 };
 
 #endif // QGSLAYERMETADATAVALIDATOR_H

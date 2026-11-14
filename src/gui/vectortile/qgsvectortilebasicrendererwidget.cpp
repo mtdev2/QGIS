@@ -15,28 +15,37 @@
 
 #include "qgsvectortilebasicrendererwidget.h"
 
+#include <memory>
+
 #include "qgsguiutils.h"
+#include "qgsmapcanvas.h"
+#include "qgsprojectutils.h"
+#include "qgsstyle.h"
 #include "qgssymbollayerutils.h"
+#include "qgssymbolselectordialog.h"
 #include "qgsvectortilebasicrenderer.h"
 #include "qgsvectortilelayer.h"
-#include "qgssymbolselectordialog.h"
-#include "qgsstyle.h"
-#include "qgsmapcanvas.h"
 #include "qgsvectortileutils.h"
 
 #include <QAbstractListModel>
 #include <QInputDialog>
 #include <QMenu>
+#include <QPointer>
+#include <QScreen>
+#include <QString>
 
+#include "moc_qgsvectortilebasicrendererwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 
-QgsVectorTileBasicRendererListModel::QgsVectorTileBasicRendererListModel( QgsVectorTileBasicRenderer *r, QObject *parent )
+QgsVectorTileBasicRendererListModel::QgsVectorTileBasicRendererListModel( QgsVectorTileBasicRenderer *r, QObject *parent, QScreen *screen )
   : QAbstractListModel( parent )
   , mRenderer( r )
-{
-}
+  , mScreen( screen )
+{}
 
 int QgsVectorTileBasicRendererListModel::rowCount( const QModelIndex &parent ) const
 {
@@ -99,7 +108,7 @@ QVariant QgsVectorTileBasicRendererListModel::data( const QModelIndex &index, in
       if ( index.column() == 0 && style.symbol() )
       {
         const int iconSize = QgsGuiUtils::scaleIconSize( 16 );
-        return QgsSymbolLayerUtils::symbolPreviewIcon( style.symbol(), QSize( iconSize, iconSize ) );
+        return QgsSymbolLayerUtils::symbolPreviewIcon( style.symbol(), QSize( iconSize, iconSize ), 0, nullptr, QgsScreenProperties( mScreen.data() ) );
       }
       break;
     }
@@ -117,6 +126,14 @@ QVariant QgsVectorTileBasicRendererListModel::data( const QModelIndex &index, in
     case MaxZoom:
       return style.maxZoomLevel();
 
+    case Label:
+      return style.styleName();
+
+    case Layer:
+      return style.layerName();
+
+    case Filter:
+      return style.filterExpression();
   }
   return QVariant();
 }
@@ -138,11 +155,9 @@ Qt::ItemFlags QgsVectorTileBasicRendererListModel::flags( const QModelIndex &ind
   if ( !index.isValid() )
     return Qt::ItemIsDropEnabled;
 
-  Qt::ItemFlag checkable = ( index.column() == 0 ? Qt::ItemIsUserCheckable : Qt::NoItemFlags );
+  const Qt::ItemFlag checkable = ( index.column() == 0 ? Qt::ItemIsUserCheckable : Qt::NoItemFlags );
 
-  return Qt::ItemIsEnabled | Qt::ItemIsSelectable |
-         Qt::ItemIsEditable | checkable |
-         Qt::ItemIsDragEnabled;
+  return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable | checkable | Qt::ItemIsDragEnabled;
 }
 
 bool QgsVectorTileBasicRendererListModel::setData( const QModelIndex &index, const QVariant &value, int role )
@@ -223,7 +238,7 @@ Qt::DropActions QgsVectorTileBasicRendererListModel::supportedDropActions() cons
 QStringList QgsVectorTileBasicRendererListModel::mimeTypes() const
 {
   QStringList types;
-  types << QStringLiteral( "application/vnd.text.list" );
+  types << u"application/vnd.text.list"_s;
   return types;
 }
 
@@ -241,35 +256,34 @@ QMimeData *QgsVectorTileBasicRendererListModel::mimeData( const QModelIndexList 
     if ( !index.isValid() || index.column() != 0 )
       continue;
 
-    QgsVectorTileBasicRendererStyle style = mRenderer->style( index.row() );
+    const QgsVectorTileBasicRendererStyle style = mRenderer->style( index.row() );
 
     QDomDocument doc;
-    QDomElement rootElem = doc.createElement( QStringLiteral( "vector_tile_basic_renderer_style_mime" ) );
+    QDomElement rootElem = doc.createElement( u"vector_tile_basic_renderer_style_mime"_s );
     style.writeXml( rootElem, QgsReadWriteContext() );
     doc.appendChild( rootElem );
 
     stream << doc.toString( -1 );
   }
 
-  mimeData->setData( QStringLiteral( "application/vnd.text.list" ), encodedData );
+  mimeData->setData( u"application/vnd.text.list"_s, encodedData );
   return mimeData;
 }
 
-bool QgsVectorTileBasicRendererListModel::dropMimeData( const QMimeData *data,
-    Qt::DropAction action, int row, int column, const QModelIndex &parent )
+bool QgsVectorTileBasicRendererListModel::dropMimeData( const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent )
 {
   Q_UNUSED( column )
 
   if ( action == Qt::IgnoreAction )
     return true;
 
-  if ( !data->hasFormat( QStringLiteral( "application/vnd.text.list" ) ) )
+  if ( !data->hasFormat( u"application/vnd.text.list"_s ) )
     return false;
 
   if ( parent.column() > 0 )
     return false;
 
-  QByteArray encodedData = data->data( QStringLiteral( "application/vnd.text.list" ) );
+  QByteArray encodedData = data->data( u"application/vnd.text.list"_s );
   QDataStream stream( &encodedData, QIODevice::ReadOnly );
   int rows = 0;
 
@@ -287,8 +301,8 @@ bool QgsVectorTileBasicRendererListModel::dropMimeData( const QMimeData *data,
     QDomDocument doc;
     if ( !doc.setContent( text ) )
       continue;
-    QDomElement rootElem = doc.documentElement();
-    if ( rootElem.tagName() != QLatin1String( "vector_tile_basic_renderer_style_mime" ) )
+    const QDomElement rootElem = doc.documentElement();
+    if ( rootElem.tagName() != "vector_tile_basic_renderer_style_mime"_L1 )
       continue;
 
     QgsVectorTileBasicRendererStyle style;
@@ -312,10 +326,14 @@ QgsVectorTileBasicRendererWidget::QgsVectorTileBasicRendererWidget( QgsVectorTil
   setupUi( this );
   layout()->setContentsMargins( 0, 0, 0, 0 );
 
+  mFilterLineEdit->setShowClearButton( true );
+  mFilterLineEdit->setShowSearchIcon( true );
+  mFilterLineEdit->setPlaceholderText( tr( "Filter rules" ) );
+
   QMenu *menuAddRule = new QMenu( btnAddRule );
-  menuAddRule->addAction( tr( "Marker" ), this, [this] { addStyle( QgsWkbTypes::PointGeometry ); } );
-  menuAddRule->addAction( tr( "Line" ), this, [this] { addStyle( QgsWkbTypes::LineGeometry ); } );
-  menuAddRule->addAction( tr( "Fill" ), this, [this] { addStyle( QgsWkbTypes::PolygonGeometry ); } );
+  menuAddRule->addAction( tr( "Marker" ), this, [this] { addStyle( Qgis::GeometryType::Point ); } );
+  menuAddRule->addAction( tr( "Line" ), this, [this] { addStyle( Qgis::GeometryType::Line ); } );
+  menuAddRule->addAction( tr( "Fill" ), this, [this] { addStyle( Qgis::GeometryType::Polygon ); } );
   btnAddRule->setMenu( menuAddRule );
 
   connect( btnEditRule, &QPushButton::clicked, this, &QgsVectorTileBasicRendererWidget::editStyle );
@@ -325,50 +343,89 @@ QgsVectorTileBasicRendererWidget::QgsVectorTileBasicRendererWidget( QgsVectorTil
 
   if ( mMapCanvas )
   {
-    connect( mMapCanvas, &QgsMapCanvas::scaleChanged, this, [ = ]( double scale )
-    {
-      const int zoom = QgsVectorTileUtils::scaleToZoomLevel( scale, 0, 99 );
-      mLabelCurrentZoom->setText( tr( "Current zoom: %1" ).arg( zoom ) );
-      if ( mProxyModel )
-        mProxyModel->setCurrentZoom( zoom );
+    connect( mMapCanvas, &QgsMapCanvas::scaleChanged, this, [this]( double scale ) {
+      const QgsMapSettings &mapSettings = mMapCanvas->mapSettings();
+      const double tileScale
+        = mVTLayer
+            ? mVTLayer->tileMatrixSet().calculateTileScaleForMap( mMapCanvas->scale(), mapSettings.destinationCrs(), mapSettings.visibleExtent(), mapSettings.outputSize(), mapSettings.outputDpi() )
+            : scale;
+      if ( std::isfinite( tileScale ) )
+      {
+        const int zoom = mVTLayer ? mVTLayer->tileMatrixSet().scaleToZoomLevel( tileScale ) : QgsVectorTileUtils::scaleToZoomLevel( tileScale, 0, 99 );
+        mLabelCurrentZoom->setText( tr( "Current zoom: %1" ).arg( zoom ) );
+        if ( mProxyModel )
+          mProxyModel->setCurrentZoom( zoom );
+      }
+      else if ( mProxyModel )
+      {
+        mProxyModel->setCurrentZoom( -1 );
+      }
     } );
-    mLabelCurrentZoom->setText( tr( "Current zoom: %1" ).arg( QgsVectorTileUtils::scaleToZoomLevel( mMapCanvas->scale(), 0, 99 ) ) );
+
+    const QgsMapSettings &mapSettings = mMapCanvas->mapSettings();
+    const double tileScale
+      = mVTLayer ? mVTLayer->tileMatrixSet().calculateTileScaleForMap( mMapCanvas->scale(), mapSettings.destinationCrs(), mapSettings.visibleExtent(), mapSettings.outputSize(), mapSettings.outputDpi() )
+                 : mMapCanvas->scale();
+    mLabelCurrentZoom->setText( tr( "Current zoom: %1" ).arg( mVTLayer ? mVTLayer->tileMatrixSet().scaleToZoomLevel( tileScale ) : QgsVectorTileUtils::scaleToZoomLevel( tileScale, 0, 99 ) ) );
   }
 
-  connect( mCheckVisibleOnly, &QCheckBox::toggled, this, [ = ]( bool filter )
-  {
-    mProxyModel->setFilterVisible( filter );
-  } );
+  connect( mCheckVisibleOnly, &QCheckBox::toggled, this, [this]( bool filter ) { mProxyModel->setFilterVisible( filter ); } );
 
-  setLayer( layer );
+  connect( mFilterLineEdit, &QgsFilterLineEdit::textChanged, this, [this]( const QString &text ) { mProxyModel->setFilterString( text ); } );
+
+  syncToLayer( layer );
+
+  connect( mOpacityWidget, &QgsOpacityWidget::opacityChanged, this, &QgsPanelWidget::changed );
+  connect( mBlendModeComboBox, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsPanelWidget::changed );
 }
 
-void QgsVectorTileBasicRendererWidget::setLayer( QgsVectorTileLayer *layer )
+void QgsVectorTileBasicRendererWidget::syncToLayer( QgsMapLayer *layer )
 {
-  mVTLayer = layer;
+  QgsVectorTileLayer *vtLayer = qobject_cast<QgsVectorTileLayer *>( layer );
+  if ( !vtLayer )
+    return;
 
-  if ( layer && layer->renderer() && layer->renderer()->type() == QLatin1String( "basic" ) )
+  mVTLayer = vtLayer;
+
+  if ( layer && vtLayer->renderer() && vtLayer->renderer()->type() == "basic"_L1 )
   {
-    mRenderer.reset( static_cast<QgsVectorTileBasicRenderer *>( layer->renderer()->clone() ) );
+    mRenderer.reset( static_cast<QgsVectorTileBasicRenderer *>( vtLayer->renderer()->clone() ) );
   }
   else
   {
-    mRenderer.reset( new QgsVectorTileBasicRenderer() );
+    mRenderer = std::make_unique<QgsVectorTileBasicRenderer>();
   }
 
-  mModel = new QgsVectorTileBasicRendererListModel( mRenderer.get(), viewStyles );
+  mModel = new QgsVectorTileBasicRendererListModel( mRenderer.get(), viewStyles, screen() );
   mProxyModel = new QgsVectorTileBasicRendererProxyModel( mModel, viewStyles );
   viewStyles->setModel( mProxyModel );
 
   if ( mMapCanvas )
   {
-    const int zoom = QgsVectorTileUtils::scaleToZoomLevel( mMapCanvas->scale(), 0, 99 );
-    mProxyModel->setCurrentZoom( zoom );
+    const QgsMapSettings &mapSettings = mMapCanvas->mapSettings();
+    const double tileScale
+      = mVTLayer ? mVTLayer->tileMatrixSet().calculateTileScaleForMap( mMapCanvas->scale(), mapSettings.destinationCrs(), mapSettings.visibleExtent(), mapSettings.outputSize(), mapSettings.outputDpi() )
+                 : mMapCanvas->scale();
+    if ( std::isfinite( tileScale ) )
+    {
+      const int zoom = mVTLayer ? mVTLayer->tileMatrixSet().scaleToZoomLevel( tileScale ) : QgsVectorTileUtils::scaleToZoomLevel( tileScale, 0, 99 );
+      mProxyModel->setCurrentZoom( zoom );
+    }
+    else
+    {
+      mProxyModel->setCurrentZoom( -1 );
+    }
   }
 
-  connect( mModel, &QAbstractItemModel::dataChanged, this, &QgsPanelWidget::widgetChanged );
-  connect( mModel, &QAbstractItemModel::rowsInserted, this, &QgsPanelWidget::widgetChanged );
-  connect( mModel, &QAbstractItemModel::rowsRemoved, this, &QgsPanelWidget::widgetChanged );
+  connect( mModel, &QAbstractItemModel::dataChanged, this, &QgsPanelWidget::changed );
+  connect( mModel, &QAbstractItemModel::rowsInserted, this, &QgsPanelWidget::changed );
+  connect( mModel, &QAbstractItemModel::rowsRemoved, this, &QgsPanelWidget::changed );
+
+  mOpacityWidget->setOpacity( mVTLayer->opacity() );
+
+  //blend mode
+  mBlendModeComboBox->setShowClippingModes( QgsProjectUtils::layerIsContainedInGroupLayer( QgsProject::instance(), mVTLayer ) );
+  mBlendModeComboBox->setBlendMode( mVTLayer->blendMode() );
 }
 
 QgsVectorTileBasicRendererWidget::~QgsVectorTileBasicRendererWidget() = default;
@@ -376,14 +433,32 @@ QgsVectorTileBasicRendererWidget::~QgsVectorTileBasicRendererWidget() = default;
 void QgsVectorTileBasicRendererWidget::apply()
 {
   mVTLayer->setRenderer( mRenderer->clone() );
+  mVTLayer->setBlendMode( mBlendModeComboBox->blendMode() );
+  mVTLayer->setOpacity( mOpacityWidget->opacity() );
 }
 
-void QgsVectorTileBasicRendererWidget::addStyle( QgsWkbTypes::GeometryType geomType )
+void QgsVectorTileBasicRendererWidget::addStyle( Qgis::GeometryType geomType )
 {
   QgsVectorTileBasicRendererStyle style( QString(), QString(), geomType );
-  style.setSymbol( QgsSymbol::defaultSymbol( geomType ) );
+  style.setSymbol( QgsSymbol::defaultSymbol( geomType ).release() );
 
-  int rows = mModel->rowCount();
+  switch ( geomType )
+  {
+    case Qgis::GeometryType::Point:
+      style.setFilterExpression( u"geometry_type(@geometry)='Point'"_s );
+      break;
+    case Qgis::GeometryType::Line:
+      style.setFilterExpression( u"geometry_type(@geometry)='Line'"_s );
+      break;
+    case Qgis::GeometryType::Polygon:
+      style.setFilterExpression( u"geometry_type(@geometry)='Polygon'"_s );
+      break;
+    case Qgis::GeometryType::Unknown:
+    case Qgis::GeometryType::Null:
+      break;
+  }
+
+  const int rows = mModel->rowCount();
   mModel->insertStyle( rows, style );
   viewStyles->selectionModel()->setCurrentIndex( mProxyModel->mapFromSource( mModel->index( rows, 0 ) ), QItemSelectionModel::ClearAndSelect );
 }
@@ -404,7 +479,7 @@ void QgsVectorTileBasicRendererWidget::editStyleAtIndex( const QModelIndex &prox
   if ( !style.symbol() )
     return;
 
-  std::unique_ptr< QgsSymbol > symbol( style.symbol()->clone() );
+  std::unique_ptr<QgsSymbol> symbol( style.symbol()->clone() );
 
   QgsSymbolWidgetContext context;
   context.setMapCanvas( mMapCanvas );
@@ -412,26 +487,29 @@ void QgsVectorTileBasicRendererWidget::editStyleAtIndex( const QModelIndex &prox
 
   if ( mMapCanvas )
   {
-    const int zoom = QgsVectorTileUtils::scaleToZoomLevel( mMapCanvas->scale(), 0, 99 );
+    const QgsMapSettings &mapSettings = mMapCanvas->mapSettings();
+    const double tileScale
+      = mVTLayer ? mVTLayer->tileMatrixSet().calculateTileScaleForMap( mMapCanvas->scale(), mapSettings.destinationCrs(), mapSettings.visibleExtent(), mapSettings.outputSize(), mapSettings.outputDpi() )
+                 : mMapCanvas->scale();
+    const int zoom = mVTLayer ? mVTLayer->tileMatrixSet().scaleToZoomLevel( tileScale ) : QgsVectorTileUtils::scaleToZoomLevel( tileScale, 0, 99 );
     QList<QgsExpressionContextScope> scopes = context.additionalExpressionContextScopes();
     QgsExpressionContextScope tileScope;
     tileScope.setVariable( "zoom_level", zoom, true );
-    tileScope.setVariable( "vector_tile_zoom", QgsVectorTileUtils::scaleToZoom( mMapCanvas->scale() ), true );
+    tileScope.setVariable( "vector_tile_zoom", mVTLayer ? mVTLayer->tileMatrixSet().scaleToZoom( mMapCanvas->scale() ) : QgsVectorTileUtils::scaleToZoom( mMapCanvas->scale() ), true );
     scopes << tileScope;
     context.setAdditionalExpressionContextScopes( scopes );
   }
 
-  QgsVectorLayer *vectorLayer = nullptr;  // TODO: have a temporary vector layer with sub-layer's fields?
+  QgsVectorLayer *vectorLayer = nullptr; // TODO: have a temporary vector layer with sub-layer's fields?
 
   QgsPanelWidget *panel = QgsPanelWidget::findParentPanel( this );
   if ( panel && panel->dockMode() )
   {
-    QgsSymbolSelectorWidget *dlg = new QgsSymbolSelectorWidget( symbol.release(), QgsStyle::defaultStyle(), vectorLayer, panel );
-    dlg->setContext( context );
-    dlg->setPanelTitle( style.styleName() );
-    connect( dlg, &QgsPanelWidget::widgetChanged, this, &QgsVectorTileBasicRendererWidget::updateSymbolsFromWidget );
-    connect( dlg, &QgsPanelWidget::panelAccepted, this, &QgsVectorTileBasicRendererWidget::cleanUpSymbolSelector );
-    openPanel( dlg );
+    QgsSymbolSelectorWidget *widget = QgsSymbolSelectorWidget::createWidgetWithSymbolOwnership( std::move( symbol ), QgsStyle::defaultStyle(), vectorLayer, panel );
+    widget->setContext( context );
+    widget->setPanelTitle( style.styleName() );
+    connect( widget, &QgsPanelWidget::changed, this, [this, widget] { updateSymbolsFromWidget( widget ); } );
+    openPanel( widget );
   }
   else
   {
@@ -444,39 +522,29 @@ void QgsVectorTileBasicRendererWidget::editStyleAtIndex( const QModelIndex &prox
 
     style.setSymbol( symbol.release() );
     mRenderer->setStyle( index.row(), style );
-    emit widgetChanged();
+    emit changed();
   }
 }
 
-void QgsVectorTileBasicRendererWidget::updateSymbolsFromWidget()
+void QgsVectorTileBasicRendererWidget::updateSymbolsFromWidget( QgsSymbolSelectorWidget *widget )
 {
-  int index = mProxyModel->mapToSource( viewStyles->selectionModel()->currentIndex() ).row();
+  const int index = mProxyModel->mapToSource( viewStyles->selectionModel()->currentIndex() ).row();
   if ( index < 0 )
     return;
 
   QgsVectorTileBasicRendererStyle style = mRenderer->style( index );
 
-  QgsSymbolSelectorWidget *dlg = qobject_cast<QgsSymbolSelectorWidget *>( sender() );
-  style.setSymbol( dlg->symbol()->clone() );
+  style.setSymbol( widget->symbol()->clone() );
 
   mRenderer->setStyle( index, style );
-  emit widgetChanged();
-}
-
-void QgsVectorTileBasicRendererWidget::cleanUpSymbolSelector( QgsPanelWidget *container )
-{
-  QgsSymbolSelectorWidget *dlg = qobject_cast<QgsSymbolSelectorWidget *>( container );
-  if ( !dlg )
-    return;
-
-  delete dlg->symbol();
+  emit changed();
 }
 
 void QgsVectorTileBasicRendererWidget::removeStyle()
 {
   const QModelIndexList sel = viewStyles->selectionModel()->selectedIndexes();
 
-  QList<int > res;
+  QList<int> res;
   for ( const QModelIndex &proxyIndex : sel )
   {
     const QModelIndex sourceIndex = mProxyModel->mapToSource( proxyIndex );
@@ -487,7 +555,7 @@ void QgsVectorTileBasicRendererWidget::removeStyle()
 
   for ( int i = res.size() - 1; i >= 0; --i )
   {
-    mModel->removeRow( res[ i ] );
+    mModel->removeRow( res[i] );
   }
   // make sure that the selection is gone
   viewStyles->selectionModel()->clear();
@@ -512,23 +580,39 @@ void QgsVectorTileBasicRendererProxyModel::setFilterVisible( bool enabled )
   invalidateFilter();
 }
 
+void QgsVectorTileBasicRendererProxyModel::setFilterString( const QString &string )
+{
+  mFilterString = string;
+  invalidateFilter();
+}
+
 bool QgsVectorTileBasicRendererProxyModel::filterAcceptsRow( int source_row, const QModelIndex &source_parent ) const
 {
-  if ( mCurrentZoom < 0 || !mFilterVisible )
-    return true;
+  if ( mCurrentZoom >= 0 && mFilterVisible )
+  {
+    const int rowMinZoom = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::MinZoom ).toInt();
+    const int rowMaxZoom = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::MaxZoom ).toInt();
 
-  const int rowMinZoom = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::MinZoom ).toInt();
-  const int rowMaxZoom = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::MaxZoom ).toInt();
+    if ( rowMinZoom >= 0 && rowMinZoom > mCurrentZoom )
+      return false;
 
-  if ( rowMinZoom >= 0 && rowMinZoom > mCurrentZoom )
-    return false;
+    if ( rowMaxZoom >= 0 && rowMaxZoom < mCurrentZoom )
+      return false;
+  }
 
-  if ( rowMaxZoom >= 0 && rowMaxZoom < mCurrentZoom )
-    return false;
+  if ( !mFilterString.isEmpty() )
+  {
+    const QString name = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::Label ).toString();
+    const QString layer = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::Layer ).toString();
+    const QString filter = sourceModel()->data( sourceModel()->index( source_row, 0, source_parent ), QgsVectorTileBasicRendererListModel::Filter ).toString();
+    if ( !name.contains( mFilterString, Qt::CaseInsensitive ) && !layer.contains( mFilterString, Qt::CaseInsensitive ) && !filter.contains( mFilterString, Qt::CaseInsensitive ) )
+    {
+      return false;
+    }
+  }
 
   return true;
 }
-
 
 
 ///@endcond

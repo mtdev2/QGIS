@@ -14,40 +14,44 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QDomElement>
-#include <QFileDialog>
-#include <QTextCodec>
+#include "qgsgrassmoduleoptions.h"
 
 #include "qgisinterface.h"
-
 #include "qgsapplication.h"
+#include "qgsgrass.h"
+#include "qgsgrassmodule.h"
+#include "qgsgrassmoduleinput.h"
+#include "qgsgrassmoduleparam.h"
+#include "qgsgrassplugin.h"
 #include "qgslogger.h"
 #include "qgsmapcanvas.h"
 #include "qgsmaplayer.h"
 #include "qgsproject.h"
 #include "qgsrasterlayer.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
 #include "qgsscrollarea.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
 
-#include "qgsgrass.h"
-#include "qgsgrassmodule.h"
-#include "qgsgrassmoduleinput.h"
-#include "qgsgrassmoduleoptions.h"
-#include "qgsgrassmoduleparam.h"
-#include "qgsgrassplugin.h"
+#include <QDomElement>
+#include <QFileDialog>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
+#include <QString>
+#include <QTextCodec>
+
+#include "moc_qgsgrassmoduleoptions.cpp"
+
+using namespace Qt::StringLiterals;
 
 /******************* QgsGrassModuleOptions *******************/
 
-QgsGrassModuleOptions::QgsGrassModuleOptions(
-  QgsGrassTools *tools, QgsGrassModule *module,
-  QgisInterface *iface, bool direct )
+QgsGrassModuleOptions::QgsGrassModuleOptions( QgsGrassTools *tools, QgsGrassModule *module, QgisInterface *iface, bool direct )
   : mIface( iface )
   , mTools( tools )
   , mModule( module )
   , mDirect( direct )
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
 
   mCanvas = mIface->mapCanvas();
 }
@@ -60,16 +64,14 @@ QStringList QgsGrassModuleOptions::arguments()
 /*************** QgsGrassModuleStandardOptions ***********************/
 
 QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
-  QgsGrassTools *tools, QgsGrassModule *module,
-  QgisInterface *iface,
-  QString xname, QDomElement confDocElem,
-  bool direct, QWidget *parent, Qt::WindowFlags f )
+  QgsGrassTools *tools, QgsGrassModule *module, QgisInterface *iface, QString xname, QDomElement confDocElem, bool direct, QWidget *parent, Qt::WindowFlags f
+)
   : QWidget( parent, f )
   , QgsGrassModuleOptions( tools, module, iface, direct )
   , mXName( xname )
 {
-  //QgsDebugMsg( "called." );
-  QgsDebugMsg( QString( "PATH = %1" ).arg( getenv( "PATH" ) ) );
+  //QgsDebugMsgLevel( "called.", 4 );
+  QgsDebugMsgLevel( QString( "PATH = %1" ).arg( getenv( "PATH" ) ), 2 );
 
   //
   //Set up dynamic inside a scroll box
@@ -145,7 +147,7 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
     {
       // Check GRASS version
       QStringList errors;
-      if ( !QgsGrassModuleOption::checkVersion( confDomElement.attribute( QStringLiteral( "version_min" ) ), confDomElement.attribute( QStringLiteral( "version_max" ) ), errors ) )
+      if ( !QgsGrassModuleOption::checkVersion( confDomElement.attribute( u"version_min"_s ), confDomElement.attribute( u"version_max"_s ), errors ) )
       {
         mErrors << errors; // checkVersion returns falso also if parsing fails
         confDomNode = confDomNode.nextSibling();
@@ -153,9 +155,9 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
       }
 
       QString optionType = confDomElement.tagName();
-      QgsDebugMsg( "optionType = " + optionType );
+      QgsDebugMsgLevel( "optionType = " + optionType, 3 );
 
-      if ( confDomElement.attribute( QStringLiteral( "advanced" ), QStringLiteral( "no" ) ) == QLatin1String( "yes" ) )
+      if ( confDomElement.attribute( u"advanced"_s, u"no"_s ) == "yes"_L1 )
       {
         layout = mypAdvancedLayout;
       }
@@ -164,8 +166,8 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
         layout = mypSimpleLayout;
       }
 
-      QString key = confDomElement.attribute( QStringLiteral( "key" ) );
-      QgsDebugMsg( "key = " + key );
+      QString key = confDomElement.attribute( u"key"_s );
+      QgsDebugMsgLevel( "key = " + key, 3 );
 
       QDomNode gnode = QgsGrassModuleParam::nodeByKey( descDocElem, key );
       if ( gnode.isNull() )
@@ -175,26 +177,24 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
         continue;
       }
 
-      if ( optionType == QLatin1String( "option" ) )
+      if ( optionType == "option"_L1 )
       {
         bool created = false;
 
         // Check option type and create appropriate control
-        QDomNode promptNode = gnode.namedItem( QStringLiteral( "gisprompt" ) );
+        QDomNode promptNode = gnode.namedItem( u"gisprompt"_s );
         QDomElement promptElem = promptNode.toElement();
         if ( !promptElem.isNull() )
         {
-          QString element = promptElem.attribute( QStringLiteral( "element" ) );
-          QString age = promptElem.attribute( QStringLiteral( "age" ) );
+          QString element = promptElem.attribute( u"element"_s );
+          QString age = promptElem.attribute( u"age"_s );
 
-          //QgsDebugMsg("element = " + element + " age = " + age);
-          if ( age == QLatin1String( "old" ) && ( element == QLatin1String( "vector" ) || element == QLatin1String( "cell" ) ||
-                                                  element == QLatin1String( "strds" ) || element == QLatin1String( "stvds" ) ||
-                                                  element == QLatin1String( "str3ds" ) || element == QLatin1String( "stds" ) )
-               &&  confDomElement.attribute( QStringLiteral( "widget" ) ) != QLatin1String( "text" ) )
+          //QgsDebugMsgLevel("element = " + element + " age = " + age, 3);
+          if ( age == "old"_L1
+               && ( element == "vector"_L1 || element == "cell"_L1 || element == "strds"_L1 || element == "stvds"_L1 || element == "str3ds"_L1 || element == "stds"_L1 )
+               && confDomElement.attribute( u"widget"_s ) != "text"_L1 )
           {
-            QgsGrassModuleInput *mi = new QgsGrassModuleInput(
-              mModule, this, key, confDomElement, descDocElem, gnode, mDirect, this );
+            QgsGrassModuleInput *mi = new QgsGrassModuleInput( mModule, this, key, confDomElement, descDocElem, gnode, mDirect, this );
 
             layout->addWidget( mi );
             created = true;
@@ -204,21 +204,20 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
 
         if ( !created )
         {
-          QgsGrassModuleOption *so = new QgsGrassModuleOption(
-            mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
+          QgsGrassModuleOption *so = new QgsGrassModuleOption( mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
 
           layout->addWidget( so );
           mParams.append( so );
 
-          if ( promptElem.attribute( QStringLiteral( "prompt" ) ) == QLatin1String( "dbcolumn" ) )
+          if ( promptElem.attribute( u"prompt"_s ) == "dbcolumn"_L1 )
           {
             // Give only warning if the option is not hidden
             if ( !so->hidden() )
             {
               // G_OPT_DB_COLUMN may be also used for new columns (v.in.db) so we check also if there is at least one input vector
               // but a vector input may also exist (v.random).
-              QList<QDomNode> vectorNodes = QgsGrassModuleParam::nodesByType( descDocElem, G_OPT_V_INPUT, QStringLiteral( "old" ) );
-              QgsDebugMsg( QString( "vectorNodes.size() = %1" ).arg( vectorNodes.size() ) );
+              QList<QDomNode> vectorNodes = QgsGrassModuleParam::nodesByType( descDocElem, G_OPT_V_INPUT, u"old"_s );
+              QgsDebugMsgLevel( QString( "vectorNodes.size() = %1" ).arg( vectorNodes.size() ), 3 );
               if ( !vectorNodes.isEmpty() )
               {
                 mErrors << tr( "Option '%1' should be configured as field" ).arg( so->key() );
@@ -227,60 +226,48 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
           }
         }
       }
-      else if ( optionType == QLatin1String( "ogr" ) )
+      else if ( optionType == "ogr"_L1 )
       {
-        QgsGrassModuleGdalInput *mi = new QgsGrassModuleGdalInput(
-          mModule, QgsGrassModuleGdalInput::Ogr, key, confDomElement,
-          descDocElem, gnode, mDirect, this );
+        QgsGrassModuleGdalInput *mi = new QgsGrassModuleGdalInput( mModule, QgsGrassModuleGdalInput::Ogr, key, confDomElement, descDocElem, gnode, mDirect, this );
         layout->addWidget( mi );
         mParams.append( mi );
       }
-      else if ( optionType == QLatin1String( "gdal" ) )
+      else if ( optionType == "gdal"_L1 )
       {
-        QgsGrassModuleGdalInput *mi = new QgsGrassModuleGdalInput(
-          mModule, QgsGrassModuleGdalInput::Gdal, key, confDomElement,
-          descDocElem, gnode, mDirect, this );
+        QgsGrassModuleGdalInput *mi = new QgsGrassModuleGdalInput( mModule, QgsGrassModuleGdalInput::Gdal, key, confDomElement, descDocElem, gnode, mDirect, this );
         layout->addWidget( mi );
         mParams.append( mi );
       }
-      else if ( optionType == QLatin1String( "field" ) )
+      else if ( optionType == "field"_L1 )
       {
-        if ( confDomElement.hasAttribute( QStringLiteral( "layer" ) ) )
+        if ( confDomElement.hasAttribute( u"layer"_s ) )
         {
-          QgsGrassModuleVectorField *mi = new QgsGrassModuleVectorField(
-            mModule, this, key, confDomElement,
-            descDocElem, gnode, mDirect, this );
+          QgsGrassModuleVectorField *mi = new QgsGrassModuleVectorField( mModule, this, key, confDomElement, descDocElem, gnode, mDirect, this );
           layout->addWidget( mi );
           mParams.append( mi );
         }
         else
         {
-          QgsGrassModuleField *mi = new QgsGrassModuleField(
-            mModule, key, confDomElement,
-            descDocElem, gnode, mDirect, this );
+          QgsGrassModuleField *mi = new QgsGrassModuleField( mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
           layout->addWidget( mi );
           mParams.append( mi );
         }
       }
-      else if ( optionType == QLatin1String( "selection" ) )
+      else if ( optionType == "selection"_L1 )
       {
-        QgsGrassModuleSelection *mi = new QgsGrassModuleSelection(
-          mModule, this, key, confDomElement,
-          descDocElem, gnode, mDirect, this );
+        QgsGrassModuleSelection *mi = new QgsGrassModuleSelection( mModule, this, key, confDomElement, descDocElem, gnode, mDirect, this );
         layout->addWidget( mi );
         mParams.append( mi );
       }
-      else if ( optionType == QLatin1String( "file" ) )
+      else if ( optionType == "file"_L1 )
       {
-        QgsGrassModuleFile *mi = new QgsGrassModuleFile(
-          mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
+        QgsGrassModuleFile *mi = new QgsGrassModuleFile( mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
         layout->addWidget( mi );
         mParams.append( mi );
       }
-      else if ( optionType == QLatin1String( "flag" ) )
+      else if ( optionType == "flag"_L1 )
       {
-        QgsGrassModuleFlag *flag = new QgsGrassModuleFlag(
-          mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
+        QgsGrassModuleFlag *flag = new QgsGrassModuleFlag( mModule, key, confDomElement, descDocElem, gnode, mDirect, this );
 
         layout->addWidget( flag );
         mParams.append( flag );
@@ -309,12 +296,12 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
     if ( !confDomElement.isNull() )
     {
       QString optionType = confDomElement.tagName();
-      QgsDebugMsg( "optionType = " + optionType );
+      QgsDebugMsgLevel( "optionType = " + optionType, 3 );
 
-      if ( optionType == QLatin1String( "flag" ) )
+      if ( optionType == "flag"_L1 )
       {
-        QString name = confDomElement.attribute( QStringLiteral( "name" ) ).trimmed();
-        QgsDebugMsg( "name = " + name );
+        QString name = confDomElement.attribute( u"name"_s ).trimmed();
+        QgsDebugMsgLevel( "name = " + name, 3 );
         mFlagNames.append( name );
       }
     }
@@ -328,7 +315,7 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
   // (guidependency missing in GRASS 6)
   // Add default inter param relations
   QList<QgsGrassModuleInput *>vectorInputs;
-  Q_FOREACH ( QgsGrassModuleParam *param, mParams )
+  for ( QgsGrassModuleParam *param : mParams )
   {
     QgsGrassModuleInput *vectorInput = dynamic_cast<QgsGrassModuleInput *>( param );
     if ( vectorInput )
@@ -338,16 +325,16 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
   }
   if ( vectorInputs.size() == 1 )
   {
-    QgsDebugMsg( "One input found, try to connect with column options" );
+    QgsDebugMsgLevel( "One input found, try to connect with column options", 3 );
     QgsGrassModuleInput *vectorInput = vectorInputs[0];
-    Q_FOREACH ( QgsGrassModuleParam *param, mParams )
+    for ( QgsGrassModuleParam *param : mParams )
     {
       QgsGrassModuleField *moduleField = dynamic_cast<QgsGrassModuleField *>( param );
       if ( moduleField )
       {
         if ( !moduleField->layerInput() )
         {
-          QgsDebugMsg( "Set " + vectorInput->key() + " as layer input for " + moduleField->key() );
+          QgsDebugMsgLevel( "Set " + vectorInput->key() + " as layer input for " + moduleField->key(), 3 );
           moduleField->setLayerInput( vectorInput );
         }
       }
@@ -365,11 +352,10 @@ QgsGrassModuleStandardOptions::QgsGrassModuleStandardOptions(
     layout->addStretch();
   }
 
-  Q_FOREACH ( QgsGrassModuleParam *item, mParams )
+  for ( QgsGrassModuleParam *item : mParams )
   {
     mErrors << item->errors();
   }
-
 }
 
 void QgsGrassModuleStandardOptions::switchAdvanced()
@@ -394,8 +380,7 @@ QStringList QgsGrassModuleStandardOptions::arguments()
   {
     QStringList list = mParams[i]->options();
 
-    for ( QStringList::Iterator it = list.begin();
-          it != list.end(); ++it )
+    for ( QStringList::Iterator it = list.begin(); it != list.end(); ++it )
     {
       arg.append( *it );
     }
@@ -406,7 +391,7 @@ QStringList QgsGrassModuleStandardOptions::arguments()
 // id is not used in fact, was intended for field, but key is used instead
 QgsGrassModuleParam *QgsGrassModuleStandardOptions::itemByKey( QString key )
 {
-  QgsDebugMsg( "key = " + key );
+  QgsDebugMsgLevel( "key = " + key, 3 );
 
   for ( int i = 0; i < mParams.size(); i++ )
   {
@@ -422,7 +407,7 @@ QgsGrassModuleParam *QgsGrassModuleStandardOptions::itemByKey( QString key )
 
 QgsGrassModuleParam *QgsGrassModuleStandardOptions::item( QString id )
 {
-  QgsDebugMsg( "id = " + id );
+  QgsDebugMsgLevel( "id = " + id, 3 );
 
   for ( int i = 0; i < mParams.size(); i++ )
   {
@@ -438,7 +423,7 @@ QgsGrassModuleParam *QgsGrassModuleStandardOptions::item( QString id )
 
 QStringList QgsGrassModuleStandardOptions::checkOutput()
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
   QStringList list;
 
   for ( int i = 0; i < mParams.size(); i++ )
@@ -447,7 +432,7 @@ QStringList QgsGrassModuleStandardOptions::checkOutput()
     if ( !opt )
       continue;
 
-    QgsDebugMsg( "opt->key() = " + opt->key() );
+    QgsDebugMsgLevel( "opt->key() = " + opt->key(), 3 );
 
     if ( opt->isOutput() )
     {
@@ -465,12 +450,12 @@ QStringList QgsGrassModuleStandardOptions::checkOutput()
 QList<QgsGrassProvider *> QgsGrassModuleStandardOptions::grassProviders()
 {
   QList<QgsGrassProvider *> providers;
-  Q_FOREACH ( QgsMapLayer *layer, QgsProject::instance()->mapLayers().values() )
+  for ( QgsMapLayer *layer : QgsProject::instance()->mapLayers().values() )
   {
-    if ( layer->type() == QgsMapLayerType::VectorLayer )
+    if ( layer->type() == Qgis::LayerType::Vector )
     {
       QgsVectorLayer *vector = qobject_cast<QgsVectorLayer *>( layer );
-      if ( vector  && vector->providerType() == QLatin1String( "grass" ) )
+      if ( vector && vector->providerType() == "grass"_L1 )
       {
         QgsGrassProvider *provider = qobject_cast<QgsGrassProvider *>( vector->dataProvider() );
         if ( provider )
@@ -486,12 +471,12 @@ QList<QgsGrassProvider *> QgsGrassModuleStandardOptions::grassProviders()
 QList<QgsGrassRasterProvider *> QgsGrassModuleStandardOptions::grassRasterProviders()
 {
   QList<QgsGrassRasterProvider *> providers;
-  Q_FOREACH ( QgsMapLayer *layer, QgsProject::instance()->mapLayers().values() )
+  for ( QgsMapLayer *layer : QgsProject::instance()->mapLayers().values() )
   {
-    if ( layer->type() == QgsMapLayerType::RasterLayer )
+    if ( layer->type() == Qgis::LayerType::Raster )
     {
       QgsRasterLayer *raster = qobject_cast<QgsRasterLayer *>( layer );
-      if ( raster  && raster->providerType() == QLatin1String( "grassraster" ) )
+      if ( raster && raster->providerType() == "grassraster"_L1 )
       {
         QgsGrassRasterProvider *provider = qobject_cast<QgsGrassRasterProvider *>( raster->dataProvider() );
         if ( provider )
@@ -508,7 +493,7 @@ QList<QgsGrassRasterProvider *> QgsGrassModuleStandardOptions::grassRasterProvid
 // when open by another app. It is enabled on all platforms, so that it gets tested.
 void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
 
   for ( int i = 0; i < mParams.size(); i++ )
   {
@@ -517,18 +502,18 @@ void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
     {
       continue;
     }
-    QgsDebugMsg( "opt->key() = " + opt->key() );
+    QgsDebugMsgLevel( "opt->key() = " + opt->key(), 3 );
 
     if ( opt->outputType() == QgsGrassModuleOption::Vector )
     {
-      QgsDebugMsg( "freeze vector layers" );
+      QgsDebugMsgLevel( "freeze vector layers", 3 );
 
       QgsGrassObject outputObject = QgsGrass::getDefaultMapsetObject();
       outputObject.setName( opt->value() );
       outputObject.setType( QgsGrassObject::Vector );
-      QgsDebugMsg( "outputObject = " + outputObject.toString() );
+      QgsDebugMsgLevel( "outputObject = " + outputObject.toString(), 3 );
 
-      Q_FOREACH ( QgsGrassProvider *provider, grassProviders() )
+      for ( QgsGrassProvider *provider : grassProviders() )
       {
         QgsGrassObject layerObject;
         layerObject.setFromUri( provider->dataSourceUri() );
@@ -536,12 +521,12 @@ void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
         {
           if ( freeze )
           {
-            QgsDebugMsg( "freeze map " + provider->dataSourceUri() );
+            QgsDebugMsgLevel( "freeze map " + provider->dataSourceUri(), 3 );
             provider->freeze();
           }
           else
           {
-            QgsDebugMsg( "thaw map " + provider->dataSourceUri() );
+            QgsDebugMsgLevel( "thaw map " + provider->dataSourceUri(), 3 );
             provider->thaw();
           }
         }
@@ -549,14 +534,14 @@ void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
     }
     else if ( opt->outputType() == QgsGrassModuleOption::Raster )
     {
-      QgsDebugMsg( "freeze raster layers" );
+      QgsDebugMsgLevel( "freeze raster layers", 3 );
 
       QgsGrassObject outputObject = QgsGrass::getDefaultMapsetObject();
       outputObject.setName( opt->value() );
       outputObject.setType( QgsGrassObject::Raster );
-      QgsDebugMsg( "outputObject = " + outputObject.toString() );
+      QgsDebugMsgLevel( "outputObject = " + outputObject.toString(), 3 );
 
-      Q_FOREACH ( QgsGrassRasterProvider *provider, grassRasterProviders() )
+      for ( QgsGrassRasterProvider *provider : grassRasterProviders() )
       {
         QgsGrassObject layerObject;
         layerObject.setFromUri( provider->dataSourceUri() );
@@ -564,12 +549,12 @@ void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
         {
           if ( freeze )
           {
-            QgsDebugMsg( "freeze map " + provider->dataSourceUri() );
+            QgsDebugMsgLevel( "freeze map " + provider->dataSourceUri(), 3 );
             provider->freeze();
           }
           else
           {
-            QgsDebugMsg( "thaw map " + provider->dataSourceUri() );
+            QgsDebugMsgLevel( "thaw map " + provider->dataSourceUri(), 3 );
             provider->thaw();
           }
         }
@@ -580,7 +565,7 @@ void QgsGrassModuleStandardOptions::freezeOutput( bool freeze )
 
 QStringList QgsGrassModuleStandardOptions::output( int type )
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
   QStringList list;
 
   for ( int i = 0; i < mParams.size(); i++ )
@@ -589,7 +574,7 @@ QStringList QgsGrassModuleStandardOptions::output( int type )
     if ( !opt )
       continue;
 
-    QgsDebugMsg( "opt->key() = " + opt->key() );
+    QgsDebugMsgLevel( "opt->key() = " + opt->key(), 3 );
 
     if ( opt->isOutput() )
     {
@@ -609,7 +594,7 @@ QStringList QgsGrassModuleStandardOptions::output( int type )
 
 bool QgsGrassModuleStandardOptions::hasOutput( int type )
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
   QStringList list;
 
   for ( int i = 0; i < mParams.size(); i++ )
@@ -618,7 +603,7 @@ bool QgsGrassModuleStandardOptions::hasOutput( int type )
     if ( !opt )
       continue;
 
-    QgsDebugMsg( "opt->key() = " + opt->key() );
+    QgsDebugMsgLevel( "opt->key() = " + opt->key(), 3 );
 
     if ( opt->isOutput() )
     {
@@ -648,7 +633,7 @@ QStringList QgsGrassModuleStandardOptions::ready()
 
 QStringList QgsGrassModuleStandardOptions::checkRegion()
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
   QStringList list;
 
   struct Cell_head currentWindow;
@@ -670,7 +655,7 @@ QStringList QgsGrassModuleStandardOptions::checkRegion()
     if ( !item )
       continue;
 
-    QgsDebugMsg( "currentMap = " +  item->currentMap() );
+    QgsDebugMsgLevel( "currentMap = " + item->currentMap(), 3 );
     // The input may be empty, it means input is not used.
 
     if ( item->currentMap().isEmpty() )
@@ -682,8 +667,7 @@ QStringList QgsGrassModuleStandardOptions::checkRegion()
       continue;
     }
 
-    if ( G_window_overlap( &currentWindow,
-                           window.north, window.south, window.east, window.west ) == 0 )
+    if ( G_window_overlap( &currentWindow, window.north, window.south, window.east, window.west ) == 0 )
     {
       list.append( item->currentMap() );
     }
@@ -694,7 +678,7 @@ QStringList QgsGrassModuleStandardOptions::checkRegion()
 
 bool QgsGrassModuleStandardOptions::inputRegion( struct Cell_head *window, QgsCoordinateReferenceSystem &crs, bool all )
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
 
   RegionMode mode = ( QgsGrassModuleOptions::RegionMode ) mRegionModeComboBox->currentData().toInt();
   if ( mDirect && mode == RegionCurrent )
@@ -757,7 +741,7 @@ bool QgsGrassModuleStandardOptions::inputRegion( struct Cell_head *window, QgsCo
         continue;
       }
 
-      QgsDebugMsg( "currentMap = " +  item->currentMap() );
+      QgsDebugMsgLevel( "currentMap = " + item->currentMap(), 3 );
       // The input may be empty, it means input is not used.
       if ( item->currentMap().isEmpty() )
       {
@@ -769,8 +753,7 @@ bool QgsGrassModuleStandardOptions::inputRegion( struct Cell_head *window, QgsCo
       }
 
       // TODO: best way to set resolution ?
-      if ( item->type() == QgsGrassObject::Raster
-           && rasterCount == 0 )
+      if ( item->type() == QgsGrassObject::Raster && rasterCount == 0 )
       {
         QgsGrass::copyRegionResolution( &mapWindow, window );
       }
@@ -796,9 +779,10 @@ bool QgsGrassModuleStandardOptions::inputRegion( struct Cell_head *window, QgsCo
 
 bool QgsGrassModuleStandardOptions::requestsRegion()
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
 
-  if ( mDirect ) return true;
+  if ( mDirect )
+    return true;
 
   for ( int i = 0; i < mParams.size(); i++ )
   {
@@ -814,7 +798,7 @@ bool QgsGrassModuleStandardOptions::requestsRegion()
 
 bool QgsGrassModuleStandardOptions::usesRegion()
 {
-  QgsDebugMsg( "called." );
+  QgsDebugMsgLevel( "called.", 4 );
 
   for ( int i = 0; i < mParams.size(); i++ )
   {
@@ -827,7 +811,7 @@ bool QgsGrassModuleStandardOptions::usesRegion()
       return true;
   }
 
-  QgsDebugMsg( "NO usesRegion()" );
+  QgsDebugMsgLevel( "NO usesRegion()", 2 );
   return false;
 }
 
@@ -838,7 +822,7 @@ bool QgsGrassModuleStandardOptions::getCurrentMapRegion( QgsGrassModuleInput *in
     return false;
   }
 
-  QgsDebugMsg( "currentMap = " +  input->currentMap() );
+  QgsDebugMsgLevel( "currentMap = " + input->currentMap(), 3 );
   if ( input->currentMap().isEmpty() )
   {
     // The input may be empty, it means input is not used.
@@ -852,10 +836,7 @@ bool QgsGrassModuleStandardOptions::getCurrentMapRegion( QgsGrassModuleInput *in
   {
     mapset = mm.value( 1 );
   }
-  if ( !QgsGrass::mapRegion( input->type(),
-                             QgsGrass::getDefaultGisdbase(),
-                             QgsGrass::getDefaultLocation(), mapset, map,
-                             window ) )
+  if ( !QgsGrass::mapRegion( input->type(), QgsGrass::getDefaultGisdbase(), QgsGrass::getDefaultLocation(), mapset, map, window ) )
   {
     QgsGrass::warning( tr( "Cannot get region of map %1" ).arg( input->currentMap() ) );
     return false;
@@ -865,7 +846,7 @@ bool QgsGrassModuleStandardOptions::getCurrentMapRegion( QgsGrassModuleInput *in
 
 QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QString &xname, QStringList &errors )
 {
-  QDomDocument gDoc( QStringLiteral( "task" ) );
+  QDomDocument gDoc( u"task"_s );
 
   // Attention!: sh.exe (MSYS) sets $0 in scripts to file name
   // without full path. Strange because when run from msys.bat
@@ -882,7 +863,7 @@ QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QStr
 
   QString cmd = arguments.takeFirst();
 
-  arguments.append( QStringLiteral( "--interface-description" ) );
+  arguments.append( u"--interface-description"_s );
 
   QProcess process( this );
 
@@ -896,20 +877,23 @@ QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QStr
   if ( !process.waitForStarted()
        || !process.waitForReadyRead()
        || !process.waitForFinished()
-       || ( process.exitCode() != 0 && process.exitCode() != 255 &&
-            ( !cmd.endsWith( QLatin1String( ".py" ) ) || process.exitCode() != 1 ) ) )
+       || ( process.exitCode() != 0 && process.exitCode() != 255 && ( !cmd.endsWith( ".py"_L1 ) || process.exitCode() != 1 ) ) )
   {
     QString pathVariable = QgsGrassModule::libraryPathVariable();
-    QgsDebugMsg( "process.exitCode() = " + QString::number( process.exitCode() ) );
+    QgsDebugError( "process.exitCode() = " + QString::number( process.exitCode() ) );
     QString msg = tr( "Cannot start module %1" ).arg( mXName )
-                  + "<br><br>" + pathVariable + "=" + environment.value( pathVariable )
-                  + "<br><br>PATH=" + environment.value( QStringLiteral( "PATH" ) )
-                  + "<br><br>PYTHONPATH=" + environment.value( QStringLiteral( "PYTHONPATH" ) )
-                  + "<br><br>" + tr( "command" ) + QStringLiteral( ": %1 %2<br>%3<br>%4" )
-                  .arg( cmd, arguments.join( QLatin1Char( ' ' ) ),
-                        process.readAllStandardOutput().constData(),
-                        process.readAllStandardError().constData() );
-    QgsDebugMsg( msg );
+                  + "<br><br>"
+                  + pathVariable
+                  + "="
+                  + environment.value( pathVariable )
+                  + "<br><br>PATH="
+                  + environment.value( u"PATH"_s )
+                  + "<br><br>PYTHONPATH="
+                  + environment.value( u"PYTHONPATH"_s )
+                  + "<br><br>"
+                  + tr( "command" )
+                  + u": %1 %2<br>%3<br>%4"_s.arg( cmd, arguments.join( ' '_L1 ), process.readAllStandardOutput().constData(), process.readAllStandardError().constData() );
+    QgsDebugError( msg );
     errors << msg;
     return gDoc;
   }
@@ -921,30 +905,31 @@ QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QStr
   // of the interface description (see https://github.com/qgis/QGIS/issues/14461)
   QTextCodec *codec = nullptr;
 
-  QgsDebugMsg( "trying to get encoding name from XML interface description..." );
+  QgsDebugMsgLevel( "trying to get encoding name from XML interface description...", 3 );
 
   // XXX: getting the encoding using a regular expression works
   // until GRASS will use UTF-16 or UTF-32.
   // TODO: We should check the correct encoding by using the BOM (Byte
   // Order Mark) from the beginning of the data.
   QString xmlDeclaration = QString::fromUtf8( baDesc ).section( '>', 0, 0, QString::SectionIncludeTrailingSep );
-  QRegExp reg( "<\\?xml\\s+.*encoding\\s*=\\s*(['\"])([A-Za-z][-a-zA-Z0-9_.]*)\\1\\s*\\?>" );
-  if ( reg.indexIn( xmlDeclaration ) != -1 )
+  const thread_local QRegularExpression reg( "<\\?xml\\s+.*encoding\\s*=\\s*(['\"])([A-Za-z][-a-zA-Z0-9_.]*)\\1\\s*\\?>" );
+  const QRegularExpressionMatch match = reg.match( xmlDeclaration );
+  if ( match.hasMatch() )
   {
-    QByteArray enc = reg.cap( 2 ).toLocal8Bit();
-    QgsDebugMsg( QString( "found encoding name '%1'" ).arg( QString::fromUtf8( enc ) ) );
+    QByteArray enc = match.captured( 2 ).toLocal8Bit();
+    QgsDebugMsgLevel( QString( "found encoding name '%1'" ).arg( QString::fromUtf8( enc ) ), 3 );
 
     codec = QTextCodec::codecForName( enc );
     if ( !codec )
     {
-      QgsDebugMsg( "unrecognized encoding name. Let's use 'System' codec" );
+      QgsDebugMsgLevel( "unrecognized encoding name. Let's use 'System' codec", 2 );
       codec = QTextCodec::codecForName( "System" );
       Q_ASSERT( codec );
     }
   }
   else
   {
-    QgsDebugMsg( "unable to get encoding name from XML content. Will let Qt detects encoding!" );
+    QgsDebugMsgLevel( "unable to get encoding name from XML content. Will let Qt detects encoding!", 2 );
   }
 
   bool ok = false;
@@ -953,11 +938,11 @@ QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QStr
 
   if ( codec )
   {
-    QgsDebugMsg( QString( "parsing XML interface description using '%1' codec..." ).arg( QString::fromUtf8( codec->name() ) ) );
+    QgsDebugMsgLevel( QString( "parsing XML interface description using '%1' codec..." ).arg( QString::fromUtf8( codec->name() ) ), 3 );
     ok = gDoc.setContent( codec->toUnicode( baDesc ), false, &err, &line, &column );
     if ( !ok )
     {
-      QgsDebugMsg( "parse FAILED. Will let Qt detects encoding" );
+      QgsDebugMsgLevel( "parse FAILED. Will let Qt detects encoding", 2 );
       codec = nullptr;
     }
   }
@@ -969,9 +954,8 @@ QDomDocument QgsGrassModuleStandardOptions::readInterfaceDescription( const QStr
 
   if ( !ok )
   {
-    QString errmsg = tr( "Cannot read module description (%1):" ).arg( mXName )
-                     + tr( "\n%1\nat line %2 column %3" ).arg( err ).arg( line ).arg( column );
-    QgsDebugMsg( errmsg );
+    QString errmsg = tr( "Cannot read module description (%1):" ).arg( mXName ) + tr( "\n%1\nat line %2 column %3" ).arg( err ).arg( line ).arg( column );
+    QgsDebugError( errmsg );
     errors << errmsg;
   }
   return gDoc;

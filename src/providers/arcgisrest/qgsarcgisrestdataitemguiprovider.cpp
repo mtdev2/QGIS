@@ -14,108 +14,169 @@
  ***************************************************************************/
 
 #include "qgsarcgisrestdataitemguiprovider.h"
+
+#include "qgsafsprovider.h"
+#include "qgsapplication.h"
 #include "qgsarcgisrestdataitems.h"
+#include "qgsbrowsertreeview.h"
+#include "qgsdataitemguiproviderutils.h"
+#include "qgsexpressionbuilderdialog.h"
+#include "qgsguiutils.h"
 #include "qgsmanageconnectionsdialog.h"
 #include "qgsnewarcgisrestconnection.h"
 #include "qgsowsconnection.h"
+#include "qgsrasterlayer.h"
+#include "qgsvectorlayer.h"
 
 #include <QDesktopServices>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QString>
 
+#include "moc_qgsarcgisrestdataitemguiprovider.cpp"
 
-void QgsArcGisRestDataItemGuiProvider::populateContextMenu( QgsDataItem *item, QMenu *menu, const QList<QgsDataItem *> &, QgsDataItemGuiContext )
+using namespace Qt::StringLiterals;
+
+void QgsArcGisRestDataItemGuiProvider::populateContextMenu( QgsDataItem *item, QMenu *menu, const QList<QgsDataItem *> &selection, QgsDataItemGuiContext context )
 {
-  if ( QgsArcGisRestRootItem *rootItem = qobject_cast< QgsArcGisRestRootItem * >( item ) )
+  if ( QgsArcGisRestRootItem *rootItem = qobject_cast<QgsArcGisRestRootItem *>( item ) )
   {
     QAction *actionNew = new QAction( tr( "New Connection…" ), menu );
     connect( actionNew, &QAction::triggered, this, [rootItem] { newConnection( rootItem ); } );
     menu->addAction( actionNew );
 
-    QAction *actionSaveServers = new QAction( tr( "Save Connections…" ), this );
+    QAction *actionSaveServers = new QAction( tr( "Save Connections…" ), menu );
     connect( actionSaveServers, &QAction::triggered, this, [] { saveConnections(); } );
     menu->addAction( actionSaveServers );
 
-    QAction *actionLoadServers = new QAction( tr( "Load Connections…" ), this );
+    QAction *actionLoadServers = new QAction( tr( "Load Connections…" ), menu );
     connect( actionLoadServers, &QAction::triggered, this, [rootItem] { loadConnections( rootItem ); } );
     menu->addAction( actionLoadServers );
   }
-  else if ( QgsArcGisRestConnectionItem *connectionItem = qobject_cast< QgsArcGisRestConnectionItem * >( item ) )
+  else if ( QgsArcGisRestConnectionItem *connectionItem = qobject_cast<QgsArcGisRestConnectionItem *>( item ) )
   {
-    QAction *actionRefresh = new QAction( tr( "Refresh" ), menu );
-    connect( actionRefresh, &QAction::triggered, this, [connectionItem] { refreshConnection( connectionItem ); } );
-    menu->addAction( actionRefresh );
+    const QList<QgsArcGisRestConnectionItem *> arcgisConnectionItems = QgsDataItem::filteredItems<QgsArcGisRestConnectionItem>( selection );
 
-    menu->addSeparator();
+    if ( arcgisConnectionItems.size() == 1 )
+    {
+      QAction *actionRefresh = new QAction( tr( "Refresh" ), menu );
+      connect( actionRefresh, &QAction::triggered, this, [connectionItem] { refreshConnection( connectionItem ); } );
+      menu->addAction( actionRefresh );
 
-    QAction *actionEdit = new QAction( tr( "Edit Connection…" ), menu );
-    connect( actionEdit, &QAction::triggered, this, [connectionItem] { editConnection( connectionItem ); } );
-    menu->addAction( actionEdit );
+      menu->addSeparator();
 
-    QAction *actionDelete = new QAction( tr( "Delete Connection…" ), menu );
-    connect( actionDelete, &QAction::triggered, this, [connectionItem] { deleteConnection( connectionItem ); } );
+      QAction *actionEdit = new QAction( tr( "Edit Connection…" ), menu );
+      connect( actionEdit, &QAction::triggered, this, [connectionItem] { editConnection( connectionItem ); } );
+      menu->addAction( actionEdit );
+
+      QAction *actionDuplicate = new QAction( tr( "Duplicate Connection" ), menu );
+      connect( actionDuplicate, &QAction::triggered, this, [connectionItem] { duplicateConnection( connectionItem ); } );
+      menu->addAction( actionDuplicate );
+    }
+
+    QAction *actionDelete = new QAction( arcgisConnectionItems.size() > 1 ? tr( "Remove Connections…" ) : tr( "Remove Connection…" ), menu );
+    connect( actionDelete, &QAction::triggered, this, [arcgisConnectionItems, context] {
+      QgsDataItemGuiProviderUtils::deleteConnections( arcgisConnectionItems, []( const QString &connectionName ) { QgsArcGisConnectionSettings::sTreeConnectionArcgis->deleteItem( connectionName ); }, context );
+    } );
     menu->addAction( actionDelete );
 
-    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
+    if ( arcgisConnectionItems.size() == 1 )
     {
-      QDesktopServices::openUrl( QUrl( connectionItem->url() ) );
-    } );
-    menu->addAction( viewInfo );
+      QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+      connect( viewInfo, &QAction::triggered, this, [connectionItem] { QDesktopServices::openUrl( QUrl( connectionItem->url() ) ); } );
+      menu->addAction( viewInfo );
+    }
   }
-  else if ( QgsArcGisRestFolderItem *folderItem = qobject_cast< QgsArcGisRestFolderItem * >( item ) )
+  else if ( QgsArcGisRestFolderItem *folderItem = qobject_cast<QgsArcGisRestFolderItem *>( item ) )
   {
     QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
-    {
-      QDesktopServices::openUrl( QUrl( folderItem->path() ) );
-    } );
+    connect( viewInfo, &QAction::triggered, this, [folderItem] { QDesktopServices::openUrl( QUrl( folderItem->path() ) ); } );
     menu->addAction( viewInfo );
   }
-  else if ( QgsArcGisFeatureServiceItem *serviceItem = qobject_cast< QgsArcGisFeatureServiceItem * >( item ) )
+  else if ( QgsArcGisFeatureServiceItem *serviceItem = qobject_cast<QgsArcGisFeatureServiceItem *>( item ) )
   {
     QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
-    {
-      QDesktopServices::openUrl( QUrl( serviceItem->path() ) );
-    } );
+    connect( viewInfo, &QAction::triggered, this, [serviceItem] { QDesktopServices::openUrl( QUrl( serviceItem->path() ) ); } );
     menu->addAction( viewInfo );
   }
-  else if ( QgsArcGisMapServiceItem *serviceItem = qobject_cast< QgsArcGisMapServiceItem * >( item ) )
+  else if ( QgsArcGisMapServiceItem *serviceItem = qobject_cast<QgsArcGisMapServiceItem *>( item ) )
   {
-    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
+    if ( serviceItem->allLayersMapServerUri().isValid() )
     {
-      QDesktopServices::openUrl( QUrl( serviceItem->path() ) );
-    } );
+      QAction *addAllLayers = new QAction( tr( "Add Raster with All MapServer Layers" ), menu );
+      const QgsMimeDataUtils::Uri allLayerUri = serviceItem->allLayersMapServerUri();
+      connect( addAllLayers, &QAction::triggered, this, [allLayerUri] {
+        auto layer = std::make_unique<QgsRasterLayer>( allLayerUri.uri, allLayerUri.name, allLayerUri.providerKey );
+        QgsProject::instance()->addMapLayer( layer.release() );
+      } );
+      menu->addAction( addAllLayers );
+    }
+    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+    connect( viewInfo, &QAction::triggered, this, [serviceItem] { QDesktopServices::openUrl( QUrl( serviceItem->path() ) ); } );
     menu->addAction( viewInfo );
   }
-  else if ( QgsArcGisRestParentLayerItem *layerItem = qobject_cast< QgsArcGisRestParentLayerItem * >( item ) )
+  else if ( QgsArcGisSceneServiceItem *serviceItem = qobject_cast<QgsArcGisSceneServiceItem *>( item ) )
   {
     QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
-    {
-      QDesktopServices::openUrl( QUrl( layerItem->path() ) );
-    } );
+    connect( viewInfo, &QAction::triggered, this, [serviceItem] { QDesktopServices::openUrl( QUrl( serviceItem->path() ) ); } );
     menu->addAction( viewInfo );
   }
-  else if ( QgsArcGisFeatureServiceLayerItem *layerItem = qobject_cast< QgsArcGisFeatureServiceLayerItem * >( item ) )
+  else if ( QgsArcGisImageServiceItem *serviceItem = qobject_cast<QgsArcGisImageServiceItem *>( item ) )
   {
     QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
+    connect( viewInfo, &QAction::triggered, this, [serviceItem] { QDesktopServices::openUrl( QUrl( serviceItem->path() ) ); } );
+    menu->addAction( viewInfo );
+  }
+  else if ( QgsArcGisRestParentLayerItem *layerItem = qobject_cast<QgsArcGisRestParentLayerItem *>( item ) )
+  {
+    if ( layerItem->allLayersMapServerUri().isValid() )
     {
-      QDesktopServices::openUrl( QUrl( layerItem->path() ) );
-    } );
+      QAction *addAllLayers = new QAction( tr( "Add Raster with All MapServer Layers" ), menu );
+      const QgsMimeDataUtils::Uri allLayerUri = layerItem->allLayersMapServerUri();
+      connect( addAllLayers, &QAction::triggered, this, [allLayerUri] {
+        auto layer = std::make_unique<QgsRasterLayer>( allLayerUri.uri, allLayerUri.name, allLayerUri.providerKey );
+        QgsProject::instance()->addMapLayer( layer.release() );
+      } );
+      menu->addAction( addAllLayers );
+    }
+
+    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+    connect( viewInfo, &QAction::triggered, this, [layerItem] { QDesktopServices::openUrl( QUrl( layerItem->path() ) ); } );
+    menu->addAction( viewInfo );
+  }
+  else if ( QgsArcGisFeatureServiceLayerItem *layerItem = qobject_cast<QgsArcGisFeatureServiceLayerItem *>( item ) )
+  {
+    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+    connect( viewInfo, &QAction::triggered, this, [layerItem] { QDesktopServices::openUrl( QUrl( layerItem->path() ) ); } );
+    menu->addAction( viewInfo );
+    menu->addSeparator();
+
+    QAction *addWithFilterAction = new QAction( tr( "Add Filtered Layer to Project…" ), menu );
+    // bit of a gross hack to get this action to appear after the "add layer to project" action, which won't have been created yet...
+    addWithFilterAction->setProperty( "insertAfter", "addLayerToProject" );
+    menu->addAction( addWithFilterAction );
+    const QgsMimeDataUtils::UriList uris = layerItem->mimeUris();
+
+    connect( addWithFilterAction, &QAction::triggered, this, [uris, context, this] { addFilteredLayer( uris.value( 0 ), context ); } );
+  }
+  else if ( QgsArcGisMapServiceLayerItem *layerItem = qobject_cast<QgsArcGisMapServiceLayerItem *>( item ) )
+  {
+    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+    connect( viewInfo, &QAction::triggered, this, [layerItem] { QDesktopServices::openUrl( QUrl( layerItem->path() ) ); } );
     menu->addAction( viewInfo );
     menu->addSeparator();
   }
-  else if ( QgsArcGisMapServiceLayerItem *layerItem = qobject_cast< QgsArcGisMapServiceLayerItem * >( item ) )
+  else if ( QgsArcGisSceneServiceLayerItem *layerItem = qobject_cast<QgsArcGisSceneServiceLayerItem *>( item ) )
   {
     QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
-    connect( viewInfo, &QAction::triggered, this, [ = ]
-    {
-      QDesktopServices::openUrl( QUrl( layerItem->path() ) );
-    } );
+    connect( viewInfo, &QAction::triggered, this, [layerItem] { QDesktopServices::openUrl( QUrl( layerItem->path() ) ); } );
+    menu->addAction( viewInfo );
+    menu->addSeparator();
+  }
+  else if ( QgsArcGisImageServiceLayerItem *layerItem = qobject_cast<QgsArcGisImageServiceLayerItem *>( item ) )
+  {
+    QAction *viewInfo = new QAction( tr( "View Service Info" ), menu );
+    connect( viewInfo, &QAction::triggered, this, [layerItem] { QDesktopServices::openUrl( QUrl( layerItem->path() ) ); } );
     menu->addAction( viewInfo );
     menu->addSeparator();
   }
@@ -123,7 +184,7 @@ void QgsArcGisRestDataItemGuiProvider::populateContextMenu( QgsDataItem *item, Q
 
 void QgsArcGisRestDataItemGuiProvider::newConnection( QgsDataItem *item )
 {
-  QgsNewArcGisRestConnectionDialog nc( nullptr, QStringLiteral( "qgis/connections-arcgisfeatureserver/" ), QString() );
+  QgsNewArcGisRestConnectionDialog nc( QgsApplication::instance()->activeWindow(), QString() );
   nc.setWindowTitle( tr( "Create a New ArcGIS REST Server Connection" ) );
 
   if ( nc.exec() )
@@ -134,7 +195,7 @@ void QgsArcGisRestDataItemGuiProvider::newConnection( QgsDataItem *item )
 
 void QgsArcGisRestDataItemGuiProvider::editConnection( QgsDataItem *item )
 {
-  QgsNewArcGisRestConnectionDialog nc( nullptr, QStringLiteral( "qgis/connections-arcgisfeatureserver/" ), item->name() );
+  QgsNewArcGisRestConnectionDialog nc( nullptr, item->name() );
   nc.setWindowTitle( tr( "Modify ArcGIS REST Server Connection" ) );
 
   if ( nc.exec() )
@@ -146,16 +207,25 @@ void QgsArcGisRestDataItemGuiProvider::editConnection( QgsDataItem *item )
   }
 }
 
-void QgsArcGisRestDataItemGuiProvider::deleteConnection( QgsDataItem *item )
+void QgsArcGisRestDataItemGuiProvider::duplicateConnection( QgsDataItem *item )
 {
-  if ( QMessageBox::question( nullptr, QObject::tr( "Delete Connection" ),
-                              QObject::tr( "Are you sure you want to delete the connection to %1?" ).arg( item->name() ),
-                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
-    return;
+  const QString connectionName = item->name();
+  const QStringList connections = QgsArcGisConnectionSettings::sTreeConnectionArcgis->items();
 
-  QgsOwsConnection::deleteConnection( QStringLiteral( "arcgisfeatureserver" ), item->name() );
+  const QString newConnectionName = QgsDataItemGuiProviderUtils::uniqueName( connectionName, connections );
 
-  // the parent should be updated
+  QgsArcGisConnectionSettings::settingsUrl->setValue( QgsArcGisConnectionSettings::settingsUrl->value( connectionName ), newConnectionName );
+
+  QgsArcGisConnectionSettings::settingsContentEndpoint->setValue( QgsArcGisConnectionSettings::settingsContentEndpoint->value( connectionName ), newConnectionName );
+  QgsArcGisConnectionSettings::settingsCommunityEndpoint->setValue( QgsArcGisConnectionSettings::settingsCommunityEndpoint->value( connectionName ), newConnectionName );
+
+  QgsArcGisConnectionSettings::settingsUsername->setValue( QgsArcGisConnectionSettings::settingsUsername->value( connectionName ), newConnectionName );
+  QgsArcGisConnectionSettings::settingsPassword->setValue( QgsArcGisConnectionSettings::settingsPassword->value( connectionName ), newConnectionName );
+  QgsArcGisConnectionSettings::settingsAuthcfg->setValue( QgsArcGisConnectionSettings::settingsAuthcfg->value( connectionName ), newConnectionName );
+
+  QgsArcGisConnectionSettings::settingsHeaders->setValue( QgsArcGisConnectionSettings::settingsHeaders->value( connectionName ), newConnectionName );
+  QgsArcGisConnectionSettings::settingsUrlPrefix->setValue( QgsArcGisConnectionSettings::settingsUrlPrefix->value( connectionName ), newConnectionName );
+
   if ( item->parent() )
     item->parent()->refreshConnections();
 }
@@ -176,8 +246,7 @@ void QgsArcGisRestDataItemGuiProvider::saveConnections()
 
 void QgsArcGisRestDataItemGuiProvider::loadConnections( QgsDataItem *item )
 {
-  QString fileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Connections" ), QDir::homePath(),
-                     tr( "XML files (*.xml *.XML)" ) );
+  const QString fileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Connections" ), QDir::homePath(), tr( "XML files (*.xml *.XML)" ) );
   if ( fileName.isEmpty() )
   {
     return;
@@ -186,4 +255,36 @@ void QgsArcGisRestDataItemGuiProvider::loadConnections( QgsDataItem *item )
   QgsManageConnectionsDialog dlg( nullptr, QgsManageConnectionsDialog::Import, QgsManageConnectionsDialog::ArcgisFeatureServer, fileName );
   if ( dlg.exec() == QDialog::Accepted )
     item->refreshConnections();
+}
+
+void QgsArcGisRestDataItemGuiProvider::addFilteredLayer( const QgsMimeDataUtils::Uri &uri, QgsDataItemGuiContext context )
+{
+  // Query available fields
+  QgsDataSourceUri ds( uri.uri );
+  ds.setSql( u"1=0"_s ); // don't retrieve any records
+
+  QgsDataProvider::ProviderOptions providerOptions;
+  QgsTemporaryCursorOverride cursor( Qt::WaitCursor );
+  QgsAfsProvider provider( ds.uri( false ), providerOptions );
+  if ( !provider.isValid() )
+  {
+    return;
+  }
+  cursor.release();
+
+  //show expression builder
+  QgsExpressionBuilderDialog d( nullptr, QString(), context.view() ? context.view()->window() : nullptr );
+
+  //add available attributes to expression builder
+  QgsExpressionBuilderWidget *w = d.expressionBuilder();
+  w->initWithFields( provider.fields() );
+
+  if ( d.exec() == QDialog::Accepted )
+  {
+    const QString sql = w->expressionText();
+    ds.setSql( sql );
+
+    auto layer = std::make_unique<QgsVectorLayer>( ds.uri( false ), uri.name, u"arcgisfeatureserver"_s );
+    QgsProject::instance()->addMapLayer( layer.release() );
+  }
 }

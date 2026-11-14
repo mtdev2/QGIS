@@ -15,21 +15,25 @@
  ***************************************************************************/
 
 #include "qgscolordialog.h"
-#include "qgscolorscheme.h"
-#include "qgscolorschemeregistry.h"
-#include "qgssymbollayerutils.h"
-#include "qgsapplication.h"
-#include "qgssettings.h"
-#include "qgsgui.h"
 
-#include <QPushButton>
-#include <QMenu>
-#include <QToolButton>
+#include "qgsgui.h"
+#include "qgshelp.h"
+#include "qgssettings.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingsregistrygui.h"
+
 #include <QFileDialog>
-#include <QMessageBox>
-#include <QDesktopWidget>
-#include <QMouseEvent>
 #include <QInputDialog>
+#include <QMenu>
+#include <QMessageBox>
+#include <QMouseEvent>
+#include <QPushButton>
+#include <QString>
+#include <QToolButton>
+
+#include "moc_qgscolordialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsColorDialog::QgsColorDialog( QWidget *parent, Qt::WindowFlags fl, const QColor &color )
   : QDialog( parent, fl )
@@ -81,14 +85,14 @@ void QgsColorDialog::setAllowOpacity( const bool allowOpacity )
 
 QColor QgsColorDialog::getColor( const QColor &initialColor, QWidget *parent, const QString &title, const bool allowOpacity )
 {
-  QString dialogTitle = title.isEmpty() ? tr( "Select Color" ) : title;
+  const QString dialogTitle = title.isEmpty() ? tr( "Select Color" ) : title;
 
-  QgsSettings settings;
+  const QgsSettings settings;
   //using native color dialogs?
-  bool useNative = settings.value( QStringLiteral( "qgis/native_color_dialogs" ), false ).toBool();
+  const bool useNative = QgsSettingsRegistryGui::settingsNativeColorDialogs->value();
   if ( useNative )
   {
-    return QColorDialog::getColor( initialColor, parent, dialogTitle, allowOpacity ? QColorDialog::ShowAlphaChannel : ( QColorDialog::ColorDialogOption )0 );
+    return QColorDialog::getColor( initialColor, parent, dialogTitle, allowOpacity ? QColorDialog::ShowAlphaChannel : ( QColorDialog::ColorDialogOption ) 0 );
   }
   else
   {
@@ -158,5 +162,5 @@ void QgsColorDialog::closeEvent( QCloseEvent *e )
 
 void QgsColorDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "introduction/general_tools.html#color-selector" ) );
+  QgsHelp::openHelp( u"introduction/general_tools.html#color-selector"_s );
 }

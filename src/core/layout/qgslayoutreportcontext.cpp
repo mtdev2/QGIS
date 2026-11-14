@@ -15,9 +15,12 @@
  ***************************************************************************/
 
 #include "qgslayoutreportcontext.h"
+
 #include "qgsfeature.h"
 #include "qgslayout.h"
 #include "qgsvectorlayer.h"
+
+#include "moc_qgslayoutreportcontext.cpp"
 
 QgsLayoutReportContext::QgsLayoutReportContext( QgsLayout *layout )
   : QObject( layout )
@@ -50,7 +53,7 @@ QgsGeometry QgsLayoutReportContext::currentGeometry( const QgsCoordinateReferenc
     return mFeature.geometry();
   }
 
-  auto it = mGeometryCache.constFind( crs.srsid() );
+  const auto it = mGeometryCache.constFind( crs.srsid() );
   if ( it != mGeometryCache.constEnd() )
   {
     // we have it in cache, return it

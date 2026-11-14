@@ -14,8 +14,8 @@
  ***************************************************************************/
 
 #include "qgsexpressionnode.h"
-#include "qgsexpression.h"
 
+#include "qgsexpression.h"
 
 QVariant QgsExpressionNode::eval( QgsExpression *parent, const QgsExpressionContext *context )
 {
@@ -23,38 +23,82 @@ QVariant QgsExpressionNode::eval( QgsExpression *parent, const QgsExpressionCont
   {
     return mCachedStaticValue;
   }
+  else if ( mCompiledSimplifiedNode )
+  {
+    return mCompiledSimplifiedNode->eval( parent, context );
+  }
   else
   {
-    QVariant res = evalNode( parent, context );
-    return res;
+    return evalNode( parent, context );
   }
 }
 
 bool QgsExpressionNode::prepare( QgsExpression *parent, const QgsExpressionContext *context )
 {
+  mHasCachedValue = false;
+  mCompiledSimplifiedNode.reset();
   if ( isStatic( parent, context ) )
   {
-    mCachedStaticValue = evalNode( parent, context );
-    if ( !parent->hasEvalError() )
-      mHasCachedValue = true;
-    else
-      mHasCachedValue = false;
+    // some calls to isStatic already evaluate the node to a cached value, so if that's
+    // happened then don't re-evaluate again
+    if ( !mHasCachedValue )
+    {
+      mCachedStaticValue = evalNode( parent, context );
+      if ( !parent->hasEvalError() )
+        mHasCachedValue = true;
+    }
     return true;
   }
   else
   {
-    mHasCachedValue = false;
     return prepareNode( parent, context );
   }
+}
+
+void QgsExpressionNode::setCachedStaticValue( const QVariant &value ) const
+{
+  mHasCachedValue = true;
+  mCachedStaticValue = value;
+}
+
+QgsExpressionNode *QgsExpressionNode::simplifiedNode() const
+{
+  return clone();
+}
+
+QgsExpressionNode::QgsExpressionNode( const QgsExpressionNode &other )
+  : parserFirstLine( other.parserFirstLine )
+  , parserFirstColumn( other.parserFirstColumn )
+  , parserLastLine( other.parserLastLine )
+  , parserLastColumn( other.parserLastColumn )
+  , mHasCachedValue( other.mHasCachedValue )
+  , mCachedStaticValue( other.mCachedStaticValue )
+  , mCompiledSimplifiedNode( other.mCompiledSimplifiedNode ? other.mCompiledSimplifiedNode->clone() : nullptr )
+{}
+
+QgsExpressionNode &QgsExpressionNode::operator=( const QgsExpressionNode &other )
+{
+  if ( &other == this )
+    return *this;
+
+  parserFirstLine = other.parserFirstLine;
+  parserFirstColumn = other.parserFirstColumn;
+  parserLastLine = other.parserLastLine;
+  parserLastColumn = other.parserLastColumn;
+  mHasCachedValue = other.mHasCachedValue;
+  mCachedStaticValue = other.mCachedStaticValue;
+  mCompiledSimplifiedNode.reset( other.mCompiledSimplifiedNode ? other.mCompiledSimplifiedNode->clone() : nullptr );
+  return *this;
 }
 
 void QgsExpressionNode::cloneTo( QgsExpressionNode *target ) const
 {
   target->mHasCachedValue = mHasCachedValue;
   target->mCachedStaticValue = mCachedStaticValue;
+  if ( mCompiledSimplifiedNode )
+    target->mCompiledSimplifiedNode.reset( mCompiledSimplifiedNode->clone() );
   target->parserLastColumn = parserLastColumn;
   target->parserLastLine = parserLastLine;
   target->parserFirstColumn = parserFirstColumn;
   target->parserFirstLine = parserFirstLine;
 }
-

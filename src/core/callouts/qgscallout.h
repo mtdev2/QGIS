@@ -17,17 +17,25 @@
 #ifndef QGSCALLOUT_H
 #define QGSCALLOUT_H
 
-#include "qgis_core.h"
-#include "qgis_sip.h"
-#include "qgsexpressioncontext.h"
-#include "qgsreadwritecontext.h"
-#include "qgspropertycollection.h"
-#include "qgsmapunitscale.h"
-#include <QString>
-#include <QRectF>
 #include <memory>
 
+#include "qgis.h"
+#include "qgis_core.h"
+#include "qgis_sip.h"
+#include "qgscalloutposition.h"
+#include "qgscoordinatetransform.h"
+#include "qgsmapunitscale.h"
+#include "qgsmargins.h"
+#include "qgspropertycollection.h"
+#include "qgsreadwritecontext.h"
+
+#include <QPainter>
+#include <QRectF>
+#include <QString>
+
 class QgsLineSymbol;
+class QgsMarkerSymbol;
+class QgsFillSymbol;
 class QgsGeometry;
 class QgsRenderContext;
 
@@ -45,7 +53,6 @@ class QgsCalloutWidget; //stop sip breaking
  */
 class CORE_EXPORT QgsCallout
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( sipCpp->type() == "simple" && dynamic_cast<QgsSimpleLineCallout *>( sipCpp ) != NULL )
@@ -56,30 +63,49 @@ class CORE_EXPORT QgsCallout
     {
       sipType = sipType_QgsManhattanLineCallout;
     }
+    else if ( sipCpp->type() == "curved" && dynamic_cast<QgsCurvedLineCallout *>( sipCpp ) != NULL )
+    {
+      sipType = sipType_QgsCurvedLineCallout;
+    }
+    else if ( sipCpp->type() == "balloon" && dynamic_cast<QgsBalloonCallout *>( sipCpp ) != NULL )
+    {
+      sipType = sipType_QgsBalloonCallout;
+    }
     else
     {
       sipType = 0;
     }
-    SIP_END
+  SIP_END
 #endif
 
   public:
-
+    // *INDENT-OFF*
     //! Data definable properties.
-    enum Property
+    enum class Property SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsCallout, Property ) : int
     {
-      MinimumCalloutLength, //!< Minimum length of callouts
-      OffsetFromAnchor, //!< Distance to offset lines from anchor points
-      OffsetFromLabel, //!< Distance to offset lines from label area
-      DrawCalloutToAllParts, //!< Whether callout lines should be drawn to all feature parts
-      AnchorPointPosition, //!< Feature's anchor point position
+      MinimumCalloutLength,     //!< Minimum length of callouts
+      OffsetFromAnchor,         //!< Distance to offset lines from anchor points
+      OffsetFromLabel,          //!< Distance to offset lines from label area
+      DrawCalloutToAllParts,    //!< Whether callout lines should be drawn to all feature parts
+      AnchorPointPosition,      //!< Feature's anchor point position
       LabelAnchorPointPosition, //!< Label's anchor point position
+      OriginX,                  //!< X-coordinate of callout origin (label anchor) \since QGIS 3.20
+      OriginY,                  //!< Y-coordinate of callout origin (label anchor) \since QGIS 3.20
+      DestinationX,             //!< X-coordinate of callout destination (feature anchor) \since QGIS 3.20
+      DestinationY,             //!< Y-coordinate of callout destination (feature anchor) \since QGIS 3.20
+      Curvature,                //!< Curvature of curved line callouts \since QGIS 3.20
+      Orientation,              //!< Orientation of curved line callouts \since QGIS 3.20
+      Margins,                  //!< Margin from text \since QGIS 3.20
+      WedgeWidth,               //!< Balloon callout wedge width \since QGIS 3.20
+      CornerRadius,             //!< Balloon callout corner radius \since QGIS 3.20
+      BlendMode,                //!< Callout blend mode \since QGIS 3.20
     };
+    // *INDENT-ON*
 
     //! Options for draw order (stacking) of callouts
     enum DrawOrder
     {
-      OrderBelowAllLabels, //!< Render callouts below all labels
+      OrderBelowAllLabels,        //!< Render callouts below all labels
       OrderBelowIndividualLabels, //!< Render callouts below their individual associated labels, some callouts may be drawn over other labels
     };
 
@@ -87,9 +113,9 @@ class CORE_EXPORT QgsCallout
     enum AnchorPoint
     {
       PoleOfInaccessibility = 0, //!< The surface's pole of inaccessibility used as anchor for polygon geometries
-      PointOnExterior, //!< A point on the surface's outline closest to the label is used as anchor for polygon geometries
-      PointOnSurface, //!< A point guaranteed to be on the surface is used as anchor for polygon geometries
-      Centroid, //!< The surface's centroid is used as anchor for polygon geometries
+      PointOnExterior,           //!< A point on the surface's outline closest to the label is used as anchor for polygon geometries
+      PointOnSurface,            //!< A point guaranteed to be on the surface is used as anchor for polygon geometries
+      Centroid,                  //!< The surface's centroid is used as anchor for polygon geometries
     };
 
     /**
@@ -99,15 +125,15 @@ class CORE_EXPORT QgsCallout
     enum LabelAnchorPoint
     {
       LabelPointOnExterior, //!< The point on the label's boundary closest to the feature
-      LabelCentroid, //!< The labe's centroid
-      LabelTopLeft, //!< Top left corner of the label's boundary
-      LabelTopMiddle, //!< Top middle of the label's boundary
-      LabelTopRight, //!< Top right corner of the label's boundary
-      LabelMiddleLeft, //!< Middle left of the label's boundary
-      LabelMiddleRight, //!< Middle right of the label's boundary
-      LabelBottomLeft, //!< Bottom left corner of the label's boundary
-      LabelBottomMiddle, //!< Bottom middle of the label's boundary
-      LabelBottomRight, //!< Bottom right corner of the label's boundary
+      LabelCentroid,        //!< The labe's centroid
+      LabelTopLeft,         //!< Top left corner of the label's boundary
+      LabelTopMiddle,       //!< Top middle of the label's boundary
+      LabelTopRight,        //!< Top right corner of the label's boundary
+      LabelMiddleLeft,      //!< Middle left of the label's boundary
+      LabelMiddleRight,     //!< Middle right of the label's boundary
+      LabelBottomLeft,      //!< Bottom left corner of the label's boundary
+      LabelBottomMiddle,    //!< Bottom middle of the label's boundary
+      LabelBottomRight,     //!< Bottom right corner of the label's boundary
     };
 
     /**
@@ -170,6 +196,13 @@ class CORE_EXPORT QgsCallout
     virtual void restoreProperties( const QDomElement &element, const QgsReadWriteContext &context );
 
     /**
+     * Returns TRUE if the callout requires advanced effects such as blend modes, which require
+     * output in raster formats to be fully respected.
+     * \since QGIS 3.20
+     */
+    bool containsAdvancedEffects() const;
+
+    /**
      * Prepares the callout for rendering on the specified render \a context.
      *
      * \warning This MUST be called prior to calling render() on the callout, and must always
@@ -206,15 +239,56 @@ class CORE_EXPORT QgsCallout
     virtual DrawOrder drawOrder() const;
 
     /**
-     * Contains additional contextual information about the context in which a callout is
+     * \brief Contains additional contextual information about the context in which a callout is
      * being rendered.
      * \ingroup core
      * \since QGIS 3.10
      */
-    struct CORE_EXPORT QgsCalloutContext
+    class CORE_EXPORT QgsCalloutContext
     {
-      //! TRUE if all parts of associated feature were labeled
-      bool allFeaturePartsLabeled = false;
+      public:
+        //! TRUE if all parts of associated feature were labeled
+        bool allFeaturePartsLabeled = false;
+
+        /**
+         * Contains the CRS of the original feature associated with this callout.
+         *
+         * \since QGIS 3.20
+         */
+        QgsCoordinateReferenceSystem originalFeatureCrs;
+
+        /**
+         * Returns the coordinate transform to convert from the original layer associated with
+         * the callout to the destination map CRS.
+         *
+         * \since QGIS 3.20
+         */
+        QgsCoordinateTransform originalFeatureToMapTransform( const QgsRenderContext &renderContext ) const;
+
+        /**
+         * Adds a rendered callout position.
+         *
+         * The position details such as the callout line origin and destination should be populated by the
+         * callout subclass during rendering operations.
+         *
+         * \note the feature ID, layer ID and provider ID of the QgsCalloutPosition will be automatically populated.
+         *
+         * \since QGIS 3.20
+         */
+        void addCalloutPosition( const QgsCalloutPosition &position ) { return mPositions.push_back( position ); }
+
+        /**
+         * Returns the list of rendered callout positions.
+         *
+         * \since QGIS 3.20
+         */
+        QList< QgsCalloutPosition > positions() const { return mPositions; }
+
+      private:
+        //! Lazy initialized coordinate transform from original feature CRS to map CRS
+        mutable QgsCoordinateTransform mOriginalFeatureToMapTransform;
+
+        QList< QgsCalloutPosition > mPositions;
     };
 
     /**
@@ -238,10 +312,10 @@ class CORE_EXPORT QgsCallout
      * \warning A prior call to startRender() must have been made before calling this method, and
      * after all render() operations are complete a call to stopRender() must be made.
      */
-    void render( QgsRenderContext &context, QRectF rect, const double angle, const QgsGeometry &anchor, QgsCalloutContext &calloutContext );
+    void render( QgsRenderContext &context, const QRectF &rect, const double angle, const QgsGeometry &anchor, QgsCalloutContext &calloutContext );
 
     /**
-     * Returns TRUE if the the callout is enabled.
+     * Returns TRUE if the callout is enabled.
      * \see setEnabled()
      */
     bool enabled() const { return mEnabled; }
@@ -348,8 +422,21 @@ class CORE_EXPORT QgsCallout
      */
     static QgsCallout::LabelAnchorPoint decodeLabelAnchorPoint( const QString &name, bool *ok = nullptr );
 
-  protected:
+    /**
+     * Returns the blending mode used for drawing callouts.
+     * \see setBlendMode()
+     * \since QGIS 3.20
+     */
+    QPainter::CompositionMode blendMode() const { return mBlendMode; }
 
+    /**
+     * Sets the blending \a mode used for drawing callouts.
+     * \see blendMode()
+     * \since QGIS 3.20
+     */
+    void setBlendMode( QPainter::CompositionMode mode ) { mBlendMode = mode; }
+
+  protected:
     /**
      * Performs the actual rendering of the callout implementation onto the specified render \a context.
      *
@@ -368,20 +455,42 @@ class CORE_EXPORT QgsCallout
      * The \a calloutContext argument is used to specify additional contextual information about
      * how a callout is being rendered.
      */
-    virtual void draw( QgsRenderContext &context, QRectF bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCalloutContext &calloutContext ) = 0;
+    virtual void draw( QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCalloutContext &calloutContext ) = 0;
 
     /**
      * Returns the anchor point geometry for a label with the given bounding box and \a anchor point mode.
-     * \since QGIS 3.14
+     * \deprecated QGIS 3.20. Use calloutLabelPoint() instead.
      */
-    QgsGeometry labelAnchorGeometry( QRectF bodyBoundingBox, const double angle, LabelAnchorPoint anchor ) const;
+    Q_DECL_DEPRECATED QgsGeometry labelAnchorGeometry( const QRectF &bodyBoundingBox, const double angle, LabelAnchorPoint anchor ) const SIP_DEPRECATED;
+
+    /**
+     * Returns the anchor point geometry for a label with the given bounding box and \a anchor point mode.
+     *
+     * The \a pinned argument will be set to TRUE if the callout label point is pinned (manually placed).
+     *
+     * \since QGIS 3.20
+     */
+    QgsGeometry calloutLabelPoint( const QRectF &bodyBoundingBox, double angle, LabelAnchorPoint anchor, QgsRenderContext &context, const QgsCalloutContext &calloutContext, bool &pinned ) const;
+
+    /**
+     * Calculates the direct line from a label geometry to an anchor geometry part, respecting the various
+     * callout settings which influence how the callout end should be placed in the anchor geometry.
+     *
+     * Returns a null geometry if the callout line cannot be calculated.
+     *
+     * The \a pinned argument will be set to TRUE if the callout anchor point is pinned (manually placed).
+     *
+     * \since QGIS 3.20
+     */
+    QgsGeometry calloutLineToPart( const QgsGeometry &labelGeometry, const QgsAbstractGeometry *partGeometry, QgsRenderContext &context, const QgsCalloutContext &calloutContext, bool &pinned ) const;
 
   private:
-
     bool mEnabled = false;
 
     AnchorPoint mAnchorPoint = PoleOfInaccessibility;
     LabelAnchorPoint mLabelAnchorPoint = LabelPointOnExterior;
+
+    QPainter::CompositionMode mBlendMode = QPainter::CompositionMode_SourceOver;
 
     //! Property collection for data defined callout settings
     QgsPropertyCollection mDataDefinedProperties;
@@ -401,15 +510,10 @@ class CORE_EXPORT QgsCallout
 class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
 {
   public:
-
     QgsSimpleLineCallout();
     ~QgsSimpleLineCallout() override;
 
 #ifndef SIP_RUN
-
-    /**
-     * Copy constructor.
-     */
     QgsSimpleLineCallout( const QgsSimpleLineCallout &other );
     QgsSimpleLineCallout &operator=( const QgsSimpleLineCallout & ) = delete;
 #endif
@@ -419,7 +523,7 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
      * serialized in the \a properties map (corresponding to the output from
      * QgsSimpleLineCallout::properties() ).
      */
-    static QgsCallout *create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() ) SIP_FACTORY;
+    static std::unique_ptr<QgsCallout> create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() );
 
     QString type() const override;
     QgsSimpleLineCallout *clone() const override;
@@ -465,14 +569,14 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
      * \see minimumLengthUnit()
      * \see setMinimumLength()
     */
-    void setMinimumLengthUnit( QgsUnitTypes::RenderUnit unit ) { mMinCalloutLengthUnit = unit; }
+    void setMinimumLengthUnit( Qgis::RenderUnit unit ) { mMinCalloutLengthUnit = unit; }
 
     /**
      * Returns the units for the minimum length of callout lines.
      * \see setMinimumLengthUnit()
      * \see minimumLength()
     */
-    QgsUnitTypes::RenderUnit minimumLengthUnit() const { return mMinCalloutLengthUnit; }
+    Qgis::RenderUnit minimumLengthUnit() const { return mMinCalloutLengthUnit; }
 
     /**
      * Sets the map unit \a scale for the minimum callout length.
@@ -510,14 +614,14 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
      * \see offsetFromAnchor()
      * \see setOffsetFromAnchor()
     */
-    void setOffsetFromAnchorUnit( QgsUnitTypes::RenderUnit unit ) { mOffsetFromAnchorUnit = unit; }
+    void setOffsetFromAnchorUnit( Qgis::RenderUnit unit ) { mOffsetFromAnchorUnit = unit; }
 
     /**
      * Returns the units for the offset from anchor point.
      * \see setOffsetFromAnchorUnit()
      * \see offsetFromAnchor()
     */
-    QgsUnitTypes::RenderUnit offsetFromAnchorUnit() const { return mOffsetFromAnchorUnit; }
+    Qgis::RenderUnit offsetFromAnchorUnit() const { return mOffsetFromAnchorUnit; }
 
     /**
      * Sets the map unit \a scale for the offset from anchor.
@@ -554,14 +658,14 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
      * \see offsetFromLabel()
      * \see setOffsetFromLabel()
     */
-    void setOffsetFromLabelUnit( QgsUnitTypes::RenderUnit unit ) { mOffsetFromLabelUnit = unit; }
+    void setOffsetFromLabelUnit( Qgis::RenderUnit unit ) { mOffsetFromLabelUnit = unit; }
 
     /**
      * Returns the units for the offset from label area.
      * \see setOffsetFromLabelUnit()
      * \see offsetFromLabel()
     */
-    QgsUnitTypes::RenderUnit offsetFromLabelUnit() const { return mOffsetFromLabelUnit; }
+    Qgis::RenderUnit offsetFromLabelUnit() const { return mOffsetFromLabelUnit; }
 
     /**
      * Sets the map unit \a scale for the offset from label area.
@@ -594,10 +698,20 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
     void setDrawCalloutToAllParts( bool drawToAllParts ) { mDrawCalloutToAllParts = drawToAllParts; }
 
   protected:
-    void draw( QgsRenderContext &context, QRectF bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext ) override;
+    void draw( QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext ) override;
+
+    /**
+     * Creates a callout line between \a start and \a end in the desired style.
+     *
+     * The base class method returns a straight line.
+     *
+     * \since QGIS 3.20
+     */
+    virtual QgsCurve *createCalloutLine(
+      const QgsPoint &start, const QgsPoint &end, QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext
+    ) const SIP_FACTORY;
 
   private:
-
 #ifdef SIP_RUN
     QgsSimpleLineCallout( const QgsSimpleLineCallout &other );
     QgsSimpleLineCallout &operator=( const QgsSimpleLineCallout & );
@@ -605,15 +719,15 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
 
     std::unique_ptr< QgsLineSymbol > mLineSymbol;
     double mMinCalloutLength = 0;
-    QgsUnitTypes::RenderUnit mMinCalloutLengthUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mMinCalloutLengthUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mMinCalloutLengthScale;
 
     double mOffsetFromAnchorDistance = 0;
-    QgsUnitTypes::RenderUnit mOffsetFromAnchorUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mOffsetFromAnchorUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mOffsetFromAnchorScale;
 
     double mOffsetFromLabelDistance = 0;
-    QgsUnitTypes::RenderUnit mOffsetFromLabelUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mOffsetFromLabelUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mOffsetFromLabelScale;
 
     bool mDrawCalloutToAllParts = false;
@@ -629,16 +743,10 @@ class CORE_EXPORT QgsSimpleLineCallout : public QgsCallout
 class CORE_EXPORT QgsManhattanLineCallout : public QgsSimpleLineCallout
 {
   public:
-
     QgsManhattanLineCallout();
 
 #ifndef SIP_RUN
-
-    /**
-     * Copy constructor.
-     */
     QgsManhattanLineCallout( const QgsManhattanLineCallout &other );
-
     QgsManhattanLineCallout &operator=( const QgsManhattanLineCallout & ) = delete;
 #endif
 
@@ -647,13 +755,15 @@ class CORE_EXPORT QgsManhattanLineCallout : public QgsSimpleLineCallout
      * serialized in the \a properties map (corresponding to the output from
      * QgsManhattanLineCallout::properties() ).
      */
-    static QgsCallout *create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() ) SIP_FACTORY;
+    static std::unique_ptr<QgsCallout> create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() ); // cppcheck-suppress duplInheritedMember
 
     QString type() const override;
     QgsManhattanLineCallout *clone() const override;
 
   protected:
-    void draw( QgsRenderContext &context, QRectF bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext ) override;
+    QgsCurve *createCalloutLine(
+      const QgsPoint &start, const QgsPoint &end, QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext
+    ) const override SIP_FACTORY;
 
   private:
 #ifdef SIP_RUN
@@ -663,5 +773,400 @@ class CORE_EXPORT QgsManhattanLineCallout : public QgsSimpleLineCallout
 };
 
 
-#endif // QGSCALLOUT_H
+/**
+ * \ingroup core
+ * \brief Draws curved lines as callouts.
+ *
+ * \since QGIS 3.20
+ */
+class CORE_EXPORT QgsCurvedLineCallout : public QgsSimpleLineCallout
+{
+  public:
+    /**
+     * Curve orientation
+     */
+    enum Orientation
+    {
+      Automatic,        //!< Automatically choose most cartographically pleasing orientation based on label and callout arrangement
+      Clockwise,        //!< Curve lines in a clockwise direction
+      CounterClockwise, //!< Curve lines in a counter-clockwise direction
+    };
 
+    QgsCurvedLineCallout();
+
+#ifndef SIP_RUN
+    QgsCurvedLineCallout( const QgsCurvedLineCallout &other );
+    QgsCurvedLineCallout &operator=( const QgsCurvedLineCallout & ) = delete;
+#endif
+
+    /**
+     * Creates a new QgsCurvedLineCallout, using the settings
+     * serialized in the \a properties map (corresponding to the output from
+     * QgsCurvedLineCallout::properties() ).
+     */
+    static std::unique_ptr<QgsCallout> create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() ); // cppcheck-suppress duplInheritedMember
+
+    QString type() const override;
+    QgsCurvedLineCallout *clone() const override;
+    QVariantMap properties( const QgsReadWriteContext &context ) const override;
+
+    /**
+     * Returns the callout line's curvature.
+     *
+     * The curvature is a percentage value (with typical ranges between 0.0 and 1.0), representing the overall curvature of the line.
+     *
+     * \see setCurvature()
+     */
+    double curvature() const;
+
+    /**
+     * Sets the callout line's \a curvature.
+     *
+     * The \a curvature is a percentage value (with typical ranges between 0.0 and 1.0), representing the overall curvature of the line.
+     *
+     * \see curvature()
+     */
+    void setCurvature( double curvature );
+
+    /**
+     * Returns the callout line's curve orientation.
+     *
+     * \see setOrientation()
+     */
+    Orientation orientation() const;
+
+    /**
+     * Sets the callout line's curve \a orientation.
+     *
+     * \see orientation()
+     */
+    void setOrientation( Orientation orientation );
+
+  protected:
+    QgsCurve *createCalloutLine(
+      const QgsPoint &start, const QgsPoint &end, QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCalloutContext &calloutContext
+    ) const override SIP_FACTORY;
+
+  private:
+#ifdef SIP_RUN
+    QgsCurvedLineCallout( const QgsCurvedLineCallout &other );
+    QgsCurvedLineCallout &operator=( const QgsCurvedLineCallout & );
+#endif
+
+    /**
+     * Decodes a string to an orientation value
+     */
+    static Orientation decodeOrientation( const QString &string );
+
+    /**
+     * Encodes an orientation string
+     */
+    static QString encodeOrientation( Orientation orientation );
+
+
+    Orientation mOrientation = Automatic;
+    double mCurvature = 0.1;
+};
+
+
+/**
+ * \ingroup core
+ * \brief A cartoon talking bubble callout style.
+ *
+ * \since QGIS 3.20
+ */
+class CORE_EXPORT QgsBalloonCallout : public QgsCallout
+{
+  public:
+    QgsBalloonCallout();
+    ~QgsBalloonCallout() override;
+
+#ifndef SIP_RUN
+    QgsBalloonCallout( const QgsBalloonCallout &other );
+    QgsBalloonCallout &operator=( const QgsBalloonCallout & ) = delete;
+#endif
+
+    /**
+     * Creates a new QgsBalloonCallout, using the settings
+     * serialized in the \a properties map (corresponding to the output from
+     * QgsBalloonCallout::properties() ).
+     */
+    static std::unique_ptr<QgsCallout> create( const QVariantMap &properties = QVariantMap(), const QgsReadWriteContext &context = QgsReadWriteContext() );
+
+    QString type() const override;
+    QgsBalloonCallout *clone() const override;
+    QVariantMap properties( const QgsReadWriteContext &context ) const override;
+    void readProperties( const QVariantMap &props, const QgsReadWriteContext &context ) override;
+    void startRender( QgsRenderContext &context ) override;
+    void stopRender( QgsRenderContext &context ) override;
+    QSet< QString > referencedFields( const QgsRenderContext &context ) const override;
+
+    /**
+     * Returns the fill symbol used to render the callout.
+     *
+     * Ownership is not transferred.
+     *
+     * \see setFillSymbol()
+     */
+    QgsFillSymbol *fillSymbol();
+
+    /**
+     * Sets the fill \a symbol used to render the callout. Ownership of \a symbol is
+     * transferred to the callout.
+     *
+     * \see fillSymbol()
+     */
+    void setFillSymbol( QgsFillSymbol *symbol SIP_TRANSFER );
+
+    /**
+     * Returns the marker symbol used to render the callout endpoint.
+     *
+     * May be NULLPTR, if no endpoint marker will be used.
+     *
+     * The marker will always be rendered below the fill symbol for the callout.
+     *
+     * Ownership is not transferred.
+     *
+     * \see setMarkerSymbol()
+     * \since QGIS 3.40
+     */
+    QgsMarkerSymbol *markerSymbol();
+
+    /**
+     * Sets the marker \a symbol used to render the callout endpoint. Ownership of \a symbol is
+     * transferred to the callout.
+     *
+     * Set to NULLPTR to disable the endpoint marker.
+     *
+     * The marker will always be rendered below the fill symbol for the callout.
+     *
+     * \see markerSymbol()
+     * \since QGIS 3.40
+     */
+    void setMarkerSymbol( QgsMarkerSymbol *symbol SIP_TRANSFER );
+
+    /**
+     * Returns the offset distance from the anchor point at which to start the line. Units are specified through offsetFromAnchorUnit().
+     * \see setOffsetFromAnchor()
+     * \see offsetFromAnchorUnit()
+     */
+    double offsetFromAnchor() const { return mOffsetFromAnchorDistance; }
+
+    /**
+     * Sets the offset \a distance from the anchor point at which to start the line. Units are specified through setOffsetFromAnchorUnit().
+     * \see offsetFromAnchor()
+     * \see setOffsetFromAnchorUnit()
+     */
+    void setOffsetFromAnchor( double distance ) { mOffsetFromAnchorDistance = distance; }
+
+    /**
+     * Sets the \a unit for the offset from anchor distance.
+     * \see offsetFromAnchor()
+     * \see setOffsetFromAnchor()
+    */
+    void setOffsetFromAnchorUnit( Qgis::RenderUnit unit ) { mOffsetFromAnchorUnit = unit; }
+
+    /**
+     * Returns the units for the offset from anchor point.
+     * \see setOffsetFromAnchorUnit()
+     * \see offsetFromAnchor()
+    */
+    Qgis::RenderUnit offsetFromAnchorUnit() const { return mOffsetFromAnchorUnit; }
+
+    /**
+     * Sets the map unit \a scale for the offset from anchor.
+     * \see offsetFromAnchorMapUnitScale()
+     * \see setOffsetFromAnchorUnit()
+     * \see setOffsetFromAnchor()
+     */
+    void setOffsetFromAnchorMapUnitScale( const QgsMapUnitScale &scale ) { mOffsetFromAnchorScale = scale; }
+
+    /**
+     * Returns the map unit scale for the offset from anchor.
+     * \see setOffsetFromAnchorMapUnitScale()
+     * \see offsetFromAnchorUnit()
+     * \see offsetFromAnchor()
+     */
+    const QgsMapUnitScale &offsetFromAnchorMapUnitScale() const { return mOffsetFromAnchorScale; }
+
+    /**
+     * Returns the margins between the outside of the callout frame and the label's bounding rectangle.
+     *
+     * Units are retrieved via marginsUnit()
+     *
+     * \note Negative margins are acceptable.
+     *
+     * \see setMargins()
+     * \see marginsUnit()
+     */
+    const QgsMargins &margins() const { return mMargins; }
+
+    /**
+     * Sets the \a margins between the outside of the callout frame and the label's bounding rectangle.
+     *
+     * Units are set via setMarginsUnit()
+     *
+     * \note Negative margins are acceptable.
+     *
+     * \see margins()
+     * \see setMarginsUnit()
+     */
+    void setMargins( const QgsMargins &margins ) { mMargins = margins; }
+
+    /**
+     * Sets the \a unit for the margins between the outside of the callout frame and the label's bounding rectangle.
+     *
+     * \see margins()
+     * \see marginsUnit()
+    */
+    void setMarginsUnit( Qgis::RenderUnit unit ) { mMarginUnit = unit; }
+
+    /**
+     * Returns the units for the margins between the outside of the callout frame and the label's bounding rectangle.
+     *
+     * \see setMarginsUnit()
+     * \see margins()
+    */
+    Qgis::RenderUnit marginsUnit() const { return mMarginUnit; }
+
+    /**
+     * Returns the width of the wedge shape at the side it connects with the label.
+     *
+     * Units are specified through wedgeWidthUnit().
+     *
+     * \see setWedgeWidth()
+     * \see wedgeWidthUnit()
+     */
+    double wedgeWidth() const { return mWedgeWidth; }
+
+    /**
+     * Sets the \a width of the wedge shape at the side it connects with the label.
+     *
+     * Units are specified through setWedgeWidthUnit().
+     *
+     * \see wedgeWidth()
+     * \see setWedgeWidthUnit()
+     */
+    void setWedgeWidth( double width ) { mWedgeWidth = width; }
+
+    /**
+     * Sets the \a unit for the wedge width.
+     *
+     * \see wedgeWidthUnit()
+     * \see setWedgeWidth()
+    */
+    void setWedgeWidthUnit( Qgis::RenderUnit unit ) { mWedgeWidthUnit = unit; }
+
+    /**
+     * Returns the units for the wedge width.
+     *
+     * \see setWedgeWidthUnit()
+     * \see wedgeWidth()
+    */
+    Qgis::RenderUnit wedgeWidthUnit() const { return mWedgeWidthUnit; }
+
+    /**
+     * Sets the map unit \a scale for the wedge width.
+     *
+     * \see wedgeWidthMapUnitScale()
+     * \see setWedgeWidthUnit()
+     * \see setWedgeWidth()
+     */
+    void setWedgeWidthMapUnitScale( const QgsMapUnitScale &scale ) { mWedgeWidthScale = scale; }
+
+    /**
+     * Returns the map unit scale for the wedge width.
+     *
+     * \see setWedgeWidthMapUnitScale()
+     * \see wedgeWidthUnit()
+     * \see wedgeWidth()
+     */
+    const QgsMapUnitScale &wedgeWidthMapUnitScale() const { return mWedgeWidthScale; }
+
+    /**
+     * Returns the corner radius of the balloon shapes.
+     *
+     * Units are specified through wedgeWidthUnit().
+     *
+     * \see setCornerRadius()
+     * \see cornerRadiusUnit()
+     */
+    double cornerRadius() const { return mCornerRadius; }
+
+    /**
+     * Sets the \a radius of the corners for the balloon shapes.
+     *
+     * Units are specified through setCornerRadiusUnit().
+     *
+     * \see cornerRadius()
+     * \see setCornerRadiusUnit()
+     */
+    void setCornerRadius( double radius ) { mCornerRadius = radius; }
+
+    /**
+     * Sets the \a unit for the corner radius.
+     *
+     * \see cornerRadiusUnit()
+     * \see setCornerRadius()
+    */
+    void setCornerRadiusUnit( Qgis::RenderUnit unit ) { mCornerRadiusUnit = unit; }
+
+    /**
+     * Returns the units for the corner radius.
+     *
+     * \see setCornerRadiusUnit()
+     * \see cornerRadius()
+    */
+    Qgis::RenderUnit cornerRadiusUnit() const { return mCornerRadiusUnit; }
+
+    /**
+     * Sets the map unit \a scale for the corner radius.
+     *
+     * \see cornerRadiusMapUnitScale()
+     * \see setCornerRadiusUnit()
+     * \see setCornerRadius()
+     */
+    void setCornerRadiusMapUnitScale( const QgsMapUnitScale &scale ) { mCornerRadiusScale = scale; }
+
+    /**
+     * Returns the map unit scale for the corner radius.
+     *
+     * \see setCornerRadiusMapUnitScale()
+     * \see cornerRadiusUnit()
+     * \see cornerRadius()
+     */
+    const QgsMapUnitScale &cornerRadiusMapUnitScale() const { return mCornerRadiusScale; }
+
+
+  protected:
+    void draw( QgsRenderContext &context, const QRectF &bodyBoundingBox, const double angle, const QgsGeometry &anchor, QgsCallout::QgsCalloutContext &calloutContext ) override;
+
+  private:
+    QPolygonF getPoints( QgsRenderContext &context, QgsPointXY origin, QRectF rect ) const;
+
+#ifdef SIP_RUN
+    QgsBalloonCallout( const QgsBalloonCallout &other );
+    QgsBalloonCallout &operator=( const QgsBalloonCallout & );
+#endif
+
+    std::unique_ptr< QgsFillSymbol > mFillSymbol;
+    std::unique_ptr< QgsMarkerSymbol > mMarkerSymbol;
+
+    double mOffsetFromAnchorDistance = 0;
+    Qgis::RenderUnit mOffsetFromAnchorUnit = Qgis::RenderUnit::Millimeters;
+    QgsMapUnitScale mOffsetFromAnchorScale;
+
+    QgsMargins mMargins;
+    Qgis::RenderUnit mMarginUnit = Qgis::RenderUnit::Millimeters;
+
+    double mWedgeWidth = 2.64;
+    Qgis::RenderUnit mWedgeWidthUnit = Qgis::RenderUnit::Millimeters;
+    QgsMapUnitScale mWedgeWidthScale;
+
+    double mCornerRadius = 0.0;
+    Qgis::RenderUnit mCornerRadiusUnit = Qgis::RenderUnit::Millimeters;
+    QgsMapUnitScale mCornerRadiusScale;
+};
+
+
+#endif // QGSCALLOUT_H

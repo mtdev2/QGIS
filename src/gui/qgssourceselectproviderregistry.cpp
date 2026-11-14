@@ -13,11 +13,14 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgssourceselectprovider.h"
 #include "qgssourceselectproviderregistry.h"
-#include "qgsproviderguiregistry.h"
 
 #include <memory>
+
+#include "qgsproviderguiregistry.h"
+#include "qgssourceselectprovider.h"
+
+#include "moc_qgssourceselectproviderregistry.cpp"
 
 QgsSourceSelectProviderRegistry::QgsSourceSelectProviderRegistry() = default;
 
@@ -34,18 +37,19 @@ QList<QgsSourceSelectProvider *> QgsSourceSelectProviderRegistry::providers()
 void QgsSourceSelectProviderRegistry::addProvider( QgsSourceSelectProvider *provider )
 {
   mProviders.append( provider );
-  std::sort( mProviders.begin(), mProviders.end(), [ ]( const QgsSourceSelectProvider * first, const QgsSourceSelectProvider * second ) -> bool
-  {
-    return first->ordering() < second->ordering();
-  } );
+  std::sort( mProviders.begin(), mProviders.end(), []( const QgsSourceSelectProvider *first, const QgsSourceSelectProvider *second ) -> bool { return first->ordering() < second->ordering(); } );
+
+  emit providerAdded( provider->name() );
 }
 
 bool QgsSourceSelectProviderRegistry::removeProvider( QgsSourceSelectProvider *provider )
 {
-  int index = mProviders.indexOf( provider );
+  const QString name = provider ? provider->name() : QString();
+  const int index = mProviders.indexOf( provider );
   if ( index >= 0 )
   {
     delete mProviders.takeAt( index );
+    emit providerRemoved( name );
     return true;
   }
   return false;
@@ -72,7 +76,7 @@ void QgsSourceSelectProviderRegistry::initializeFromProviderGuiRegistry( QgsProv
 QgsSourceSelectProvider *QgsSourceSelectProviderRegistry::providerByName( const QString &name )
 {
   const QList<QgsSourceSelectProvider *> providerList = providers();
-  for ( const auto provider :  providerList )
+  for ( const auto provider : providerList )
   {
     if ( provider->name() == name )
     {
@@ -96,11 +100,7 @@ QList<QgsSourceSelectProvider *> QgsSourceSelectProviderRegistry::providersByKey
   return result;
 }
 
-QgsAbstractDataSourceWidget *QgsSourceSelectProviderRegistry::createSelectionWidget(
-  const QString &name,
-  QWidget *parent,
-  Qt::WindowFlags fl,
-  QgsProviderRegistry::WidgetMode widgetMode )
+QgsAbstractDataSourceWidget *QgsSourceSelectProviderRegistry::createSelectionWidget( const QString &name, QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode )
 {
   QgsSourceSelectProvider *provider = providerByName( name );
   if ( !provider )

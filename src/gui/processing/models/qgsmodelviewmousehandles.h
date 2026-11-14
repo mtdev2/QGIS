@@ -17,13 +17,15 @@
 #ifndef QGSMODELVIEWMOUSEHANDLES_H
 #define QGSMODELVIEWMOUSEHANDLES_H
 
-#define SIP_NO_FILE
 
-#include "qgsgraphicsviewmousehandles.h"
-#include <QPointer>
 #include <memory>
 
 #include "qgis_gui.h"
+#include "qgsgraphicsviewmousehandles.h"
+
+#include <QPointer>
+
+#define SIP_NO_FILE
 
 class QgsModelGraphicsView;
 class QgsModelGraphicsScene;
@@ -35,7 +37,7 @@ class QgsLayoutItem;
 
 /**
  * \ingroup gui
- * Handles drawing of selection outlines and mouse handles in a QgsModelGraphicsView
+ * \brief Handles drawing of selection outlines and mouse handles in a QgsModelGraphicsView
  *
  * Also is responsible for mouse interactions such as resizing and moving selected items.
  *
@@ -43,17 +45,15 @@ class QgsLayoutItem;
  *
  * \since QGIS 3.14
 */
-class GUI_EXPORT QgsModelViewMouseHandles: public QgsGraphicsViewMouseHandles
+class GUI_EXPORT QgsModelViewMouseHandles : public QgsGraphicsViewMouseHandles
 {
     Q_OBJECT
   public:
-
     QgsModelViewMouseHandles( QgsModelGraphicsView *view );
 
     void paint( QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget = nullptr ) override;
 
   protected:
-
     void setViewportCursor( Qt::CursorShape cursor ) override;
     QList<QGraphicsItem *> sceneItemsAtPoint( QPointF scenePoint ) override;
     QList<QGraphicsItem *> selectedSceneItems( bool includeLockedItems = true ) const override;
@@ -75,7 +75,7 @@ class GUI_EXPORT QgsModelViewMouseHandles: public QgsGraphicsViewMouseHandles
   private:
     QgsModelGraphicsScene *modelScene() const;
 
-    QPointer< QgsModelGraphicsView > mView;
+    QPointer<QgsModelGraphicsView> mView;
 };
 
 ///@endcond PRIVATE

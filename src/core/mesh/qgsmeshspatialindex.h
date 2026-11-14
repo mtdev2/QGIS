@@ -34,7 +34,7 @@ class QgsMeshSpatialIndexData;
  * \ingroup core
  * \class QgsMeshSpatialIndex
  *
- * A spatial index for QgsMeshFace or QgsMeshEdge objects.
+ * \brief A spatial index for QgsMeshFace or QgsMeshEdge objects.
  *
  * QgsMeshSpatialIndex objects are implicitly shared and can be inexpensively copied.
  *
@@ -49,7 +49,6 @@ class QgsMeshSpatialIndexData;
 class CORE_EXPORT QgsMeshSpatialIndex
 {
   public:
-
     /**
      * Constructor for QgsSpatialIndex. Creates an empty R-tree index.
      */
@@ -67,20 +66,21 @@ class CORE_EXPORT QgsMeshSpatialIndex
      */
     explicit QgsMeshSpatialIndex( const QgsMesh &mesh, QgsFeedback *feedback = nullptr, QgsMesh::ElementType elementType = QgsMesh::ElementType::Face );
 
-    //! Copy constructor
     QgsMeshSpatialIndex( const QgsMeshSpatialIndex &other );
+    SIP_SKIP QgsMeshSpatialIndex( QgsMeshSpatialIndex &&other );
 
     //! Destructor finalizes work with spatial index
     ~QgsMeshSpatialIndex();
 
-    //! Implement assignment operator
     QgsMeshSpatialIndex &operator=( const QgsMeshSpatialIndex &other );
+    QgsMeshSpatialIndex &operator=( QgsMeshSpatialIndex &&other );
 
     /**
      * Returns a list of face ids with a bounding box which intersects the specified \a rectangle.
      *
      * \note The intersection test is performed based on the face bounding boxes only, so it is necessary
      * to manually test the returned faces for exact geometry intersection when required.
+     * \note Since QGIS 4.0, an empty list is returned if the specified \a rectangle is null.
      */
     QList<int> intersects( const QgsRectangle &rectangle ) const;
 
@@ -99,6 +99,17 @@ class CORE_EXPORT QgsMeshSpatialIndex
      * \since QGIS 3.14
      */
     QgsMesh::ElementType elementType() const;
+
+    /**
+     * Adds a face with \a faceIndex from the \a mesh in the spatial index
+     */
+    void addFace( int faceIndex, const QgsMesh &mesh );
+
+    /**
+     * Removes a face with \a faceIndex from the \a mesh in the spatial index
+     */
+    void removeFace( int faceIndex, const QgsMesh &mesh );
+
 
   private:
     QgsMesh::ElementType mElementType = QgsMesh::ElementType::Face;

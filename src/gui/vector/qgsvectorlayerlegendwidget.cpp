@@ -15,22 +15,32 @@
 
 #include "qgsvectorlayerlegendwidget.h"
 
-#include <QBoxLayout>
-#include <QStandardItemModel>
-#include <QTreeView>
-
 #include "qgsexpressionbuilderdialog.h"
+#include "qgsfilecontentsourcelineedit.h"
+#include "qgsfontbutton.h"
 #include "qgsmapcanvas.h"
 #include "qgsmaplayerlegend.h"
 #include "qgsrenderer.h"
+#include "qgsrulebasedlabeling.h"
 #include "qgssymbollayerutils.h"
 #include "qgstextformatwidget.h"
 #include "qgsvectorlayer.h"
-#include "qgsfontbutton.h"
+
+#include <QBoxLayout>
+#include <QStandardItemModel>
+#include <QString>
+#include <QTreeView>
+#include <QTreeWidget>
+
+#include "moc_qgsvectorlayerlegendwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsVectorLayerLegendWidget::QgsVectorLayerLegendWidget( QWidget *parent )
   : QWidget( parent )
 {
+  mIncludeByDefaultInLayoutLegendsCheck = new QCheckBox( tr( "Include automatically in print layout legend items" ) );
+
   mLegendTreeView = new QTreeView;
   mLegendTreeView->setRootIsDecorated( false );
 
@@ -57,10 +67,54 @@ QgsVectorLayerLegendWidget::QgsVectorLayerLegendWidget( QWidget *parent )
   mTextOnSymbolGroupBox->setLayout( groupLayout );
   mTextOnSymbolGroupBox->setCollapsed( false );
 
+  mLabelLegendGroupBox = new QgsCollapsibleGroupBox;
+  mLabelLegendGroupBox->setCheckable( true );
+  mLabelLegendGroupBox->setTitle( tr( "Show Label Legend" ) );
+
+  mLabelLegendTreeWidget = new QTreeWidget;
+  connect( mLabelLegendTreeWidget, &QTreeWidget::itemDoubleClicked, this, &QgsVectorLayerLegendWidget::labelLegendTreeWidgetItemDoubleClicked );
+  QVBoxLayout *labelLegendLayout = new QVBoxLayout;
+  labelLegendLayout->addWidget( mLabelLegendTreeWidget );
+  mLabelLegendGroupBox->setLayout( labelLegendLayout );
+
+  mPlaceholderImageLabel = new QLabel( tr( "Legend placeholder image" ) );
+  mImageSourceLineEdit = new QgsImageSourceLineEdit();
+  mImageSourceLineEdit->setLastPathSettingsKey( u"lastLegendPlaceholderDir"_s );
+  if ( mLayer )
+  {
+    mImageSourceLineEdit->setSource( mLayer->legendPlaceholderImage() );
+  }
+
+  QGroupBox *generalGroupBox = new QGroupBox( tr( "General Settings" ) );
+
+  QGridLayout *generalLayout = new QGridLayout;
+  generalLayout->addWidget( mIncludeByDefaultInLayoutLegendsCheck, 0, 0, 1, 2 );
+  generalLayout->addWidget( mPlaceholderImageLabel, 1, 0 );
+  generalLayout->addWidget( mImageSourceLineEdit, 1, 1 );
+  generalLayout->setColumnStretch( 0, 1 );
+  generalLayout->setColumnStretch( 1, 2 );
+  generalGroupBox->setLayout( generalLayout );
+
   QVBoxLayout *layout = new QVBoxLayout;
   layout->setContentsMargins( 0, 0, 0, 0 );
+  layout->addWidget( generalGroupBox );
+  layout->addWidget( mLabelLegendGroupBox );
   layout->addWidget( mTextOnSymbolGroupBox );
+
   setLayout( layout );
+}
+
+void QgsVectorLayerLegendWidget::labelLegendTreeWidgetItemDoubleClicked( QTreeWidgetItem *item, int column )
+{
+  const Qt::ItemFlags flags = item->flags();
+  if ( column == 1 )
+  {
+    item->setFlags( flags | Qt::ItemIsEditable );
+  }
+  else
+  {
+    item->setFlags( flags & ( ~Qt::ItemIsEditable ) );
+  }
 }
 
 void QgsVectorLayerLegendWidget::setMapCanvas( QgsMapCanvas *canvas )
@@ -73,13 +127,49 @@ void QgsVectorLayerLegendWidget::setLayer( QgsVectorLayer *layer )
 {
   mLayer = layer;
 
-  QgsDefaultVectorLayerLegend *legend = qobject_cast<QgsDefaultVectorLayerLegend *>( layer->legend() );
+  QgsDefaultVectorLayerLegend *legend = layer ? qobject_cast<QgsDefaultVectorLayerLegend *>( layer->legend() ) : nullptr;
   if ( !legend )
     return;
 
+  mIncludeByDefaultInLayoutLegendsCheck->setChecked( !legend->flags().testFlag( Qgis::MapLayerLegendFlag::ExcludeByDefault ) );
+  mLabelLegendGroupBox->setChecked( legend->showLabelLegend() );
+  populateLabelLegendTreeWidget();
   mTextOnSymbolGroupBox->setChecked( legend->textOnSymbolEnabled() );
   mTextOnSymbolFormatButton->setTextFormat( legend->textOnSymbolTextFormat() );
   populateLegendTreeView( legend->textOnSymbolContent() );
+  mImageSourceLineEdit->setSource( mLayer->legendPlaceholderImage() );
+}
+
+void QgsVectorLayerLegendWidget::populateLabelLegendTreeWidget()
+{
+  mLabelLegendTreeWidget->clear();
+  mLabelLegendTreeWidget->setColumnCount( 2 );
+  QTreeWidgetItem *headerItem = new QTreeWidgetItem( QStringList() << tr( "Description" ) << tr( "Legend Text" ) );
+  mLabelLegendTreeWidget->setHeaderItem( headerItem );
+
+  const QgsAbstractVectorLayerLabeling *labeling = mLayer->labeling();
+  if ( labeling )
+  {
+    const QStringList pList = labeling->subProviders();
+    for ( int i = 0; i < pList.size(); ++i )
+    {
+      const QgsPalLayerSettings s = labeling->settings( pList.at( i ) );
+      QString description;
+      const QgsRuleBasedLabeling *ruleBasedLabeling = dynamic_cast<const QgsRuleBasedLabeling *>( labeling );
+      if ( ruleBasedLabeling && ruleBasedLabeling->rootRule() )
+      {
+        const QgsRuleBasedLabeling::Rule *rule = ruleBasedLabeling->rootRule()->findRuleByKey( pList.at( i ) );
+        if ( rule )
+        {
+          description = rule->description();
+        }
+      }
+
+      QTreeWidgetItem *labelItem = new QTreeWidgetItem( QStringList() << description << s.legendString() );
+      labelItem->setData( 0, Qt::UserRole, pList.at( i ) );
+      mLabelLegendTreeWidget->addTopLevelItem( labelItem );
+    }
+  }
 }
 
 
@@ -96,8 +186,8 @@ void QgsVectorLayerLegendWidget::populateLegendTreeView( const QHash<QString, QS
       continue;
 
     QgsRenderContext context;
-    QSize iconSize( 16, 16 );
-    QIcon icon = QgsSymbolLayerUtils::symbolPreviewPixmap( symbolItem.symbol(), iconSize, 0, &context );
+    const QSize iconSize( 16, 16 );
+    const QIcon icon = QgsSymbolLayerUtils::symbolPreviewPixmap( symbolItem.symbol(), iconSize, 0, &context );
 
     QStandardItem *item1 = new QStandardItem( icon, symbolItem.label() );
     item1->setEditable( false );
@@ -131,13 +221,24 @@ void QgsVectorLayerLegendWidget::applyToLayer()
   {
     for ( int i = 0; i < model->rowCount(); ++i )
     {
-      QString ruleKey = model->item( i, 0 )->data().toString();
-      QString label = model->item( i, 1 )->text();
+      const QString ruleKey = model->item( i, 0 )->data().toString();
+      const QString label = model->item( i, 1 )->text();
       if ( !label.isEmpty() )
         content[ruleKey] = label;
     }
   }
   legend->setTextOnSymbolContent( content );
+
+  const bool showLabelLegend = mLabelLegendGroupBox->isChecked();
+  legend->setShowLabelLegend( showLabelLegend );
+  if ( showLabelLegend )
+  {
+    applyLabelLegend();
+  }
+
+  legend->setFlag( Qgis::MapLayerLegendFlag::ExcludeByDefault, !mIncludeByDefaultInLayoutLegendsCheck->isChecked() );
+
+  mLayer->setLegendPlaceholderImage( mImageSourceLineEdit->source() );
 
   mLayer->setLegend( legend );
 }
@@ -155,7 +256,7 @@ void QgsVectorLayerLegendWidget::labelsFromExpression()
   QgsExpression expr( dlgExpression.expressionText() );
   expr.prepare( &context.expressionContext() );
 
-  std::unique_ptr< QgsFeatureRenderer > r( mLayer->renderer()->clone() );
+  std::unique_ptr<QgsFeatureRenderer> r( mLayer->renderer()->clone() );
 
   QgsFeature f;
   QgsFeatureRequest request;
@@ -172,7 +273,7 @@ void QgsVectorLayerLegendWidget::labelsFromExpression()
       if ( content.contains( key ) )
         continue;
 
-      QString label = expr.evaluate( &context.expressionContext() ).toString();
+      const QString label = expr.evaluate( &context.expressionContext() ).toString();
       if ( !label.isEmpty() )
         content[key] = label;
     }
@@ -180,4 +281,32 @@ void QgsVectorLayerLegendWidget::labelsFromExpression()
   r->stopRender( context );
 
   populateLegendTreeView( content );
+}
+
+void QgsVectorLayerLegendWidget::applyLabelLegend()
+{
+  const QgsAbstractVectorLayerLabeling *layerLabeling = mLayer->labeling();
+  if ( !layerLabeling )
+  {
+    return;
+  }
+
+  QgsAbstractVectorLayerLabeling *labeling = layerLabeling->clone();
+  const QStringList ids = labeling->subProviders();
+  const int nIterations = std::min<int>( ids.size(), mLabelLegendTreeWidget->topLevelItemCount() );
+
+  for ( int i = 0; i < nIterations; ++i )
+  {
+    QTreeWidgetItem *item = mLabelLegendTreeWidget->topLevelItem( i );
+    if ( item )
+    {
+      const QString legendText = item->text( 1 );
+
+      QgsPalLayerSettings *s = new QgsPalLayerSettings( labeling->settings( ids.at( i ) ) );
+      s->setLegendString( legendText );
+      labeling->setSettings( s, ids.at( i ) );
+    }
+  }
+
+  mLayer->setLabeling( labeling );
 }

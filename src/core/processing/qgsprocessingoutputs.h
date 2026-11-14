@@ -18,9 +18,15 @@
 #ifndef QGSPROCESSINGOUTPUTS_H
 #define QGSPROCESSINGOUTPUTS_H
 
-#include "qgis_core.h"
 #include "qgis.h"
-#include "qgsprocessingparameters.h"
+#include "qgis_core.h"
+
+#include <QColor>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+class QgsProcessingContext;
 
 //
 // Output definitions
@@ -30,23 +36,25 @@
  * \class QgsProcessingOutputDefinition
  * \ingroup core
  *
- * Base class for the definition of processing outputs.
+ * \brief Base class for the definition of processing outputs.
  *
  * Output definitions encapsulate the properties regarding the outputs from algorithms, such
  * as generated layers or calculated values.
  *
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsProcessingOutputDefinition
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( sipCpp->type() == QgsProcessingOutputVectorLayer::typeName() )
       sipType = sipType_QgsProcessingOutputVectorLayer;
     else if ( sipCpp->type() == QgsProcessingOutputRasterLayer::typeName() )
       sipType = sipType_QgsProcessingOutputRasterLayer;
+    else if ( sipCpp->type() == QgsProcessingOutputPointCloudLayer::typeName() )
+      sipType = sipType_QgsProcessingOutputPointCloudLayer;
+    else if ( sipCpp->type() == QgsProcessingOutputVectorTileLayer::typeName() )
+      sipType = sipType_QgsProcessingOutputVectorTileLayer;
     else if ( sipCpp->type() == QgsProcessingOutputMapLayer::typeName() )
       sipType = sipType_QgsProcessingOutputMapLayer;
     else if ( sipCpp->type() == QgsProcessingOutputMultipleLayers::typeName() )
@@ -65,9 +73,11 @@ class CORE_EXPORT QgsProcessingOutputDefinition
       sipType = sipType_QgsProcessingOutputFile;
     else if ( sipCpp->type() == QgsProcessingOutputConditionalBranch::typeName() )
       sipType = sipType_QgsProcessingOutputConditionalBranch;
+    else if ( sipCpp->type() == QgsProcessingOutputVariant::typeName() )
+      sipType = sipType_QgsProcessingOutputVariant;
     else
       sipType = nullptr;
-    SIP_END
+  SIP_END
 #endif
 
   public:
@@ -78,6 +88,18 @@ class CORE_EXPORT QgsProcessingOutputDefinition
     QgsProcessingOutputDefinition( const QString &name, const QString &description = QString() );
 
     virtual ~QgsProcessingOutputDefinition() = default;
+
+    /**
+    * Returns the color to use for the output in the model designer canvas.
+    *
+    * \since QGIS 4.0
+    */
+    virtual QColor modelColor() const;
+
+    /**
+     * Creates a clone of the output definition.
+     */
+    virtual QgsProcessingOutputDefinition *clone() const = 0 SIP_FACTORY;
 
     /**
      * Unique output type name.
@@ -127,8 +149,44 @@ class CORE_EXPORT QgsProcessingOutputDefinition
      */
     bool autoCreated() const { return mAutoCreated; }
 
-  protected:
+    /**
+     * Returns a string version of the parameter output \a value (if possible).
+     *
+     * \param value value to convert
+     * \param context processing context
+     * \param ok will be set to TRUE if value could be represented as a string.
+     * \returns value converted to string
+     *
+     * \see valueAsFormattedString()
+     *
+     * \since QGIS 3.36
+     */
+    virtual QString valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const;
 
+    /**
+     * Returns a HTML string version of the parameter output \a value (if possible).
+     *
+     * By default this will return the same value as valueAsString().
+     *
+     * \param value value to convert
+     * \param context processing context
+     * \param ok will be set to TRUE if value could be represented as a string.
+     * \returns value converted to string
+     *
+     * \see valueAsString()
+     *
+     * \since QGIS 3.36
+     */
+    virtual QString valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const;
+
+    /**
+     * Returns TRUE if the output is a map layer type.
+     *
+     * \since QGIS 4.2
+     */
+    virtual bool isMapLayer() const;
+
+  protected:
     //! Output name
     QString mName;
 
@@ -136,7 +194,6 @@ class CORE_EXPORT QgsProcessingOutputDefinition
     QString mDescription;
 
     bool mAutoCreated = false;
-
 };
 
 //! List of processing parameters
@@ -145,79 +202,78 @@ typedef QList< const QgsProcessingOutputDefinition * > QgsProcessingOutputDefini
 /**
  * \class QgsProcessingOutputMapLayer
  * \ingroup core
- * A map layer output for processing algorithms, where layers may be either vector or raster.
+ * \brief A map layer output for processing algorithms, where layers may be either vector or raster.
  *
  * If the actual layer output type is known (e.g. always vector or always raster), use
  * QgsProcessingOutputVectorLayer or QgsProcessingOutputRasterLayer instead.
  *
-  * \since QGIS 3.0
  */
 class CORE_EXPORT QgsProcessingOutputMapLayer : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputMapLayer.
      */
     QgsProcessingOutputMapLayer( const QString &name, const QString &description = QString() );
 
+    QColor modelColor() const override;
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputLayer" ); }
+    static QString typeName() { return u"outputLayer"_s; }
 
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override;
-
+    bool isMapLayer() const override;
 };
 
 /**
  * \class QgsProcessingOutputVectorLayer
  * \ingroup core
- * A vector layer output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A vector layer output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputVectorLayer : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputVectorLayer.
      */
-    QgsProcessingOutputVectorLayer( const QString &name, const QString &description = QString(), QgsProcessing::SourceType type = QgsProcessing::TypeVectorAnyGeometry );
+    QgsProcessingOutputVectorLayer( const QString &name, const QString &description = QString(), Qgis::ProcessingSourceType type = Qgis::ProcessingSourceType::VectorAnyGeometry );
+
+    QColor modelColor() const override;
 
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputVector" ); }
+    static QString typeName() { return u"outputVector"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
+    bool isMapLayer() const override;
 
     /**
      * Returns the layer type for the output layer.
      * \see setDataType()
      */
-    QgsProcessing::SourceType dataType() const;
+    Qgis::ProcessingSourceType dataType() const;
 
     /**
      * Sets the layer \a type for the output layer.
      * \see dataType()
      */
-    void setDataType( QgsProcessing::SourceType type );
+    void setDataType( Qgis::ProcessingSourceType type );
 
   private:
-
-    QgsProcessing::SourceType mDataType = QgsProcessing::TypeVectorAnyGeometry;
+    Qgis::ProcessingSourceType mDataType = Qgis::ProcessingSourceType::VectorAnyGeometry;
 };
 
 /**
  * \class QgsProcessingOutputRasterLayer
  * \ingroup core
- * A raster layer output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A raster layer output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputRasterLayer : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputRasterLayer.
      */
@@ -226,16 +282,42 @@ class CORE_EXPORT QgsProcessingOutputRasterLayer : public QgsProcessingOutputDef
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputRaster" ); }
+    static QString typeName() { return u"outputRaster"_s; }
+
+    QColor modelColor() const override;
+
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
+    bool isMapLayer() const override;
+};
 
+/**
+ * \class QgsProcessingOutputPointCloudLayer
+ * \ingroup core
+ * \brief A pointcloud layer output for processing algorithms.
+  * \since QGIS 3.24
+ */
+class CORE_EXPORT QgsProcessingOutputPointCloudLayer : public QgsProcessingOutputDefinition
+{
+  public:
+    /**
+     * Constructor for QgsProcessingOutputPointCloudLayer.
+     */
+    QgsProcessingOutputPointCloudLayer( const QString &name, const QString &description = QString() );
 
+    /**
+     * Returns the type name for the output class.
+     */
+    static QString typeName() { return u"outputPointCloud"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
+    QString type() const override { return typeName(); }
+    bool isMapLayer() const override;
 };
 
 /**
  * \class QgsProcessingOutputMultipleLayers
  * \ingroup core
- * A multi-layer output for processing algorithms which create map layers, when
+ * \brief A multi-layer output for processing algorithms which create map layers, when
  * the number and nature of the output layers is not predefined.
  *
  * \note Always prefer to explicitly define QgsProcessingOutputVectorLayer,
@@ -243,12 +325,10 @@ class CORE_EXPORT QgsProcessingOutputRasterLayer : public QgsProcessingOutputDef
  * should only ever be used when the number of output layers is not
  * fixed - e.g. as a result of processing all layers in a specified
  * folder.
-  * \since QGIS 3.0
  */
 class CORE_EXPORT QgsProcessingOutputMultipleLayers : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputMultipleLayers.
      */
@@ -257,21 +337,23 @@ class CORE_EXPORT QgsProcessingOutputMultipleLayers : public QgsProcessingOutput
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputMultilayer" ); }
+    static QString typeName() { return u"outputMultilayer"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override;
 
+    QColor modelColor() const override;
+    QString valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
+    bool isMapLayer() const override;
 };
 
 /**
  * \class QgsProcessingOutputHtml
  * \ingroup core
- * A HTML file output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A HTML file output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputHtml : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputHtml.
      */
@@ -280,88 +362,120 @@ class CORE_EXPORT QgsProcessingOutputHtml : public QgsProcessingOutputDefinition
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputHtml" ); }
+    static QString typeName() { return u"outputHtml"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
 
+    QColor modelColor() const override;
+    QString valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
+};
+
+
+/**
+ * \class QgsProcessingOutputVariant
+ * \ingroup core
+ * \brief A variant output for processing algorithms, capable of storing any QVariant value.
+  * \since QGIS 3.34
+ */
+class CORE_EXPORT QgsProcessingOutputVariant : public QgsProcessingOutputDefinition
+{
+  public:
+    /**
+     * Constructor for QgsProcessingOutputVariant.
+     */
+    QgsProcessingOutputVariant( const QString &name, const QString &description = QString() );
+
+    /**
+     * Returns the type name for the output class.
+     */
+    static QString typeName() { return u"outputVariant"_s; }
+
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
+    QString type() const override;
+    QString valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
 };
 
 /**
  * \class QgsProcessingOutputNumber
  * \ingroup core
- * A numeric output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A numeric output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputNumber : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputNumber.
      */
     QgsProcessingOutputNumber( const QString &name, const QString &description = QString() );
 
+    QColor modelColor() const override;
+
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputNumber" ); }
+    static QString typeName() { return u"outputNumber"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
+    QString valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
 };
 
 /**
  * \class QgsProcessingOutputString
  * \ingroup core
- * A string output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A string output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputString : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputString.
      */
     QgsProcessingOutputString( const QString &name, const QString &description = QString() );
 
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
+
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputString" ); }
-    QString type() const override { return typeName(); }
+    static QString typeName() { return u"outputString"_s; }
 
+    QColor modelColor() const override;
+    QString type() const override { return typeName(); }
 };
 
 /**
  * \class QgsProcessingOutputBoolean
  * \ingroup core
- * A boolean output for processing algorithms.
+ * \brief A boolean output for processing algorithms.
   * \since QGIS 3.8
  */
 class CORE_EXPORT QgsProcessingOutputBoolean : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputNumber.
      */
     QgsProcessingOutputBoolean( const QString &name, const QString &description = QString() );
 
+    QColor modelColor() const override;
+
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputBoolean" ); }
+    static QString typeName() { return u"outputBoolean"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
+    QString valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
 };
 
 /**
  * \class QgsProcessingOutputFolder
  * \ingroup core
- * A folder output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A folder output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputFolder : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputFolder.
      */
@@ -371,21 +485,22 @@ class CORE_EXPORT QgsProcessingOutputFolder : public QgsProcessingOutputDefiniti
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputFolder" ); }
+    static QString typeName() { return u"outputFolder"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
 
+    QColor modelColor() const override;
+    QString valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
 };
 
 /**
  * \class QgsProcessingOutputFile
  * \ingroup core
- * A file output for processing algorithms.
-  * \since QGIS 3.0
+ * \brief A file output for processing algorithms.
  */
 class CORE_EXPORT QgsProcessingOutputFile : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputFile.
      */
@@ -394,22 +509,24 @@ class CORE_EXPORT QgsProcessingOutputFile : public QgsProcessingOutputDefinition
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputFile" ); }
+    static QString typeName() { return u"outputFile"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
 
+    QColor modelColor() const override;
+    QString valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok SIP_OUT ) const override;
 };
 
 /**
  * \class QgsProcessingOutputConditionalBranch
  * \ingroup core
- * A conditional branch output for processing algorithms, which represents a possible model logic
+ * \brief A conditional branch output for processing algorithms, which represents a possible model logic
  * flow which branches out from this algorithm.
   * \since QGIS 3.14
  */
 class CORE_EXPORT QgsProcessingOutputConditionalBranch : public QgsProcessingOutputDefinition
 {
   public:
-
     /**
      * Constructor for QgsProcessingOutputConditionalBranch.
      */
@@ -418,12 +535,34 @@ class CORE_EXPORT QgsProcessingOutputConditionalBranch : public QgsProcessingOut
     /**
      * Returns the type name for the output class.
      */
-    static QString typeName() { return QStringLiteral( "outputBranch" ); }
+    static QString typeName() { return u"outputBranch"_s; }
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
     QString type() const override { return typeName(); }
-
 };
 
+/**
+ * \class QgsProcessingOutputVectorTileLayer
+ * \ingroup core
+ * \brief A vector tile layer output for processing algorithms.
+  * \since QGIS 3.32
+ */
+class CORE_EXPORT QgsProcessingOutputVectorTileLayer : public QgsProcessingOutputDefinition
+{
+  public:
+    /**
+     * Constructor for QgsProcessingOutputVectorTileLayer.
+     */
+    QgsProcessingOutputVectorTileLayer( const QString &name, const QString &description = QString() );
+
+    /**
+     * Returns the type name for the output class.
+     */
+    static QString typeName() { return u"outputVectorTile"_s; }
+
+    QColor modelColor() const override;
+    QgsProcessingOutputDefinition *clone() const override SIP_FACTORY;
+    QString type() const override { return typeName(); }
+    bool isMapLayer() const override;
+};
 
 #endif // QGSPROCESSINGOUTPUTS_H
-
-

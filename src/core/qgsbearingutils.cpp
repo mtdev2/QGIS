@@ -16,16 +16,22 @@
  ***************************************************************************/
 
 #include "qgsbearingutils.h"
-#include "qgscoordinatereferencesystem.h"
-#include "qgscoordinatetransformcontext.h"
-#include "qgspointxy.h"
-#include "qgscoordinatetransform.h"
-#include "qgsexception.h"
 
-double QgsBearingUtils::bearingTrueNorth( const QgsCoordinateReferenceSystem &crs, const QgsCoordinateTransformContext  &transformContext, const QgsPointXY &point )
+#include "qgscoordinatereferencesystem.h"
+#include "qgscoordinatetransform.h"
+#include "qgscoordinatetransformcontext.h"
+#include "qgsexception.h"
+#include "qgspointxy.h"
+
+#include "moc_qgsbearingutils.cpp"
+
+double QgsBearingUtils::bearingTrueNorth( const QgsCoordinateReferenceSystem &crs, const QgsCoordinateTransformContext &transformContext, const QgsPointXY &point )
 {
-  // step 1 - transform point into WGS84 geographic crs
-  QgsCoordinateTransform transform( crs, QgsCoordinateReferenceSystem::fromEpsgId( 4326 ), transformContext );
+  const QgsCoordinateReferenceSystem geographicCrs = crs.toGeographicCrs();
+  if ( !geographicCrs.isValid() )
+    return 0.0;
+
+  const QgsCoordinateTransform transform( crs, geographicCrs, transformContext );
 
   if ( !transform.isValid() )
   {
@@ -36,14 +42,14 @@ double QgsBearingUtils::bearingTrueNorth( const QgsCoordinateReferenceSystem &cr
   if ( transform.isShortCircuited() )
     return 0.0;
 
-  QgsPointXY p1 = transform.transform( point );
+  const QgsPointXY p1 = transform.transform( point );
 
   // shift point a tiny bit north
   QgsPointXY p2 = p1;
   p2.setY( p2.y() + 0.000001 );
 
   //transform back
-  QgsPointXY p3 = transform.transform( p2, QgsCoordinateTransform::ReverseTransform );
+  const QgsPointXY p3 = transform.transform( p2, Qgis::TransformDirection::Reverse );
 
   // find bearing from point to p3
   return point.azimuth( p3 );

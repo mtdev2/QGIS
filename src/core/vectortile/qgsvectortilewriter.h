@@ -16,9 +16,12 @@
 #ifndef QGSVECTORTILEWRITER_H
 #define QGSVECTORTILEWRITER_H
 
-#include <QCoreApplication>
-#include "qgsrectangle.h"
+#include "qgscoordinatereferencesystem.h"
 #include "qgscoordinatetransformcontext.h"
+#include "qgsrectangle.h"
+#include "qgstiles.h"
+
+#include <QCoreApplication>
 
 class QgsFeedback;
 class QgsTileMatrix;
@@ -28,7 +31,9 @@ class QgsVectorLayer;
 
 /**
  * \ingroup core
- * Takes care of writing vector tiles. The intended use is to set up the class
+ * \brief Takes care of writing vector tiles.
+ *
+ * The intended use is to set up the class
  * by setting the destination URI, extent, zoom level range and input vector
  * layers. Then with a call to writeTiles() the data gets written. In case
  * of a failure, errorMessage() returns the cause of the problem during writing.
@@ -78,7 +83,7 @@ class CORE_EXPORT QgsVectorTileWriter
 
     /**
      * \ingroup core
-     * Configuration of a single input vector layer to be included in the output
+     * \brief Configuration of a single input vector layer to be included in the output.
      * \since QGIS 3.14
      */
     class Layer
@@ -87,8 +92,7 @@ class CORE_EXPORT QgsVectorTileWriter
         //! Constructs an entry for a vector layer
         explicit Layer( QgsVectorLayer *layer )
           : mLayer( layer )
-        {
-        }
+        {}
 
         //! Returns vector layer of this entry
         QgsVectorLayer *layer() const { return mLayer; }
@@ -128,7 +132,7 @@ class CORE_EXPORT QgsVectorTileWriter
     void setDestinationUri( const QString &uri ) { mDestinationUri = uri; }
 
     /**
-     * Sets extent of vector tile output. Currently always in EPSG:3857.
+     * Sets extent of vector tile output.
      * If unset, it will use the full extent of all input layers combined
      */
     void setExtent( const QgsRectangle &extent ) { mExtent = extent; }
@@ -148,6 +152,11 @@ class CORE_EXPORT QgsVectorTileWriter
     void setTransformContext( const QgsCoordinateTransformContext &transformContext ) { mTransformContext = transformContext; }
 
     /**
+     * Sets zoom level 0 tile matrix
+     */
+    bool setRootTileMatrix( const QgsTileMatrix &tileMatrix );
+
+    /**
      * Writes vector tiles according to the configuration.
      * Returns TRUE on success (upon failure one can get error cause using errorMessage())
      *
@@ -165,11 +174,26 @@ class CORE_EXPORT QgsVectorTileWriter
     //! Returns calculated extent that combines extent of all input layers
     QgsRectangle fullExtent() const;
 
-  private:
-    bool writeTileFileXYZ( const QString &sourcePath, QgsTileXYZ tileID, const QgsTileMatrix &tileMatrix, const QByteArray &tileData );
-    QString mbtilesJsonSchema();
+    /**
+     * Encodes single MVT tile
+     *
+     * \param tileID Tile identifier
+     * \param feedback  optional, provide cancellation functionality
+     * \param resolution the resolution of coordinates of geometries within the tile. The default is 4096
+     * \param buffer size of the buffer zone around tile edges in integer tile coordinates. The default is 256 (~6%)
+     *
+     * Returns a QByteArray with the encoded data
+     *
+     * \since QGIS 3.22
+    */
+    QByteArray writeSingleTile( QgsTileXYZ tileID, QgsFeedback *feedback = nullptr, int buffer = 256, int resolution = 4096 ) const;
 
   private:
+    bool writeTileFileXYZ( const QString &sourcePath, QgsTileXYZ tileID, const QgsTileMatrix &tileMatrix, const QByteArray &tileData );
+    QString mbtilesJsonSchema() const;
+
+  private:
+    QgsTileMatrix mRootTileMatrix;
     QgsRectangle mExtent;
     int mMinZoom = 0;
     int mMaxZoom = 4;

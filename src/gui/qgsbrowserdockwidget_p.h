@@ -32,17 +32,17 @@
 // version without notice, or even be removed.
 //
 
-#include <QSortFilterProxyModel>
-
-#include "ui_qgsbrowserdockwidgetbase.h"
-#include "ui_qgsbrowserlayerpropertiesbase.h"
 #include "ui_qgsbrowserdirectorypropertiesbase.h"
+#include "ui_qgsbrowserlayerpropertiesbase.h"
 #include "ui_qgsbrowserpropertiesdialogbase.h"
 
-#include "qgsdataitem.h"
 #include "qgsbrowsertreeview.h"
-#include "qgsdockwidget.h"
 #include "qgsdataitemguiprovider.h"
+#include "qgsdockwidget.h"
+
+#include <QSortFilterProxyModel>
+
+#define SIP_NO_FILE
 
 class QgsBrowserGuiModel;
 class QModelIndex;
@@ -51,7 +51,6 @@ class QgsLayerItem;
 class QgsDataItem;
 class QgsDirectoryParamWidget;
 
-#define SIP_NO_FILE
 
 /**
  * Hack to show wrapped text without spaces
@@ -60,7 +59,6 @@ class QgsBrowserPropertiesWrapLabel : public QTextEdit
 {
     Q_OBJECT
   public:
-
     /**
       * Constructor for QgsBrowserPropertiesWrapLabel
       * \param text label text
@@ -79,7 +77,6 @@ class QgsBrowserPropertiesWidget : public QWidget
 {
     Q_OBJECT
   public:
-
     /**
       * Constructor for QgsBrowserPropertiesWidget
       * \param parent parent widget
@@ -96,7 +93,6 @@ class QgsBrowserPropertiesWidget : public QWidget
      * Sets whether the properties widget should display in condensed mode, ie, for display in a dock
      * widget rather than it's own separate dialog.
      * \param condensedMode set to TRUE to enable condensed mode
-     * \since QGIS 2.10
      */
     virtual void setCondensedMode( bool condensedMode ) { Q_UNUSED( condensedMode ) }
 };
@@ -108,7 +104,6 @@ class QgsBrowserLayerProperties : public QgsBrowserPropertiesWidget, private Ui:
 {
     Q_OBJECT
   public:
-
     /**
       * Constructor for QgsBrowserLayerProperties
       * \param parent parent widget
@@ -121,7 +116,6 @@ class QgsBrowserLayerProperties : public QgsBrowserPropertiesWidget, private Ui:
      * Sets whether the properties widget should display in condensed mode, ie, for display in a dock
      * widget rather than it's own separate dialog.
      * \param condensedMode set to TRUE to enable condensed mode
-     * \since QGIS 2.10
      */
     void setCondensedMode( bool condensedMode ) override;
 
@@ -130,12 +124,10 @@ class QgsBrowserLayerProperties : public QgsBrowserPropertiesWidget, private Ui:
     void urlClicked( const QUrl &url );
 
   private:
-
     void loadAttributeTable();
 
     std::unique_ptr<QgsMapLayer> mLayer;
     QgsAttributeTableFilterModel *mAttributeTableFilterModel = nullptr;
-
 };
 
 /**
@@ -145,7 +137,6 @@ class QgsBrowserDirectoryProperties : public QgsBrowserPropertiesWidget, private
 {
     Q_OBJECT
   public:
-
     /**
       * Constructor for QgsBrowserDirectoryProperties
       * \param parent parent widget
@@ -154,6 +145,7 @@ class QgsBrowserDirectoryProperties : public QgsBrowserPropertiesWidget, private
 
     //! Create widget from the given item and add it
     void setItem( QgsDataItem *item ) override;
+
   private:
     QgsDirectoryParamWidget *mDirectoryWidget = nullptr;
     QgsBrowserPropertiesWrapLabel *mPathLabel = nullptr;
@@ -166,7 +158,6 @@ class GUI_EXPORT QgsBrowserPropertiesDialog : public QDialog, private Ui::QgsBro
 {
     Q_OBJECT
   public:
-
     /**
       * Constructor for QgsBrowserPropertiesDialog
       * \param settingsSection prefix for settings (from the object name)
@@ -196,7 +187,6 @@ class QgsDockBrowserTreeView : public QgsBrowserTreeView
     Q_OBJECT
 
   public:
-
     /**
       * Constructor for QgsDockBrowserTreeView
       * \param parent parent widget

@@ -14,13 +14,18 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgskeyvaluefieldformatter.h"
+
 #include "qgsapplication.h"
+#include "qgsvariantutils.h"
 
 #include <QSettings>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QString QgsKeyValueFieldFormatter::id() const
 {
-  return QStringLiteral( "KeyValue" );
+  return u"KeyValue"_s;
 }
 
 QString QgsKeyValueFieldFormatter::representValue( QgsVectorLayer *layer, int fieldIndex, const QVariantMap &config, const QVariant &cache, const QVariant &value ) const
@@ -30,7 +35,7 @@ QString QgsKeyValueFieldFormatter::representValue( QgsVectorLayer *layer, int fi
   Q_UNUSED( config )
   Q_UNUSED( cache )
 
-  if ( value.isNull() )
+  if ( QgsVariantUtils::isNull( value ) )
   {
     return QgsApplication::nullRepresentation();
   }

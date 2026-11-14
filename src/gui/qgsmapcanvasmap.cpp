@@ -13,14 +13,18 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsmapcanvasmap.h"
+
 #include "qgslogger.h"
 #include "qgsmapcanvas.h"
-#include "qgsmapcanvasmap.h"
+#include "qgsmaplayer.h"
 #include "qgsmaprendererjob.h"
 #include "qgsmapsettings.h"
-#include "qgsmaplayer.h"
 
 #include <QPainter>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /// @cond PRIVATE
 
@@ -38,22 +42,21 @@ void QgsMapCanvasMap::setContent( const QImage &image, const QgsRectangle &rect 
 
   // For true retro fans: this is approximately how the graphics looked like in 1990
   if ( mMapCanvas->property( "retro" ).toBool() )
-    mImage = mImage.scaled( mImage.width() / 3, mImage.height() / 3 )
-             .convertToFormat( QImage::Format_Indexed8, Qt::OrderedDither | Qt::OrderedAlphaDither );
+    mImage = mImage.scaled( mImage.width() / 3, mImage.height() / 3 ).convertToFormat( QImage::Format_Indexed8, Qt::OrderedDither | Qt::OrderedAlphaDither );
 
   setRect( rect );
 }
 
-void QgsMapCanvasMap::addPreviewImage( const QImage &image, const QgsRectangle &rect )
+void QgsMapCanvasMap::addPreviewImage( const QImage &image, const QPolygonF &visiblePolygon )
 {
-  mPreviewImages.append( qMakePair( image, rect ) );
+  mPreviewImages.append( qMakePair( image, visiblePolygon ) );
   update();
 }
 
 QRectF QgsMapCanvasMap::boundingRect() const
 {
-  double width = mItemSize.width();
-  double height = mItemSize.height();
+  const double width = mItemSize.width();
+  const double height = mItemSize.height();
 
   return QRectF( -width, -height, 3 * width, 3 * height );
 }
@@ -61,16 +64,13 @@ QRectF QgsMapCanvasMap::boundingRect() const
 void QgsMapCanvasMap::paint( QPainter *painter )
 {
   // setRect() makes the size +2 :-(
-  int w = std::round( mItemSize.width() ) - 2;
-  int h = std::round( mItemSize.height() ) - 2;
+  const int w = std::round( mItemSize.width() ) - 2;
+  const int h = std::round( mItemSize.height() ) - 2;
 
   bool scale = false;
   if ( mImage.size() != QSize( w, h ) * mImage.devicePixelRatioF() )
   {
-    QgsDebugMsgLevel( QStringLiteral( "map paint DIFFERENT SIZE: img %1,%2  item %3,%4" )
-                      .arg( mImage.width() / mImage.devicePixelRatioF() )
-                      .arg( mImage.height() / mImage.devicePixelRatioF() )
-                      .arg( w ).arg( h ), 2 );
+    QgsDebugMsgLevel( u"map paint DIFFERENT SIZE: img %1,%2  item %3,%4"_s.arg( mImage.width() / mImage.devicePixelRatioF() ).arg( mImage.height() / mImage.devicePixelRatioF() ).arg( w ).arg( h ), 2 );
     // This happens on zoom events when ::paint is called before
     // the renderer has completed
     scale = true;
@@ -78,17 +78,19 @@ void QgsMapCanvasMap::paint( QPainter *painter )
 
   /*Offset between 0/0 and mRect.xMinimum/mRect.yMinimum.
   We need to consider the offset, because mRect is not updated yet and there might be an offset*/
-  QgsPointXY pt = toMapCoordinates( QPoint( 0, 0 ) );
-  double offsetX = pt.x() - mRect.xMinimum();
-  double offsetY = pt.y() - mRect.yMaximum();
+  const QgsPointXY pt = toMapCoordinates( QPoint( 0, 0 ) );
+  const double offsetX = pt.x() - mRect.xMinimum();
+  const double offsetY = pt.y() - mRect.yMaximum();
 
   //draw preview images first
-  QList< QPair< QImage, QgsRectangle > >::const_iterator imIt = mPreviewImages.constBegin();
+  QList<QPair<QImage, QPolygonF>>::const_iterator imIt = mPreviewImages.constBegin();
   for ( ; imIt != mPreviewImages.constEnd(); ++imIt )
   {
-    QPointF ul = toCanvasCoordinates( QgsPoint( imIt->second.xMinimum() + offsetX, imIt->second.yMaximum() + offsetY ) );
-    QPointF lr = toCanvasCoordinates( QgsPoint( imIt->second.xMaximum() + offsetX, imIt->second.yMinimum() + offsetY ) );
-    painter->drawImage( QRectF( ul.x(), ul.y(), lr.x() - ul.x(), lr.y() - ul.y() ), imIt->first, QRect( 0, 0, imIt->first.width(), imIt->first.height() ) );
+    const QPointF mapTopLeft = imIt->second.at( 0 );
+    const QPointF mapBottomRight = imIt->second.at( 2 );
+    const QPointF canvasTopLeft = toCanvasCoordinates( QgsPoint( mapTopLeft.x() + offsetX, mapTopLeft.y() + offsetY ) );
+    const QPointF canvasBottomRight = toCanvasCoordinates( QgsPoint( mapBottomRight.x() + offsetX, mapBottomRight.y() + offsetY ) );
+    painter->drawImage( QRectF( canvasTopLeft, canvasBottomRight ), imIt->first, QRect( 0, 0, imIt->first.width(), imIt->first.height() ) );
   }
 
   if ( scale )

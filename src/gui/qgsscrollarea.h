@@ -16,16 +16,18 @@
 #ifndef QGSSCROLLAREA_H
 #define QGSSCROLLAREA_H
 
-#include <QScrollArea>
-#include "qgis_sip.h"
 #include "qgis_gui.h"
-#include <QTimer>
+#include "qgis_sip.h"
+
+#include <QElapsedTimer>
+#include <QScrollArea>
+
 class ScrollAreaFilter;
 
 /**
  * \class QgsScrollArea
  * \ingroup gui
- * A QScrollArea subclass with improved scrolling behavior.
+ * \brief A QScrollArea subclass with improved scrolling behavior.
  *
  * QgsScrollArea should be used instead of QScrollArea widgets.
  * In most cases the use is identical, however QgsScrollArea
@@ -36,14 +38,12 @@ class ScrollAreaFilter;
  * All QGIS code and plugins should use QgsScrollArea in place
  * of QScrollArea.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsScrollArea : public QScrollArea
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsScrollArea.
      */
@@ -62,6 +62,13 @@ class GUI_EXPORT QgsScrollArea : public QScrollArea
     bool hasScrolled() const;
 
     /**
+     * Resets the hasScrolled() flag.
+     *
+     * \since QGIS 3.24
+     */
+    void resetHasScrolled() SIP_SKIP;
+
+    /**
      * Sets whether the scroll area only applies vertical.
      *
      * If set to TRUE, then scroll area children will resize horizontally to match the width of
@@ -76,10 +83,10 @@ class GUI_EXPORT QgsScrollArea : public QScrollArea
     void resizeEvent( QResizeEvent *event ) override;
 
   private:
-    QTimer mTimer;
+    bool mTimerActive = false;
+    QElapsedTimer mTimer;
     ScrollAreaFilter *mFilter = nullptr;
     bool mVerticalOnly = false;
-
 };
 
 #ifndef SIP_RUN
@@ -95,9 +102,7 @@ class ScrollAreaFilter : public QObject
 {
     Q_OBJECT
   public:
-
-    ScrollAreaFilter( QgsScrollArea *parent = nullptr,
-                      QWidget *viewPort = nullptr );
+    ScrollAreaFilter( QgsScrollArea *parent = nullptr, QWidget *viewPort = nullptr );
 
   protected:
     bool eventFilter( QObject *obj, QEvent *event ) override;
@@ -105,10 +110,11 @@ class ScrollAreaFilter : public QObject
   private:
     QgsScrollArea *mScrollAreaWidget = nullptr;
     QWidget *mViewPort = nullptr;
+    QPoint mPreviousViewportCursorPos;
+    int mMoveDistanceThreshold = 0;
 
     void addChild( QObject *child );
     void removeChild( QObject *child );
-
 };
 
 ///@endcond PRIVATE

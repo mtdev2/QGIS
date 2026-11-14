@@ -2,8 +2,8 @@
                          qgsellipse.h
                          --------------
     begin                : March 2017
-    copyright            : (C) 2017 by Loîc Bartoletti
-    email                : lbartoletti at tuxfamily dot org
+    copyright            : (C) 2017 by Loïc Bartoletti
+    email                : lituus at free dot fr
  ***************************************************************************/
 
 /***************************************************************************
@@ -18,13 +18,15 @@
 #ifndef QGSELLIPSE_H
 #define QGSELLIPSE_H
 
-#include <QString>
-
 #include "qgis_core.h"
+#include "qgslinestring.h"
 #include "qgspoint.h"
 #include "qgspolygon.h"
-#include "qgslinestring.h"
 #include "qgsrectangle.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
@@ -34,17 +36,16 @@
  * An ellipse is defined by a center point with a semi-major axis, a semi-minor axis and an azimuth.
  * The azimuth is the north angle to the first quadrant (always oriented on the semi-major axis), in degrees. By default, the semi-major axis is oriented to the east (90 degrees).
  * The semi-minor axis is always smaller than the semi-major axis. If it is set larger, it will be swapped and the azimuth will increase by 90 degrees.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsEllipse
 {
-
   public:
-
+    // clang-format off
     /**
      * Constructor for QgsEllipse.
      */
     QgsEllipse() SIP_HOLDGIL = default;
+    // clang-format on
 
     virtual ~QgsEllipse() = default;
 
@@ -241,11 +242,13 @@ class CORE_EXPORT QgsEllipse
     virtual QString toString( int pointPrecision = 17, int axisPrecision = 17, int azimuthPrecision = 2 ) const;
 
 #ifdef SIP_RUN
+// clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
-    QString str = QStringLiteral( "<QgsEllipse: %1>" ).arg( sipCpp->toString() );
+    QString str = u"<QgsEllipse: %1>"_s.arg( sipCpp->toString() );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
   protected:
@@ -257,6 +260,8 @@ class CORE_EXPORT QgsEllipse
   private:
     //! The semi-minor axis is always smaller than the semi-major axis. If it is set larger, it will be swapped and the azimuth will increase by 90 degrees.
     void normalizeAxis();
+
+    void pointsInternal( unsigned int segments, QVector< double> &x, QVector< double> &y, QVector<double> &z, QVector< double> &m ) const;
 };
 
 #endif // QGSELLIPSE_H

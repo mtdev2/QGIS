@@ -16,11 +16,12 @@
 #define QGSRULEBASEDLABELING_H
 
 #include "qgis_core.h"
-#include <QStringList>
-#include <QMap>
-
 #include "qgsvectorlayerlabeling.h"
 #include "qgsvectorlayerlabelprovider.h"
+
+#include <QMap>
+#include <QStringList>
+#include <QUuid>
 
 class QDomDocument;
 class QDomElement;
@@ -35,30 +36,33 @@ class QgsRuleBasedLabelProvider;
 /**
  * \ingroup core
  * \class QgsRuleBasedLabeling
- * \since QGIS 3.0
+ * \brief Rule based labeling for a vector layer.
  */
 class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
 {
   public:
     class Rule;
     typedef QList<QgsRuleBasedLabeling::Rule *> RuleList;
-    typedef QMap<QgsRuleBasedLabeling::Rule *, QgsVectorLayerLabelProvider *> RuleToProviderMap;
 
+  private:
+    typedef std::vector<std::pair<QgsRuleBasedLabeling::Rule *, QgsVectorLayerLabelProvider *>> RuleToProviderVec;
+
+  public:
     /**
      * \ingroup core
      * \class QgsRuleBasedLabeling::Rule
-     * \since QGIS 3.0
+     * \brief A child rule for QgsRuleBasedLabeling.
      */
     class CORE_EXPORT Rule
     {
       public:
         //! takes ownership of settings, settings may be NULLPTR
-        Rule( QgsPalLayerSettings *settings SIP_TRANSFER, double maximumScale = 0, double minimumScale = 0, const QString &filterExp = QString(), const QString &description = QString(), bool elseRule = false );
+        Rule(
+          QgsPalLayerSettings *settings SIP_TRANSFER, double maximumScale = 0, double minimumScale = 0, const QString &filterExp = QString(), const QString &description = QString(), bool elseRule = false
+        );
         ~Rule();
 
-        //! Rules cannot be copied.
         Rule( const Rule &rh ) = delete;
-        //! Rules cannot be copied.
         Rule &operator=( const Rule &rh ) = delete;
 
         //! The result of registering a rule
@@ -87,7 +91,6 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          * A scale of 0 indicates no maximum scale visibility.
          * \see minimumScale()
          * \see setMaximumScale()
-         * \since QGIS 3.0
          */
         double maximumScale() const { return mMaximumScale; }
 
@@ -97,7 +100,6 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          * A scale of 0 indicates no minimum scale visibility.
          * \see maximumScale()
          * \see setMinimumScale()
-         * \since QGIS 3.0
          */
         double minimumScale() const { return mMinimumScale; }
 
@@ -157,7 +159,11 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          *
          * \param filterExp An expression
          */
-        void setFilterExpression( const QString &filterExp ) { mFilterExp = filterExp; initFilter(); }
+        void setFilterExpression( const QString &filterExp )
+        {
+          mFilterExp = filterExp;
+          initFilter();
+        }
 
         /**
          * Set a human readable description for this rule
@@ -238,12 +244,15 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          *
          * \returns The rule or NULLPTR if not found
          *
-         * \since QGIS 3.0
          */
         QgsRuleBasedLabeling::Rule *findRuleByKey( const QString &key ) SIP_SKIP;
 
-        //! clone this rule, return new instance
-        QgsRuleBasedLabeling::Rule *clone() const SIP_FACTORY;
+        /**
+         * clone this rule
+         * \param resetRuleKey TRUE if this rule and its children rule key need to be reset to new unique ones.
+         * \returns new instance
+         */
+        std::unique_ptr<QgsRuleBasedLabeling::Rule> clone( bool resetRuleKey = true ) const;
 
         // load / save
 
@@ -251,9 +260,10 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          * Create a rule from an XML definition
          * \param ruleElem  The XML rule element
          * \param context reading context
+         * \param reuseId set to TRUE to create an exact copy of the original symbol or FALSE to create a new rule with the same parameters as the original but a new unique ruleKey(). (Since QGIS 3.30)
          * \returns A new rule
          */
-        static QgsRuleBasedLabeling::Rule *create( const QDomElement &ruleElem, const QgsReadWriteContext &context ) SIP_FACTORY;
+        static std::unique_ptr<QgsRuleBasedLabeling::Rule> create( const QDomElement &ruleElem, const QgsReadWriteContext &context, bool reuseId = true );
 
         //! store labeling info to XML element
         QDomElement save( QDomDocument &doc, const QgsReadWriteContext &context ) const;
@@ -264,7 +274,7 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          * add providers
          * \note not available in Python bindings
          */
-        void createSubProviders( QgsVectorLayer *layer, RuleToProviderMap &subProviders, QgsRuleBasedLabelProvider *provider ) SIP_SKIP;
+        void createSubProviders( QgsVectorLayer *layer, RuleToProviderVec &subProviders, QgsRuleBasedLabelProvider *provider ) SIP_SKIP;
 
         /**
          * append rule keys of descendants that contain valid settings (i.e. they will be sub-providers)
@@ -276,19 +286,38 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
          * call prepare() on sub-providers and populate attributeNames
          * \note not available in Python bindings
          */
-        void prepare( QgsRenderContext &context, QSet<QString> &attributeNames, RuleToProviderMap &subProviders ) SIP_SKIP;
+        void prepare( QgsRenderContext &context, QSet<QString> &attributeNames, RuleToProviderVec &subProviders ) SIP_SKIP;
 
         /**
-         * register individual features
+         * Register individual features
+         *
+         * Returns result of registration, together with a list of all label features which
+         * were created as a result of registering \a feature. Ownership of these label features is not transferred
+         * (it has already been assigned to the label provider).
+         *
          * \note not available in Python bindings
          */
-        RegisterResult registerFeature( const QgsFeature &feature, QgsRenderContext &context, RuleToProviderMap &subProviders, const QgsGeometry &obstacleGeometry = QgsGeometry(), const QgsSymbol *symbol = nullptr ) SIP_SKIP;
+        std::tuple< RegisterResult, QList< QgsLabelFeature * > > registerFeature( const QgsFeature &feature, QgsRenderContext &context, RuleToProviderVec &subProviders, const QgsLabelFeatureDetails &details )
+          SIP_SKIP;
 
         /**
          * Returns TRUE if this rule or any of its children requires advanced composition effects
          * to render.
          */
         bool requiresAdvancedEffects() const;
+
+        /**
+         * Returns TRUE if this rule or any of its children requires a non-default composition mode.
+         *
+         * This method is pessimistic, in that it will return TRUE in cases where composition
+         * modes cannot be easily determined in advance (e.g. when data-defined overrides are
+         * in place for composition modes).
+         *
+         * The default composition mode is QPainter::CompositionMode_SourceOver.
+         *
+         * \since QGIS 3.44
+         */
+        bool hasNonDefaultCompositionMode() const;
 
         /**
          * Accepts the specified symbology \a visitor, causing it to visit all child rules associated
@@ -349,7 +378,6 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
         QString mRuleKey = QUuid::createUuid().toString(); // string used for unique identification of rule within labeling
 
         std::unique_ptr<QgsExpression> mFilter;
-
     };
 
 
@@ -361,7 +389,7 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
     const Rule *rootRule() const SIP_SKIP;
 
     //! Create the instance from a DOM element with saved configuration
-    static QgsRuleBasedLabeling *create( const QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsRuleBasedLabeling> create( const QDomElement &element, const QgsReadWriteContext &context ); // cppcheck-suppress duplInheritedMember
 
     // implementation of parent interface
 
@@ -380,11 +408,14 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
      * \param settings Pal layer settings
      * \param providerId The id of the provider
      *
-     * \since QGIS 3.0
      */
     void setSettings( QgsPalLayerSettings *settings SIP_TRANSFER, const QString &providerId = QString() ) override;
     bool requiresAdvancedEffects() const override;
-    void toSld( QDomNode &parent, const QVariantMap &props ) const override;
+    bool hasNonDefaultCompositionMode() const override;
+    Q_DECL_DEPRECATED void toSld( QDomNode &parent, const QVariantMap &properties ) const override SIP_DEPRECATED;
+    bool toSld( QDomNode &parent, QgsSldExportContext &context ) const override;
+    void multiplyOpacity( double opacityFactor ) override;
+
 
   protected:
     std::unique_ptr<Rule> mRootRule;
@@ -395,6 +426,7 @@ class CORE_EXPORT QgsRuleBasedLabeling : public QgsAbstractVectorLayerLabeling
 /**
  * \ingroup core
  * \class QgsRuleBasedLabelProvider
+ * \brief Label provider for rule based labeling.
  * \note not available in Python bindings
  * \note this class is not a part of public API yet. See notes in QgsLabelingEngine
  */
@@ -407,7 +439,7 @@ class CORE_EXPORT QgsRuleBasedLabelProvider : public QgsVectorLayerLabelProvider
 
     bool prepare( QgsRenderContext &context, QSet<QString> &attributeNames ) override;
 
-    void registerFeature( const QgsFeature &feature, QgsRenderContext &context, const QgsGeometry &obstacleGeometry = QgsGeometry(), const QgsSymbol *symbol = nullptr ) override;
+    QList< QgsLabelFeature * > registerFeature( const QgsFeature &feature, QgsRenderContext &context, const QgsLabelFeatureDetails &details = QgsLabelFeatureDetails() ) override;
 
     //! create a label provider
     virtual QgsVectorLayerLabelProvider *createProvider( QgsVectorLayer *layer, const QString &providerId, bool withFeatureLoop, const QgsPalLayerSettings *settings );
@@ -419,7 +451,7 @@ class CORE_EXPORT QgsRuleBasedLabelProvider : public QgsVectorLayerLabelProvider
     //! owned copy
     std::unique_ptr<QgsRuleBasedLabeling> mRules;
     //! label providers are owned by labeling engine
-    QgsRuleBasedLabeling::RuleToProviderMap mSubProviders;
+    std::vector<std::pair<QgsRuleBasedLabeling::Rule *, QgsVectorLayerLabelProvider *>> mSubProviders;
 };
 
 #endif

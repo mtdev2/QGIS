@@ -17,14 +17,14 @@
 #ifndef QGSTEXTBUFFERSETTINGS_H
 #define QGSTEXTBUFFERSETTINGS_H
 
-#include "qgis_sip.h"
+#include "qgis.h"
 #include "qgis_core.h"
+#include "qgis_sip.h"
 #include "qgsmapunitscale.h"
-#include "qgsunittypes.h"
 
-#include <QSharedData>
-#include <QPainter>
 #include <QDomElement>
+#include <QPainter>
+#include <QSharedData>
 
 class QgsReadWriteContext;
 class QgsTextBufferSettingsPrivate;
@@ -35,27 +35,19 @@ class QgsPropertyCollection;
 /**
  * \class QgsTextBufferSettings
   * \ingroup core
-  * Container for settings relating to a text buffer.
+  * \brief Container for settings relating to a text buffer.
   * \note QgsTextBufferSettings objects are implicitly shared.
-  * \since QGIS 3.0
  */
 class CORE_EXPORT QgsTextBufferSettings
 {
   public:
-
     QgsTextBufferSettings();
 
-    /**
-     * Copy constructor.
-     * \param other source settings
-     */
     QgsTextBufferSettings( const QgsTextBufferSettings &other );
+    SIP_SKIP QgsTextBufferSettings( QgsTextBufferSettings &&other );
 
-    /**
-     * Copy constructor.
-     * \param other source QgsTextBufferSettings
-     */
     QgsTextBufferSettings &operator=( const QgsTextBufferSettings &other );
+    QgsTextBufferSettings &operator=( QgsTextBufferSettings &&other );
 
     ~QgsTextBufferSettings();
 
@@ -95,7 +87,7 @@ class CORE_EXPORT QgsTextBufferSettings
      * \see size()
      * \see setSizeUnit()
      */
-    QgsUnitTypes::RenderUnit sizeUnit() const;
+    Qgis::RenderUnit sizeUnit() const;
 
     /**
      * Sets the units used for the buffer size.
@@ -103,7 +95,7 @@ class CORE_EXPORT QgsTextBufferSettings
      * \see setSize()
      * \see sizeUnit()
      */
-    void setSizeUnit( QgsUnitTypes::RenderUnit unit );
+    void setSizeUnit( Qgis::RenderUnit unit );
 
     /**
      * Returns the map unit scale object for the buffer size. This is only used if the
@@ -237,9 +229,7 @@ class CORE_EXPORT QgsTextBufferSettings
     QSet<QString> referencedFields( const QgsRenderContext &context ) const;
 
   private:
-
     QSharedDataPointer<QgsTextBufferSettingsPrivate> d;
-
 };
 
 #endif // QGSTEXTBUFFERSETTINGS_H

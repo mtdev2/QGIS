@@ -16,10 +16,9 @@
 #ifndef QGSXYZCONNECTIONDIALOG_H
 #define QGSXYZCONNECTIONDIALOG_H
 
-#include <QDialog>
-
 #include "ui_qgsxyzconnectiondialog.h"
 
+#include <QDialog>
 
 struct QgsXyzConnection;
 
@@ -34,6 +33,8 @@ class QgsXyzConnectionDialog : public QDialog, public Ui::QgsXyzConnectionDialog
     void setConnection( const QgsXyzConnection &conn );
 
     QgsXyzConnection connection() const;
+
+    QgsXyzSourceWidget *sourceWidget() { return mSourceWidget; }
 
     void accept() override;
 

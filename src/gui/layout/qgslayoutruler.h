@@ -15,12 +15,14 @@
 #ifndef QGSLAYOUTRULER_H
 #define QGSLAYOUTRULER_H
 
+#include <memory>
+
 #include "qgis_gui.h"
 #include "qgis_sip.h"
-#include <QWidget>
-#include <QPointer>
+
 #include <QMenu>
-#include <memory>
+#include <QPointer>
+#include <QWidget>
 
 class QgsLayout;
 class QGraphicsLineItem;
@@ -29,18 +31,16 @@ class QgsLayoutGuide;
 
 /**
  * \ingroup gui
- * A custom ruler widget for use with QgsLayoutView, displaying the
+ * \brief A custom ruler widget for use with QgsLayoutView, displaying the
  * current zoom and position of the visible layout and for interacting
  * with guides in a layout.
  *
- * \since QGIS 3.0
  */
-class GUI_EXPORT QgsLayoutRuler: public QWidget
+class GUI_EXPORT QgsLayoutRuler : public QWidget
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutRuler, with the specified \a parent widget and \a orientation.
      */
@@ -90,7 +90,7 @@ class GUI_EXPORT QgsLayoutRuler: public QWidget
 
   signals:
     //! Emitted when mouse cursor coordinates change
-    void cursorPosChanged( QPointF );
+    void cursorPosChanged( QPointF position );
 
   protected:
     void paintEvent( QPaintEvent *event ) override;
@@ -109,7 +109,7 @@ class GUI_EXPORT QgsLayoutRuler: public QWidget
     QPoint mMarkerPos;
 
     QFont mRulerFont;
-    std::unique_ptr< QFontMetrics > mRulerFontMetrics;
+    std::unique_ptr<QFontMetrics> mRulerFontMetrics;
 
     double mScaleMinPixelsWidth = 0.0;
     int mRulerMinSize;
@@ -120,6 +120,7 @@ class GUI_EXPORT QgsLayoutRuler: public QWidget
 
     int mDragGuideTolerance = 0;
     QgsLayoutGuide *mDraggingGuide = nullptr;
+    double mDraggingGuideOldPosition = 0.0;
     QgsLayoutGuide *mHoverGuide = nullptr;
 
     bool mCreatingGuide = false;
@@ -128,7 +129,7 @@ class GUI_EXPORT QgsLayoutRuler: public QWidget
     //! Polygon for drawing guide markers
     QPolygonF mGuideMarker;
 
-    QPointer< QMenu > mMenu;
+    QPointer<QMenu> mMenu;
 
     //! Calculates the optimum labeled units for ruler so that labels are a good distance apart
     int optimumScale( double minPixelDiff, int &magnitude, int &multiple );
@@ -168,7 +169,6 @@ class GUI_EXPORT QgsLayoutRuler: public QWidget
      * are within the acceptable tolerance of the point.
      */
     QgsLayoutGuide *guideAtPoint( QPoint localPoint ) const;
-
 };
 
 #endif // QGSLAYOUTRULER_H

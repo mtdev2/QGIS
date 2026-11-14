@@ -16,10 +16,11 @@
 #ifndef QGSCUSTOMLAYERORDERWIDGET_H
 #define QGSCUSTOMLAYERORDERWIDGET_H
 
-#include <QWidget>
 #include "qgis.h"
-#include <QAbstractListModel>
 #include "qgis_gui.h"
+
+#include <QAbstractListModel>
+#include <QWidget>
 
 class CustomLayerOrderModel;
 class QgsLayerTreeMapCanvasBridge;
@@ -31,20 +32,19 @@ class QListView;
 
 /**
  * \ingroup gui
- * The QgsCustomLayerOrderWidget class provides a list box where the user can define
- * custom order for drawing of layers. It also features a checkbox for enabling
+ * \brief A list box where the user can define custom order for drawing of layers.
+ *
+ * It also features a checkbox for enabling
  * or disabling the custom order. Any changes made by the user are automatically
  * propagated to the assigned QgsLayerTreeMapCanvasBridge. Also, any updates
  * to the layer tree cause refresh of the list.
  *
  * \see QgsLayerTreeMapCanvasBridge
- * \since QGIS 2.4
  */
 class GUI_EXPORT QgsCustomLayerOrderWidget : public QWidget
 {
     Q_OBJECT
   public:
-
     //! Constructor for QgsCustomLayerOrderWidget
     explicit QgsCustomLayerOrderWidget( QgsLayerTreeMapCanvasBridge *bridge, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 

@@ -15,11 +15,16 @@
 
 #include "qgsrelationmanager.h"
 
-#include "qgsapplication.h"
 #include "qgslogger.h"
 #include "qgsproject.h"
 #include "qgsvectordataprovider.h"
 #include "qgsvectorlayer.h"
+
+#include <QString>
+
+#include "moc_qgsrelationmanager.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsRelationManager::QgsRelationManager( QgsProject *project )
   : QObject( project )
@@ -27,9 +32,9 @@ QgsRelationManager::QgsRelationManager( QgsProject *project )
 {
   if ( project )
   {
-    // TODO: QGIS 4 remove: relations are now stored with the layer style
+    // TODO: QGIS 5 remove: relations are now stored with the layer style
     connect( project, &QgsProject::readProjectWithContext, this, &QgsRelationManager::readProject );
-    // TODO: QGIS 4 remove: relations are now stored with the layer style
+    // TODO: QGIS 5 remove: relations are now stored with the layer style
     connect( project, &QgsProject::writeProject, this, &QgsRelationManager::writeProject );
 
     connect( project, &QgsProject::layersRemoved, this, &QgsRelationManager::layersRemoved );
@@ -44,7 +49,7 @@ QgsRelationContext QgsRelationManager::context() const
 void QgsRelationManager::setRelations( const QList<QgsRelation> &relations )
 {
   mRelations.clear();
-  for ( const QgsRelation &rel : qgis::as_const( relations ) )
+  for ( const QgsRelation &rel : std::as_const( relations ) )
   {
     addRelation( rel );
   }
@@ -73,9 +78,9 @@ void QgsRelationManager::addRelation( const QgsRelation &relation )
 
 void QgsRelationManager::updateRelationsStatus()
 {
-  for ( auto relation : mRelations )
+  for ( auto relationIt = mRelations.begin(); relationIt != mRelations.end(); ++relationIt )
   {
-    relation.updateRelationStatus();
+    relationIt->updateRelationStatus();
   }
 }
 
@@ -94,6 +99,20 @@ void QgsRelationManager::removeRelation( const QgsRelation &relation )
 
 QgsRelation QgsRelationManager::relation( const QString &id ) const
 {
+  if ( !mRelations.contains( id ) )
+  {
+    // Check whether the provided ID refers to a polymorphic relation's generated ID
+    // from older versions of QGIS that used layer names instead of stable layer IDs.
+    const QList<QString> keys = mPolymorphicRelations.keys();
+    for ( const QString &key : keys )
+    {
+      if ( id.startsWith( key ) )
+      {
+        return mRelations.value( mPolymorphicRelations[key].upgradeGeneratedRelationId( id ) );
+      }
+    }
+  }
+
   return mRelations.value( id );
 }
 
@@ -101,7 +120,7 @@ QList<QgsRelation> QgsRelationManager::relationsByName( const QString &name ) co
 {
   QList<QgsRelation> relations;
 
-  for ( const QgsRelation &rel : qgis::as_const( mRelations ) )
+  for ( const QgsRelation &rel : std::as_const( mRelations ) )
   {
     if ( QString::compare( rel.name(), name, Qt::CaseInsensitive ) == 0 )
       relations << rel;
@@ -125,7 +144,7 @@ QList<QgsRelation> QgsRelationManager::referencingRelations( const QgsVectorLaye
 
   QList<QgsRelation> relations;
 
-  for ( const QgsRelation &rel : qgis::as_const( mRelations ) )
+  for ( const QgsRelation &rel : std::as_const( mRelations ) )
   {
     if ( rel.referencingLayer() == layer )
     {
@@ -163,7 +182,7 @@ QList<QgsRelation> QgsRelationManager::referencedRelations( const QgsVectorLayer
 
   QList<QgsRelation> relations;
 
-  for ( const QgsRelation &rel : qgis::as_const( mRelations ) )
+  for ( const QgsRelation &rel : std::as_const( mRelations ) )
   {
     if ( rel.referencedLayer() == layer )
     {
@@ -179,7 +198,7 @@ void QgsRelationManager::readProject( const QDomDocument &doc, QgsReadWriteConte
   mRelations.clear();
   mPolymorphicRelations.clear();
 
-  QDomNodeList relationNodes = doc.elementsByTagName( QStringLiteral( "relations" ) );
+  QDomNodeList relationNodes = doc.elementsByTagName( u"relations"_s );
   if ( relationNodes.count() )
   {
     QgsRelationContext relcontext( mProject );
@@ -194,10 +213,10 @@ void QgsRelationManager::readProject( const QDomDocument &doc, QgsReadWriteConte
   }
   else
   {
-    QgsDebugMsg( QStringLiteral( "No relations data present in this document" ) );
+    QgsDebugMsgLevel( u"No relations data present in this document"_s, 2 );
   }
 
-  QDomNodeList polymorphicRelationNodes = doc.elementsByTagName( QStringLiteral( "polymorphicRelations" ) );
+  QDomNodeList polymorphicRelationNodes = doc.elementsByTagName( u"polymorphicRelations"_s );
   if ( polymorphicRelationNodes.count() )
   {
     QgsRelationContext relcontext( mProject );
@@ -212,7 +231,7 @@ void QgsRelationManager::readProject( const QDomDocument &doc, QgsReadWriteConte
   }
   else
   {
-    QgsDebugMsgLevel( QStringLiteral( "No polymorphic relations data present in this document" ), 3 );
+    QgsDebugMsgLevel( u"No polymorphic relations data present in this document"_s, 3 );
   }
 
   emit relationsLoaded();
@@ -221,31 +240,36 @@ void QgsRelationManager::readProject( const QDomDocument &doc, QgsReadWriteConte
 
 void QgsRelationManager::writeProject( QDomDocument &doc )
 {
-  QDomNodeList nl = doc.elementsByTagName( QStringLiteral( "qgis" ) );
+  QDomNodeList nl = doc.elementsByTagName( u"qgis"_s );
   if ( !nl.count() )
   {
-    QgsDebugMsg( QStringLiteral( "Unable to find qgis element in project file" ) );
+    QgsDebugError( u"Unable to find qgis element in project file"_s );
     return;
   }
-  QDomNode qgisNode = nl.item( 0 );  // there should only be one
+  QDomNode qgisNode = nl.item( 0 ); // there should only be one
 
-  QDomElement relationsNode = doc.createElement( QStringLiteral( "relations" ) );
+  QDomElement relationsNode = doc.createElement( u"relations"_s );
   qgisNode.appendChild( relationsNode );
 
-  for ( const QgsRelation &relation : qgis::as_const( mRelations ) )
+  for ( const QgsRelation &relation : std::as_const( mRelations ) )
   {
     // the generated relations for polymorphic relations should be ignored,
     // they are generated every time when a polymorphic relation is added
-    if ( relation.type() == QgsRelation::Generated )
-      continue;
+    switch ( relation.type() )
+    {
+      case Qgis::RelationshipType::Generated:
+        continue;
+      case Qgis::RelationshipType::Normal:
+        break;
+    }
 
     relation.writeXml( relationsNode, doc );
   }
 
-  QDomElement polymorphicRelationsNode = doc.createElement( QStringLiteral( "polymorphicRelations" ) );
+  QDomElement polymorphicRelationsNode = doc.createElement( u"polymorphicRelations"_s );
   qgisNode.appendChild( polymorphicRelationsNode );
 
-  for ( const QgsPolymorphicRelation &relation : qgis::as_const( mPolymorphicRelations ) )
+  for ( const QgsPolymorphicRelation &relation : std::as_const( mPolymorphicRelations ) )
   {
     relation.writeXml( polymorphicRelationsNode, doc );
   }
@@ -254,7 +278,7 @@ void QgsRelationManager::writeProject( QDomDocument &doc )
 void QgsRelationManager::layersRemoved( const QStringList &layers )
 {
   bool relationsChanged = false;
-  for ( const QString &layer : qgis::as_const( layers ) )
+  for ( const QString &layer : std::as_const( layers ) )
   {
     QMapIterator<QString, QgsRelation> it( mRelations );
 
@@ -262,8 +286,7 @@ void QgsRelationManager::layersRemoved( const QStringList &layers )
     {
       it.next();
 
-      if ( it.value().referencedLayerId() == layer
-           || it.value().referencingLayerId() == layer )
+      if ( it.value().referencedLayerId() == layer || it.value().referencingLayerId() == layer )
       {
         mRelations.remove( it.key() );
         relationsChanged = true;
@@ -278,9 +301,10 @@ void QgsRelationManager::layersRemoved( const QStringList &layers )
 
 static bool hasRelationWithEqualDefinition( const QList<QgsRelation> &existingRelations, const QgsRelation &relation )
 {
-  for ( const QgsRelation &cur : qgis::as_const( existingRelations ) )
+  for ( const QgsRelation &cur : std::as_const( existingRelations ) )
   {
-    if ( cur.hasEqualDefinition( relation ) ) return true;
+    if ( cur.hasEqualDefinition( relation ) )
+      return true;
   }
   return false;
 }
@@ -288,14 +312,17 @@ static bool hasRelationWithEqualDefinition( const QList<QgsRelation> &existingRe
 QList<QgsRelation> QgsRelationManager::discoverRelations( const QList<QgsRelation> &existingRelations, const QList<QgsVectorLayer *> &layers )
 {
   QList<QgsRelation> result;
-  for ( const QgsVectorLayer *layer : qgis::as_const( layers ) )
+  for ( const QgsVectorLayer *layer : std::as_const( layers ) )
   {
-    const auto constDiscoverRelations = layer->dataProvider()->discoverRelations( layer, layers );
-    for ( const QgsRelation &relation : constDiscoverRelations )
+    if ( const QgsVectorDataProvider *provider = layer->dataProvider() )
     {
-      if ( !hasRelationWithEqualDefinition( existingRelations, relation ) )
+      const auto constDiscoverRelations = provider->discoverRelations( layer, layers );
+      for ( const QgsRelation &relation : constDiscoverRelations )
       {
-        result.append( relation );
+        if ( !hasRelationWithEqualDefinition( existingRelations, relation ) )
+        {
+          result.append( relation );
+        }
       }
     }
   }
@@ -342,4 +369,3 @@ void QgsRelationManager::setPolymorphicRelations( const QList<QgsPolymorphicRela
   for ( const QgsPolymorphicRelation &newRelation : relations )
     addPolymorphicRelation( newRelation );
 }
-

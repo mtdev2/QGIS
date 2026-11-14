@@ -15,26 +15,29 @@
  ***************************************************************************/
 #include "qgstransactiongroup.h"
 
-#include "qgstransaction.h"
-#include "qgsvectorlayer.h"
 #include "qgsdatasourceuri.h"
-#include "qgsvectordataprovider.h"
 #include "qgslogger.h"
+#include "qgstransaction.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
 
+#include <QString>
 #include <QTimer>
+
+#include "moc_qgstransactiongroup.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsTransactionGroup::QgsTransactionGroup( QObject *parent )
   : QObject( parent )
-{
-
-}
+{}
 
 bool QgsTransactionGroup::addLayer( QgsVectorLayer *layer )
 {
   if ( !QgsTransaction::supportsTransaction( layer ) )
     return false;
 
-  QString connString = QgsTransaction::connectionString( layer->source() );
+  const QString connString = QgsTransaction::connectionString( layer->source() );
   if ( mConnString.isEmpty() )
   {
     mConnString = connString;
@@ -81,11 +84,19 @@ void QgsTransactionGroup::onEditingStarted()
   QString errorMsg;
   mTransaction->begin( errorMsg );
 
+  const auto triggeringLayer = qobject_cast<QgsVectorLayer *>( sender() );
+
   const auto constMLayers = mLayers;
   for ( QgsVectorLayer *layer : constMLayers )
   {
-    mTransaction->addLayer( layer );
-    layer->startEditing();
+    mTransaction->addLayer( layer, true );
+
+    // Do not start editing the triggering layer, it will be started by the caller
+    if ( layer != triggeringLayer )
+    {
+      layer->startEditing();
+    }
+
     connect( layer, &QgsVectorLayer::beforeCommitChanges, this, &QgsTransactionGroup::onBeforeCommitChanges );
     connect( layer, &QgsVectorLayer::beforeRollBack, this, &QgsTransactionGroup::onRollback );
   }
@@ -100,6 +111,21 @@ void QgsTransactionGroup::onBeforeCommitChanges( bool stopEditing )
 {
   if ( mEditingStopping )
     return;
+
+  // checks have to be done for all the layers
+  for ( QgsVectorLayer *layer : std::as_const( mLayers ) )
+  {
+    emit layer->beforeCommitChecks( stopEditing );
+  }
+
+  for ( QgsVectorLayer *layer : std::as_const( mLayers ) )
+  {
+    if ( !layer->allowCommit() )
+    {
+      //if one layer does not allow, we cannot commit
+      return;
+    }
+  }
 
   mEditingStopping = true;
 
@@ -123,12 +149,11 @@ void QgsTransactionGroup::onBeforeCommitChanges( bool stopEditing )
     }
     else
     {
-      if ( ! mTransaction->begin( errMsg ) )
+      if ( !mTransaction->begin( errMsg ) )
       {
-        QgsDebugMsg( QStringLiteral( "Could not restart a transaction for %1: %2" ).arg( triggeringLayer->name() ).arg( errMsg ) );
+        QgsDebugError( u"Could not restart a transaction for %1: %2"_s.arg( triggeringLayer->name() ).arg( errMsg ) );
       }
     }
-
   }
   else
   {

@@ -16,22 +16,13 @@
 #ifndef QGS3DAPPUTILS_H
 #define QGS3DAPPUTILS_H
 
-#include <memory>
-
-class QgsPointCloudLayer3DRenderer;
-class QgsPointCloudRenderer;
-
 class Qgs3DAppUtils
 {
   public:
-
     /**
      * Initializes 3D components belonging to the app library.
      */
     static void initialize();
-
-    static std::unique_ptr< QgsPointCloudLayer3DRenderer > convert2dPointCloudRendererTo3d( QgsPointCloudRenderer *renderer );
-
 };
 
 #endif // QGS3DAPPUTILS_H

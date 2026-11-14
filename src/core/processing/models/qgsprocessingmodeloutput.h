@@ -18,23 +18,21 @@
 #ifndef QGSPROCESSINGMODELOUTPUT_H
 #define QGSPROCESSINGMODELOUTPUT_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
+#include "qgsprocessingmodelcomment.h"
 #include "qgsprocessingmodelcomponent.h"
 #include "qgsprocessingparameters.h"
-#include "qgsprocessingmodelcomment.h"
 
 ///@cond NOT_STABLE
 
 /**
- * Represents a final output created by the model.
+ * \brief Represents a final output created by the model.
  * \ingroup core
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsProcessingModelOutput : public QgsProcessingModelComponent
 {
   public:
-
     /**
      * Constructor for QgsProcessingModelOutput with the specified \a name and \a description.
      */
@@ -127,7 +125,6 @@ class CORE_EXPORT QgsProcessingModelOutput : public QgsProcessingModelComponent
     void setComment( const QgsProcessingModelComment &comment ) override { mComment = comment; }
 
   private:
-
     QString mName;
     QVariant mDefaultValue;
     QString mChildId;
@@ -135,7 +132,6 @@ class CORE_EXPORT QgsProcessingModelOutput : public QgsProcessingModelComponent
     bool mMandatory = false;
 
     QgsProcessingModelComment mComment;
-
 };
 
 ///@endcond

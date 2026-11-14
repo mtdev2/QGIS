@@ -18,9 +18,11 @@
 #ifndef QGSSOURCECACHE_H
 #define QGSSOURCECACHE_H
 
-#include "qgsabstractcontentcache.h"
-#include "qgis_sip.h"
 #include "qgis_core.h"
+#include "qgis_sip.h"
+#include "qgsabstractcontentcache.h"
+
+class QTemporaryDir;
 
 #ifndef SIP_RUN
 
@@ -29,17 +31,16 @@
 /**
  * \ingroup core
  * \class QgsSourceCacheEntry
- * An entry for a QgsSourceCache, representing a given source's file path
+ * \brief An entry for a QgsSourceCache, representing a given source's file path
  * \since QGIS 3.16
  */
 class CORE_EXPORT QgsSourceCacheEntry : public QgsAbstractContentCacheEntry
 {
   public:
-
     /**
      * Constructor for QgsSourceCacheEntry, corresponding to the specified \a path.
      */
-    QgsSourceCacheEntry( const QString &path ) ;
+    QgsSourceCacheEntry( const QString &path );
 
     //! The local file path of the source string
     QString filePath;
@@ -47,7 +48,6 @@ class CORE_EXPORT QgsSourceCacheEntry : public QgsAbstractContentCacheEntry
     int dataSize() const override;
     void dump() const override;
     bool isEqual( const QgsAbstractContentCacheEntry *other ) const override;
-
 };
 
 ///@endcond
@@ -56,7 +56,7 @@ class CORE_EXPORT QgsSourceCacheEntry : public QgsAbstractContentCacheEntry
 /**
  * \class QgsSourceCache
  * \ingroup core
- * A cache for source strings that returns a local file path containing the source content.
+ * \brief A cache for source strings that returns a local file path containing the source content.
  *
  * QgsSourceCache is not usually directly created, but rather accessed through
  * QgsApplication::sourceCache().
@@ -73,7 +73,6 @@ class CORE_EXPORT QgsSourceCache : public QgsAbstractContentCache< QgsSourceCach
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsSourceCache, with the specified \a parent object.
      */
@@ -94,7 +93,6 @@ class CORE_EXPORT QgsSourceCache : public QgsAbstractContentCache< QgsSourceCach
     void remoteSourceFetched( const QString &url );
 
   private:
-
     QString fetchSource( const QString &path, bool &isBroken, bool blocking = false ) const;
 
     std::unique_ptr< QTemporaryDir > temporaryDir;

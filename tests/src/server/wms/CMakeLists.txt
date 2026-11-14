@@ -21,6 +21,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 #No relinking and full RPATH for the install tree
 #See: http://www.cmake.org/Wiki/CMake_RPATH_handling#No_relinking_and_full_RPATH_for_the_install_tree
 set(MODULE_WMS_SRCS
+  ${CMAKE_SOURCE_DIR}/src/server/services/wms/qgswmsrequest.cpp
   ${CMAKE_SOURCE_DIR}/src/server/services/wms/qgswmsrenderer.cpp
   ${CMAKE_SOURCE_DIR}/src/server/services/wms/qgswmsrestorer.cpp
   ${CMAKE_SOURCE_DIR}/src/server/services/wms/qgsmaprendererjobproxy.cpp
@@ -32,39 +33,20 @@ set(MODULE_WMS_HDRS
   ${CMAKE_SOURCE_DIR}/src/server/services/wms/qgswmsserviceexception.h
 )
 
-QT5_WRAP_CPP(MODULE_WMS_MOC_SRCS ${MODULE_WMS_HDRS})
-
-macro (ADD_QGIS_TEST TESTSRC)
-  set (TESTNAME  ${TESTSRC})
-  string(REPLACE "test" "" TESTNAME ${TESTNAME})
-  string(REPLACE "qgs" "" TESTNAME ${TESTNAME})
-  string(REPLACE ".cpp" "" TESTNAME ${TESTNAME})
-  set (TESTNAME  "qgis_${TESTNAME}test")
-  add_executable(${TESTNAME} ${TESTSRC} ${MODULE_WMS_SRCS} ${MODULE_WMS_MOC_SRCS})
-  target_link_libraries(${TESTNAME}
-    ${Qt5Core_LIBRARIES}
-    ${Qt5Xml_LIBRARIES}
-    ${Qt5Svg_LIBRARIES}
-    ${Qt5Test_LIBRARIES}
-    ${PROJ_LIBRARY}
-    ${GEOS_LIBRARY}
-    ${GDAL_LIBRARY}
-    qgis_core
-    qgis_server
-  )
-  add_test(${TESTNAME} ${CMAKE_BINARY_DIR}/output/bin/${TESTNAME} -maxwarnings 10000)
-endmacro (ADD_QGIS_TEST)
+qt_wrap_cpp(MODULE_WMS_MOC_SRCS ${MODULE_WMS_HDRS})
 
 #############################################################
 # Tests:
 
 set(TESTS
   test_qgsserver_wms_dxf.cpp
+  test_qgsserver_wms_request.cpp
   test_qgsserver_wms_restorer.cpp
   test_qgsserver_wms_exceptions.cpp
   test_qgsserver_wms_parameters.cpp
+  test_qgsserver_wms_vector_tile.cpp
 )
 
 foreach(TESTSRC ${TESTS})
-    ADD_QGIS_TEST(${TESTSRC})
+  ADD_QGIS_TEST(${TESTSRC} MODULE server LINKEDLIBRARIES qgis_server wms_static)
 endforeach(TESTSRC)

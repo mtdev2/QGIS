@@ -18,24 +18,33 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgsgrouplayer.h"
 #include "qgslayertreenode.h"
+#include "qgsmaplayerref.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsMapLayer;
 class QgsLayerTreeLayer;
+class QgsLayerTreeCustomNode;
+class QgsGroupLayer;
 
 /**
  * \ingroup core
- * Layer tree group node serves as a container for layers and further groups.
+ * \brief Layer tree group node serves as a container for layers and further groups.
  *
  * Group names do not need to be unique within one tree nor within one parent.
  *
- * \since QGIS 2.4
+ * While a layer tree group is typically used for hierarchical organisation of a QgsProject,
+ * they can optionally be associated with a QgsGroupLayer for map rendering purposes.
+ *
  */
 class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor
      */
@@ -45,15 +54,27 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
     QgsLayerTreeGroup( const QgsLayerTreeGroup &other );
 #endif
 
-    /**
+#ifdef SIP_RUN
+    // clang-format off
+    SIP_PYOBJECT __repr__();
+    % MethodCode
+    QString str = u"<QgsLayerTreeGroup: %1>"_s.arg( sipCpp->name() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+// clang-format on
+#endif
+
+        /**
      * Returns the group's name.
      */
-    QString name() const override;
+        QString name() const override;
 
     /**
      * Sets the group's name.
      */
     void setName( const QString &n ) override;
+
+    QString id() const override { return mId; }
 
     /**
      * Insert a new group node with given name at specified position. The newly created node is owned by this group.
@@ -74,6 +95,27 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
      * Append a new layer node for given map layer. The newly created node is owned by this group.
      */
     QgsLayerTreeLayer *addLayer( QgsMapLayer *layer );
+
+    /**
+     * Insert a new custom node with the given \a id and \a name at specified \a index. The newly created node is owned by this group.
+     *
+     * \since QGIS 4.0
+     */
+    QgsLayerTreeCustomNode *insertCustomNode( int index, const QString &id, const QString &name = QString() );
+
+    /**
+     * Insert an existent custom node at specified \a index. The node must not have a parent yet. The node will be owned by this group.
+     *
+     * \since QGIS 4.0
+     */
+    QgsLayerTreeCustomNode *insertCustomNode( int index, QgsLayerTreeCustomNode *node SIP_TRANSFER );
+
+    /**
+     * Append a new custom node with the given \a id and \a name. The newly created node is owned by this group.
+     *
+     * \since QGIS 4.0
+     */
+    QgsLayerTreeCustomNode *addCustomNode( const QString &id, const QString &name = QString() );
 
     /**
      * Insert existing nodes at specified position. The nodes must not have a parent yet. The nodes will be owned by this group.
@@ -101,6 +143,13 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
     void removeLayer( QgsMapLayer *layer );
 
     /**
+     * Remove a custom node from this group. The node will be deleted.
+     *
+     * \since QGIS 4.0
+     */
+    void removeCustomNode( QgsLayerTreeCustomNode *customNode );
+
+    /**
      * Remove child nodes from index "from". The nodes will be deleted.
      */
     void removeChildren( int from, int count );
@@ -117,7 +166,6 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
 
     /**
      * Find layer node representing the map layer. Searches recursively the whole sub-tree.
-     * \since QGIS 3.0
      */
     QgsLayerTreeLayer *findLayer( QgsMapLayer *layer ) const;
 
@@ -128,8 +176,79 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
 
     /**
      * Find all layer nodes. Searches recursively the whole sub-tree.
+     *
+     * \see findLayersAndCustomNodes()
      */
     QList<QgsLayerTreeLayer *> findLayers() const;
+
+    /**
+     * Find custom node representing an object specified by its ID. Searches recursively the whole sub-tree.
+     *
+     * \since QGIS 4.0
+     */
+    QgsLayerTreeCustomNode *findCustomNode( const QString &id ) const;
+
+    /**
+     * Find all layer and custom nodes. Searches recursively the whole sub-tree.
+     *
+     * \see findLayers()
+     * \since QGIS 4.0
+     */
+    QList<QgsLayerTreeNode *> findLayersAndCustomNodes() const;
+
+    /**
+     * Reorders layers in the group to match the order specified by \a order.
+     *
+     * Only layers which are direct children of this group will be reordered, other
+     * layers will be ignored.
+     *
+     * \note This method does not recursively reorder child groups.
+     * \note Matching layers will be moved to the start of the group, with any existing
+     * non-matching layers and group nodes moved to sit after the re-ordered matching layers.
+     *
+     * \see reorderGroupLayersAndCustomNodes()
+     *
+     * \since QGIS 3.30
+     */
+    void reorderGroupLayers( const QList< QgsMapLayer * > &order );
+
+    /**
+     * Reorders layers and custom nodes in the group to match the order specified by \a order.
+     *
+     * Only layers and custom nodes which are direct children of this group will be reordered, other
+     * layers and custom nodes will be ignored, as well as child group nodes.
+     *
+     * \note This method does not recursively reorder child groups.
+     * \note Matching layers or custom nodes will be moved to the start of the group, with any existing
+     * non-matching layers, custom and group nodes moved to sit after the re-ordered matching layers and
+     * custom nodes.
+     *
+     * \see reorderGroupLayers()
+     *
+     * \since QGIS 4.0
+     */
+    void reorderGroupLayersAndCustomNodes( const QList< QgsLayerTreeNode * > &order );
+
+    /**
+     * Returns an ordered list of map layers in the group, ignoring any layers which
+     * are child layers of QgsGroupLayers. Searches recursively the whole sub-tree.
+     *
+     * \note Not available in Python bindings
+     * \see layerAndCustomNodeOrderRespectingGroupLayers()
+     * \since QGIS 3.24
+     */
+    QList<QgsMapLayer *> layerOrderRespectingGroupLayers() const SIP_SKIP;
+
+    /**
+     * Returns an ordered list of map layers and custom nodes in the group, ignoring
+     * any layers which are child layers of QgsGroupLayers. Searches recursively the
+     * whole sub-tree.
+     *
+     * \note Not available in Python bindings
+     * \see layerOrderRespectingGroupLayers()
+     * \since QGIS 4.0
+     */
+    QList<QgsLayerTreeNode *> layerAndCustomNodeOrderRespectingGroupLayers() const SIP_SKIP;
 
     /**
      * Find layer IDs used in all layer nodes. Searches recursively the whole sub-tree.
@@ -137,27 +256,31 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
     QStringList findLayerIds() const;
 
     /**
+     * Find custom node IDs. Searches recursively the whole sub-tree.
+     */
+    QStringList findCustomNodeIds() const;
+
+    /**
      * Find group node with specified name. Searches recursively the whole sub-tree.
      */
     QgsLayerTreeGroup *findGroup( const QString &name );
 
     /**
-     * Find all group layer nodes
+     * Find group layer nodes. Searches recursively the whole sub-tree, if recursive is set.
     */
-    QList<QgsLayerTreeGroup *> findGroups() const;
+    QList<QgsLayerTreeGroup *> findGroups( bool recursive = false ) const;
 
     /**
      * Read group (tree) from XML element <layer-tree-group> and return the newly created group (or NULLPTR on error).
      * Does not resolve textual references to layers. Call resolveReferences() afterwards to do it.
      */
-    static QgsLayerTreeGroup *readXml( QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static QgsLayerTreeGroup *readXml( const QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY; // cppcheck-suppress duplInheritedMember
 
     /**
      * Read group (tree) from XML element <layer-tree-group> and return the newly created group (or NULLPTR on error).
      * Also resolves textual references to layers from the project (calls resolveReferences() internally).
-     * \since QGIS 3.0
      */
-    static QgsLayerTreeGroup *readXml( QDomElement &element, const QgsProject *project, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static QgsLayerTreeGroup *readXml( const QDomElement &element, const QgsProject *project, const QgsReadWriteContext &context ) SIP_FACTORY;
 
     /**
      * Write group (tree) as XML element <layer-tree-group> and add it to the given parent element
@@ -168,7 +291,7 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
      * Read children from XML and append them to the group.
      * Does not resolve textual references to layers. Call resolveReferences() afterwards to do it.
      */
-    void readChildrenFromXml( QDomElement &element, const QgsReadWriteContext &context );
+    void readChildrenFromXml( const QDomElement &element, const QgsReadWriteContext &context );
 
     /**
      * Returns text representation of the tree. For debugging purposes only.
@@ -182,7 +305,6 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
 
     /**
      * Calls resolveReferences() on child tree nodes
-     * \since QGIS 3.0
      */
     void resolveReferences( const QgsProject *project, bool looseMatching = false ) override;
 
@@ -193,7 +315,6 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
 
     /**
      * Returns whether the group is mutually exclusive (only one child can be checked at a time)
-     * \since QGIS 2.12
      */
     bool isMutuallyExclusive() const;
 
@@ -201,22 +322,119 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
      * Set whether the group is mutually exclusive (only one child can be checked at a time).
      * The initial child index determines which child should be initially checked. The default value
      * of -1 will determine automatically (either first one currently checked or none)
-     * \since QGIS 2.12
      */
     void setIsMutuallyExclusive( bool enabled, int initialChildIndex = -1 );
+
+    /**
+     * Returns a reference to the associated group layer, if the layer tree group will be treated
+     * as group layer during map rendering.
+     *
+     * \see setGroupLayer()
+     * \see convertToGroupLayer()
+     * \since QGIS 3.24
+     */
+    QgsGroupLayer *groupLayer();
+
+    /**
+     * Sets the associated group \a layer, if the layer tree group will be treated
+     * as group layer during map rendering.
+     *
+     * This method does not take ownership of the group layer, and only a weak reference
+     * to the layer is stored.
+     *
+     * \see groupLayer()
+     * \see convertToGroupLayer()
+     * \since QGIS 3.24
+     */
+    void setGroupLayer( QgsGroupLayer *layer );
+
+    /**
+     * Converts the group to a QgsGroupLayer.
+     *
+     * This method will convert the layer tree group to an equivalent QgsGroupLayer, and
+     * return the result. The caller takes ownership of the returned layer, and it is the
+     * caller's responsibility to add the layer to the associated QgsProject.
+     *
+     * If the group is already associated with a group layer (see groupLayer()), NULLPTR
+     * will be returned.
+     *
+     * \see groupLayer()
+     * \see setGroupLayer()
+     * \since QGIS 3.24
+     */
+    QgsGroupLayer *convertToGroupLayer( const QgsGroupLayer::LayerOptions &options ) SIP_FACTORY;
+
+    /**
+     * Returns QGIS Server Properties for the layer tree group
+     * \since QGIS 3.44
+     */
+    QgsMapLayerServerProperties *serverProperties();
+
+    /**
+     * Returns QGIS Server Properties const for the layer tree group
+     * \since QGIS 3.44
+     */
+    const QgsMapLayerServerProperties *serverProperties() const SIP_SKIP;
+
+    /**
+     * Sets whether the WMS time dimension should be computed for this group or not
+     * \param hasWmsTimeDimension if TRUE, when a GetCapabilities request is sent,
+     * QGIS server would return a TIME dimension computed as an union of all time
+     * dimensions of its children recursively. Else, no TIME dimension will be returned.
+     *
+     * \see hasWmsTimeDimension()
+     * \since QGIS 3.44
+     * \deprecated QGIS 4.4. Use serverProperties() to access TIME dimension instead.
+     */
+    Q_DECL_DEPRECATED void setHasWmsTimeDimension( const bool hasWmsTimeDimension ) SIP_DEPRECATED;
+
+    /**
+     * Returns whether the WMS time dimension should be computed for this group or not.
+     * if TRUE, when a GetCapabilities request is sent, QGIS server would return a TIME
+     * dimension computed as an union of all time dimensions of its children recursively.
+     * Else, no TIME dimension will be returned.
+     *
+     * \see setHasWmsTimeDimension()
+     * \since QGIS 3.44
+     */
+    bool hasWmsTimeDimension() const;
+
+    /**
+     * Returns the request mode of the group.
+     * When it's opaque, WMS treats it as a single opaque layer instead
+     * of a collection of individual layers.
+     * Its child layers are hidden from GetCapabilities requests.
+     * Any direct requests (like GetMap or GetFeatureInfo etc.) for a child layer will result in an error.
+     * Child layers are rendered whenever a request is made for the group itself.
+     *
+     * \see setWmsGroupRequestMode()
+     * \since QGIS 4.2
+     */
+    Qgis::WmsGroupRequestMode wmsGroupRequestMode() const;
+
+    /**
+     * Sets the request mode of the group.
+     * \param groupRequestMode On Opaque, WMS treats it as a single opaque layer instead
+     * of a collection of individual layers. On Normal it behaves as a standard group.
+     *
+     * \see wmsGroupRequestMode()
+     * \since QGIS 4.2
+     */
+    void setWmsGroupRequestMode( Qgis::WmsGroupRequestMode groupRequestMode );
 
   protected slots:
 
     void nodeVisibilityChanged( QgsLayerTreeNode *node );
 
   protected:
-
     /**
      * Set check state of children - if mutually exclusive
      */
     void updateChildVisibilityMutuallyExclusive();
 
     QString mName;
+
+    QString mId;
 
     bool mChangingChildVisibility = false;
 
@@ -230,10 +448,9 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
     int mMutuallyExclusiveChildIndex = -1;
 
     //! Sets parent to NULLPTR and disconnects all external and forwarded signals
-    virtual void makeOrphan() override SIP_SKIP;
+    void makeOrphan() override SIP_SKIP;
 
   private:
-
 #ifdef SIP_RUN
 
     /**
@@ -242,9 +459,32 @@ class CORE_EXPORT QgsLayerTreeGroup : public QgsLayerTreeNode
     QgsLayerTreeGroup( const QgsLayerTreeGroup &other );
 #endif
 
-    QgsLayerTreeGroup &operator= ( const QgsLayerTreeGroup & ) = delete;
+    QgsLayerTreeGroup &operator=( const QgsLayerTreeGroup & ) = delete;
 
+    // only QgsLayerTreeUtils::regenerateGroupIds may assign a new id
+    friend class QgsLayerTreeUtils;
+    void setId( const QString &id );
 
+    /**
+     * Helper method to migrate project before 3.44 where shortName, title and abstract were
+     * properties, not server properties
+     *
+     * \since QGIS 3.44
+     */
+    static void readLegacyServerProperties( QgsLayerTreeGroup *groupNode );
+
+    void init();
+    void updateGroupLayers();
+    void refreshParentGroupLayerMembers();
+
+    QgsMapLayerRef mGroupLayer;
+
+    /**
+     * Stores information about server properties
+     */
+    std::unique_ptr< QgsMapLayerServerProperties > mServerProperties;
+
+    Qgis::WmsGroupRequestMode mWmsGroupRequestMode = Qgis::WmsGroupRequestMode::Normal;
 };
 
 

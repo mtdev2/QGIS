@@ -18,21 +18,23 @@
 #ifndef QGSWMSSOURCESELECT_H
 #define QGSWMSSOURCESELECT_H
 #include "ui_qgswmssourceselectbase.h"
+
+#include "qgsabstractdatasourcewidget.h"
 #include "qgsdatasourceuri.h"
 #include "qgsguiutils.h"
 #include "qgshelp.h"
 #include "qgsproviderregistry.h"
 #include "qgswmsprovider.h"
-#include "qgsabstractdatasourcewidget.h"
 
-#include <QStringList>
 #include <QPushButton>
+#include <QStringList>
 
 class QButtonGroup;
 class QgsTreeWidgetItem;
 class QDomDocument;
 class QDomElement;
 class QgsWmsCapabilities;
+class QgsWmsInterpretationComboBox;
 
 /*!
  * \brief   Dialog to create connections and add layers from WMS, etc.
@@ -49,7 +51,7 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
 
   public:
     //! Constructor
-    QgsWMSSourceSelect( QWidget *parent = nullptr, Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags, QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::None );
+    QgsWMSSourceSelect( QWidget *parent = nullptr, Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags, QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::Standalone );
 
     //! Triggered when the provider's connections need to be refreshed
     void refresh() override;
@@ -100,11 +102,8 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
     void filterTiles( const QString &searchText );
 
   private:
-    //! Populate the connection list combo box
-    void populateConnectionList();
-
     //! Connection name
-    QString connName();
+    QString connName() const;
 
     //! Sets the server connection combo box to that stored in the config file.
     void setConnectionListPosition();
@@ -118,17 +117,6 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
     //! Common CRSs for selected layers
     QSet<QString> mCRSs;
 
-    //! Supported formats
-    //QStringList mFormats;
-    QVector<QgsWmsSupportedFormat> mFormats;
-
-    //! Labels for supported formats
-    //QStringList mLabels;
-
-    //! Map mime types to supported formats
-    QMap<QString, int> mMimeMap;
-
-
     // Clear layers list, crs, encodings ...
     void clear();
 
@@ -141,12 +129,9 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
     bool populateLayerList( const QgsWmsCapabilities &capabilities );
 
     //! create an item including possible parents
-    QgsTreeWidgetItem *createItem( int id,
-                                   const QStringList &names,
-                                   QMap<int, QgsTreeWidgetItem *> &items,
-                                   int &layerAndStyleCount,
-                                   const QMap<int, int> &layerParents,
-                                   const QMap<int, QStringList> &layerParentNames );
+    QgsTreeWidgetItem *createItem(
+      int id, const QStringList &names, QMap<int, QgsTreeWidgetItem *> &items, int &layerAndStyleCount, const QMap<int, int> &layerParents, const QMap<int, QStringList> &layerParentNames
+    );
 
     //! Returns a textual description for the authority id
     QString descriptionForAuthId( const QString &authId );
@@ -159,9 +144,6 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
 
     //! URI for selected connection
     QgsDataSourceUri mUri;
-
-    //! layer name derived from latest layer selection (updated as long it's not edited manually)
-    QString mLastLayerName;
 
     //! The widget that controls the image format radio buttons
     QButtonGroup *mImageFormatGroup = nullptr;
@@ -193,7 +175,13 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
     // save the current status of the layer true
     QMap<QTreeWidgetItem *, bool> mTreeInitialExpand = QMap<QTreeWidgetItem *, bool>();
 
+    QgsWmsInterpretationComboBox *mInterpretationCombo = nullptr;
+
+    void updateFormatButtons( const QStringList &availableFormats = QStringList(), const QString &preferredFormat = QString() );
+
   private slots:
+    //! Populate the connection list combo box
+    void populateConnectionList();
     void lstTilesets_itemClicked( QTableWidgetItem *item );
     void mLayerUpButton_clicked();
     void mLayerDownButton_clicked();
@@ -201,5 +189,23 @@ class QgsWMSSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsWM
     void showHelp();
 };
 
+/*!
+ * \brief ComboBox to select interpretation to convert image to a single band raster
+ */
+class QgsWmsInterpretationComboBox : public QComboBox
+{
+    Q_OBJECT
+  public:
+    //! Constructor
+    QgsWmsInterpretationComboBox( QWidget *parent = nullptr );
+
+    /**
+     * Sets the interpretation from its key \a interpretationKey, default if interpretationKey is empty
+     */
+    void setInterpretation( const QString &interpretationKey );
+
+    //! Returns the key of the current selected interpretation, returns empty string if the current is default
+    QString interpretation() const;
+};
 
 #endif // QGSWMSSOURCESELECT_H

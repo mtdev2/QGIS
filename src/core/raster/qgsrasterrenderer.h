@@ -20,10 +20,11 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include <QPair>
-
 #include "qgsrasterinterface.h"
 #include "qgsrasterminmaxorigin.h"
+#include "qgsrectangle.h"
+
+#include <QPair>
 
 class QDomElement;
 
@@ -35,15 +36,13 @@ class QgsLayerTreeLayer;
 
 /**
  * \ingroup core
-  * Raster renderer pipe that applies colors to a raster.
+  * \brief Raster renderer pipe that applies colors to a raster.
   */
 class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
 {
-
-    Q_DECLARE_TR_FUNCTIONS( QgsRasterRenderer )
+    Q_DECLARE_TR_FUNCTIONS( QgsRasterRenderer ) // cppcheck-suppress duplInheritedMember
 
   public:
-
     static const QRgb NODATA_COLOR;
 
     /**
@@ -63,15 +62,57 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
 
     Qgis::DataType dataType( int bandNo ) const override;
 
+    /**
+     * Returns a unique string representation of the renderer type.
+     */
     virtual QString type() const { return mType; }
+
+    /**
+     * Returns flags which dictate renderer behavior.
+     *
+     * \since QGIS 3.28
+     */
+    virtual Qgis::RasterRendererFlags flags() const;
+
+    /**
+     * Returns TRUE if the renderer is suitable for attribute table creation.
+     * The default implementation returns FALSE.
+     *
+     *  \since QGIS 3.30
+     */
+    virtual bool canCreateRasterAttributeTable() const;
 
     bool setInput( QgsRasterInterface *input ) override;
 
-    QgsRasterBlock *block( int bandNo,
-                           const QgsRectangle &extent,
-                           int width,
-                           int height,
-                           QgsRasterBlockFeedback *feedback = nullptr ) override = 0 SIP_FACTORY;
+    /**
+     * Returns the input band for the renderer, or -1 if no input band is available.
+     *
+     * For renderers which utilize multiple input bands -1 will be returned. In these
+     * cases usesBands() will return a list of all utilized bands (including alpha
+     * bands).
+     *
+     * \see setInputBand()
+     * \see usesBands()
+     *
+     * \since QGIS 3.38
+     */
+    virtual int inputBand() const;
+
+    /**
+     * Attempts to set the input \a band for the renderer.
+     *
+     * Returns TRUE if the band was successfully set, or FALSE if the band could not be set.
+     *
+     * \note Not all renderers support setting the input band.
+     *
+     * \see inputBand()
+     * \see usesBands()
+     *
+     * \since QGIS 3.38
+     */
+    virtual bool setInputBand( int band );
+
+    QgsRasterBlock *block( int bandNo, const QgsRectangle &extent, int width, int height, QgsRasterBlockFeedback *feedback = nullptr ) override = 0 SIP_FACTORY;
 
     bool usesTransparency() const;
 
@@ -113,7 +154,7 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
     void setNodataColor( const QColor &color ) { mNodataColor = color; }
 
     void setRasterTransparency( QgsRasterTransparency *t SIP_TRANSFER );
-    const QgsRasterTransparency *rasterTransparency() const { return mRasterTransparency; }
+    const QgsRasterTransparency *rasterTransparency() const { return mRasterTransparency.get(); }
 
     void setAlphaBand( int band ) { mAlphaBand = band; }
     int alphaBand() const { return mAlphaBand; }
@@ -143,11 +184,14 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
     /**
      * Copies common properties like opacity / transparency data from other renderer.
      * Useful when cloning renderers.
-     * \since QGIS 2.16
      */
     void copyCommonProperties( const QgsRasterRenderer *other, bool copyMinMaxOrigin = true );
 
-    //! Returns a list of band numbers used by the renderer
+    /**
+     * Returns a list of band numbers used by the renderer.
+     *
+     * \see setInputBand()
+     */
     virtual QList<int> usesBands() const { return QList<int>(); }
 
     //! Returns const reference to origin of min/max values
@@ -158,9 +202,15 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
 
     /**
      * Used from subclasses to create SLD Rule elements following SLD v1.0 specs
-     * \since QGIS 3.6
+     * \deprecated QGIS 3.44. Use the version with QgsSldExportContext instead.
     */
-    virtual void toSld( QDomDocument &doc, QDomElement &element, const QVariantMap &props = QVariantMap() ) const;
+    Q_DECL_DEPRECATED virtual void toSld( QDomDocument &doc, QDomElement &element, const QVariantMap &props = QVariantMap() ) const SIP_DEPRECATED;
+
+    /**
+     * Used from subclasses to create SLD Rule elements following SLD v1.0 specs
+     * \since QGIS 3.44
+    */
+    virtual bool toSld( QDomDocument &doc, QDomElement &element, QgsSldExportContext &context ) const;
 
     /**
      * Accepts the specified symbology \a visitor, causing it to visit all symbols associated
@@ -173,8 +223,25 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
      */
     virtual bool accept( QgsStyleEntityVisitorInterface *visitor ) const;
 
-  protected:
+    /**
+     * \brief Checks if the renderer needs to be refreshed according to \a extent.
+     * \note not available in Python bindings
+     *
+     * \since QGIS 3.42
+     */
+    bool needsRefresh( const QgsRectangle &extent ) const SIP_SKIP;
 
+    /**
+     * \brief Refreshes the renderer according to the \a min and \a max values associated with the \a extent.
+     * If \a forceRefresh is TRUE, this will force the refresh even if needsRefresh() returns FALSE.
+     * \returns TRUE if the renderer has been refreshed
+     * \note not available in Python bindings
+     *
+     * \since QGIS 3.42
+     */
+    virtual bool refresh( const QgsRectangle &extent, const QList<double> &min, const QList<double> &max, bool forceRefresh = false ) SIP_SKIP;
+
+  protected:
     //! Write upper class info into rasterrenderer element (called by writeXml method of subclasses)
     void _writeXml( QDomDocument &doc, QDomElement &rasterRendererElem ) const;
 
@@ -183,7 +250,7 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
     //! Global alpha value (0-1)
     double mOpacity = 1.0;
     //! Raster transparency per color or value. Overwrites global alpha value
-    QgsRasterTransparency *mRasterTransparency = nullptr;
+    std::unique_ptr<QgsRasterTransparency> mRasterTransparency;
 
     /**
      * Read alpha value from band. Is combined with value from raster transparency / global alpha value.
@@ -204,15 +271,16 @@ class CORE_EXPORT QgsRasterRenderer : public QgsRasterInterface
      */
     QRgb renderColorForNodataPixel() const;
 
-  private:
+    //! To save computations and possible infinite cycle of notifications
+    QgsRectangle mLastRectangleUsedByRefreshContrastEnhancementIfNeeded;
 
+  private:
     QColor mNodataColor;
 
 #ifdef SIP_RUN
     QgsRasterRenderer( const QgsRasterRenderer & );
     const QgsRasterRenderer &operator=( const QgsRasterRenderer & );
 #endif
-
 };
 
 #endif // QGSRASTERRENDERER_H

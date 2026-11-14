@@ -16,15 +16,15 @@
 #ifndef QGSNETWORKDISTANCESTRATEGY_H
 #define QGSNETWORKDISTANCESTRATEGY_H
 
-#include "qgsnetworkstrategy.h"
 #include "qgis_analysis.h"
+#include "qgsnetworkstrategy.h"
 
 /**
  * \ingroup analysis
  * \class QgsNetworkDistanceStrategy
- * \brief Strategy for calculating edge cost based on its length. Should be
- * used for finding shortest path between two points.
- * \since QGIS 3.0
+ * \brief Strategy for calculating edge cost based on its length.
+ *
+ * Should be used for finding shortest path between two points.
  */
 class ANALYSIS_EXPORT QgsNetworkDistanceStrategy : public QgsNetworkStrategy
 {

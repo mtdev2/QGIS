@@ -16,13 +16,21 @@
  ***************************************************************************/
 
 #include "qgsalgorithmnearestneighbouranalysis.h"
+
 #include "qgsapplication.h"
+#include "qgsdistancearea.h"
+#include "qgsspatialindex.h"
+
+#include <QString>
+#include <QTextStream>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsNearestNeighbourAnalysisAlgorithm::name() const
 {
-  return QStringLiteral( "nearestneighbouranalysis" );
+  return u"nearestneighbouranalysis"_s;
 }
 
 QString QgsNearestNeighbourAnalysisAlgorithm::displayName() const
@@ -42,24 +50,36 @@ QString QgsNearestNeighbourAnalysisAlgorithm::group() const
 
 QString QgsNearestNeighbourAnalysisAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectoranalysis" );
+  return u"vectoranalysis"_s;
 }
 
 QString QgsNearestNeighbourAnalysisAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm performs nearest neighbor analysis for a point layer.\n\n"
-                      "The output describes how the data are distributed (clustered, randomly or distributed).\n\n"
-                      "Output is generated as an HTML file with the computed statistical values." );
+  return QObject::tr(
+    "This algorithm performs nearest neighbor analysis for a point layer.\n\n"
+    "The output describes how the data are distributed (clustered, randomly or distributed).\n\n"
+    "Output is generated as an HTML file with the computed statistical values."
+  );
+}
+
+QString QgsNearestNeighbourAnalysisAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Performs nearest neighbor analysis for a point layer." );
 }
 
 QString QgsNearestNeighbourAnalysisAlgorithm::svgIconPath() const
 {
-  return QgsApplication::iconPath( QStringLiteral( "/algorithms/mAlgorithmNearestNeighbour.svg" ) );
+  return QgsApplication::iconPath( u"/algorithms/mAlgorithmNearestNeighbour.svg"_s );
 }
 
 QIcon QgsNearestNeighbourAnalysisAlgorithm::icon() const
 {
-  return QgsApplication::getThemeIcon( QStringLiteral( "/algorithms/mAlgorithmNearestNeighbour.svg" ) );
+  return QgsApplication::getThemeIcon( u"/algorithms/mAlgorithmNearestNeighbour.svg"_s );
+}
+
+Qgis::ProcessingAlgorithmDocumentationFlags QgsNearestNeighbourAnalysisAlgorithm::documentationFlags() const
+{
+  return Qgis::ProcessingAlgorithmDocumentationFlag::RespectsEllipsoid;
 }
 
 QgsNearestNeighbourAnalysisAlgorithm *QgsNearestNeighbourAnalysisAlgorithm::createInstance() const
@@ -69,36 +89,37 @@ QgsNearestNeighbourAnalysisAlgorithm *QgsNearestNeighbourAnalysisAlgorithm::crea
 
 void QgsNearestNeighbourAnalysisAlgorithm::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterFeatureSource( QStringLiteral( "INPUT" ), QObject::tr( "Input layer" ), QList< int >() << QgsProcessing::TypeVectorPoint ) );
-  addParameter( new QgsProcessingParameterFileDestination( QStringLiteral( "OUTPUT_HTML_FILE" ), QObject::tr( "Nearest neighbour" ),
-                QObject::tr( "HTML files (*.html *.HTML)" ), QVariant(), true ) );
-  addOutput( new QgsProcessingOutputNumber( QStringLiteral( "OBSERVED_MD" ), QObject::tr( "Observed mean distance" ) ) );
-  addOutput( new QgsProcessingOutputNumber( QStringLiteral( "EXPECTED_MD" ), QObject::tr( "Expected mean distance" ) ) );
-  addOutput( new QgsProcessingOutputNumber( QStringLiteral( "NN_INDEX" ), QObject::tr( "Nearest neighbour index" ) ) );
-  addOutput( new QgsProcessingOutputNumber( QStringLiteral( "POINT_COUNT" ), QObject::tr( "Number of points" ) ) );
-  addOutput( new QgsProcessingOutputNumber( QStringLiteral( "Z_SCORE" ), QObject::tr( "Z-score" ) ) );
+  addParameter( new QgsProcessingParameterFeatureSource( u"INPUT"_s, QObject::tr( "Input layer" ), QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::VectorPoint ) ) );
+  addParameter( new QgsProcessingParameterFileDestination( u"OUTPUT_HTML_FILE"_s, QObject::tr( "Nearest neighbour" ), QObject::tr( "HTML files (*.html *.HTML)" ), QVariant(), true ) );
+  addOutput( new QgsProcessingOutputNumber( u"OBSERVED_MD"_s, QObject::tr( "Observed mean distance" ) ) );
+  addOutput( new QgsProcessingOutputNumber( u"EXPECTED_MD"_s, QObject::tr( "Expected mean distance" ) ) );
+  addOutput( new QgsProcessingOutputNumber( u"NN_INDEX"_s, QObject::tr( "Nearest neighbour index" ) ) );
+  addOutput( new QgsProcessingOutputNumber( u"POINT_COUNT"_s, QObject::tr( "Number of points" ) ) );
+  addOutput( new QgsProcessingOutputNumber( u"Z_SCORE"_s, QObject::tr( "Z-score" ) ) );
 }
 
 QVariantMap QgsNearestNeighbourAnalysisAlgorithm::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  std::unique_ptr< QgsProcessingFeatureSource > source( parameterAsSource( parameters, QStringLiteral( "INPUT" ), context ) );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  std::unique_ptr<QgsProcessingFeatureSource> source( parameterAsSource( parameters, u"INPUT"_s, context ) );
   if ( !source )
-    throw QgsProcessingException( invalidSourceError( parameters, QStringLiteral( "INPUT" ) ) );
+    throw QgsProcessingException( invalidSourceError( parameters, u"INPUT"_s ) );
 
-  QString outputFile = parameterAsFileOutput( parameters, QStringLiteral( "OUTPUT_HTML_FILE" ), context );
+  const QString outputFile = parameterAsFileOutput( parameters, u"OUTPUT_HTML_FILE"_s, context );
 
-  QgsSpatialIndex spatialIndex( *source, feedback, QgsSpatialIndex::FlagStoreFeatureGeometries );
+  const QgsSpatialIndex spatialIndex( *source, feedback, QgsSpatialIndex::FlagStoreFeatureGeometries );
   QgsDistanceArea da;
   da.setSourceCrs( source->sourceCrs(), context.transformContext() );
   da.setEllipsoid( context.ellipsoid() );
 
-  double step = source->featureCount() ? 100.0 / source->featureCount() : 1;
-  QgsFeatureIterator it = source->getFeatures( QgsFeatureRequest().setSubsetOfAttributes( QList< int >() ) );
+  const double step = source->featureCount() ? 100.0 / source->featureCount() : 1;
+  QgsFeatureIterator it = source->getFeatures( QgsFeatureRequest().setSubsetOfAttributes( QList<int>() ) );
 
-  QgsFeatureRequest request;
-  QgsFeature neighbour;
+  const QgsFeatureRequest request;
+  const QgsFeature neighbour;
   double sumDist = 0.0;
-  double area = source->sourceExtent().width() * source->sourceExtent().height();
+  const double area = source->sourceExtent().width() * source->sourceExtent().height();
 
   int i = 0;
   QgsFeature f;
@@ -109,42 +130,49 @@ QVariantMap QgsNearestNeighbourAnalysisAlgorithm::processAlgorithm( const QVaria
       break;
     }
 
-    QgsFeatureId neighbourId = spatialIndex.nearestNeighbor( f.geometry().asPoint(), 2 ).at( 1 );
-    sumDist += da.measureLine( spatialIndex.geometry( neighbourId ).asPoint(), f.geometry().asPoint() );
+    const QgsFeatureId neighbourId = spatialIndex.nearestNeighbor( f.geometry().asPoint(), 2 ).at( 1 );
+    try
+    {
+      sumDist += da.measureLine( spatialIndex.geometry( neighbourId ).asPoint(), f.geometry().asPoint() );
+    }
+    catch ( QgsCsException & )
+    {
+      throw QgsProcessingException( QObject::tr( "An error occurred while calculating length" ) );
+    }
 
     i++;
     feedback->setProgress( i * step );
   }
 
-  int count = source->featureCount() > 0 ? source->featureCount() : 1;
-  double observedDistance = sumDist / count;
-  double expectedDistance = 0.5 / std::sqrt( count / area );
-  double nnIndex = observedDistance / expectedDistance;
-  double se = 0.26136 / std::sqrt( std::pow( count, 2 ) / area );
-  double zScore = ( observedDistance - expectedDistance ) / se;
+  const long long count = source->featureCount() > 0 ? source->featureCount() : 1;
+  const double observedDistance = sumDist / count;
+  const double expectedDistance = 0.5 / std::sqrt( count / area );
+  const double nnIndex = observedDistance / expectedDistance;
+  const double se = 0.26136 / std::sqrt( std::pow( count, 2 ) / area );
+  const double zScore = ( observedDistance - expectedDistance ) / se;
 
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OBSERVED_MD" ), observedDistance );
-  outputs.insert( QStringLiteral( "EXPECTED_MD" ), expectedDistance );
-  outputs.insert( QStringLiteral( "NN_INDEX" ), nnIndex );
-  outputs.insert( QStringLiteral( "POINT_COUNT" ), count );
-  outputs.insert( QStringLiteral( "Z_SCORE" ), zScore );
+  outputs.insert( u"OBSERVED_MD"_s, observedDistance );
+  outputs.insert( u"EXPECTED_MD"_s, expectedDistance );
+  outputs.insert( u"NN_INDEX"_s, nnIndex );
+  outputs.insert( u"POINT_COUNT"_s, count );
+  outputs.insert( u"Z_SCORE"_s, zScore );
 
   if ( !outputFile.isEmpty() )
   {
     QFile file( outputFile );
-    if ( file.open( QIODevice::WriteOnly | QIODevice::Text ) )
+    if ( file.open( QIODevice::WriteOnly | QIODevice::Truncate ) )
     {
       QTextStream out( &file );
-      out << QStringLiteral( "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\"/></head><body>\n" );
+      out << u"<html><head><meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\"/></head><body>\n"_s;
       out << QObject::tr( "<p>Observed mean distance: %1</p>\n" ).arg( observedDistance, 0, 'f', 11 );
       out << QObject::tr( "<p>Expected mean distance: %1</p>\n" ).arg( expectedDistance, 0, 'f', 11 );
       out << QObject::tr( "<p>Nearest neighbour index: %1</p>\n" ).arg( nnIndex, 0, 'f', 11 );
       out << QObject::tr( "<p>Number of points: %1</p>\n" ).arg( count );
       out << QObject::tr( "<p>Z-Score: %1</p>\n" ).arg( zScore, 0, 'f', 11 );
-      out << QStringLiteral( "</body></html>" );
+      out << u"</body></html>"_s;
 
-      outputs.insert( QStringLiteral( "OUTPUT_HTML_FILE" ), outputFile );
+      outputs.insert( u"OUTPUT_HTML_FILE"_s, outputFile );
     }
   }
 

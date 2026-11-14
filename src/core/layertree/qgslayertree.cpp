@@ -14,19 +14,30 @@
  ***************************************************************************/
 
 #include "qgslayertree.h"
-#include "qgsmaplayerlistutils.h"
+
+#include "qgsmaplayerlistutils_p.h"
 #include "qgsvectorlayer.h"
+
+#include <QString>
+
+#include "moc_qgslayertree.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayerTree::QgsLayerTree()
 {
-  connect( this, &QgsLayerTree::addedChildren, this, &QgsLayerTree::nodeAddedChildren );
-  connect( this, &QgsLayerTree::removedChildren, this, &QgsLayerTree::nodeRemovedChildren );
+  init();
 }
 
 QgsLayerTree::QgsLayerTree( const QgsLayerTree &other )
   : QgsLayerTreeGroup( other )
   , mCustomLayerOrder( other.mCustomLayerOrder )
   , mHasCustomLayerOrder( other.mHasCustomLayerOrder )
+{
+  init();
+}
+
+void QgsLayerTree::init()
 {
   connect( this, &QgsLayerTree::addedChildren, this, &QgsLayerTree::nodeAddedChildren );
   connect( this, &QgsLayerTree::removedChildren, this, &QgsLayerTree::nodeRemovedChildren );
@@ -80,18 +91,7 @@ QList<QgsMapLayer *> QgsLayerTree::layerOrder() const
   }
   else
   {
-    QList<QgsMapLayer *> layers;
-    const QList< QgsLayerTreeLayer * > foundLayers = findLayers();
-    for ( const auto &treeLayer : foundLayers )
-    {
-      QgsMapLayer *layer = treeLayer->layer();
-      if ( !layer || !layer->isSpatial() )
-      {
-        continue;
-      }
-      layers.append( layer );
-    }
-    return layers;
+    return layerOrderRespectingGroupLayers();
   }
 }
 
@@ -111,9 +111,14 @@ void QgsLayerTree::setHasCustomLayerOrder( bool hasCustomLayerOrder )
   emit layerOrderChanged();
 }
 
-QgsLayerTree *QgsLayerTree::readXml( QDomElement &element, const QgsReadWriteContext &context )
+QList< QgsLayerTreeNode * > QgsLayerTree::layerAndCustomNodeOrder() const
 {
-  QgsLayerTree *tree = new QgsLayerTree();
+  return layerAndCustomNodeOrderRespectingGroupLayers();
+}
+
+std::unique_ptr< QgsLayerTree > QgsLayerTree::readXml( const QDomElement &element, const QgsReadWriteContext &context ) // cppcheck-suppress duplInheritedMember
+{
+  auto tree = std::make_unique< QgsLayerTree >();
 
   tree->readCommonXml( element );
 
@@ -125,24 +130,24 @@ QgsLayerTree *QgsLayerTree::readXml( QDomElement &element, const QgsReadWriteCon
 void QgsLayerTree::writeXml( QDomElement &parentElement, const QgsReadWriteContext &context )
 {
   QDomDocument doc = parentElement.ownerDocument();
-  QDomElement elem = doc.createElement( QStringLiteral( "layer-tree-group" ) );
+  QDomElement elem = doc.createElement( u"layer-tree-group"_s );
 
   writeCommonXml( elem );
 
-  for ( QgsLayerTreeNode *node : qgis::as_const( mChildren ) )
+  for ( QgsLayerTreeNode *node : std::as_const( mChildren ) )
     node->writeXml( elem, context );
 
-  QDomElement customOrderElem = doc.createElement( QStringLiteral( "custom-order" ) );
-  customOrderElem.setAttribute( QStringLiteral( "enabled" ), mHasCustomLayerOrder ? 1 : 0 );
+  QDomElement customOrderElem = doc.createElement( u"custom-order"_s );
+  customOrderElem.setAttribute( u"enabled"_s, mHasCustomLayerOrder ? 1 : 0 );
   elem.appendChild( customOrderElem );
 
-  for ( QgsMapLayer *layer : qgis::as_const( mCustomLayerOrder ) )
+  for ( QgsMapLayer *layer : std::as_const( mCustomLayerOrder ) )
   {
     // Safety belt, see https://github.com/qgis/QGIS/issues/26975
     // Crash when deleting an item from the layout legend
-    if ( ! layer )
+    if ( !layer )
       continue;
-    QDomElement layerElem = doc.createElement( QStringLiteral( "item" ) );
+    QDomElement layerElem = doc.createElement( u"item"_s );
     layerElem.appendChild( doc.createTextNode( layer->id() ) );
     customOrderElem.appendChild( layerElem );
   }
@@ -187,7 +192,7 @@ void QgsLayerTree::nodeAddedChildren( QgsLayerTreeNode *node, int indexFrom, int
     }
   }
 
-  for ( QgsMapLayer *layer : qgis::as_const( layers ) )
+  for ( QgsMapLayer *layer : std::as_const( layers ) )
   {
     if ( !mCustomLayerOrder.contains( layer ) && layer )
       mCustomLayerOrder.append( layer );
@@ -232,8 +237,7 @@ void QgsLayerTree::addMissingLayers()
   const QList< QgsLayerTreeLayer * > layers = findLayers();
   for ( const auto layer : layers )
   {
-    if ( !mCustomLayerOrder.contains( layer->layer() ) &&
-         layer->layer() && layer->layer()->isSpatial() )
+    if ( !mCustomLayerOrder.contains( layer->layer() ) && layer->layer() && layer->layer()->isSpatial() )
     {
       mCustomLayerOrder.append( layer->layer() );
       changed = true;
@@ -252,16 +256,16 @@ void QgsLayerTree::readLayerOrderFromXml( const QDomElement &elem )
 {
   QStringList order;
 
-  QDomElement customOrderElem = elem.firstChildElement( QStringLiteral( "custom-order" ) );
+  QDomElement customOrderElem = elem.firstChildElement( u"custom-order"_s );
   if ( !customOrderElem.isNull() )
   {
-    setHasCustomLayerOrder( customOrderElem.attribute( QStringLiteral( "enabled" ) ).toInt() );
+    setHasCustomLayerOrder( customOrderElem.attribute( u"enabled"_s ).toInt() );
 
-    QDomElement itemElem = customOrderElem.firstChildElement( QStringLiteral( "item" ) );
+    QDomElement itemElem = customOrderElem.firstChildElement( u"item"_s );
     while ( !itemElem.isNull() )
     {
       order.append( itemElem.text() );
-      itemElem = itemElem.nextSiblingElement( QStringLiteral( "item" ) );
+      itemElem = itemElem.nextSiblingElement( u"item"_s );
     }
   }
 

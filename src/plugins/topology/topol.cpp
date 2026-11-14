@@ -16,10 +16,14 @@
  ***************************************************************************/
 
 // QGIS Specific includes
-#include "qgsmaplayer.h"
-#include "qgsapplication.h"
 #include "qgisinterface.h"
+#include "qgsapplication.h"
 #include "qgsguiutils.h"
+#include "qgsmaplayer.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 // Qt Related Includes
 #include <QAction>
@@ -29,6 +33,7 @@
 #include <QMenu>
 
 #include "topol.h"
+#include "moc_topol.cpp"
 #include "checkDock.h"
 
 static const QString sName = QObject::tr( "Topology Checker" );
@@ -36,7 +41,7 @@ static const QString sDescription = QObject::tr( "A Plugin for finding topologic
 static const QString sCategory = QObject::tr( "Vector" );
 static const QString sPluginVersion = QObject::tr( "Version 0.1" );
 static const QgisPlugin::PluginType sPluginType = QgisPlugin::UI;
-static const QString sPluginIcon = QStringLiteral( ":/topology/mActionTopologyChecker.svg" );
+static const QString sPluginIcon = u":/topology/mActionTopologyChecker.svg"_s;
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -47,7 +52,7 @@ static const QString sPluginIcon = QStringLiteral( ":/topology/mActionTopologyCh
 /**
  * Constructor for the plugin. The plugin is passed a pointer
  * an interface object that provides access to exposed functions in QGIS.
- * \param theQGisInterface - Pointer to the QGIS interface object
+ * \param theQGisInterface Pointer to the QGIS interface object
  */
 Topol::Topol( QgisInterface *qgisInterface )
   : QgisPlugin( sName, sDescription, sCategory, sPluginVersion, sPluginType )
@@ -65,7 +70,7 @@ void Topol::initGui()
   delete mQActionPointer;
 
   mQActionPointer = new QAction( QIcon( sPluginIcon ), sName, this );
-  mQActionPointer->setObjectName( QStringLiteral( "mQActionPointer" ) );
+  mQActionPointer->setObjectName( u"mQActionPointer"_s );
   //mQActionPointer = new QAction( QIcon(), tr( "Topology Checker" ), this );
   mQActionPointer->setCheckable( true );
 
@@ -141,15 +146,15 @@ QGISEXTERN QgisPlugin *classFactory( QgisInterface *qgisInterfacePointer )
 }
 // Return the name of the plugin - note that we do not user class members as
 // the class may not yet be insantiated when this method is called.
-QGISEXTERN QString name()
+QGISEXTERN const QString *name()
 {
-  return sName;
+  return &sName;
 }
 
 // Return the description
-QGISEXTERN QString description()
+QGISEXTERN const QString *description()
 {
-  return sDescription;
+  return &sDescription;
 }
 
 // Return the type (either UI or MapLayer plugin)
@@ -159,20 +164,20 @@ QGISEXTERN int type()
 }
 
 // Return the category
-QGISEXTERN QString category()
+QGISEXTERN const QString *category()
 {
-  return sCategory;
+  return &sCategory;
 }
 
 // Return the version number for the plugin
-QGISEXTERN QString version()
+QGISEXTERN const QString *version()
 {
-  return sPluginVersion;
+  return &sPluginVersion;
 }
 
-QGISEXTERN QString icon()
+QGISEXTERN const QString *icon()
 {
-  return sPluginIcon;
+  return &sPluginIcon;
 }
 
 // Delete ourself

@@ -14,14 +14,20 @@
  ***************************************************************************/
 
 #include "qgsmaptoolreshape.h"
+
+#include "qgisapp.h"
+#include "qgsavoidintersectionsoperation.h"
 #include "qgsfeatureiterator.h"
 #include "qgsgeometry.h"
 #include "qgslinestring.h"
 #include "qgsmapcanvas.h"
+#include "qgsmapmouseevent.h"
+#include "qgsmultipoint.h"
 #include "qgsproject.h"
 #include "qgsvectorlayer.h"
-#include "qgisapp.h"
-#include "qgsmapmouseevent.h"
+#include "qgsvectorlayereditutils.h"
+
+#include "moc_qgsmaptoolreshape.cpp"
 
 QgsMapToolReshape::QgsMapToolReshape( QgsMapCanvas *canvas )
   : QgsMapToolCapture( canvas, QgisApp::instance()->cadDockWidget(), QgsMapToolCapture::CaptureLine )
@@ -49,16 +55,11 @@ void QgsMapToolReshape::cadCanvasReleaseEvent( QgsMapMouseEvent *e )
   //add point to list and to rubber band
   if ( e->button() == Qt::LeftButton )
   {
-    int error = addVertex( e->mapPoint(), e->mapPointMatch() );
-    if ( error == 1 )
-    {
-      //current layer is not a vector layer
-      return;
-    }
-    else if ( error == 2 )
+    const int error = addVertex( e->mapPoint(), e->mapPointMatch() );
+    if ( error == 2 )
     {
       //problem with coordinate transformation
-      emit messageEmitted( tr( "Cannot transform the point to the layers coordinate system" ), Qgis::Warning );
+      emit messageEmitted( tr( "Cannot transform the point to the layers coordinate system" ), Qgis::MessageLevel::Warning );
       return;
     }
 
@@ -68,22 +69,35 @@ void QgsMapToolReshape::cadCanvasReleaseEvent( QgsMapMouseEvent *e )
   {
     deleteTempRubberBand();
 
-    //find out bounding box of mCaptureList
-    if ( size() < 1 )
+    if ( size() > 1 )
     {
-      stopCapturing();
-      return;
+      reshape( vlayer );
     }
-
-    reshape( vlayer );
 
     stopCapturing();
   }
 }
 
+bool QgsMapToolReshape::supportsTechnique( Qgis::CaptureTechnique technique ) const
+{
+  switch ( technique )
+  {
+    case Qgis::CaptureTechnique::StraightSegments:
+    case Qgis::CaptureTechnique::CircularString:
+    case Qgis::CaptureTechnique::Streaming:
+      return true;
+
+    case Qgis::CaptureTechnique::Shape:
+    case Qgis::CaptureTechnique::PolyBezier:
+    case Qgis::CaptureTechnique::NurbsCurve:
+      return false;
+  }
+  return false;
+}
+
 bool QgsMapToolReshape::isBindingLine( QgsVectorLayer *vlayer, const QgsRectangle &bbox ) const
 {
-  if ( vlayer->geometryType() != QgsWkbTypes::LineGeometry )
+  if ( vlayer->geometryType() != Qgis::GeometryType::Line )
     return false;
 
   bool begin = false;
@@ -114,17 +128,26 @@ bool QgsMapToolReshape::isBindingLine( QgsVectorLayer *vlayer, const QgsRectangl
 
 void QgsMapToolReshape::reshape( QgsVectorLayer *vlayer )
 {
-  QgsPointXY firstPoint = pointsZM().at( 0 );
+  const QgsPointXY firstPoint = pointsZM().at( 0 );
   QgsRectangle bbox( firstPoint.x(), firstPoint.y(), firstPoint.x(), firstPoint.y() );
   for ( int i = 1; i < size(); ++i )
   {
     bbox.combineExtentWith( pointsZM().at( i ).x(), pointsZM().at( i ).y() );
   }
 
-
+  const bool hasCurvedSegments = captureCurve()->hasCurvedSegments();
   QgsPointSequence pts;
-  captureCurve()->points( pts );
-  QgsLineString reshapeLineString( pts );
+  if ( !hasCurvedSegments )
+  {
+    captureCurve()->points( pts );
+  }
+  else
+  {
+    std::unique_ptr<QgsLineString> segmented( captureCurve()->curveToLine() );
+    segmented->points( pts );
+  }
+
+  const QgsLineString reshapeLineString( pts );
 
   //query all the features that intersect bounding box of capture line
   QgsFeatureRequest req = QgsFeatureRequest().setFilterRect( bbox ).setNoAttributes();
@@ -135,16 +158,17 @@ void QgsMapToolReshape::reshape( QgsVectorLayer *vlayer )
   QgsFeatureIterator fit = vlayer->getFeatures( req );
 
   QgsFeature f;
-  int reshapeReturn;
+  Qgis::GeometryOperationResult reshapeReturn = Qgis::GeometryOperationResult::Success;
   bool reshapeDone = false;
-  bool isBinding = isBindingLine( vlayer, bbox );
+  const bool isBinding = isBindingLine( vlayer, bbox );
+  QgsAvoidIntersectionsOperation avoidIntersections;
+  connect( &avoidIntersections, &QgsAvoidIntersectionsOperation::messageEmitted, this, &QgsMapTool::messageEmitted );
 
-  vlayer->beginEditCommand( tr( "Reshape" ) );
+  QHash<QgsFeatureId, QgsGeometry> reshapedGeometries;
+
+  // we first gather the features that are actually going to be reshaped and the reshaped results
   while ( fit.nextFeature( f ) )
   {
-    //query geometry
-    //call geometry->reshape(mCaptureList)
-    //register changed geometry in vector layer
     QgsGeometry geom = f.geometry();
     if ( !geom.isNull() )
     {
@@ -154,56 +178,45 @@ void QgsMapToolReshape::reshape( QgsVectorLayer *vlayer )
         continue;
 
       reshapeReturn = geom.reshapeGeometry( reshapeLineString );
-      if ( reshapeReturn == 0 )
+      if ( reshapeReturn == Qgis::GeometryOperationResult::Success )
       {
-        //avoid intersections on polygon layers
-        if ( vlayer->geometryType() == QgsWkbTypes::PolygonGeometry )
-        {
-          //ignore all current layer features as they should be reshaped too
-          QHash<QgsVectorLayer *, QSet<QgsFeatureId> > ignoreFeatures;
-          ignoreFeatures.insert( vlayer, vlayer->allFeatureIds() );
-
-          QList<QgsVectorLayer *>  avoidIntersectionsLayers;
-          switch ( QgsProject::instance()->avoidIntersectionsMode() )
-          {
-            case QgsProject::AvoidIntersectionsMode::AvoidIntersectionsCurrentLayer:
-              avoidIntersectionsLayers.append( vlayer );
-              break;
-            case QgsProject::AvoidIntersectionsMode::AvoidIntersectionsLayers:
-              avoidIntersectionsLayers = QgsProject::instance()->avoidIntersectionsLayers();
-              break;
-            case QgsProject::AvoidIntersectionsMode::AllowIntersections:
-              break;
-          }
-          int res = -1;
-          if ( avoidIntersectionsLayers.size() > 0 )
-          {
-            res = geom.avoidIntersections( QgsProject::instance()->avoidIntersectionsLayers(), ignoreFeatures );
-            if ( res == 1 )
-            {
-              emit messageEmitted( tr( "An error was reported during intersection removal" ), Qgis::Critical );
-              vlayer->destroyEditCommand();
-              stopCapturing();
-              return;
-            }
-          }
-
-          if ( geom.isEmpty() ) //intersection removal might have removed the whole geometry
-          {
-            emit messageEmitted( tr( "The feature cannot be reshaped because the resulting geometry is empty" ), Qgis::Critical );
-            vlayer->destroyEditCommand();
-            return;
-          }
-          if ( res == 3 )
-          {
-            emit messageEmitted( tr( "At least one geometry intersected is invalid. These geometries must be manually repaired." ), Qgis::Warning );
-          }
-        }
-
-        vlayer->changeGeometry( f.id(), geom );
-        reshapeDone = true;
+        reshapedGeometries.insert( f.id(), geom );
       }
     }
+  }
+  // ignore features that are going to be reshaped
+  // some intersected features may not be reshaped because of active selection or reshape line geometry
+  const QHash<QgsVectorLayer *, QSet<QgsFeatureId>> ignoreFeatures { { vlayer, qgis::listToSet( reshapedGeometries.keys() ) } };
+
+  // then we can apply intersection avoidance logic and eventually update the layer
+  vlayer->beginEditCommand( tr( "Reshape" ) );
+  for ( auto it = reshapedGeometries.begin(); it != reshapedGeometries.end(); ++it )
+  {
+    QgsFeatureId fid = it.key();
+    QgsGeometry geom = it.value();
+
+    //avoid intersections on polygon layers
+    if ( vlayer->geometryType() == Qgis::GeometryType::Polygon )
+    {
+      const QgsAvoidIntersectionsOperation::Result res = avoidIntersections.apply( vlayer, fid, geom, ignoreFeatures );
+      if ( res.operationResult == Qgis::GeometryOperationResult::InvalidInputGeometryType )
+      {
+        emit messageEmitted( tr( "An error was reported during intersection removal" ), Qgis::MessageLevel::Warning );
+        vlayer->destroyEditCommand();
+        stopCapturing();
+        return;
+      }
+
+      if ( geom.isEmpty() ) //intersection removal might have removed the whole geometry
+      {
+        emit messageEmitted( tr( "The feature cannot be reshaped because the resulting geometry is empty" ), Qgis::MessageLevel::Critical );
+        vlayer->destroyEditCommand();
+        return;
+      }
+    }
+
+    vlayer->changeGeometry( fid, geom );
+    reshapeDone = true;
   }
 
   if ( reshapeDone )
@@ -211,16 +224,12 @@ void QgsMapToolReshape::reshape( QgsVectorLayer *vlayer )
     // Add topological points
     if ( QgsProject::instance()->topologicalEditing() )
     {
-      QList<QgsPointLocator::Match> sm = snappingMatches();
-      Q_ASSERT( pts.size() == sm.size() );
-      for ( int i = 0; i < sm.size() ; ++i )
-      {
-        if ( sm.at( i ).layer() )
-        {
-          sm.at( i ).layer()->addTopologicalPoints( pts.at( i ) );
-        }
-      }
+      //check if we need to add topological points to other layers
+      const QList<QgsMapLayer *> layers = canvas()->layers( true );
+      QgsGeometry pointsAsGeom( new QgsMultiPoint( pts ) );
+      QgsVectorLayerEditUtils::addTopologicalPointsToLayers( pointsAsGeom, vlayer, layers, mToolName );
     }
+
     vlayer->endEditCommand();
   }
   else

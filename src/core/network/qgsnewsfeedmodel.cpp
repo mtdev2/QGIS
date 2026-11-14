@@ -13,8 +13,12 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsnewsfeedmodel.h"
+
 #include "qgsnetworkcontentfetcher.h"
+
 #include <QPainter>
+
+#include "moc_qgsnewsfeedmodel.cpp"
 
 //
 // QgsNewsFeedModel
@@ -31,6 +35,7 @@ QgsNewsFeedModel::QgsNewsFeedModel( QgsNewsFeedParser *parser, QObject *parent )
 
   connect( mParser, &QgsNewsFeedParser::entryAdded, this, &QgsNewsFeedModel::onEntryAdded );
   connect( mParser, &QgsNewsFeedParser::entryDismissed, this, &QgsNewsFeedModel::onEntryRemoved );
+  connect( mParser, &QgsNewsFeedParser::entryUpdated, this, &QgsNewsFeedModel::onEntryUpdated );
   connect( mParser, &QgsNewsFeedParser::imageFetched, this, &QgsNewsFeedModel::onImageFetched );
 }
 
@@ -44,27 +49,30 @@ QVariant QgsNewsFeedModel::data( const QModelIndex &index, int role ) const
   switch ( role )
   {
     case Qt::DisplayRole:
-    case Content:
+    case static_cast< int >( CustomRole::Content ):
       return entry.content;
 
     case Qt::ToolTipRole:
-    case Title:
+    case static_cast< int >( CustomRole::Title ):
       return entry.title;
 
-    case Key:
+    case static_cast< int >( CustomRole::Key ):
       return entry.key;
 
-    case ImageUrl:
+    case static_cast< int >( CustomRole::ImageUrl ):
       return entry.imageUrl;
 
-    case Image:
+    case static_cast< int >( CustomRole::Image ):
       return entry.image;
 
-    case Link:
+    case static_cast< int >( CustomRole::Link ):
       return entry.link;
 
-    case Sticky:
+    case static_cast< int >( CustomRole::Sticky ):
       return entry.sticky;
+
+    case static_cast< int >( CustomRole::Published ):
+      return entry.published;
 
     case Qt::DecorationRole:
       if ( entry.image.isNull() )
@@ -72,6 +80,19 @@ QVariant QgsNewsFeedModel::data( const QModelIndex &index, int role ) const
       return entry.image;
   }
   return QVariant();
+}
+
+QHash<int, QByteArray> QgsNewsFeedModel::roleNames() const
+{
+  QHash<int, QByteArray> roles;
+  roles[static_cast< int >( CustomRole::Key )] = "Key";
+  roles[static_cast< int >( CustomRole::Title )] = "Title";
+  roles[static_cast< int >( CustomRole::Content )] = "Content";
+  roles[static_cast< int >( CustomRole::ImageUrl )] = "ImageUrl";
+  roles[static_cast< int >( CustomRole::Link )] = "Link";
+  roles[static_cast< int >( CustomRole::Sticky )] = "Sticky";
+  roles[static_cast< int >( CustomRole::Published )] = "Published";
+  return roles;
 }
 
 Qt::ItemFlags QgsNewsFeedModel::flags( const QModelIndex &index ) const
@@ -120,13 +141,23 @@ void QgsNewsFeedModel::onEntryAdded( const QgsNewsFeedParser::Entry &entry )
   endInsertRows();
 }
 
+void QgsNewsFeedModel::onEntryUpdated( const QgsNewsFeedParser::Entry &entry )
+{
+  for ( int idx = 0; idx < mEntries.count(); idx++ )
+  {
+    if ( mEntries.at( idx ).key == entry.key )
+    {
+      mEntries[idx] = entry;
+      emit dataChanged( index( idx, 0 ), index( idx, 0 ) );
+      break;
+    }
+  }
+}
+
 void QgsNewsFeedModel::onEntryRemoved( const QgsNewsFeedParser::Entry &entry )
 {
   // find index of entry
-  auto findIter = std::find_if( mEntries.begin(), mEntries.end(), [entry]( const QgsNewsFeedParser::Entry & candidate )
-  {
-    return candidate.key == entry.key;
-  } );
+  const auto findIter = std::find_if( mEntries.begin(), mEntries.end(), [entry]( const QgsNewsFeedParser::Entry &candidate ) { return candidate.key == entry.key; } );
   if ( findIter == mEntries.end() )
     return;
 
@@ -139,15 +170,12 @@ void QgsNewsFeedModel::onEntryRemoved( const QgsNewsFeedParser::Entry &entry )
 void QgsNewsFeedModel::onImageFetched( const int key, const QPixmap &pixmap )
 {
   // find index of entry
-  auto findIter = std::find_if( mEntries.begin(), mEntries.end(), [key]( const QgsNewsFeedParser::Entry & candidate )
-  {
-    return candidate.key == key;
-  } );
+  const auto findIter = std::find_if( mEntries.begin(), mEntries.end(), [key]( const QgsNewsFeedParser::Entry &candidate ) { return candidate.key == key; } );
   if ( findIter == mEntries.end() )
     return;
 
   const int entryIndex = static_cast< int >( std::distance( mEntries.begin(), findIter ) );
-  mEntries[ entryIndex ].image = pixmap;
+  mEntries[entryIndex].image = pixmap;
   emit dataChanged( index( entryIndex, 0, QModelIndex() ), index( entryIndex, 0, QModelIndex() ) );
 }
 
@@ -168,8 +196,8 @@ QgsNewsFeedProxyModel::QgsNewsFeedProxyModel( QgsNewsFeedParser *parser, QObject
 
 bool QgsNewsFeedProxyModel::lessThan( const QModelIndex &left, const QModelIndex &right ) const
 {
-  const bool leftSticky = sourceModel()->data( left, QgsNewsFeedModel::Sticky ).toBool();
-  const bool rightSticky = sourceModel()->data( right, QgsNewsFeedModel::Sticky ).toBool();
+  const bool leftSticky = sourceModel()->data( left, static_cast< int >( QgsNewsFeedModel::CustomRole::Sticky ) ).toBool();
+  const bool rightSticky = sourceModel()->data( right, static_cast< int >( QgsNewsFeedModel::CustomRole::Sticky ) ).toBool();
 
   // sticky items come first
   if ( leftSticky && !rightSticky )
@@ -177,8 +205,8 @@ bool QgsNewsFeedProxyModel::lessThan( const QModelIndex &left, const QModelIndex
   if ( rightSticky && !leftSticky )
     return false;
 
-  // else sort by descending key
-  const int leftKey = sourceModel()->data( left, QgsNewsFeedModel::Key ).toInt();
-  const int rightKey = sourceModel()->data( right, QgsNewsFeedModel::Key ).toInt();
-  return rightKey < leftKey;
+  // else sort by descending publication date
+  const QDateTime leftPublished = sourceModel()->data( left, static_cast< int >( QgsNewsFeedModel::CustomRole::Published ) ).toDateTime();
+  const QDateTime rightPublished = sourceModel()->data( right, static_cast< int >( QgsNewsFeedModel::CustomRole::Published ) ).toDateTime();
+  return rightPublished < leftPublished;
 }

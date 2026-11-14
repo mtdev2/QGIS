@@ -23,13 +23,12 @@
 #include <QString>
 
 class QIODevice;
-class QStringList;
 
 class QgsReadWriteContext;
 
 /**
  * \ingroup core
- * Abstract interface for project storage - to be implemented by various backends
+ * \brief Abstract interface for project storage - to be implemented by various backends
  * and registered in QgsProjectStorageRegistry.
  *
  * \since QGIS 3.2
@@ -37,10 +36,9 @@ class QgsReadWriteContext;
 class CORE_EXPORT QgsProjectStorage
 {
   public:
-
     /**
      * \ingroup core
-     * Metadata associated with a project
+     * \brief Metadata associated with a project.
      * \since QGIS 3.2
      */
     class Metadata
@@ -59,6 +57,17 @@ class CORE_EXPORT QgsProjectStorage
      * starting with "memory:" will have read/write redirected through that storage implementation.
      */
     virtual QString type() = 0;
+
+    /**
+     * Returns TRUE if the specified \a uri is supported by the storage provider.
+     *
+     * \note This method does not actually test whether the \a uri contains projects, but
+     * rather it is a quick test to determine if it is possible that the uri may
+     * contain projects.
+     *
+     * \since QGIS 3.22
+     */
+    virtual bool isSupportedUri( const QString &uri ) const;
 
     //! Returns list of all projects for given URI (specific to each storage backend)
     virtual QStringList listProjects( const QString &uri ) = 0;
@@ -89,13 +98,23 @@ class CORE_EXPORT QgsProjectStorage
      * Rename an existing project at the given URI to a different URI. Returns TRUE if renaming
      * was successful.
      */
-    virtual bool renameProject( const QString &uri, const QString &uriNew ) { Q_UNUSED( uri ) Q_UNUSED( uriNew ); return false; }
+    virtual bool renameProject( const QString &uri, const QString &uriNew )
+    {
+      Q_UNUSED( uri )
+      Q_UNUSED( uriNew );
+      return false;
+    }
 
     /**
      * Reads project metadata (e.g. last modified time) if this is supported by the storage implementation.
      * Returns TRUE if the metadata were read with success.
      */
-    virtual bool readProjectStorageMetadata( const QString &uri, QgsProjectStorage::Metadata &metadata SIP_OUT ) { Q_UNUSED( uri ) Q_UNUSED( metadata ); return false; }
+    virtual bool readProjectStorageMetadata( const QString &uri, QgsProjectStorage::Metadata &metadata SIP_OUT )
+    {
+      Q_UNUSED( uri )
+      Q_UNUSED( metadata );
+      return false;
+    }
 
     /**
      * Extracts and returns the file path from a storage backend \a uri, filesystem-based storage
@@ -109,24 +128,23 @@ class CORE_EXPORT QgsProjectStorage
      * Returns human-readable name of the storage. Used as the menu item text in QGIS. Empty name
      * indicates that the storage does not implement GUI support (showLoadGui() and showSaveGui()).
      * The name may be translatable and ideally unique as well.
-     * \deprecated since QGIS 3.10 - use QgsProjectStorageGuiProvider for GUI-related project storage functionality
+     * \deprecated QGIS 3.10. Use QgsProjectStorageGuiProvider for GUI-related project storage functionality.
      */
     Q_DECL_DEPRECATED virtual QString visibleName() SIP_DEPRECATED { return QString(); }
 
     /**
      * Opens GUI to allow user to select a project to be loaded (GUI specific to this storage type).
      * Returns project URI if user has picked a project or empty string if the GUI was canceled.
-     * \deprecated since QGIS 3.10 - use QgsProjectStorageGuiProvider for GUI-related project storage functionality
+     * \deprecated QGIS 3.10. Use QgsProjectStorageGuiProvider for GUI-related project storage functionality.
      */
     Q_DECL_DEPRECATED virtual QString showLoadGui() SIP_DEPRECATED { return QString(); }
 
     /**
      * Opens GUI to allow user to select where a project should be saved (GUI specific to this storage type).
      * Returns project URI if user has picked a destination or empty string if the GUI was canceled.
-     * \deprecated since QGIS 3.10 - use QgsProjectStorageGuiProvider for GUI-related project storage functionality
+     * \deprecated QGIS 3.10. Use QgsProjectStorageGuiProvider for GUI-related project storage functionality.
      */
     Q_DECL_DEPRECATED virtual QString showSaveGui() SIP_DEPRECATED { return QString(); }
-
 };
 
 #endif // QGSPROJECTSTORAGE_H

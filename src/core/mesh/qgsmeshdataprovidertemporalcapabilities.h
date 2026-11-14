@@ -18,30 +18,30 @@
 #ifndef QGSMESHDATAPROVIDERTEMPORALCAPABILITIES_H
 #define QGSMESHDATAPROVIDERTEMPORALCAPABILITIES_H
 
+#include "qgis.h"
 #include "qgsdataprovidertemporalcapabilities.h"
-#include "qgsrange.h"
 #include "qgsmeshdataset.h"
+#include "qgsrange.h"
 
-#define  INVALID_MESHLAYER_TIME -99999
+#define INVALID_MESHLAYER_TIME -99999
 
 /**
  * \class QgsMeshDataProviderTemporalCapabilities
  * \ingroup core
- * Class for handling properties relating to a mesh data provider's temporal capabilities.
+ * \brief Handles properties relating to a mesh data provider's temporal capabilities.
  *
  * \since QGIS 3.14
  */
-class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProviderTemporalCapabilities
+class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities : public QgsDataProviderTemporalCapabilities
 {
   public:
-
     /**
-     * Method for selection of temporal mesh dataset from a range time
-     **/
+     * Method for selection of temporal mesh dataset from a range time.
+     */
     enum MatchingTemporalDatasetMethod
     {
-      FindClosestDatasetBeforeStartRangeTime, //! Finds the closest dataset which have its time before the requested start range time
-      FindClosestDatasetFromStartRangeTime //! Finds the closest dataset before or after the requested start range time
+      FindClosestDatasetBeforeStartRangeTime, //!< Finds the closest dataset which have its time before the requested start range time
+      FindClosestDatasetFromStartRangeTime    //!< Finds the closest dataset before or after the requested start range time
     };
 
     /**
@@ -88,7 +88,7 @@ class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProvide
      * \note must be used only by the mesh data provider,
      * all dataset need to be added one after one
      */
-    void addDatasetTime( int group, double  time ) SIP_SKIP;
+    void addDatasetTime( int group, double time ) SIP_SKIP;
 
     /**
      * Returns whether the reference time is set
@@ -117,12 +117,12 @@ class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProvide
      *
      * Temporal units supported are milliseconds, seconds, minutes, hors, days and weeks
      */
-    void setTemporalUnit( QgsUnitTypes::TemporalUnit temporalUnit );
+    void setTemporalUnit( Qgis::TemporalUnit temporalUnit );
 
     /**
      * Returns the temporal unit used to read data by the data provider
      */
-    QgsUnitTypes::TemporalUnit temporalUnit() const;
+    Qgis::TemporalUnit temporalUnit() const;
 
     /**
     * Returns the relative time in milliseconds of the dataset
@@ -130,7 +130,7 @@ class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProvide
     qint64 datasetTime( const QgsMeshDatasetIndex &index ) const;
 
     /**
-    * Clears alls stored reference times and dataset times
+    * Clears all stored reference times and dataset times
     */
     void clear();
 
@@ -142,7 +142,6 @@ class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProvide
     qint64 firstTimeStepDuration( int group ) const;
 
   private:
-
     //! Holds the global reference date/time value if exists (min of all groups), otherwise it is invalid
     QDateTime mGlobalReferenceDateTime;
 
@@ -157,7 +156,7 @@ class CORE_EXPORT QgsMeshDataProviderTemporalCapabilities: public QgsDataProvide
      */
     QHash<int, QList<qint64>> mDatasetTimeSinceGroupReference;
 
-    QgsUnitTypes::TemporalUnit mTemporalUnit = QgsUnitTypes::TemporalHours;
+    Qgis::TemporalUnit mTemporalUnit = Qgis::TemporalUnit::Hours;
 };
 
 #endif // QGSMESHDATAPROVIDERTEMPORALCAPABILITIES_H

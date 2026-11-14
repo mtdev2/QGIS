@@ -16,9 +16,10 @@
  ***************************************************************************/
 
 #include "qgsfeaturefilter.h"
+
+#include "qgsexpression.h"
 #include "qgsfeaturerequest.h"
 #include "qgsvectorlayer.h"
-#include "qgsexpression.h"
 
 void QgsFeatureFilter::filterFeatures( const QgsVectorLayer *layer, QgsFeatureRequest &filterFeatures ) const
 {
@@ -27,6 +28,12 @@ void QgsFeatureFilter::filterFeatures( const QgsVectorLayer *layer, QgsFeatureRe
   {
     filterFeatures.setFilterExpression( expr );
   }
+}
+
+QStringList QgsFeatureFilter::layerAttributes( const QgsVectorLayer *, const QStringList &attributes ) const
+{
+  // Do nothing
+  return attributes;
 }
 
 QgsFeatureFilterProvider *QgsFeatureFilter::clone() const

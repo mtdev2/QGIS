@@ -25,19 +25,19 @@ class QgsLineString;
 
 /**
  * \ingroup core
- * Represents a single 2D line segment, consisting of a 2D start and end vertex only.
+ * \brief Represents a single 2D line segment, consisting of a 2D start and end vertex only.
  * \since QGIS 3.2
  */
 class CORE_EXPORT QgsLineSegment2D
 {
-
   public:
-
+    // clang-format off
     /**
      * Constructor for a QgsLineSegment2D from the specified \a start point to
      * the \a end point.
      */
     QgsLineSegment2D( const QgsPointXY &start, const QgsPointXY &end ) SIP_HOLDGIL
+      // clang-format on
   : mStart( start )
     , mEnd( end )
     {}
@@ -57,7 +57,7 @@ class CORE_EXPORT QgsLineSegment2D
      */
     double length() const SIP_HOLDGIL
     {
-      return std::sqrt( ( mStart.x() - mEnd.x() ) * ( mStart.x() - mEnd.x() ) + ( mStart.y() - mEnd.y() ) * ( mStart.y() - mEnd.y() ) );
+      return mStart.distance( mEnd );
     }
 
     /**
@@ -66,7 +66,7 @@ class CORE_EXPORT QgsLineSegment2D
      */
     double lengthSquared() const SIP_HOLDGIL
     {
-      return ( mStart.x() - mEnd.x() ) * ( mStart.x() - mEnd.x() ) + ( mStart.y() - mEnd.y() ) * ( mStart.y() - mEnd.y() );
+      return mStart.sqrDist( mEnd );
     }
 
     /**
@@ -218,13 +218,13 @@ class CORE_EXPORT QgsLineSegment2D
       std::swap( mStart, mEnd );
     }
 
-    //! Equality operator
+    // TODO c++20 - replace with = default
+
     bool operator==( const QgsLineSegment2D &other ) const SIP_HOLDGIL
     {
       return mStart == other.mStart && mEnd == other.mEnd;
     }
 
-    //! Inequality operator
     bool operator!=( const QgsLineSegment2D &other ) const SIP_HOLDGIL
     {
       return mStart != other.mStart || mEnd != other.mEnd;

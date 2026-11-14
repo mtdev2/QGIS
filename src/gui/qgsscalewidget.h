@@ -16,21 +16,20 @@
 #ifndef QGSSCALEWIDGET_H
 #define QGSSCALEWIDGET_H
 
-#include <QWidget>
-#include <QToolButton>
-
-
-#include "qgsscalecombobox.h"
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+#include "qgsscalecombobox.h"
+
+#include <QToolButton>
+#include <QWidget>
 
 class QgsMapCanvas;
 
 /**
  * \ingroup gui
- * A combobox which lets the user select map scale from predefined list
- * and highlights nearest to current scale value
- **/
+ * \brief A combobox which lets the user select map scale from predefined list
+ * and highlights nearest to current scale value.
+ */
 class GUI_EXPORT QgsScaleWidget : public QWidget
 {
     Q_OBJECT
@@ -39,11 +38,10 @@ class GUI_EXPORT QgsScaleWidget : public QWidget
     Q_PROPERTY( bool minScale READ minScale WRITE setMinScale )
 
   public:
-
     /**
      * \brief QgsScaleWidget creates a combobox which lets the user select map scale from predefined list
      * and highlights nearest to current scale value
-     **/
+     */
     explicit QgsScaleWidget( QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
@@ -58,7 +56,7 @@ class GUI_EXPORT QgsScaleWidget : public QWidget
      * Returns whether a button to set the scale from map canvas is shown or not.
      * \see setShowCurrentScaleButton()
      */
-    bool showCurrentScaleButton() { return mShowCurrentScaleButton;}
+    bool showCurrentScaleButton() const { return mShowCurrentScaleButton; }
 
     /**
      * Set the map \a canvas associated to the current button.
@@ -136,6 +134,16 @@ class GUI_EXPORT QgsScaleWidget : public QWidget
      */
     bool allowNull() const;
 
+    /**
+     * Sets the list of predefined \a scales to show in the widget. List elements
+     * are expected to be scale denominators, e.g. 1000.0 for a 1:1000 map.
+     *
+     * If \a scales is empty then the default user scale options will be used instead.
+     *
+     * \since QGIS 3.38
+    */
+    void setPredefinedScales( const QVector<double> &scales );
+
   public slots:
 
     /**
@@ -146,7 +154,7 @@ class GUI_EXPORT QgsScaleWidget : public QWidget
     void setScale( double scale );
 
     /**
-     * Sets the list of predefined \a scales to show in the combobox. List elements
+     * Sets the list of predefined \a scales to show in the widget. List elements
      * are expected to be valid scale strings, such as "1:1000000".
      */
     void updateScales( const QStringList &scales = QStringList() ) { mScaleComboBox->updateScales( scales ); }

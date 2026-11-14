@@ -20,25 +20,27 @@
 
 #include <QFile>
 #include <QImage>
+#include <QString>
 
-#include <zlib.h>
-
+using namespace Qt::StringLiterals;
 
 QgsMbTiles::QgsMbTiles( const QString &filename )
   : mFilename( filename )
-{
-}
+{}
 
 bool QgsMbTiles::open()
 {
   if ( mDatabase )
-    return true;  // already opened
+    return true; // already opened
 
-  sqlite3_database_unique_ptr database;
-  int result = mDatabase.open_v2( mFilename, SQLITE_OPEN_READONLY, nullptr );
+  if ( mFilename.isEmpty() )
+    return false;
+
+  const int result = mDatabase.open_v2( mFilename, SQLITE_OPEN_READONLY, nullptr );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "Can't open MBTiles database: %1" ).arg( database.errorMessage() ) );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"Can't open MBTiles database: %1"_s.arg( mLastError ) );
     return false;
   }
   return true;
@@ -49,7 +51,23 @@ bool QgsMbTiles::isOpen() const
   return bool( mDatabase );
 }
 
-bool QgsMbTiles::create()
+bool QgsMbTiles::finalize()
+{
+  if ( !mDatabase )
+    return false;
+
+  if ( !mDeferredIndexCreation ) // nothing to do!
+    return true;
+
+  QString errorMessage;
+  mDatabase.exec( u"PRAGMA journal_mode = DELETE;"_s, errorMessage );
+
+  const int result = mDatabase.exec( u"CREATE UNIQUE INDEX IF NOT EXISTS tile_index ON tiles (zoom_level, tile_column, tile_row);"_s, mLastError );
+
+  return result == SQLITE_OK;
+}
+
+bool QgsMbTiles::create( bool deferIndexCreation )
 {
   if ( mDatabase )
     return false;
@@ -57,144 +75,164 @@ bool QgsMbTiles::create()
   if ( QFile::exists( mFilename ) )
     return false;
 
-  sqlite3_database_unique_ptr database;
   int result = mDatabase.open_v2( mFilename, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "Can't create MBTiles database: %1" ).arg( database.errorMessage() ) );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"Can't create MBTiles database: %1"_s.arg( mLastError ) );
     return false;
   }
 
-  QString sql = \
-                "CREATE TABLE metadata (name text, value text);" \
-                "CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);" \
-                "CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);";
   QString errorMessage;
-  result = mDatabase.exec( sql, errorMessage );
+  // ignore errors from these, they aren't critical
+  // optimise writing speed
+  mDatabase.exec( u"PRAGMA journal_mode = WAL;"_s, errorMessage );
+  mDatabase.exec( u"PRAGMA synchronous = OFF;"_s, errorMessage );
+  mDatabase.exec( u"PRAGMA temp_store = MEMORY;"_s, errorMessage );
+  mDatabase.exec( u"PRAGMA cache_size = -64000;"_s, errorMessage );
+
+  QString sql = "CREATE TABLE metadata (name text, value text);"
+                "CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);";
+  if ( !deferIndexCreation )
+  {
+    sql += "CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);";
+  }
+  else
+  {
+    mDeferredIndexCreation = true;
+  }
+
+  result = mDatabase.exec( sql, mLastError );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "Failed to initialize MBTiles database: " ) + errorMessage );
+    QgsDebugError( u"Failed to initialize MBTiles database: "_s + mLastError );
     return false;
   }
 
   return true;
 }
 
-QString QgsMbTiles::metadataValue( const QString &key )
+QString QgsMbTiles::metadataValue( const QString &key ) const
 {
   if ( !mDatabase )
   {
-    QgsDebugMsg( QStringLiteral( "MBTiles database not open: " ) + mFilename );
+    QgsDebugError( u"MBTiles database not open: "_s + mFilename );
     return QString();
   }
 
   int result;
-  QString sql = QStringLiteral( "select value from metadata where name='%1'" ).arg( key );
+  const QString sql = u"select value from metadata where name='%1'"_s.arg( key );
   sqlite3_statement_unique_ptr preparedStatement = mDatabase.prepare( sql, result );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile failed to prepare statement: " ) + sql );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile failed to prepare statement: "_s + sql );
     return QString();
   }
 
   if ( preparedStatement.step() != SQLITE_ROW )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile metadata value not found: " ) + key );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile metadata value not found: "_s + key );
     return QString();
   }
 
   return preparedStatement.columnAsText( 0 );
 }
 
-void QgsMbTiles::setMetadataValue( const QString &key, const QString &value )
+void QgsMbTiles::setMetadataValue( const QString &key, const QString &value ) const
 {
   if ( !mDatabase )
   {
-    QgsDebugMsg( QStringLiteral( "MBTiles database not open: " ) + mFilename );
+    QgsDebugError( u"MBTiles database not open: "_s + mFilename );
     return;
   }
 
   int result;
-  QString sql = QStringLiteral( "insert into metadata values (%1, %2)" ).arg( QgsSqliteUtils::quotedValue( key ), QgsSqliteUtils::quotedValue( value ) );
+  const QString sql = u"insert into metadata values (%1, %2)"_s.arg( QgsSqliteUtils::quotedValue( key ), QgsSqliteUtils::quotedValue( value ) );
   sqlite3_statement_unique_ptr preparedStatement = mDatabase.prepare( sql, result );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile failed to prepare statement: " ) + sql );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile failed to prepare statement: "_s + sql );
     return;
   }
 
   if ( preparedStatement.step() != SQLITE_DONE )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile metadata value failed to be set: " ) + key );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile metadata value failed to be set: "_s + key );
     return;
   }
 }
 
-QgsRectangle QgsMbTiles::extent()
+QgsRectangle QgsMbTiles::extent() const
 {
-  QString boundsStr = metadataValue( "bounds" );
+  const QString boundsStr = metadataValue( "bounds" );
   if ( boundsStr.isEmpty() )
     return QgsRectangle();
   QStringList boundsArray = boundsStr.split( ',' );
   if ( boundsArray.count() != 4 )
     return QgsRectangle();
 
-  return QgsRectangle( boundsArray[0].toDouble(), boundsArray[1].toDouble(),
-                       boundsArray[2].toDouble(), boundsArray[3].toDouble() );
+  return QgsRectangle( boundsArray[0].toDouble(), boundsArray[1].toDouble(), boundsArray[2].toDouble(), boundsArray[3].toDouble() );
 }
 
-QByteArray QgsMbTiles::tileData( int z, int x, int y )
+QByteArray QgsMbTiles::tileData( int z, int x, int y ) const
 {
   if ( !mDatabase )
   {
-    QgsDebugMsg( QStringLiteral( "MBTiles database not open: " ) + mFilename );
+    QgsDebugError( u"MBTiles database not open: "_s + mFilename );
     return QByteArray();
   }
 
   int result;
-  QString sql = QStringLiteral( "select tile_data from tiles where zoom_level=%1 and tile_column=%2 and tile_row=%3" ).arg( z ).arg( x ).arg( y );
+  const QString sql = u"select tile_data from tiles where zoom_level=%1 and tile_column=%2 and tile_row=%3"_s.arg( z ).arg( x ).arg( y );
   sqlite3_statement_unique_ptr preparedStatement = mDatabase.prepare( sql, result );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile failed to prepare statement: " ) + sql );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile failed to prepare statement: "_s + sql );
     return QByteArray();
   }
 
   if ( preparedStatement.step() != SQLITE_ROW )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile not found: z=%1 x=%2 y=%3" ).arg( z ).arg( x ).arg( y ) );
+    // this is not entirely unexpected -- user may have just requested a tile outside of the extent of the mbtiles package
+    QgsDebugMsgLevel( u"MBTile not found: z=%1 x=%2 y=%3"_s.arg( z ).arg( x ).arg( y ), 2 );
     return QByteArray();
   }
 
   return preparedStatement.columnAsBlob( 0 );
 }
 
-QImage QgsMbTiles::tileDataAsImage( int z, int x, int y )
+QImage QgsMbTiles::tileDataAsImage( int z, int x, int y ) const
 {
   QImage tileImage;
-  QByteArray tileBlob = tileData( z, x, y );
+  const QByteArray tileBlob = tileData( z, x, y );
   if ( !tileImage.loadFromData( tileBlob ) )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile data failed to load: z=%1 x=%2 y=%3" ).arg( z ).arg( x ).arg( y ) );
+    QgsDebugError( u"MBTile data failed to load: z=%1 x=%2 y=%3"_s.arg( z ).arg( x ).arg( y ) );
     return QImage();
   }
   return tileImage;
 }
 
-void QgsMbTiles::setTileData( int z, int x, int y, const QByteArray &data )
+void QgsMbTiles::setTileData( int z, int x, int y, const QByteArray &data ) const
 {
   if ( !mDatabase )
   {
-    QgsDebugMsg( QStringLiteral( "MBTiles database not open: " ) + mFilename );
+    QgsDebugError( u"MBTiles database not open: "_s + mFilename );
     return;
   }
 
   int result;
-  QString sql = QStringLiteral( "insert into tiles values (%1, %2, %3, ?)" ).arg( z ).arg( x ).arg( y );
+  const QString sql = u"insert into tiles values (%1, %2, %3, ?)"_s.arg( z ).arg( x ).arg( y );
   sqlite3_statement_unique_ptr preparedStatement = mDatabase.prepare( sql, result );
   if ( result != SQLITE_OK )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile failed to prepare statement: " ) + sql );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile failed to prepare statement: "_s + sql );
     return;
   }
 
@@ -202,105 +240,63 @@ void QgsMbTiles::setTileData( int z, int x, int y, const QByteArray &data )
 
   if ( preparedStatement.step() != SQLITE_DONE )
   {
-    QgsDebugMsg( QStringLiteral( "MBTile tile failed to be set: %1,%2,%3" ).arg( z ).arg( x ).arg( y ) );
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile tile failed to be set: %1,%2,%3"_s.arg( z ).arg( x ).arg( y ) );
     return;
   }
 }
 
-bool QgsMbTiles::decodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut )
+void QgsMbTiles::setTileData( const QList<TileData> &tiles ) const
 {
-  unsigned char *bytesInPtr = reinterpret_cast<unsigned char *>( const_cast<char *>( bytesIn.constData() ) );
-  uint bytesInLeft = static_cast<uint>( bytesIn.count() );
-
-  const uint CHUNK = 16384;
-  unsigned char out[CHUNK];
-  const int DEC_MAGIC_NUM_FOR_GZIP = 16;
-
-  // allocate inflate state
-  z_stream strm;
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
-  strm.avail_in = 0;
-  strm.next_in = Z_NULL;
-
-  int ret = inflateInit2( &strm, MAX_WBITS + DEC_MAGIC_NUM_FOR_GZIP );
-  if ( ret != Z_OK )
-    return false;
-
-  while ( ret != Z_STREAM_END ) // done when inflate() says it's done
+  if ( tiles.isEmpty() )
   {
-    // prepare next chunk
-    uint bytesToProcess = std::min( CHUNK, bytesInLeft );
-    strm.next_in = bytesInPtr;
-    strm.avail_in = bytesToProcess;
-    bytesInPtr += bytesToProcess;
-    bytesInLeft -= bytesToProcess;
+    return;
+  }
 
-    if ( bytesToProcess == 0 )
-      break;  // we end with an error - no more data but inflate() wants more data
+  if ( !mDatabase )
+  {
+    QgsDebugError( u"MBTiles database not open: "_s + mFilename );
+    return;
+  }
 
-    // run inflate() on input until output buffer not full
-    do
+  int result = mDatabase.exec( u"BEGIN TRANSACTION;"_s, mLastError );
+  if ( result != SQLITE_OK )
+  {
+    QgsDebugError( u"Failed to begin transaction: %1"_s.arg( mLastError ) );
+    return;
+  }
+
+  const QString sql = u"INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)"_s;
+  sqlite3_statement_unique_ptr preparedStatement = mDatabase.prepare( sql, result );
+  if ( result != SQLITE_OK )
+  {
+    mLastError = mDatabase.errorMessage();
+    QgsDebugError( u"MBTile failed to prepare statement: %1"_s.arg( sql ) );
+    QString errorMessage;
+    mDatabase.exec( u"ROLLBACK TRANSACTION;"_s, errorMessage );
+    return;
+  }
+
+  for ( const TileData &tile : tiles )
+  {
+    sqlite3_reset( preparedStatement.get() );
+    sqlite3_clear_bindings( preparedStatement.get() );
+
+    sqlite3_bind_int( preparedStatement.get(), 1, tile.z );
+    sqlite3_bind_int( preparedStatement.get(), 2, tile.x );
+    sqlite3_bind_int( preparedStatement.get(), 3, tile.y );
+    sqlite3_bind_blob( preparedStatement.get(), 4, tile.data.constData(), tile.data.size(), SQLITE_TRANSIENT );
+
+    if ( preparedStatement.step() != SQLITE_DONE )
     {
-      strm.avail_out = CHUNK;
-      strm.next_out = out;
-      ret = inflate( &strm, Z_NO_FLUSH );
-      Q_ASSERT( ret != Z_STREAM_ERROR ); // state not clobbered
-      if ( ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR )
-      {
-        inflateEnd( &strm );
-        return false;
-      }
-      unsigned have = CHUNK - strm.avail_out;
-      bytesOut.append( QByteArray::fromRawData( reinterpret_cast<const char *>( out ), static_cast<int>( have ) ) );
+      mLastError = mDatabase.errorMessage();
+      QgsDebugError( u"MBTile tile failed to be set: %1,%2,%3"_s.arg( tile.z ).arg( tile.x ).arg( tile.y ) );
     }
-    while ( strm.avail_out == 0 );
   }
 
-  inflateEnd( &strm );
-  return ret == Z_STREAM_END;
-}
-
-
-bool QgsMbTiles::encodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut )
-{
-  unsigned char *bytesInPtr = reinterpret_cast<unsigned char *>( const_cast<char *>( bytesIn.constData() ) );
-  uint bytesInLeft = static_cast<uint>( bytesIn.count() );
-
-  const uint CHUNK = 16384;
-  unsigned char out[CHUNK];
-  const int DEC_MAGIC_NUM_FOR_GZIP = 16;
-
-  // allocate deflate state
-  z_stream strm;
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
-
-  int ret = deflateInit2( &strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + DEC_MAGIC_NUM_FOR_GZIP, 8, Z_DEFAULT_STRATEGY );
-  if ( ret != Z_OK )
-    return false;
-
-  strm.avail_in = bytesInLeft;
-  strm.next_in = bytesInPtr;
-
-  // run deflate() on input until output buffer not full, finish
-  // compression if all of source has been read in
-  do
+  result = mDatabase.exec( u"COMMIT TRANSACTION;"_s, mLastError );
+  if ( result != SQLITE_OK )
   {
-    strm.avail_out = CHUNK;
-    strm.next_out = out;
-    ret = deflate( &strm, Z_FINISH );  // no bad return value
-    Q_ASSERT( ret != Z_STREAM_ERROR ); // state not clobbered
-
-    unsigned have = CHUNK - strm.avail_out;
-    bytesOut.append( QByteArray::fromRawData( reinterpret_cast<const char *>( out ), static_cast<int>( have ) ) );
+    QgsDebugError( u"Failed to commit transaction: %1"_s.arg( mLastError ) );
   }
-  while ( strm.avail_out == 0 );
-  Q_ASSERT( ret == Z_STREAM_END );      // stream will be complete
-
-  // clean up and return
-  deflateEnd( &strm );
-  return true;
 }

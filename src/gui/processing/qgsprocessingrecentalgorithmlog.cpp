@@ -14,7 +14,14 @@
  ***************************************************************************/
 
 #include "qgsprocessingrecentalgorithmlog.h"
+
 #include "qgssettings.h"
+
+#include <QString>
+
+#include "moc_qgsprocessingrecentalgorithmlog.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
@@ -23,8 +30,8 @@ const int MAX_LOG_LENGTH = 5;
 QgsProcessingRecentAlgorithmLog::QgsProcessingRecentAlgorithmLog( QObject *parent )
   : QObject( parent )
 {
-  QgsSettings settings;
-  mRecentAlgorithmIds = settings.value( QStringLiteral( "processing/recentAlgorithms" ), QVariant(), QgsSettings::Gui ).toStringList();
+  const QgsSettings settings;
+  mRecentAlgorithmIds = settings.value( u"processing/recentAlgorithms"_s, QVariant(), QgsSettings::Gui ).toStringList();
 }
 
 QStringList QgsProcessingRecentAlgorithmLog::recentAlgorithmIds() const
@@ -41,7 +48,7 @@ void QgsProcessingRecentAlgorithmLog::push( const QString &id )
     mRecentAlgorithmIds = mRecentAlgorithmIds.mid( 0, MAX_LOG_LENGTH );
 
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "processing/recentAlgorithms" ), mRecentAlgorithmIds, QgsSettings::Gui );
+  settings.setValue( u"processing/recentAlgorithms"_s, mRecentAlgorithmIds, QgsSettings::Gui );
 
   if ( previous != mRecentAlgorithmIds )
     emit changed();

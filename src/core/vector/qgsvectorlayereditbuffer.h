@@ -16,14 +16,15 @@
 #define QGSVECTORLAYEREDITBUFFER_H
 
 #include "qgis_core.h"
-#include <QList>
-#include <QSet>
-
 #include "qgsfeature.h"
 #include "qgsfields.h"
 #include "qgsgeometry.h"
 
+#include <QList>
+#include <QSet>
+
 class QgsVectorLayer;
+class QgsVectorLayerEditBufferGroup;
 
 typedef QList<int> QgsAttributeList SIP_SKIP;
 typedef QSet<int> QgsAttributeIds SIP_SKIP;
@@ -32,6 +33,7 @@ typedef QMap<QgsFeatureId, QgsFeature> QgsFeatureMap;
 /**
  * \ingroup core
  * \class QgsVectorLayerEditBuffer
+ * \brief Stores queued vector layer edit operations prior to committing changes to the layer's data provider.
  */
 class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
 {
@@ -41,7 +43,6 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
 
     //! Returns TRUE if the provider has been modified since the last commit
     virtual bool isModified() const;
-
 
     /**
      * Adds a feature
@@ -68,41 +69,39 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
     /**
      * Changes values of attributes (but does not commit it).
      * \returns TRUE if attributes are well updated, FALSE otherwise
-     * \since QGIS 3.0
      */
     virtual bool changeAttributeValues( QgsFeatureId fid, const QgsAttributeMap &newValues, const QgsAttributeMap &oldValues );
 
     /**
-     * Add an attribute field (but does not commit it)
-        returns true if the field was added
+     * Adds an attribute field (but does not commit it)
+     * returns TRUE if the field was added
     */
     virtual bool addAttribute( const QgsField &field );
 
-    //! Delete an attribute field (but does not commit it)
+    //! Deletes an attribute field (but does not commit it)
     virtual bool deleteAttribute( int attr );
 
     /**
      * Renames an attribute field (but does not commit it)
      * \param attr attribute index
      * \param newName new name of field
-     * \since QGIS 2.16
     */
     virtual bool renameAttribute( int attr, const QString &newName );
 
     /**
-      Attempts to commit any changes to disk.  Returns the result of the attempt.
-      If a commit fails, the in-memory changes are left alone.
-
-      This allows editing to continue if the commit failed on e.g. a
-      disallowed value in a Postgres database - the user can re-edit and try
-      again.
-
-      The commits occur in distinct stages,
-      (add attributes, add features, change attribute values, change
-      geometries, delete features, delete attributes)
-      so if a stage fails, it's difficult to roll back cleanly.
-      Therefore any error message also includes which stage failed so
-      that the user has some chance of repairing the damage cleanly.
+     * Attempts to commit any changes to disk.  Returns the result of the attempt.
+     * If a commit fails, the in-memory changes are left alone.
+     *
+     * This allows editing to continue if the commit failed on e.g. a
+     * disallowed value in a Postgres database - the user can re-edit and try
+     * again.
+     *
+     * The commits occur in distinct stages,
+     * (add attributes, add features, change attribute values, change
+     * geometries, delete features, delete attributes)
+     * so if a stage fails, it's difficult to roll back cleanly.
+     * Therefore any error message also includes which stage failed so
+     * that the user has some chance of repairing the damage cleanly.
      */
     virtual bool commitChanges( QStringList &commitErrors );
 
@@ -116,10 +115,17 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
     QgsFeatureMap addedFeatures() const { return mAddedFeatures; }
 
     /**
+     * Returns a list of the features IDs for all newly added or edited features
+     * in the buffer.
+     *
+     * \since QGIS 3.20
+     */
+    QgsFeatureIds allAddedOrEditedFeatures() const;
+
+    /**
      * Returns TRUE if the specified feature ID has been added but not committed.
      * \param id feature ID
      * \see addedFeatures()
-     * \since QGIS 3.0
      */
     bool isFeatureAdded( QgsFeatureId id ) const { return mAddedFeatures.contains( id ); }
 
@@ -133,7 +139,6 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
      * Returns TRUE if the specified feature ID has had an attribute changed but not committed.
      * \param id feature ID
      * \see changedAttributeValues()
-     * \since QGIS 3.0
      */
     bool isFeatureAttributesChanged( QgsFeatureId id ) const { return mChangedAttributeValues.contains( id ); }
 
@@ -147,7 +152,6 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
      * Returns TRUE if the specified attribute has been deleted but not committed.
      * \param index attribute index
      * \see deletedAttributeIds()
-     * \since QGIS 3.0
      */
     bool isAttributeDeleted( int index ) const { return mDeletedAttributeIds.contains( index ); }
 
@@ -166,7 +170,6 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
      * Returns TRUE if the specified feature ID has had its geometry changed but not committed.
      * \param id feature ID
      * \see changedGeometries()
-     * \since QGIS 3.0
      */
     bool isFeatureGeometryChanged( QgsFeatureId id ) const { return mChangedGeometries.contains( id ); }
 
@@ -180,9 +183,27 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
      * Returns TRUE if the specified feature ID has been deleted but not committed.
      * \param id feature ID
      * \see deletedFeatureIds()
-     * \since QGIS 3.0
      */
     bool isFeatureDeleted( QgsFeatureId id ) const { return mDeletedFeatureIds.contains( id ); }
+
+    /**
+     * Updates \a fields
+     * \note Not available in Python bindings
+     * \since QGIS 3.18
+     */
+    void updateFields( QgsFields &fields ) SIP_SKIP;
+
+    /**
+     * Returns the parent edit buffer group for this edit buffer, or nullptr if not part of a group.
+     * \since QGIS 3.26
+     */
+    QgsVectorLayerEditBufferGroup *editBufferGroup() const;
+
+    /**
+     * Set the parent edit buffer group for this edit buffer.
+     * \since QGIS 3.26
+     */
+    void setEditBufferGroup( QgsVectorLayerEditBufferGroup *editBufferGroup );
 
     //QString dumpEditBuffer();
 
@@ -193,7 +214,10 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
     //! Emitted when modifications has been done on layer
     void layerModified();
 
+    //! Emitted when a feature has been added to the buffer
     void featureAdded( QgsFeatureId fid );
+
+    //! Emitted when a feature was deleted from the buffer
     void featureDeleted( QgsFeatureId fid );
 
     /**
@@ -203,40 +227,67 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
      */
     void geometryChanged( QgsFeatureId fid, const QgsGeometry &geom );
 
-    void attributeValueChanged( QgsFeatureId fid, int idx, const QVariant & );
+    /**
+     * Emitted when a feature's attribute value has been changed.
+     */
+    void attributeValueChanged( QgsFeatureId fid, int idx, const QVariant &value );
+
+    /**
+     * Emitted when an attribute was added to the buffer.
+     */
     void attributeAdded( int idx );
+
+    /**
+     * Emitted when an attribute was deleted from the buffer.
+     */
     void attributeDeleted( int idx );
 
     /**
      * Emitted when an attribute has been renamed
      * \param idx attribute index
      * \param newName new attribute name
-     * \since QGIS 2.16
      */
     void attributeRenamed( int idx, const QString &newName );
 
-    //! Signals emitted after committing changes
+    /**
+     * Emitted after attribute deletion has been committed to the layer.
+     */
     void committedAttributesDeleted( const QString &layerId, const QgsAttributeList &deletedAttributes );
+
+    /**
+     * Emitted after attribute addition has been committed to the layer.
+     */
     void committedAttributesAdded( const QString &layerId, const QList<QgsField> &addedAttributes );
 
     /**
      * Emitted after committing an attribute rename
      * \param layerId ID of layer
      * \param renamedAttributes map of field index to new name
-     * \since QGIS 2.16
      */
     void committedAttributesRenamed( const QString &layerId, const QgsFieldNameMap &renamedAttributes );
+
+    /**
+     * Emitted after feature addition has been committed to the layer.
+     */
     void committedFeaturesAdded( const QString &layerId, const QgsFeatureList &addedFeatures );
+
+    /**
+     * Emitted after feature removal has been committed to the layer.
+     */
     void committedFeaturesRemoved( const QString &layerId, const QgsFeatureIds &deletedFeatureIds );
+
+    /**
+     * Emitted after feature attribute value changes have been committed to the layer.
+     */
     void committedAttributeValuesChanges( const QString &layerId, const QgsChangedAttributesMap &changedAttributesValues );
+
+    /**
+     * Emitted after feature geometry changes have been committed to the layer.
+     */
     void committedGeometriesChanges( const QString &layerId, const QgsGeometryMap &changedGeometries );
 
   protected:
-
-    //! Constructor for QgsVectorLayerEditBuffer
     QgsVectorLayerEditBuffer() = default;
-
-    void updateFields( QgsFields &fields );
 
     //! Update feature with uncommitted geometry updates
     void updateFeatureGeometry( QgsFeature &f );
@@ -245,7 +296,7 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
     void updateChangedAttributes( QgsFeature &f );
 
     //! Update added and changed features after addition of an attribute
-    void handleAttributeAdded( int index );
+    void handleAttributeAdded( int index, const QgsField &field );
 
     //! Update added and changed features after removal of an attribute
     void handleAttributeDeleted( int index );
@@ -257,7 +308,6 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
 
   protected:
     QgsVectorLayer *L = nullptr;
-    friend class QgsVectorLayer;
 
     friend class QgsVectorLayerUndoCommand;
     friend class QgsVectorLayerUndoCommandAddFeature;
@@ -281,8 +331,8 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
 
     /**
      * Deleted feature IDs which are not committed.  Note a feature can be added and then deleted
-        again before the change is committed - in that case the added feature would be removed
-        from mAddedFeatures only and *not* entered here.
+     * again before the change is committed - in that case the added feature would be removed
+     * from mAddedFeatures only and *not* entered here.
      */
     QgsFeatureIds mDeletedFeatureIds;
 
@@ -304,7 +354,77 @@ class CORE_EXPORT QgsVectorLayerEditBuffer : public QObject
     //! Changed geometries which are not committed.
     QgsGeometryMap mChangedGeometries;
 
+    QgsVectorLayerEditBufferGroup *mEditBufferGroup = nullptr;
+
+    int mBlockModifiedSignals = 0;
+
     friend class QgsGrassProvider; //GRASS provider totally abuses the edit buffer
+
+  private:
+    friend class QgsVectorLayerEditBufferGroup;
+
+    /**
+     * Check geometry of added features for compatibility with data provider
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE if compatible
+     */
+    bool commitChangesCheckGeometryTypeCompatibility( QStringList &commitErrors );
+
+    /**
+     * Delete attributes
+     * \param attributesDeleted is set if one or more attributes where deleted
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesDeleteAttributes( bool &attributesDeleted, QStringList &commitErrors );
+
+    /**
+     * Rename attributes
+     * \param attributesRenamed is set if one or more attributes where renamed
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesRenameAttributes( bool &attributesRenamed, QStringList &commitErrors );
+
+    /**
+     * Add new attributes
+     * \param attributesAdded is set if one or more attributes where added
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesAddAttributes( bool &attributesAdded, QStringList &commitErrors );
+
+    /**
+     * Check that delete/rename/add attributes operations where successful
+     * \param oldFields are the fields before delete/rename/add operations
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesCheckAttributesModifications( const QgsFields oldFields, QStringList &commitErrors );
+
+    /**
+     * Change attributes
+     * \param attributesChanged is set if one or more attributes where changed
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesChangeAttributes( bool &attributesChanged, QStringList &commitErrors );
+
+    /**
+     * Delete features
+     * \param featuresDeleted is set if one or more features where deleted
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesDeleteFeatures( bool &featuresDeleted, QStringList &commitErrors );
+
+    /**
+     * Add new features
+     * \param featuresAdded is set if one or more features where deleted
+     * \param commitErrors will be extended in case of error
+     * \returns TRUE on success
+     */
+    bool commitChangesAddFeatures( bool &featuresAdded, QStringList &commitErrors );
 };
 
 #endif // QGSVECTORLAYEREDITBUFFER_H

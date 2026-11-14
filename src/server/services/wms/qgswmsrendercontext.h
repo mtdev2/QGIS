@@ -18,9 +18,9 @@
 #ifndef QGSWMSRENDERCONTEXT_H
 #define QGSWMSRENDERCONTEXT_H
 
-#include "qgswmsparameters.h"
 #include "qgsproject.h"
 #include "qgsserverinterface.h"
+#include "qgswmsparameters.h"
 
 namespace QgsWms
 {
@@ -37,24 +37,22 @@ namespace QgsWms
       //! Available rendering options
       enum Flag
       {
-        UseScaleDenominator    = 0x01,
-        UseOpacity             = 0x02,
-        UseFilter              = 0x04,
-        UseSelection           = 0x08,
-        AddHighlightLayers     = 0x10,
-        UpdateExtent           = 0x20,
-        SetAccessControl       = 0x40,
-        AddQueryLayers         = 0x80,
-        UseWfsLayersOnly       = 0x100,
-        AddExternalLayers      = 0x200,
-        UseSrcWidthHeight      = 0x400,
-        UseTileBuffer          = 0x800
+        UseScaleDenominator = 0x01,
+        UseOpacity = 0x02,
+        UseFilter = 0x04,
+        UseSelection = 0x08,
+        AddHighlightLayers = 0x10,
+        UpdateExtent = 0x20,
+        SetAccessControl = 0x40,
+        AddQueryLayers = 0x80,
+        UseWfsLayersOnly = 0x100,
+        AddExternalLayers = 0x200,
+        UseSrcWidthHeight = 0x400,
+        UseTileBuffer = 0x800,
+        AddAllLayers = 0x1000 //!< For GetPrint: add layers from LAYER(S) parameter
       };
       Q_DECLARE_FLAGS( Flags, Flag )
 
-      /**
-       * Destructor for QgsWmsRenderContext.
-       */
       ~QgsWmsRenderContext();
 
       /**
@@ -100,6 +98,12 @@ namespace QgsWms
        * Returns a list of all layers read from the project.
        */
       QList<QgsMapLayer *> layers() const;
+
+      /**
+       * Returns a hash of all the layers that can be rendered and for each a list of the layer names, group names, etc. requesting it.
+       * The list differs from layersToRender by not containing external layers etc.
+       */
+      QHash<const QgsMapLayer *, QStringList> acceptableLayersToRender() const;
 
       /**
        * Returns a list of all layers to actually render according to the
@@ -209,7 +213,7 @@ namespace QgsWms
        * Returns a list of query layer names where group names are replaced by the names of their layer components.
        * \since QGIS 3.8
        */
-      QStringList flattenedQueryLayers() const;
+      QStringList flattenedQueryLayers( const QStringList &layerNames ) const;
 
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
 
@@ -223,7 +227,7 @@ namespace QgsWms
        * Returns a map having layer group names as keys and a list of layers as values.
        * \since QGIS 3.8
        */
-      QMap<QString, QList<QgsMapLayer *> > layerGroups() const;
+      QMap<QString, QList<QgsMapLayer *>> layerGroups() const;
 
       /**
        * Returns the tile buffer in geographical units for the given map width in pixels.
@@ -246,6 +250,14 @@ namespace QgsWms
       bool isValidWidthHeight() const;
 
       /**
+       * Returns true if width and height are valid according to the maximum image width/height
+       * \param width the image width in pixels
+       * \param height the image height in pixels
+       * \since QGIS 3.22
+       */
+      bool isValidWidthHeight( int width, int height ) const;
+
+      /**
        * Returns WIDTH or SRCWIDTH according to \a UseSrcWidthHeight flag.
        */
       int mapWidth() const;
@@ -261,17 +273,49 @@ namespace QgsWms
        */
       bool isExternalLayer( const QString &name ) const;
 
+      /**
+       * Sets the response feedback.
+       * \since QGIS 3.36
+       */
+      void setSocketFeedback( QgsFeedback *feedback );
+
+      /**
+       * Returns the response feedback if any
+       * \since QGIS 3.36
+       */
+      QgsFeedback *socketFeedback() const;
+
+      QHash<QgsMapLayer *, QgsDateTimeRange> perLayerTemporalRange() const { return mPerLayerTemporalRange; }
+
     private:
       void initNicknameLayers();
       void initRestrictedLayers();
       void initLayerGroupsRecursive( const QgsLayerTreeGroup *group, const QString &groupName );
 
+      /**
+       * Initialize per layer temporal range for \a group with its \a groupName using group
+       * default display type value when different from Qgis::WmsDimensionDefaultDisplay::AllValues
+       * and if TIME WMS parameter has not been set.
+       */
+      void initPerLayerTemporalRange( const QgsLayerTreeGroup *group, const QString &groupName );
+
       void searchLayersToRender();
       void searchLayersToRenderSld();
       void searchLayersToRenderStyle();
       void removeUnwantedLayers();
+      QHash<const QgsMapLayer *, QStringList> acceptableLayers( const QStringList &requestedLayerNames ) const;
 
-      void checkLayerReadPermissions();
+      /**
+       * Adds the layer to the list of layers to be rendered if the layer is readable
+       * Returns true if the layer is readable, false otherwise
+       */
+      bool addLayerToRender( QgsMapLayer *layer );
+
+      /**
+       * Check layer read permissions
+       * Returns true if the layer is readable, false otherwise
+       */
+      bool checkLayerReadPermissions( QgsMapLayer *layer ) const;
 
       bool layerScaleVisibility( const QString &name ) const;
 
@@ -287,17 +331,24 @@ namespace QgsWms
       // map of layers to use for rendering
       QList<QgsMapLayer *> mLayersToRender;
 
+      // map of layers that can be rendered and for each a list of the layer names, group names, etc. requesting it
+      QHash<const QgsMapLayer *, QStringList> mAcceptableLayersToRender;
+
+      QHash<QgsMapLayer *, QgsDateTimeRange> mPerLayerTemporalRange;
+
       // list of layers which are not usable
       QStringList mRestrictedLayers;
 
-      QMap<QString, QList<QgsMapLayer *> > mLayerGroups;
+      QMap<QString, QList<QgsMapLayer *>> mLayerGroups;
 
       QMap<QString, QDomElement> mSlds;
       QMap<QString, QString> mStyles;
 
       // list for external layers
       QList<QgsMapLayer *> mExternalLayers;
+
+      QgsFeedback *mSocketFeedback = nullptr;
   };
-};
+}; // namespace QgsWms
 
 #endif

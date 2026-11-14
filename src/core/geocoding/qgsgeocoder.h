@@ -17,16 +17,16 @@
 #define QGSGEOCODER_H
 
 #include "qgis_core.h"
+#include "qgsfields.h"
 #include "qgsgeocoderresult.h"
 #include "qgsgeometry.h"
-#include "qgsfields.h"
 
 class QgsFeature;
 class QgsGeocoderContext;
 
 /**
  * \ingroup core
- * Interface for geocoders.
+ * \brief Interface for geocoders.
  *
  * QgsGeocoderInterface implementations are able to take either a QgsFeature or a free-form string
  * and calculate the corresponding geometry of the feature.
@@ -35,13 +35,11 @@ class QgsGeocoderContext;
 */
 class CORE_EXPORT QgsGeocoderInterface
 {
-
   public:
-
     //! Capability flags for the geocoder.
-    enum class Flag
+    enum class Flag SIP_ENUM_BASETYPE( IntFlag )
     {
-      GeocodesStrings = 1 << 0, //!< Can geocode string input values
+      GeocodesStrings = 1 << 0,  //!< Can geocode string input values
       GeocodesFeatures = 1 << 1, //!< Can geocode QgsFeature input values
     };
     Q_DECLARE_FLAGS( Flags, Flag )
@@ -78,7 +76,7 @@ class CORE_EXPORT QgsGeocoderInterface
      * in the case that a geocoder may return different geometry types depending on the
      * quality of the match).
      */
-    virtual QgsWkbTypes::Type wkbType() const;
+    virtual Qgis::WkbType wkbType() const;
 
     /**
      * Geocodes a \a string.
@@ -88,7 +86,6 @@ class CORE_EXPORT QgsGeocoderInterface
      * The optional \a feedback argument can be used to provider cancellation support.
      */
     virtual QList< QgsGeocoderResult > geocodeString( const QString &string, const QgsGeocoderContext &context, QgsFeedback *feedback = nullptr ) const;
-
 };
 
 #endif // QGSGEOCODER_H

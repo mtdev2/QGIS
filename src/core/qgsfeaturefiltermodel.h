@@ -18,12 +18,17 @@
 
 #include "qgsfeaturepickermodelbase.h"
 
+class QgsSettingsEntryInteger;
+
 /**
  * \ingroup core
- * Provides a list of features based on filter conditions.
+ * \brief Provides a list of features based on filter conditions.
+ *
  * Features are fetched asynchronously.
  *
- * \since QGIS 3.0
+ * Entries are identified by the values of one or more identifier fields
+ * (e.g. to store a foreign key in a relation reference widget).
+ * To identify features by their feature id instead, use QgsFeaturePickerModel.
  */
 class CORE_EXPORT QgsFeatureFilterModel : public QgsFeaturePickerModelBase
 {
@@ -42,6 +47,10 @@ class CORE_EXPORT QgsFeatureFilterModel : public QgsFeaturePickerModelBase
     Q_PROPERTY( QVariantList extraIdentifierValues READ extraIdentifierValues WRITE setExtraIdentifierValues NOTIFY extraIdentifierValuesChanged )
 
   public:
+#ifndef SIP_RUN
+    //! Settings for maximum number of entries in relation widget
+    static const QgsSettingsEntryInteger *settingsMaxEntriesRelationWidget;
+#endif
 
     /**
      * Create a new QgsFeatureFilterModel, optionally specifying a \a parent.
@@ -52,7 +61,7 @@ class CORE_EXPORT QgsFeatureFilterModel : public QgsFeaturePickerModelBase
      * The identifier field should be a unique field that can be used to identify individual features.
      * It is normally set to the primary key of the layer.
      * If there are several identifier fields defined, the behavior is not guaranteed
-     * \deprecated since QGIS 3.10 use identifierFields instead
+     * \deprecated QGIS 3.10. Use identifierFields() instead.
      */
     Q_DECL_DEPRECATED QString identifierField() const;
 
@@ -110,7 +119,7 @@ class CORE_EXPORT QgsFeatureFilterModel : public QgsFeaturePickerModelBase
   private:
     QgsFeatureExpressionValuesGatherer *createValuesGatherer( const QgsFeatureRequest &request ) const override;
 
-    void requestToReloadCurrentFeature( QgsFeatureRequest &request ) override;
+    void requestToReloadCurrentFeature( QgsFeatureRequest &request ) override SIP_FORCE;
 
     QSet<QString> requestedAttributes() const override;
 

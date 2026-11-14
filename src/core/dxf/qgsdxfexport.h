@@ -18,13 +18,13 @@
 #ifndef QGSDXFEXPORT_H
 #define QGSDXFEXPORT_H
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgis.h"
 #include "qgsgeometry.h"
-#include "qgssymbol.h" // for OutputUnit enum
-#include "qgsmapsettings.h"
 #include "qgslabelsink.h"
+#include "qgsmapsettings.h"
+#include "qgsrendercontext.h"
 
 #include <QColor>
 #include <QList>
@@ -40,6 +40,9 @@ class QgsCurvePolygon;
 class QgsCircularString;
 class QgsCompoundCurve;
 struct DxfLayerJob;
+class QgsSymbolRenderContext;
+class QgsMarkerSymbolLayer;
+class QTextCodec;
 
 #define DXF_HANDSEED 100
 #define DXF_HANDMAX 9999999
@@ -54,61 +57,118 @@ namespace pal // SIP_SKIP
 /**
  * \ingroup core
  * \class QgsDxfExport
+ * \brief Exports QGIS layers to the DXF format.
  */
 #ifdef SIP_RUN
 class CORE_EXPORT QgsDxfExport
 {
 #else
+
+static const bool DEFAULT_DXF_DATA_DEFINED_BLOCKS = true;
+
 class CORE_EXPORT QgsDxfExport : public QgsLabelSink
 {
 #endif
-  public:
+    friend class TestQgsDxfExport;
 
+  public:
     /**
-     * Layers and optional attribute index to split
-     * into multiple layers using attribute value as layer name.
+     * Encapsulates the properties of a vector layer containing features that will be exported to the DXF file.
      */
     struct CORE_EXPORT DxfLayer
     {
-        DxfLayer( QgsVectorLayer *vl, int layerOutputAttributeIndex = -1 )
+        /**
+         * Constructor for DxfLayer.
+         *
+         * \param vl source vector layer
+         * \param layerOutputAttributeIndex attribute index used to split the source layer into multiple exported DXF layers, or -1 if no splitting should occur
+         * \param buildDDBlocks set to TRUE if data defined point block symbols should be created (since QGIS 3.38)
+         * \param ddBlocksMaxNumberOfClasses the maximum number of data defined symbol classes for which blocks are created, or -1 if there is no such limitation (since QGIS 3.38)
+         * \param overriddenName the overridden layer name to be used in the exported DXF. If not set, the source vector layer's name will be used. (since QGIS 3.38)
+         */
+        DxfLayer( QgsVectorLayer *vl, int layerOutputAttributeIndex = -1, bool buildDDBlocks = DEFAULT_DXF_DATA_DEFINED_BLOCKS, int ddBlocksMaxNumberOfClasses = -1, QString overriddenName = QString() )
           : mLayer( vl )
           , mLayerOutputAttributeIndex( layerOutputAttributeIndex )
+          , mBuildDDBlocks( buildDDBlocks )
+          , mDDBlocksMaxNumberOfClasses( ddBlocksMaxNumberOfClasses )
+          , mOverriddenName( overriddenName )
         {}
 
-        //! Returns the layer
-        QgsVectorLayer *layer() const {return mLayer;}
+        //! Returns the source vector layer.
+        QgsVectorLayer *layer() const { return mLayer; }
 
         /**
-         * Returns the attribute index used to split into multiple layers.
-         * The attribute value is used for layer names.
-         * \see splitLayerAttribute
+         * Returns the attribute index used to split the source layer's features into multiple exported DXF layers.
+         *
+         * Each unique value from the associated attribute will form a separate layer in the exported DXF. The attribute value is used for the DXF layer names.
+         *
+         * \see splitLayerAttribute()
          */
-        int layerOutputAttributeIndex() const {return mLayerOutputAttributeIndex;}
+        int layerOutputAttributeIndex() const { return mLayerOutputAttributeIndex; }
 
         /**
-         * If the split layer attribute is set, the vector layer
-         * will be split into several dxf layers, one per each
-         * unique value.
+         * Returns the name of the field used to split the source layer's features into multiple exported DXF layers.
+         *
+         * Each unique value from the associated attribute will form a separate layer in the exported DXF. The attribute value is used for the DXF layer names.
+         *
+         * \see layerOutputAttributeIndex()
          * \since QGIS 3.12
          */
         QString splitLayerAttribute() const;
 
+        /**
+         * Returns TRUE if data defined point block symbols should be created.
+         *
+         * \see dataDefinedBlocksMaximumNumberOfClasses()
+         * \since QGIS 3.38
+         */
+        bool buildDataDefinedBlocks() const { return mBuildDDBlocks; }
+
+        /**
+         * Returns the maximum number of data defined symbol classes for which blocks are created.
+         *
+         * \returns -1 if there is no such limitation
+         *
+         * \see buildDataDefinedBlocks()
+         * \since QGIS 3.38
+         */
+        int dataDefinedBlocksMaximumNumberOfClasses() const { return mDDBlocksMaxNumberOfClasses; }
+
+        /**
+        * Returns the overridden layer name to be used in the exported DXF.
+        *
+        * If not set the source layer's name will be used.
+        *
+        * \since QGIS 3.38
+        */
+        QString overriddenName() const { return mOverriddenName; }
+
       private:
         QgsVectorLayer *mLayer = nullptr;
         int mLayerOutputAttributeIndex = -1;
-    };
 
-    enum SymbologyExport
-    {
-      NoSymbology = 0, //!< Export only data
-      FeatureSymbology, //!< Keeps the number of features and export symbology per feature (using the first symbol level)
-      SymbolLayerSymbology //!< Exports one feature per symbol layer (considering symbol levels)
+        /**
+         * \brief try to build data defined symbol blocks if necessary
+         */
+        bool mBuildDDBlocks = DEFAULT_DXF_DATA_DEFINED_BLOCKS;
+
+        /**
+         * \brief Limit for the number of data defined symbol block classes (keep only the most used ones). -1 means no limit
+         */
+        int mDDBlocksMaxNumberOfClasses = -1;
+
+        /**
+         * \brief Overridden name of the layer to be exported to DXF
+         */
+        QString mOverriddenName;
     };
 
     //! Export flags
-    enum Flag
+    enum Flag SIP_ENUM_BASETYPE( IntFlag )
     {
-      FlagNoMText = 1 << 1, //!< Export text as TEXT elements. If not set, text will be exported as MTEXT elements.
+      FlagNoMText = 1 << 1,              //!< Export text as TEXT elements. If not set, text will be exported as MTEXT elements.
+      FlagOnlySelectedFeatures = 1 << 2, //!< Use only selected features for the export.
+      FlagHairlineWidthExport = 1 << 3   //!< Export all lines with minimum width and don't fill polygons \since QGIS 3.38
     };
     Q_DECLARE_FLAGS( Flags, Flag )
 
@@ -119,10 +179,11 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      */
     enum class ExportResult
     {
-      Success = 0, //!< Successful export
-      InvalidDeviceError, //!< Invalid device error
+      Success = 0,            //!< Successful export
+      InvalidDeviceError,     //!< Invalid device error
       DeviceNotWritableError, //!< Device not writable error
-      EmptyExtentError //!< Empty extent, no extent given and no extent could be derived from layers
+      EmptyExtentError,       //!< Empty extent, no extent given and no extent could be derived from layers
+      InvalidEncodingError    //!< The requested text encoding is not supported \since QGIS 4.4
     };
 
     /**
@@ -130,11 +191,11 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      */
     enum class VAlign : int
     {
-      VBaseLine = 0,    //!< Top (0)
-      VBottom = 1,      //!< Bottom (1)
-      VMiddle = 2,      //!< Middle (2)
-      VTop = 3,         //!< Top (3)
-      Undefined = 9999  //!< Undefined
+      VBaseLine = 0,   //!< Top (0)
+      VBottom = 1,     //!< Bottom (1)
+      VMiddle = 2,     //!< Middle (2)
+      VTop = 3,        //!< Top (3)
+      Undefined = 9999 //!< Undefined
     };
 
     //! Horizontal alignments.
@@ -154,15 +215,15 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      *
      * \since QGIS 3.12
      */
-    enum DxfPolylineFlag
+    enum DxfPolylineFlag SIP_ENUM_BASETYPE( IntFlag )
     {
-      Closed = 1, //!< This is a closed polyline (or a polygon mesh closed in the M direction)
-      Curve = 2, //!< Curve-fit vertices have been added
-      Spline = 4, //! < Spline-fit vertices have been added
-      Is3DPolyline = 8, //!< This is a 3D polyline
-      Is3DPolygonMesh = 16, //!< This is a 3D polygon mesh
-      PolygonMesh = 32, //!< The polygon mesh is closed in the N direction
-      PolyfaceMesh = 64, //!< The polyline is a polyface mesh
+      Closed = 1,              //!< This is a closed polyline (or a polygon mesh closed in the M direction)
+      Curve = 2,               //!< Curve-fit vertices have been added
+      Spline = 4,              //!< Spline-fit vertices have been added
+      Is3DPolyline = 8,        //!< This is a 3D polyline
+      Is3DPolygonMesh = 16,    //!< This is a 3D polygon mesh
+      PolygonMesh = 32,        //!< The polygon mesh is closed in the N direction
+      PolyfaceMesh = 64,       //!< The polyline is a polyface mesh
       ContinuousPattern = 128, //!< The linetype pattern is generated continuously around the vertices of this polyline
     };
 
@@ -184,14 +245,12 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     /**
      * Sets the export flags.
      * \see flags()
-     * \since QGIS 3.0
      */
     void setFlags( QgsDxfExport::Flags flags );
 
     /**
      * Returns the export flags.
      * \see setFlags()
-     * \since QGIS 3.0
      */
     QgsDxfExport::Flags flags() const;
 
@@ -208,13 +267,18 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param codec encoding
      * \returns an ExportResult
      */
-    ExportResult writeToFile( QIODevice *d, const QString &codec );  //maybe add progress dialog? other parameters (e.g. scale, dpi)?
+    ExportResult writeToFile( QIODevice *d, const QString &codec ); //maybe add progress dialog? other parameters (e.g. scale, dpi)?
+
+    /**
+     * Returns any feedback message produced while export to dxf file.
+     * \since QGIS 3.36
+     */
+    const QString feedbackMessage() const { return mFeedbackMessage; }
 
     /**
      * Set reference \a scale for output.
      * The \a scale value indicates the scale denominator, e.g. 1000.0 for a 1:1000 map.
      * \see symbologyScale()
-     * \since QGIS 3.0
      */
     void setSymbologyScale( double scale ) { mSymbologyScale = scale; }
 
@@ -222,7 +286,6 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * Returns the reference scale for output.
      * The  scale value indicates the scale denominator, e.g. 1000.0 for a 1:1000 map.
      * \see setSymbologyScale()
-     * \since QGIS 3.0
      */
     double symbologyScale() const { return mSymbologyScale; }
 
@@ -230,19 +293,17 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * Retrieve map units
      * \returns unit
      */
-    QgsUnitTypes::DistanceUnit mapUnits() const;
+    Qgis::DistanceUnit mapUnits() const;
 
     /**
      * Set destination CRS
      * \see destinationCrs()
-     * \since QGIS 3.0
      */
     void setDestinationCrs( const QgsCoordinateReferenceSystem &crs );
 
     /**
      * Returns the destination CRS, or an invalid CRS if no reprojection will be done.
      * \see setDestinationCrs()
-     * \since QGIS 3.0
      */
     QgsCoordinateReferenceSystem destinationCrs() const;
 
@@ -250,14 +311,14 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * Set symbology export mode
      * \param e the mode
      */
-    void setSymbologyExport( QgsDxfExport::SymbologyExport e ) { mSymbologyExport = e; }
+    void setSymbologyExport( Qgis::FeatureSymbologyExport e ) { mSymbologyExport = e; }
 
     /**
      * Gets symbology export mode
      * \returns mode
      * \see setSymbologyExport
      */
-    QgsDxfExport::SymbologyExport symbologyExport() const { return mSymbologyExport; }
+    Qgis::FeatureSymbologyExport symbologyExport() const { return mSymbologyExport; }
 
     /**
      * Set extent of area to export
@@ -332,6 +393,14 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     void writeGroup( int code, int i ) SIP_PYNAME( writeGroupInt );
 
     /**
+     * Write a tuple of group code and long value
+     * \param code group code
+     * \param i integer value
+     * \note available in Python bindings as writeGroupLong
+     */
+    void writeGroup( int code, long long i ) SIP_PYNAME( writeGroupLong );
+
+    /**
      * Write a group code with a floating point value
      * \param code group code
      * \param d floating point value
@@ -351,7 +420,6 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param code group code
      * \param p point value
      * \note available in Python bindings as writeGroupPointV2
-     * \since QGIS 2.15
      */
     void writeGroup( int code, const QgsPoint &p ) SIP_PYNAME( writeGroupPointV2 );
 
@@ -405,7 +473,6 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param color color to use
      * \param width line width to use
      * \note not available in Python bindings
-     * \since QGIS 2.15
      */
     void writePolyline( const QgsPointSequence &line, const QString &layer, const QString &lineStyleName, const QColor &color, double width = -1 ) SIP_SKIP;
 
@@ -428,7 +495,6 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param hatchPattern hatchPattern to use
      * \param color color to use
      * \note not available in Python bindings
-     * \since QGIS 2.15
      */
     void writePolygon( const QgsRingSequence &polygon, const QString &layer, const QString &hatchPattern, const QColor &color ) SIP_SKIP;
 
@@ -445,42 +511,45 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
 
     /**
      * Write line (as a polyline)
-     * \since QGIS 2.15
      */
     void writeLine( const QgsPoint &pt1, const QgsPoint &pt2, const QString &layer, const QString &lineStyleName, const QColor &color, double width = -1 );
 
     /**
      * Write point
      * \note available in Python bindings as writePointV2
-     * \since QGIS 2.15
      */
     void writePoint( const QString &layer, const QColor &color, const QgsPoint &pt ) SIP_PYNAME( writePointV2 );
 
     /**
      * Write filled circle (as hatch)
      * \note available in Python bindings as writePointV2
-     * \since QGIS 2.15
      */
     void writeFilledCircle( const QString &layer, const QColor &color, const QgsPoint &pt, double radius ) SIP_PYNAME( writeFillCircleV2 );
 
     /**
      * Write circle (as polyline)
      * \note available in Python bindings as writeCircleV2
-     * \since QGIS 2.15
      */
     void writeCircle( const QString &layer, const QColor &color, const QgsPoint &pt, double radius, const QString &lineStyleName, double width ) SIP_PYNAME( writeCircleV2 );
 
     /**
      * Write text (TEXT)
      * \note available in Python bindings as writeTextV2
-     * \since QGIS 2.15
      */
-    void writeText( const QString &layer, const QString &text, const QgsPoint &pt, double size, double angle, const QColor &color, QgsDxfExport::HAlign hali = QgsDxfExport::HAlign::Undefined, QgsDxfExport::VAlign vali = QgsDxfExport::VAlign::Undefined ) SIP_PYNAME( writeTextV2 );
+    void writeText(
+      const QString &layer,
+      const QString &text,
+      const QgsPoint &pt,
+      double size,
+      double angle,
+      const QColor &color,
+      QgsDxfExport::HAlign hali = QgsDxfExport::HAlign::Undefined,
+      QgsDxfExport::VAlign vali = QgsDxfExport::VAlign::Undefined
+    ) SIP_PYNAME( writeTextV2 );
 
     /**
      * Write mtext (MTEXT)
      * \note available in Python bindings as writeMTextV2
-     * \since QGIS 2.15
      */
     void writeMText( const QString &layer, const QString &text, const QgsPoint &pt, double width, double angle, const QColor &color );
 
@@ -490,8 +559,16 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param symbolUnits the symbol output units
      * \param mapUnits the map units
      * \param mapUnitsPerPixel Map units per pixel
+     * \deprecated QGIS 4.2. Use the overload taking a QgsRenderContext instead.
     */
-    static double mapUnitScaleFactor( double scale, QgsUnitTypes::RenderUnit symbolUnits, QgsUnitTypes::DistanceUnit mapUnits, double mapUnitsPerPixel = 1.0 );
+    Q_DECL_DEPRECATED static double mapUnitScaleFactor( double scale, Qgis::RenderUnit symbolUnits, Qgis::DistanceUnit mapUnits, double mapUnitsPerPixel = 1.0 ) SIP_DEPRECATED;
+
+    /**
+     * Returns the scale factor for conversion of a symbol size in \a symbolUnits to map units,
+     * using the symbology scale and map-to-pixel transform from \a renderContext.
+     * \since QGIS 4.2
+    */
+    static double mapUnitScaleFactor( const QgsRenderContext &renderContext, Qgis::RenderUnit symbolUnits );
 
     /**
      * Clips value to scale minimum/maximum
@@ -523,34 +600,48 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
      * \param fid id of feature
      * \param layer dxf layer of feature
      *
-     * \deprecated Will be made private in QGIS 4
+     * \deprecated QGIS 3.40. Will be made private in QGIS 5.
      */
     Q_DECL_DEPRECATED void registerDxfLayer( const QString &layerId, QgsFeatureId fid, const QString &layer );
 
   private:
-
 #ifdef SIP_RUN
     QgsDxfExport( const QgsDxfExport &other );
     QgsDxfExport &operator=( const QgsDxfExport & );
 #endif
+
+    struct DataDefinedBlockInfo
+    {
+        QString blockName;
+        double angle;
+        double size;
+        QgsFeature feature; //a feature representing the attribute combination (without geometry)
+    };
+
     //! Extent for export, only intersecting features are exported. If the extent is an empty rectangle, all features are exported
     QgsRectangle mExtent;
     //! Scale for symbology export (used if symbols units are mm)
     double mSymbologyScale = 1.0;
-    SymbologyExport mSymbologyExport = NoSymbology;
-    QgsUnitTypes::DistanceUnit mMapUnits = QgsUnitTypes::DistanceMeters;
+    Qgis::FeatureSymbologyExport mSymbologyExport = Qgis::FeatureSymbologyExport::NoSymbology;
+    Qgis::DistanceUnit mMapUnits = Qgis::DistanceUnit::Meters;
     bool mLayerTitleAsName = false;
 
-    QTextStream mTextStream;
+    QIODevice *mDevice = nullptr;
+    QTextCodec *mCodec = nullptr;
 
     int mSymbolLayerCounter = 0; //internal counter
     int mNextHandleId = DXF_HANDSEED;
     int mBlockCounter = 0;
 
-    QHash< const QgsSymbolLayer *, QString > mLineStyles; //symbol layer name types
-    QHash< const QgsSymbolLayer *, QString > mPointSymbolBlocks; //reference to point symbol blocks
+    QHash< const QgsSymbolLayer *, QString > mLineStyles;            //symbol layer name types
+    QHash< const QgsSymbolLayer *, QString > mPointSymbolBlocks;     //reference to point symbol blocks
+    QHash< const QgsSymbolLayer *, double > mPointSymbolBlockSizes;  //reference to point symbol size used to create its block
+    QHash< const QgsSymbolLayer *, double > mPointSymbolBlockAngles; //reference to point symbol size used to create its block
+    //! Layers with data defined symbology (other than size and angle) may also have blocks
+    QHash< const QgsSymbolLayer *, QHash<uint, DataDefinedBlockInfo> > mDataDefinedBlockInfo; // symbolLayerName -> symbolHash/Feature
 
     //AC1009
+    void createDDBlockInfo();
     void writeHeader( const QString &codepage );
     void prepareRenderers();
     void writeTables();
@@ -566,7 +657,7 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     void writePoint( const QgsPoint &pt, const QString &layer, const QColor &color, QgsSymbolRenderContext &ctx, const QgsSymbolLayer *symbolLayer, const QgsSymbol *symbol, double angle );
     void writeDefaultLinetypes();
     void writeSymbolLayerLinetype( const QgsSymbolLayer *symbolLayer );
-    void writeLinetype( const QString &styleName, const QVector<qreal> &pattern, QgsUnitTypes::RenderUnit u );
+    void writeLinetype( const QString &styleName, const QVector<qreal> &pattern, Qgis::RenderUnit u );
 
     /**
      * Helper method to calculate text properties from (PAL) label
@@ -574,16 +665,26 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     void writeText( const QString &layer, const QString &text, pal::LabelPosition *label, const QgsPalLayerSettings &layerSettings, const QgsExpressionContext &expressionContext );
 
     /**
-     * Writes geometry generator symbol layer
-     * \param ctx the symbol render context
-     * \param ct the coordinate transform
+     * Writes geometry generator symbol layer.
+     *
+     * \param context the symbol render context, with the reference to the feature set
+     * \param ct coordinate transform from CRS of feature being added to destination DXF CRS
      * \param layer the layer name
-     * \param symbolLayer the symbollayer to write to the dxf file
+     * \param symbolLayer the symbol layer to write to the dxf file
      * \param allSymbolLayers if TRUE, all symbol layers of the subsymbol are written. If FALSE, only the first one is written
     */
-    void addGeometryGeneratorSymbolLayer( QgsSymbolRenderContext &ctx, const QgsCoordinateTransform &ct, const QString &layer, QgsSymbolLayer *symbolLayer, bool allSymbolLayers );
+    void addGeometryGeneratorSymbolLayer( QgsSymbolRenderContext &context, const QgsCoordinateTransform &ct, const QString &layer, QgsSymbolLayer *symbolLayer, bool allSymbolLayers );
 
-    void addFeature( QgsSymbolRenderContext &ctx, const QgsCoordinateTransform &ct, const QString &layer, const QgsSymbolLayer *symbolLayer, const QgsSymbol *symbol );
+    /**
+     * Writes a feature to the DXF file.
+     *
+     * \param context the symbol render context, with the reference to the feature set
+     * \param ct coordinate transform from CRS of feature being added to destination DXF CRS
+     * \param layer the layer name
+     * \param symbolLayer the symbol layer to write to the dxf file
+     * \param symbol symbol associated with feature being added
+     */
+    void addFeature( QgsSymbolRenderContext &context, const QgsCoordinateTransform &ct, const QString &layer, const QgsSymbolLayer *symbolLayer, const QgsSymbol *symbol );
 
     //returns dxf palette index from symbol layer color
     static QColor colorFromSymbolLayer( const QgsSymbolLayer *symbolLayer, QgsSymbolRenderContext &ctx );
@@ -598,7 +699,16 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
 
     QList< QPair< QgsSymbolLayer *, QgsSymbol * > > symbolLayers( QgsRenderContext &context );
     static int nLineTypes( const QList< QPair< QgsSymbolLayer *, QgsSymbol *> > &symbolLayers );
-    static bool hasDataDefinedProperties( const QgsSymbolLayer *sl, const QgsSymbol *symbol );
+    static bool hasBlockBreakingDataDefinedProperties( const QgsSymbolLayer *sl, const QgsSymbol *symbol );
+    //! Returns TRUE if the symbol layer is enabled (static flag + data-defined LayerEnabled property)
+    static bool isSymbolLayerEnabled( const QgsSymbolLayer *layer, QgsSymbolRenderContext &context );
+    void writeSymbolTableBlockRef( const QString &blockName );
+    void writeSymbolLayerBlock( const QString &blockName, const QgsMarkerSymbolLayer *ml, QgsSymbolRenderContext &ctx );
+    void writePointBlockReference(
+      const QgsPoint &pt, const QgsSymbolLayer *symbolLayer, QgsSymbolRenderContext &ctx, const QString &layer, double angle, const QString &blockName, double blockAngle, double blockSize
+    );
+    static uint dataDefinedSymbolClassHash( const QgsFeature &fet, const QgsPropertyCollection &prop, const QgsExpressionContext &context );
+
     double dashSize() const;
     double dotSize() const;
     double dashSeparatorSize() const;
@@ -613,7 +723,10 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     QMap< QString, QMap<QgsFeatureId, QString> > mDxfLayerNames;
     QgsCoordinateReferenceSystem mCrs;
     QgsMapSettings mMapSettings;
+    QList<QgsMapLayer *> mLayerList;
     QHash<QString, int> mLayerNameAttribute;
+    QHash<QString, int> mLayerDDBlockMaxNumberOfClasses;
+    QHash<QString, QString> mLayerOverriddenName;
     double mFactor = 1.0;
     bool mForce2d = false;
 
@@ -628,6 +741,8 @@ class CORE_EXPORT QgsDxfExport : public QgsLabelSink
     // Internal cache for layer related information required during rendering
     QList<DxfLayerJob *> mJobs;
     std::unique_ptr<QgsLabelingEngine> mLabelingEngine;
+
+    QString mFeedbackMessage;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsDxfExport::Flags )

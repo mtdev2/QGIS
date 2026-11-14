@@ -15,21 +15,24 @@
 #ifndef QGSGUIUTILS_H
 #define QGSGUIUTILS_H
 
-#include <Qt>
-#include <QPair>
-#include <QWidget>
-#include <QStringList>
-#include "qgis_gui.h"
 #include "qgis.h"
+#include "qgis_gui.h"
+#include "qgswkbtypes.h"
+
+#include <QPair>
+#include <QStringList>
+#include <QWidget>
 
 #define SIP_NO_FILE
 
 class QFont;
+class QMainWindow;
+class QDockWidget;
 
 /**
  * \ingroup gui
  * \namespace QgsGuiUtils
- * The QgsGuiUtils namespace contains constants and helper functions used throughout the QGIS GUI.
+ * \brief The QgsGuiUtils namespace contains constants and helper functions used throughout the QGIS GUI.
  * \note not available in Python bindings
  */
 namespace QgsGuiUtils
@@ -57,14 +60,12 @@ namespace QgsGuiUtils
   /**
    * Minimum magnification level allowed in map canvases.
    * \see CANVAS_MAGNIFICATION_MAX
-   * \since QGIS 3.0
    */
   constexpr double CANVAS_MAGNIFICATION_MIN = 0.1;
 
   /**
    * Maximum magnification level allowed in map canvases.
    * \see CANVAS_MAGNIFICATION_MAX
-   * \since QGIS 3.0
    */
   // Must be a factor of 2, so zooming in to max from 100% then zooming back out will result in 100% mag
   constexpr double CANVAS_MAGNIFICATION_MAX = 16.0;
@@ -80,9 +81,7 @@ namespace QgsGuiUtils
    * \param enc        encoding?
    * \param title      the title for the dialog
    * \param cancelAll  add button to cancel further requests
-   * \note
-   *
-   * Stores persistent settings under /UI/.  The sub-keys will be
+   * \note Stores persistent settings under /UI/.  The sub-keys will be
    * filterName and filterName + "Dir".
    *
    * Opens dialog on last directory associated with the filter name, or
@@ -91,10 +90,7 @@ namespace QgsGuiUtils
    *
    * This method returns TRUE if cancel all was clicked, otherwise FALSE
   */
-
-  bool GUI_EXPORT openFilesRememberingFilter( QString const &filterName,
-      QString const &filters, QStringList &selectedFiles, QString &enc, QString &title,
-      bool cancelAll = false );
+  bool GUI_EXPORT openFilesRememberingFilter( QString const &filterName, QString const &filters, QStringList &selectedFiles, QString &enc, QString &title, bool cancelAll = false );
 
   /**
    * A helper function to get an image name from the user. It will nicely
@@ -108,12 +104,12 @@ namespace QgsGuiUtils
   QPair<QString, QString> GUI_EXPORT getSaveAsImageName( QWidget *parent, const QString &message, const QString &defaultFilename = QString() );
 
   /**
-    Convenience function for readily creating file filters.
-
-    Given a long name for a file filter and a regular expression, return
-    a file filter string suitable for use in a QFileDialog::OpenFiles()
-    call.  The regular express, glob, will have both all lower and upper
-    case versions added.
+   * Convenience function for readily creating file filters.
+   *
+   * Given a long name for a file filter and a regular expression, return
+   * a file filter string suitable for use in a QFileDialog::OpenFiles()
+   * call.  The regular express, glob, will have both all lower and upper
+   * case versions added.
   */
   QString GUI_EXPORT createFileFilter_( QString const &longName, QString const &glob );
 
@@ -139,7 +135,7 @@ namespace QgsGuiUtils
   QFont GUI_EXPORT getFont( bool &ok, const QFont &initial, const QString &title = QString() );
 
   /**
-   * Restore the wigget geometry from settings. Will use the objetName() of the widget  and if empty, or keyName is set, will
+   * Restore the wigget geometry from settings. Will use the objectName() of the widget  and if empty, or keyName is set, will
    * use keyName to save state into settings.
    * \param widget The widget to restore.
    * \param keyName Override for objectName() if needed.
@@ -176,14 +172,6 @@ namespace QgsGuiUtils
   int GUI_EXPORT scaleIconSize( int standardSize );
 
   /**
-   * Returns the user-preferred size of a window's toolbar icons.
-   * \param dockableToolbar If set to TRUE, the icon size will be returned for dockable window panel's toolbars.
-   * \returns a QSize object representing an icon's width and height.
-   * \since QGIS 3.8
-   */
-  QSize GUI_EXPORT iconSize( bool dockableToolbar = false );
-
-  /**
    * Returns dockable panel toolbar icon width based on the provided window toolbar width.
    * \param size Icon size from which the output size will be derived from.
    * \returns a QSize object representing an icon's width and height.
@@ -193,7 +181,7 @@ namespace QgsGuiUtils
 
   /**
    * Returns a localized string representation of the \a value with the appropriate number of
-   * decimals supported by the \a dataType. Traling zeroes after decimal separator are not
+   * decimals supported by the \a dataType. Trailing zeroes after decimal separator are not
    * show unless \a displayTrailingZeroes is set.
    * Note that for floating point types the number of decimals may exceed the actual internal
    * precision because the precision is always calculated on the mantissa and the conversion to
@@ -208,7 +196,96 @@ namespace QgsGuiUtils
    */
   int GUI_EXPORT significantDigits( const Qgis::DataType rasterDataType );
 
-}
+  /**
+   * Returns TRUE if the given \a wkbType is a non-standard GeoPackage geometry
+   * type (PolyhedralSurface, TIN, or Triangle).
+   *
+   * \param wkbType the geometry type to check
+   * \returns TRUE if the geometry type is non-standard for GeoPackage
+   * \since QGIS 4.0
+   */
+  bool GUI_EXPORT isNonStandardGeoPackageGeometryType( Qgis::WkbType wkbType );
+
+  /**
+   * Checks if the given \a wkbType is a non-standard GeoPackage geometry type
+   * (PolyhedralSurface, TIN, or Triangle) and displays a warning message box
+   * asking the user if they want to continue.
+   *
+   * \param wkbType the geometry type to check
+   * \param parent the parent widget for the message box (can be nullptr)
+   * \param dialogTitle the title for the warning dialog
+   * \param showDialog if FALSE, the dialog will not be shown and the function
+   *        will return TRUE for non-standard types (useful for automated testing)
+   * \param isNonStandard if not nullptr, will be set to TRUE if the geometry
+   *        type is non-standard for GeoPackage, FALSE otherwise
+   * \returns TRUE if the geometry type is standard, or if non-standard and the
+   *          user chose to continue; FALSE if non-standard and the user chose
+   *          to cancel
+   * \since QGIS 4.0
+   */
+  bool GUI_EXPORT warnAboutNonStandardGeoPackageGeometryType( Qgis::WkbType wkbType, QWidget *parent, const QString &dialogTitle, bool showDialog = true, bool *isNonStandard = nullptr );
+
+  /**
+   * Add a dock widget to a main \a window.
+   *
+   * After adding the dock widget to the UI (by delegating to the QMainWindow
+   * parent class, it will also add it to the View menu list of docks, if the window has one.
+   *
+   * \since QGIS 4.2
+   */
+  GUI_EXPORT void addDockWidget( QMainWindow *window, Qt::DockWidgetArea area, QDockWidget *dockwidget );
+
+  /**
+   * Add a dock widget to the given \a area and tabify it (if other dock widgets
+   * exist in the same \a area).
+   *
+   * The new tab will be below other tabs unless \a raiseTab is passed as TRUE.
+   *
+   * \a tabifyWith is a list of dock widget object names, ordered by
+   * priority, with which the new dock widget should be tabified. Only the
+   * first matching object name will be picked. If none of the given object
+   * names is found in that \a area (or if \a tabifyWith is not given at
+   * all), the new dock widget will be created anyways, but its location
+   * within that \a area will be unpredictable.
+   *
+   * \since QGIS 4.2
+   */
+  GUI_EXPORT void addTabifiedDockWidget( QMainWindow *window, Qt::DockWidgetArea area, QDockWidget *dockWidget, const QStringList &tabifyWith = QStringList(), bool raiseTab = false );
+
+
+} // namespace QgsGuiUtils
+
+/**
+ * Temporarily disables updates for a QWidget for the lifetime of the object.
+ *
+ * When the object is deleted, the updates are re-enabled.
+ *
+ * \ingroup gui
+ * \since QGIS 3.34
+ */
+class GUI_EXPORT QWidgetUpdateBlocker
+{
+  public:
+    /**
+     * Constructor for QWidgetUpdateBlocker. Blocks updates for the specified \a widget.
+     *
+     * The caller must ensure that \a widget exists for the lifetime of this object.
+     */
+    QWidgetUpdateBlocker( QWidget *widget );
+
+    QWidgetUpdateBlocker( const QWidgetUpdateBlocker &other ) = delete;
+    QWidgetUpdateBlocker &operator=( const QWidgetUpdateBlocker &other ) = delete;
+
+    ~QWidgetUpdateBlocker();
+
+    /**
+     * Releases the update block early (i.e. before this object is destroyed).
+     */
+    void release();
+
+  private:
+    QWidget *mWidget = nullptr;
+};
 
 /**
  * Temporarily sets a cursor override for the QApplication for the lifetime of the object.
@@ -222,7 +299,6 @@ namespace QgsGuiUtils
 class GUI_EXPORT QgsTemporaryCursorOverride
 {
   public:
-
     /**
      * Constructor for QgsTemporaryCursorOverride. Sets the application override
      * cursor to \a cursor.
@@ -237,9 +313,7 @@ class GUI_EXPORT QgsTemporaryCursorOverride
     void release();
 
   private:
-
     bool mHasOverride = true;
-
 };
 
 /**
@@ -254,7 +328,6 @@ class GUI_EXPORT QgsTemporaryCursorOverride
 class GUI_EXPORT QgsTemporaryCursorRestoreOverride
 {
   public:
-
     /**
      * Constructor for QgsTemporaryCursorRestoreOverride. Removes all application override
      * cursors.
@@ -269,9 +342,7 @@ class GUI_EXPORT QgsTemporaryCursorRestoreOverride
     void restore();
 
   private:
-
-    std::vector< QCursor > mCursors;
-
+    std::vector<QCursor> mCursors;
 };
 
 #endif // QGSGUIUTILS_H

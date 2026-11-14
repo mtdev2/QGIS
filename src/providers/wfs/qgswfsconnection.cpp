@@ -14,71 +14,114 @@
  ***************************************************************************/
 
 #include "qgswfsconnection.h"
-#include "qgswfsconstants.h"
+
 #include "qgslogger.h"
-#include "qgssettings.h"
+#include "qgssettingsentryenumflag.h"
+#include "qgssettingsentryimpl.h"
+#include "qgswfsconstants.h"
+
+#include <QString>
+
+#include "moc_qgswfsconnection.cpp"
+
+using namespace Qt::StringLiterals;
+
+static const QString SERVICE_WFS = u"WFS"_s;
+
 
 QgsWfsConnection::QgsWfsConnection( const QString &connName )
-  : QgsOwsConnection( QStringLiteral( "WFS" ), connName )
+  : QgsOwsConnection( SERVICE_WFS, connName )
 {
-  const QString &key = QgsWFSConstants::CONNECTIONS_WFS + connectionName();
-
-  QgsSettings settings;
-
-  const QString &version = settings.value( key + "/" + QgsWFSConstants::SETTINGS_VERSION ).toString();
+  const QStringList detailsParameters = { service().toLower(), connName };
+  const QString version = settingsVersion->value( detailsParameters );
   if ( !version.isEmpty() )
   {
     mUri.removeParam( QgsWFSConstants::URI_PARAM_VERSION ); // setParam allow for duplicates!
     mUri.setParam( QgsWFSConstants::URI_PARAM_VERSION, version );
   }
 
-  const QString &maxnumfeatures = settings.value( key + "/" + QgsWFSConstants::SETTINGS_MAXNUMFEATURES ).toString();
+  const QString maxnumfeatures = settingsMaxNumFeatures->value( detailsParameters );
   if ( !maxnumfeatures.isEmpty() )
   {
     mUri.removeParam( QgsWFSConstants::URI_PARAM_MAXNUMFEATURES ); // setParam allow for duplicates!
     mUri.setParam( QgsWFSConstants::URI_PARAM_MAXNUMFEATURES, maxnumfeatures );
   }
 
-  const QString &pagesize = settings.value( key + "/" + QgsWFSConstants::SETTINGS_PAGE_SIZE ).toString();
+  const QString pagesize = settingsPagesize->value( detailsParameters );
   if ( !pagesize.isEmpty() )
   {
     mUri.removeParam( QgsWFSConstants::URI_PARAM_PAGE_SIZE ); // setParam allow for duplicates!
     mUri.setParam( QgsWFSConstants::URI_PARAM_PAGE_SIZE, pagesize );
   }
 
-  if ( settings.contains( key + "/" + QgsWFSConstants::SETTINGS_PAGING_ENABLED ) )
+  if ( settingsPagingEnabled->exists( detailsParameters ) )
   {
     mUri.removeParam( QgsWFSConstants::URI_PARAM_PAGING_ENABLED ); // setParam allow for duplicates!
-    mUri.setParam( QgsWFSConstants::URI_PARAM_PAGING_ENABLED,
-                   settings.value( key + "/" + QgsWFSConstants::SETTINGS_PAGING_ENABLED, true ).toBool() ? QStringLiteral( "true" ) : QStringLiteral( "false" ) );
+    mUri.setParam( QgsWFSConstants::URI_PARAM_PAGING_ENABLED, settingsPagingEnabled->value( detailsParameters ) );
   }
 
-  if ( settings.contains( key + "/" + QgsWFSConstants::SETTINGS_WFST_1_1_PREFER_COORDINATES ) )
+  if ( settingsWfsForceInitialGetFeature->exists( detailsParameters ) )
+  {
+    mUri.removeParam( QgsWFSConstants::URI_PARAM_FORCE_INITIAL_GET_FEATURE ); // setParam allow for duplicates!
+    mUri.setParam( QgsWFSConstants::URI_PARAM_FORCE_INITIAL_GET_FEATURE, settingsWfsForceInitialGetFeature->value( detailsParameters ) ? u"true"_s : u"false"_s );
+  }
+
+  if ( settingsPreferCoordinatesForWfsT11->exists( detailsParameters ) )
   {
     mUri.removeParam( QgsWFSConstants::URI_PARAM_WFST_1_1_PREFER_COORDINATES ); // setParam allow for duplicates!
-    mUri.setParam( QgsWFSConstants::URI_PARAM_WFST_1_1_PREFER_COORDINATES,
-                   settings.value( key + "/" + QgsWFSConstants::SETTINGS_WFST_1_1_PREFER_COORDINATES, true ).toBool() ? QStringLiteral( "true" ) : QStringLiteral( "false" ) );
+    mUri.setParam( QgsWFSConstants::URI_PARAM_WFST_1_1_PREFER_COORDINATES, settingsPreferCoordinatesForWfsT11->value( detailsParameters ) ? u"true"_s : u"false"_s );
   }
 
-  QgsDebugMsgLevel( QStringLiteral( "WFS full uri: '%1'." ).arg( QString( mUri.uri() ) ), 4 );
+  if ( settingsPreferredHttpMethod->exists( detailsParameters ) )
+  {
+    mUri.removeParam( QgsWFSConstants::URI_PARAM_HTTPMETHOD ); // setParam allow for duplicates!
+    switch ( settingsPreferredHttpMethod->value( detailsParameters ) )
+    {
+      case Qgis::HttpMethod::Get:
+        // default, we don't set to explicitly set
+        break;
+
+      case Qgis::HttpMethod::Post:
+        mUri.setParam( QgsWFSConstants::URI_PARAM_HTTPMETHOD, u"post"_s );
+        break;
+
+      case Qgis::HttpMethod::Head:
+      case Qgis::HttpMethod::Put:
+      case Qgis::HttpMethod::Delete:
+        // not supported
+        break;
+    }
+  }
+
+  if ( settingsWfsFeatureMode->exists( detailsParameters ) )
+  {
+    mUri.removeParam( QgsWFSConstants::URI_PARAM_FEATURE_MODE ); // setParam allow for duplicates!
+    const QString featureMode = settingsWfsFeatureMode->value( detailsParameters );
+    if ( featureMode != "default"_L1 )
+    {
+      mUri.setParam( QgsWFSConstants::URI_PARAM_FEATURE_MODE, featureMode );
+    }
+  }
+
+  QgsDebugMsgLevel( u"WFS full uri: '%1'."_s.arg( QString( mUri.uri() ) ), 4 );
 }
 
 QStringList QgsWfsConnection::connectionList()
 {
-  return QgsOwsConnection::connectionList( QStringLiteral( "WFS" ) );
+  return QgsOwsConnection::connectionList( SERVICE_WFS );
 }
 
 void QgsWfsConnection::deleteConnection( const QString &name )
 {
-  QgsOwsConnection::deleteConnection( QStringLiteral( "WFS" ), name );
+  QgsOwsConnection::deleteConnection( SERVICE_WFS, name );
 }
 
 QString QgsWfsConnection::selectedConnection()
 {
-  return QgsOwsConnection::selectedConnection( QStringLiteral( "WFS" ) );
+  return QgsOwsConnection::selectedConnection( SERVICE_WFS );
 }
 
 void QgsWfsConnection::setSelectedConnection( const QString &name )
 {
-  QgsOwsConnection::setSelectedConnection( QStringLiteral( "WFS" ), name );
+  QgsOwsConnection::setSelectedConnection( SERVICE_WFS, name );
 }

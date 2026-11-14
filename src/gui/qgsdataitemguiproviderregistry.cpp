@@ -14,10 +14,9 @@
  ***************************************************************************/
 #include "qgsdataitemguiproviderregistry.h"
 
-#include "qgsproviderregistry.h"
-
 #include "qgsdataitemguiprovider.h"
 #include "qgsproviderguiregistry.h"
+#include "qgsproviderregistry.h"
 
 QgsDataItemGuiProviderRegistry::QgsDataItemGuiProviderRegistry() = default;
 
@@ -33,7 +32,7 @@ void QgsDataItemGuiProviderRegistry::addProvider( QgsDataItemGuiProvider *provid
 
 void QgsDataItemGuiProviderRegistry::removeProvider( QgsDataItemGuiProvider *provider )
 {
-  int index = mProviders.indexOf( provider );
+  const int index = mProviders.indexOf( provider );
   if ( index >= 0 )
     delete mProviders.takeAt( index );
 }

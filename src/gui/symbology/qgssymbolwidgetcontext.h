@@ -17,37 +17,25 @@
 
 #include <memory>
 
-#include "qgsexpressioncontext.h"
-#include "qgssymbol.h"
 #include "qgis_gui.h"
+#include "qgsexpressioncontext.h"
 
-
+class QgsMapLayer;
 class QgsMapCanvas;
 class QgsMessageBar;
 
 /**
  * \ingroup gui
  * \class QgsSymbolWidgetContext
- * Contains settings which reflect the context in which a symbol (or renderer) widget is shown, e.g., the
+ * \brief Contains settings which reflect the context in which a symbol (or renderer) widget is shown, e.g., the
  * map canvas and relevant expression contexts.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsSymbolWidgetContext // clazy:exclude=rule-of-three
 {
   public:
-
-    /**
-     * Constructor for QgsSymbolWidgetContext.
-     */
     QgsSymbolWidgetContext() = default;
-
-    /**
-     * Copy constructor.
-     * \param other source QgsSymbolWidgetContext
-     */
     QgsSymbolWidgetContext( const QgsSymbolWidgetContext &other );
-
     QgsSymbolWidgetContext &operator=( const QgsSymbolWidgetContext &other );
 
     /**
@@ -102,20 +90,19 @@ class GUI_EXPORT QgsSymbolWidgetContext // clazy:exclude=rule-of-three
      * \param scopes list of additional scopes which will be added in order to the end of the default expression context
      * \see setExpressionContext()
      */
-    void setAdditionalExpressionContextScopes( const QList< QgsExpressionContextScope > &scopes );
+    void setAdditionalExpressionContextScopes( const QList<QgsExpressionContextScope> &scopes );
 
     /**
      * Returns the list of additional expression context scopes to show as available within the layer.
      * \see setAdditionalExpressionContextScopes()
      */
-    QList< QgsExpressionContextScope > additionalExpressionContextScopes() const;
+    QList<QgsExpressionContextScope> additionalExpressionContextScopes() const;
 
     /**
      * Returns list of scopes: global, project, atlas, map, layer.
      * Ownership is transferred to the caller.
-     * \since QGIS 3.0
      */
-    QList<QgsExpressionContextScope *> globalProjectAtlasMapLayerScopes( const QgsMapLayer *layer ) const SIP_FACTORY;
+    std::vector<std::unique_ptr<QgsExpressionContextScope>> globalProjectAtlasMapLayerScopes( const QgsMapLayer *layer ) const;
 
     /**
      * Returns the associated symbol type, if the widget is being shown as a subcomponent
@@ -124,7 +111,7 @@ class GUI_EXPORT QgsSymbolWidgetContext // clazy:exclude=rule-of-three
      * \see setSymbolType()
      * \since QGIS 3.18
      */
-    QgsSymbol::SymbolType symbolType() const;
+    Qgis::SymbolType symbolType() const;
 
     /**
      * Sets the associated symbol \a type, if the widget is being shown as a subcomponent
@@ -133,16 +120,14 @@ class GUI_EXPORT QgsSymbolWidgetContext // clazy:exclude=rule-of-three
      * \see symbolType()
      * \since QGIS 3.18
      */
-    void setSymbolType( QgsSymbol::SymbolType type );
+    void setSymbolType( Qgis::SymbolType type );
 
   private:
-
-    QgsMapCanvas *mMapCanvas = nullptr;
+    QPointer<QgsMapCanvas> mMapCanvas;
     QgsMessageBar *mMessageBar = nullptr;
-    std::unique_ptr< QgsExpressionContext > mExpressionContext;
-    QList< QgsExpressionContextScope > mAdditionalScopes;
-    QgsSymbol::SymbolType mSymbolType = QgsSymbol::Hybrid;
-
+    std::unique_ptr<QgsExpressionContext> mExpressionContext;
+    QList<QgsExpressionContextScope> mAdditionalScopes;
+    Qgis::SymbolType mSymbolType = Qgis::SymbolType::Hybrid;
 };
 
 #endif // QGSSYMBOLWIDGETCONTEXT_H

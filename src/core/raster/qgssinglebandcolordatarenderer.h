@@ -26,9 +26,9 @@ class QDomElement;
 
 /**
  * \ingroup core
-  * Raster renderer pipe for single band color.
+  * \brief Raster renderer pipe for single band color.
   */
-class CORE_EXPORT QgsSingleBandColorDataRenderer: public QgsRasterRenderer
+class CORE_EXPORT QgsSingleBandColorDataRenderer : public QgsRasterRenderer
 {
   public:
     QgsSingleBandColorDataRenderer( QgsRasterInterface *input, int band );
@@ -39,10 +39,13 @@ class CORE_EXPORT QgsSingleBandColorDataRenderer: public QgsRasterRenderer
     const QgsSingleBandColorDataRenderer &operator=( const QgsSingleBandColorDataRenderer & ) = delete;
 
     QgsSingleBandColorDataRenderer *clone() const override SIP_FACTORY;
+    Qgis::RasterRendererFlags flags() const override;
 
-    static QgsRasterRenderer *create( const QDomElement &elem, QgsRasterInterface *input ) SIP_FACTORY;
+    static std::unique_ptr<QgsRasterRenderer> create( const QDomElement &elem, QgsRasterInterface *input );
 
     bool setInput( QgsRasterInterface *input ) override;
+    int inputBand() const override;
+    bool setInputBand( int band ) override;
 
     QgsRasterBlock *block( int bandNo, const QgsRectangle &extent, int width, int height, QgsRasterBlockFeedback *feedback = nullptr ) override SIP_FACTORY;
 
@@ -56,7 +59,6 @@ class CORE_EXPORT QgsSingleBandColorDataRenderer: public QgsRasterRenderer
     const QgsSingleBandColorDataRenderer &operator=( const QgsSingleBandColorDataRenderer & );
 #endif
     int mBand;
-
 };
 
 #endif // QGSSINGLEBANDCOLORDATARENDERER_H

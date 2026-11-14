@@ -16,19 +16,21 @@
 #ifndef QGSDATETIMEEDITCONFIG_H
 #define QGSDATETIMEEDITCONFIG_H
 
-#include "qgseditorconfigwidget.h"
 #include "ui_qgsdatetimeeditconfig.h"
+
 #include "qgis_gui.h"
+#include "qgseditorconfigwidget.h"
 
 SIP_NO_FILE
 
 /**
  * \ingroup gui
  * \class QgsDateTimeEditConfig
+ * \brief Configuration widget for datetime widgets.
  * \note not available in Python bindings
  */
-
-class GUI_EXPORT QgsDateTimeEditConfig : public QgsEditorConfigWidget, private Ui::QgsDateTimeEditConfig
+class GUI_EXPORT QgsDateTimeEditConfig : public QgsEditorConfigWidget,
+                                         private Ui::QgsDateTimeEditConfig
 {
     Q_OBJECT
   public:
@@ -42,6 +44,9 @@ class GUI_EXPORT QgsDateTimeEditConfig : public QgsEditorConfigWidget, private U
     void updateDisplayFormat( const QString &fieldFormat );
     void displayFormatChanged( int idx );
     void showHelp( bool buttonChecked );
+
+  private:
+    void setFieldFormatCombo( const QString &fieldFormat );
 };
 
 #endif // QGSDATETIMEEDITCONFIG_H

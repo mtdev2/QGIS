@@ -16,12 +16,13 @@
 #define QgsHTMLAnnotationDialog_H
 
 #include "ui_qgsformannotationdialogbase.h"
+
 #include "qgis_app.h"
 
 class QgsAnnotationWidget;
 class QgsMapCanvasAnnotationItem;
 
-class APP_EXPORT QgsHtmlAnnotationDialog: public QDialog, private Ui::QgsFormAnnotationDialogBase
+class APP_EXPORT QgsHtmlAnnotationDialog : public QDialog, private Ui::QgsFormAnnotationDialogBase
 {
     Q_OBJECT
   public:
@@ -36,7 +37,11 @@ class APP_EXPORT QgsHtmlAnnotationDialog: public QDialog, private Ui::QgsFormAnn
     void mBrowseToolButton_clicked();
     void deleteItem();
     void mButtonBox_clicked( QAbstractButton *button );
+    void fileRadioButtonToggled( bool checked );
+    void sourceRadioButtonToggled( bool checked );
     void showHelp();
+    void onSettingsChanged();
+    void onLiveUpdateToggled( bool checked );
 };
 
 #endif // QgsHTMLAnnotationDialog_H

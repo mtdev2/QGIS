@@ -42,8 +42,9 @@ namespace MDAL
       ~DriverHec2D( ) override = default;
       DriverHec2D *create() override;
 
+      using Driver::load;
       bool canReadMesh( const std::string &uri ) override;
-      std::unique_ptr< Mesh > load( const std::string &resultsFile, const std::string &meshName = "" ) override;
+      std::unique_ptr< Mesh > load( const std::string &fileName, const std::string &meshName = "" ) override;
 
     private:
       std::unique_ptr< MDAL::MemoryMesh > mMesh;
@@ -52,13 +53,10 @@ namespace MDAL
       std::vector<MDAL::RelativeTimestamp> mTimes ;
       DateTime mReferenceTime;
 
-      // Pre 5.0.5 format
-      bool canReadOldFormat( const std::string &fileType ) const;
-      std::vector<std::string> read2DFlowAreasNamesOld( HdfGroup gGeom2DFlowAreas ) const;
+      bool canReadFormat( const std::string &fileType ) const;
 
-      // 5.0.5 + format
-      bool canReadFormat505( const std::string &fileType ) const;
-      std::vector<std::string> read2DFlowAreasNames505( HdfGroup gGeom2DFlowAreas ) const;
+      std::vector<std::string> read2DFlowAreasNamesFromNameDataset( HdfGroup gGeom2DFlowAreas ) const;
+      std::vector<std::string> read2DFlowAreasNamesFromAttributesDataset( HdfGroup gGeom2DFlowAreas ) const;
 
       // Common functions
       void readFaceOutput( const HdfFile &hdfFile,

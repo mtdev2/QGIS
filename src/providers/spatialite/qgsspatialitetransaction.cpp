@@ -15,8 +15,15 @@
  ***************************************************************************/
 
 #include "qgsspatialitetransaction.h"
+
 #include "qgslogger.h"
+
 #include <QDebug>
+#include <QString>
+
+#include "moc_qgsspatialitetransaction.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
@@ -33,34 +40,33 @@ QgsSpatiaLiteTransaction::QgsSpatiaLiteTransaction( const QString &connString, Q
 
 bool QgsSpatiaLiteTransaction::beginTransaction( QString &error, int /* statementTimeout */ )
 {
-  return executeSql( QStringLiteral( "BEGIN" ), error );
+  return executeSql( u"BEGIN"_s, error );
 }
 
 bool QgsSpatiaLiteTransaction::commitTransaction( QString &error )
 {
-  return executeSql( QStringLiteral( "COMMIT" ), error );
+  return executeSql( u"COMMIT"_s, error );
 }
 
 bool QgsSpatiaLiteTransaction::rollbackTransaction( QString &error )
 {
-  return executeSql( QStringLiteral( "ROLLBACK" ), error );
+  return executeSql( u"ROLLBACK"_s, error );
 }
 
 bool QgsSpatiaLiteTransaction::executeSql( const QString &sql, QString &errorMsg, bool isDirty, const QString &name )
 {
-
-  if ( ! mSqliteHandle )
+  if ( !mSqliteHandle )
   {
-    QgsDebugMsg( QStringLiteral( "Spatialite handle is not set" ) );
+    QgsDebugError( u"Spatialite handle is not set"_s );
     return false;
   }
 
   if ( isDirty )
   {
     createSavepoint( errorMsg );
-    if ( ! errorMsg.isEmpty() )
+    if ( !errorMsg.isEmpty() )
     {
-      QgsDebugMsg( errorMsg );
+      QgsDebugError( errorMsg );
       return false;
     }
   }
@@ -72,8 +78,8 @@ bool QgsSpatiaLiteTransaction::executeSql( const QString &sql, QString &errorMsg
     {
       rollbackToSavepoint( savePoints().last(), errorMsg );
     }
-    errorMsg = QStringLiteral( "%1\n%2" ).arg( errMsg, errorMsg );
-    QgsDebugMsg( errMsg );
+    errorMsg = u"%1\n%2"_s.arg( errMsg, errorMsg );
+    QgsDebugError( errMsg );
     sqlite3_free( errMsg );
     return false;
   }
@@ -84,7 +90,7 @@ bool QgsSpatiaLiteTransaction::executeSql( const QString &sql, QString &errorMsg
     emit dirtied( sql, name );
   }
 
-  QgsDebugMsg( QStringLiteral( "... ok" ) );
+  QgsDebugMsgLevel( u"... ok"_s, 2 );
   return true;
 }
 

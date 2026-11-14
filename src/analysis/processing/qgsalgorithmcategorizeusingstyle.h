@@ -18,10 +18,11 @@
 #ifndef QGSALGORITHMCATEGORIZEUSINGSTYLE_H
 #define QGSALGORITHMCATEGORIZEUSINGSTYLE_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 class QgsCategorizedSymbolRenderer;
 
@@ -32,13 +33,11 @@ class QgsCategorizedSymbolRenderer;
  */
 class QgsCategorizeUsingStyleAlgorithm : public QgsProcessingAlgorithm
 {
-
   public:
-
     QgsCategorizeUsingStyleAlgorithm();
     ~QgsCategorizeUsingStyleAlgorithm() override;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString name() const override;
     QString displayName() const override;
     QStringList tags() const override;
@@ -49,17 +48,14 @@ class QgsCategorizeUsingStyleAlgorithm : public QgsProcessingAlgorithm
     QgsCategorizeUsingStyleAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
     bool prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 
   private:
-
     QString mField;
     QString mLayerId;
     QString mLayerName;
-    QgsWkbTypes::GeometryType mLayerGeometryType = QgsWkbTypes::UnknownGeometry;
+    Qgis::GeometryType mLayerGeometryType = Qgis::GeometryType::Unknown;
     QgsFields mLayerFields;
     QgsExpression mExpression;
     QgsExpressionContext mExpressionContext;
@@ -70,5 +66,3 @@ class QgsCategorizeUsingStyleAlgorithm : public QgsProcessingAlgorithm
 ///@endcond PRIVATE
 
 #endif // QGSALGORITHMCATEGORIZEUSINGSTYLE_H
-
-

@@ -17,11 +17,15 @@
 
 #include "qgsalgorithmrenametablefield.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
 QString QgsRenameTableFieldAlgorithm::name() const
 {
-  return QStringLiteral( "renametablefield" );
+  return u"renametablefield"_s;
 }
 
 QString QgsRenameTableFieldAlgorithm::displayName() const
@@ -51,7 +55,7 @@ QString QgsRenameTableFieldAlgorithm::group() const
 
 QString QgsRenameTableFieldAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectortable" );
+  return u"vectortable"_s;
 }
 
 QString QgsRenameTableFieldAlgorithm::outputName() const
@@ -61,12 +65,12 @@ QString QgsRenameTableFieldAlgorithm::outputName() const
 
 QList<int> QgsRenameTableFieldAlgorithm::inputLayerTypes() const
 {
-  return QList<int>() << QgsProcessing::TypeVector;
+  return QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::Vector );
 }
 
-QgsProcessingFeatureSource::Flag QgsRenameTableFieldAlgorithm::sourceFlags() const
+Qgis::ProcessingFeatureSourceFlags QgsRenameTableFieldAlgorithm::sourceFlags() const
 {
-  return QgsProcessingFeatureSource::FlagSkipGeometryValidityChecks;
+  return Qgis::ProcessingFeatureSourceFlag::SkipGeometryValidityChecks;
 }
 
 QgsRenameTableFieldAlgorithm *QgsRenameTableFieldAlgorithm::createInstance() const
@@ -76,12 +80,14 @@ QgsRenameTableFieldAlgorithm *QgsRenameTableFieldAlgorithm::createInstance() con
 
 void QgsRenameTableFieldAlgorithm::initParameters( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterField( QStringLiteral( "FIELD" ), QObject::tr( "Field to rename" ), QVariant(), QStringLiteral( "INPUT" ) ) );
-  addParameter( new QgsProcessingParameterString( QStringLiteral( "NEW_NAME" ), QObject::tr( "New field name" ) ) );
+  addParameter( new QgsProcessingParameterField( u"FIELD"_s, QObject::tr( "Field to rename" ), QVariant(), u"INPUT"_s ) );
+  addParameter( new QgsProcessingParameterString( u"NEW_NAME"_s, QObject::tr( "New field name" ) ) );
 }
 
 QgsFields QgsRenameTableFieldAlgorithm::outputFields( const QgsFields &inputFields ) const
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFields outFields = inputFields;
   const int index = outFields.lookupField( mOriginalName );
   if ( index < 0 )
@@ -96,8 +102,8 @@ QgsFields QgsRenameTableFieldAlgorithm::outputFields( const QgsFields &inputFiel
 
 bool QgsRenameTableFieldAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mOriginalName = parameterAsString( parameters, QStringLiteral( "FIELD" ), context );
-  mNewName = parameterAsString( parameters, QStringLiteral( "NEW_NAME" ), context );
+  mOriginalName = parameterAsString( parameters, u"FIELD"_s, context );
+  mNewName = parameterAsString( parameters, u"NEW_NAME"_s, context );
   return true;
 }
 

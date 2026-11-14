@@ -19,33 +19,31 @@
 #ifndef QGSPLUGINLAYERREGSITRY_H
 #define QGSPLUGINLAYERREGSITRY_H
 
-#include <QMap>
-#include "qgis_sip.h"
-#include <QDomNode>
-
 #include "qgis_core.h"
+#include "qgis_sip.h"
+
+#include <QDomNode>
+#include <QMap>
 
 class QgsPluginLayer;
 
 /**
  * \ingroup core
-    class for creating plugin specific layers
+ * \brief Responsible for creating plugin specific map layers.
 */
 class CORE_EXPORT QgsPluginLayerType
 {
   public:
-
     QgsPluginLayerType( const QString &name );
     virtual ~QgsPluginLayerType() = default;
 
-    QString name();
+    QString name() const;
 
     //! Returns new layer of this type. Return NULLPTR on error
     virtual QgsPluginLayer *createLayer() SIP_FACTORY;
 
     /**
      * Returns new layer of this type, using layer URI (specific to this plugin layer type). Return NULLPTR on error.
-     * \since QGIS 2.10
      */
     virtual QgsPluginLayer *createLayer( const QString &uri ) SIP_FACTORY;
 
@@ -60,7 +58,7 @@ class CORE_EXPORT QgsPluginLayerType
 
 /**
  * \ingroup core
- * A registry of plugin layers types.
+ * \brief A registry of plugin layers types.
  *
  * QgsPluginLayerRegistry is not usually directly created, but rather accessed through
  * QgsApplication::pluginLayerRegistry().
@@ -68,16 +66,10 @@ class CORE_EXPORT QgsPluginLayerType
 class CORE_EXPORT QgsPluginLayerRegistry
 {
   public:
-
-    /**
-     * Constructor for QgsPluginLayerRegistry.
-     */
     QgsPluginLayerRegistry() = default;
     ~QgsPluginLayerRegistry();
 
-    //! QgsPluginLayerRegistry cannot be copied.
     QgsPluginLayerRegistry( const QgsPluginLayerRegistry &rh ) = delete;
-    //! QgsPluginLayerRegistry cannot be copied.
     QgsPluginLayerRegistry &operator=( const QgsPluginLayerRegistry &rh ) = delete;
 
     /**

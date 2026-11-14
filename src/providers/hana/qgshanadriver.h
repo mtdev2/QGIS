@@ -17,9 +17,10 @@
 #ifndef QGSHANADRIVER_H
 #define QGSHANADRIVER_H
 
-#include <qglobal.h>
+#include <odbc/Forwards.h>
+
 #include <QString>
-#include "odbc/Forwards.h"
+#include <qglobal.h>
 
 class QgsHanaDriver
 {
@@ -28,7 +29,8 @@ class QgsHanaDriver
     ~QgsHanaDriver();
 
   public:
-    odbc::ConnectionRef createConnection();
+    NS_ODBC::ConnectionRef createConnection();
+    QStringList dataSources();
     const QString &driver() const;
 
     static QgsHanaDriver *instance();
@@ -39,8 +41,8 @@ class QgsHanaDriver
     Q_DISABLE_COPY( QgsHanaDriver )
 
   private:
-    odbc::EnvironmentRef mEnv;
+    NS_ODBC::EnvironmentRef mEnv;
     QString mDriver;
 };
 
-#endif  // QGSHANADRIVER_H
+#endif // QGSHANADRIVER_H

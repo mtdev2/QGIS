@@ -17,27 +17,45 @@
 #define QGSTRACKEDVECTORLAYERTOOLS_H
 
 #include "qgis_core.h"
+#include "qgsexpressioncontext.h"
 #include "qgsvectorlayertools.h"
 
 /**
  * \ingroup core
  * \class QgsTrackedVectorLayerTools
+ * \brief Vector layer tools subclass which "tracks" edits.
  */
 class CORE_EXPORT QgsTrackedVectorLayerTools : public QgsVectorLayerTools
 {
     Q_OBJECT
   public:
-
-    /**
-     * Constructor for QgsTrackedVectorLayerTools.
-     */
     QgsTrackedVectorLayerTools() = default;
 
-    bool addFeature( QgsVectorLayer *layer, const QgsAttributeMap &defaultValues, const QgsGeometry &defaultGeometry, QgsFeature *feature ) const override;
+    /**
+     * This method calls the addFeature method of the backend QgsVectorLayerTools
+     *
+     * \param layer           The layer to which the feature should be added
+     * \param defaultValues   Default values for the feature to add
+     * \param defaultGeometry A default geometry to add to the feature
+     * \param feature         A pointer to the feature
+     * \param context         A context object to be used for e.g. to calculate feature expression-based values (since QGIS 3.38)
+     *
+     * \returns               TRUE in case of success, FALSE if the operation failed/was aborted
+     */
+    bool addFeatureV2( QgsVectorLayer *layer, const QgsAttributeMap &defaultValues, const QgsGeometry &defaultGeometry, QgsFeature *feature SIP_OUT, const QgsVectorLayerToolsContext &context ) const override;
     bool startEditing( QgsVectorLayer *layer ) const override;
     bool stopEditing( QgsVectorLayer *layer, bool allowCancel ) const override;
     bool saveEdits( QgsVectorLayer *layer ) const override;
-    bool copyMoveFeatures( QgsVectorLayer *layer, QgsFeatureRequest &request, double  dx = 0, double dy = 0, QString *errorMsg = nullptr, const bool topologicalEditing = false, QgsVectorLayer *topologicalLayer = nullptr ) const override;
+    bool copyMoveFeatures(
+      QgsVectorLayer *layer,
+      QgsFeatureRequest &request,
+      double dx = 0,
+      double dy = 0,
+      QString *errorMsg = nullptr,
+      const bool topologicalEditing = false,
+      QgsVectorLayer *topologicalLayer = nullptr,
+      QString *childrenInfoMsg = nullptr
+    ) const override;
 
     /**
      * Set the vector layer tools that will be used to interact with the data
@@ -49,11 +67,14 @@ class CORE_EXPORT QgsTrackedVectorLayerTools : public QgsVectorLayerTools
      */
     void rollback();
 
-  private:
+  private slots:
 
+    void layerWillBeDeleted();
+
+  private:
     const QgsVectorLayerTools *mBackend = nullptr;
-    // TODO QGIS3: remove mutable once methods are no longer const
-    mutable QMap<QgsVectorLayer *, QgsFeatureIds> mAddedFeatures;
+    // TODO QGIS5: remove mutable once methods are no longer const
+    mutable QMap<QString, QgsFeatureIds> mAddedFeatures;
 };
 
 #endif // QGSTRACKEDVECTORLAYERTOOLS_H

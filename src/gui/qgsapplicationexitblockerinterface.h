@@ -17,12 +17,13 @@
 #define QGSAPPLICATIONEXITBLOCKERINTERFACE_H
 
 #include "qgis_gui.h"
-#include <QStringList>
+
 #include <QObject>
+#include <QStringList>
 
 /**
  * \ingroup gui
- * An interface that may be implemented to allow plugins or scripts to temporarily block
+ * \brief An interface that may be implemented to allow plugins or scripts to temporarily block
  * the QGIS application from exiting.
  *
  * This interface allows plugins to implement custom logic to determine whether it is safe
@@ -54,9 +55,7 @@
  */
 class GUI_EXPORT QgsApplicationExitBlockerInterface
 {
-
   public:
-
     virtual ~QgsApplicationExitBlockerInterface();
 
     /**

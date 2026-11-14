@@ -16,10 +16,10 @@
 #ifndef QGSHIGHLIGHTABLECOMBOBOX_H
 #define QGSHIGHLIGHTABLECOMBOBOX_H
 
-#include <QComboBox>
-
-#include "qgscoordinatereferencesystem.h"
 #include "qgis_gui.h"
+#include "qgscoordinatereferencesystem.h"
+
+#include <QComboBox>
 
 #define SIP_NO_FILE
 
@@ -27,7 +27,7 @@
  * \class QgsHighlightableComboBox
  * \ingroup gui
  *
- * A QComboBox subclass with the ability to "highlight" the edges of the widget.
+ * \brief A QComboBox subclass with the ability to "highlight" the edges of the widget.
  *
  * \since QGIS 3.12
  */
@@ -35,7 +35,6 @@ class GUI_EXPORT QgsHighlightableComboBox : public QComboBox
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsHighlightableComboBox with the specified parent widget.
      */
@@ -57,9 +56,7 @@ class GUI_EXPORT QgsHighlightableComboBox : public QComboBox
     void paintEvent( QPaintEvent *e ) override;
 
   private:
-
     bool mHighlight = false;
-
 };
 
 #endif // QGSHIGHLIGHTABLECOMBOBOX_H

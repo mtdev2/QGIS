@@ -16,11 +16,12 @@
 #ifndef QGSINTERNALGEOMETRYENGINE_H
 #define QGSINTERNALGEOMETRYENGINE_H
 
-#define SIP_NO_FILE
 
 #include <functional>
 
 #include "qgspointxy.h"
+
+#define SIP_NO_FILE
 
 class QgsGeometry;
 class QgsAbstractGeometry;
@@ -30,7 +31,7 @@ class QgsFeedback;
 
 /**
  * \ingroup core
- * This class offers geometry processing methods.
+ * \brief Offers geometry processing methods.
  *
  * The methods are available via QgsGeometry::[geometryfunction]
  * and therefore this does not need to be accessed directly.
@@ -41,7 +42,6 @@ class QgsFeedback;
 class QgsInternalGeometryEngine
 {
   public:
-
     /**
      * The caller is responsible that the geometry is available and unchanged
      * for the whole lifetime of this object.
@@ -55,6 +55,21 @@ class QgsInternalGeometryEngine
      * \since QGIS 3.16
      */
     QString lastError() const;
+
+    /**
+     * Returns TRUE if the geometry is a polygon that is almost an axis-parallel rectangle.
+     *
+     * The \a maximumDeviation argument specifes the maximum angle (in degrees) that the polygon edges
+     * are allowed to deviate from axis parallel lines.
+     *
+     * By default the check will permit polygons with more than 4 edges, so long as the overall shape of
+     * the polygon is an axis-parallel rectangle (i.e. it is tolerant to rectangles with additional vertices
+     * added along the rectangle sides). If \a simpleRectanglesOnly is set to TRUE then the method will
+     * only return TRUE if the geometry is a simple rectangle consisting of 4 edges.
+     *
+     * \since QGIS 3.20
+     */
+    bool isAxisParallelRectangle( double maximumDeviation, bool simpleRectanglesOnly = false ) const;
 
     /**
      * Will extrude a line or (segmentized) curve by a given offset and return a polygon
@@ -83,7 +98,6 @@ class QgsInternalGeometryEngine
      * either the vertices are within a specified tolerance of right angles or a set number of maximum
      * iterations is reached. The angle threshold parameter specifies how close to a right angle or
      * straight line an angle must be before it is attempted to be straightened.
-     * \since QGIS 3.0
      */
     QgsGeometry orthogonalize( double tolerance = 1.0E-8, int maxIterations = 1000, double angleThreshold = 15.0 ) const;
 
@@ -93,7 +107,6 @@ class QgsInternalGeometryEngine
      * If the geometry has z or m values present then these will be linearly interpolated
      * at the added nodes.
      * Curved geometry types are automatically segmentized by this routine.
-     * \since QGIS 3.0
      */
     QgsGeometry densifyByCount( int extraNodesPerSegment ) const;
 
@@ -108,7 +121,6 @@ class QgsInternalGeometryEngine
      * If the geometry has z or m values present then these will be linearly interpolated
      * at the added nodes.
      * Curved geometry types are automatically segmentized by this routine.
-     * \since QGIS 3.0
      */
     QgsGeometry densifyByDistance( double distance ) const;
 
@@ -157,7 +169,7 @@ class QgsInternalGeometryEngine
     QgsGeometry variableWidthBufferByM( int segments ) const;
 
     /**
-     * Returns a list of \a count random points generated inside a \a polygon geometry
+     * Returns a list of \a count random points generated inside a polygon geometry
      * (if \a acceptPoint is specified, and restrictive, the number of points returned may
      * be less than \a count).
      *
@@ -176,8 +188,9 @@ class QgsInternalGeometryEngine
      *
      * \since QGIS 3.10
      */
-    static QVector< QgsPointXY > randomPointsInPolygon( const QgsGeometry &polygon, int count,
-        const std::function< bool( const QgsPointXY & ) > &acceptPoint, unsigned long seed = 0, QgsFeedback *feedback = nullptr, int maxTriesPerPoint = 0 );
+    QVector< QgsPointXY > randomPointsInPolygon(
+      int count, const std::function< bool( const QgsPointXY & ) > &acceptPoint, unsigned long seed = 0, QgsFeedback *feedback = nullptr, int maxTriesPerPoint = 0
+    );
 
     /**
      * Attempts to convert a non-curved geometry into a curved geometry type (e.g.
@@ -198,7 +211,8 @@ class QgsInternalGeometryEngine
 
     /**
      * Returns the oriented minimum bounding box for the geometry, which is the smallest (by area)
-     * rotated rectangle which fully encompasses the geometry. The area, angle (clockwise in degrees from North),
+     * rotated rectangle which fully encompasses the geometry.
+     * The area, angle of the long axis (clockwise in degrees from North),
      * width and height of the rotated bounding box will also be returned.
      *
      * If an error was encountered while creating the result, more information can be retrieved
@@ -208,6 +222,130 @@ class QgsInternalGeometryEngine
      */
     QgsGeometry orientedMinimumBoundingBox( double &area SIP_OUT, double &angle SIP_OUT, double &width SIP_OUT, double &height SIP_OUT ) const;
 
+    /**
+     * Constructs triangular waves along the boundary of the geometry, with the
+     * specified \a wavelength and \a amplitude.
+     *
+     * By default the \a wavelength argument is treated as a "maximum wavelength", where the actual
+     * wavelength will be dynamically adjusted so that an exact number of triangular waves are created
+     * along the boundaries of the geometry. If \a strictWavelength is set to TRUE then the \a wavelength
+     * will be used exactly and an incomplete pattern may be used for the final waveform.
+     *
+     * \see triangularWavesRandomized()
+     * \since QGIS 3.24
+     */
+    QgsGeometry triangularWaves( double wavelength, double amplitude, bool strictWavelength = false ) const;
+
+    /**
+     * Constructs randomized triangular waves along the boundary of the geometry, with the
+     * specified wavelength and amplitude ranges.
+     *
+     * The \a minimumWavelength and \a maximumWavelength arguments set the range for the randomized
+     * wavelength. This is evaluated for each individual triangular waveform created along the geometry
+     * boundaries, so the resultant geometry will consist of many different wavelengths.
+     *
+     * Similarly, the \a minimumAmplitude and \a maximumAmplitude arguments define the range for the
+     * randomized amplitude of the triangular components. Randomized amplitude values will be calculated
+     * individiually for triangles placed on each either side of the input geometry boundaries.
+     *
+     * Optionally, a specific random \a seed can be used when generating points. If \a seed
+     * is 0, then a completely random sequence of points will be generated.
+     *
+     * \see triangularWaves()
+     * \since QGIS 3.24
+     */
+    QgsGeometry triangularWavesRandomized( double minimumWavelength, double maximumWavelength, double minimumAmplitude, double maximumAmplitude, unsigned long seed = 0 ) const;
+
+    /**
+     * Constructs square waves along the boundary of the geometry, with the
+     * specified \a wavelength and \a amplitude.
+     *
+     * By default the \a wavelength argument is treated as a "maximum wavelength", where the actual
+     * wavelength will be dynamically adjusted so that an exact number of square waves are created
+     * along the boundaries of the geometry. If \a strictWavelength is set to TRUE then the \a wavelength
+     * will be used exactly and an incomplete pattern may be used for the final waveform.
+     *
+     * \see squareWavesRandomized()
+     * \since QGIS 3.24
+     */
+    QgsGeometry squareWaves( double wavelength, double amplitude, bool strictWavelength = false ) const;
+
+    /**
+     * Constructs randomized square waves along the boundary of the geometry, with the
+     * specified wavelength and amplitude ranges.
+     *
+     * The \a minimumWavelength and \a maximumWavelength arguments set the range for the randomized
+     * wavelength. This is evaluated for each individual square waveform created along the geometry
+     * boundaries, so the resultant geometry will consist of many different wavelengths.
+     *
+     * Similarly, the \a minimumAmplitude and \a maximumAmplitude arguments define the range for the
+     * randomized amplitude of the square components. Randomized amplitude values will be calculated
+     * individiually for squares placed on each either side of the input geometry boundaries.
+     *
+     * Optionally, a specific random \a seed can be used when generating points. If \a seed
+     * is 0, then a completely random sequence of points will be generated.
+     *
+     * \see squareWaves()
+     * \since QGIS 3.24
+     */
+    QgsGeometry squareWavesRandomized( double minimumWavelength, double maximumWavelength, double minimumAmplitude, double maximumAmplitude, unsigned long seed = 0 ) const;
+
+
+    /**
+     * Constructs rounded (sine-like) waves along the boundary of the geometry, with the
+     * specified \a wavelength and \a amplitude.
+     *
+     * By default the \a wavelength argument is treated as a "maximum wavelength", where the actual
+     * wavelength will be dynamically adjusted so that an exact number of waves are created
+     * along the boundaries of the geometry. If \a strictWavelength is set to TRUE then the \a wavelength
+     * will be used exactly and an incomplete pattern may be used for the final waveform.
+     *
+     * \see roundWavesRandomized()
+     * \since QGIS 3.24
+     */
+    QgsGeometry roundWaves( double wavelength, double amplitude, bool strictWavelength = false ) const;
+
+    /**
+     * Constructs randomized rounded (sine-like) waves along the boundary of the geometry, with the
+     * specified wavelength and amplitude ranges.
+     *
+     * The \a minimumWavelength and \a maximumWavelength arguments set the range for the randomized
+     * wavelength. This is evaluated for each individual waveform created along the geometry
+     * boundaries, so the resultant geometry will consist of many different wavelengths.
+     *
+     * Similarly, the \a minimumAmplitude and \a maximumAmplitude arguments define the range for the
+     * randomized amplitude of the square components. Randomized amplitude values will be calculated
+     * individually for waves placed on each either side of the input geometry boundaries.
+     *
+     * Optionally, a specific random \a seed can be used when generating points. If \a seed
+     * is 0, then a completely random sequence of points will be generated.
+     *
+     * \see squareWaves()
+     * \since QGIS 3.24
+     */
+    QgsGeometry roundWavesRandomized( double minimumWavelength, double maximumWavelength, double minimumAmplitude, double maximumAmplitude, unsigned long seed = 0 ) const;
+
+    /**
+     * Applies a dash pattern to a geometry, returning a MultiLineString geometry which is the
+     * input geometry stroked along each line/ring with the specified \a pattern.
+     *
+     * The \a startRule and \a endRule options can be set to control how the dash pattern is adjusted
+     * at line endings. If a \a startRule or \a endRule is set, the \a adjustment option defines whether
+     * both dash and gaps, or only dash or gap sizes are adjusted to apply the rules.
+     *
+     * The \a patternOffset option specifies how far along the pattern the result should start at.
+     * The offset is applied AFTER any start/end rules are applied.
+     *
+     * \since QGIS 3.24
+     */
+    QgsGeometry applyDashPattern(
+      const QVector< double > &pattern,
+      Qgis::DashPatternLineEndingRule startRule = Qgis::DashPatternLineEndingRule::NoRule,
+      Qgis::DashPatternLineEndingRule endRule = Qgis::DashPatternLineEndingRule::NoRule,
+      Qgis::DashPatternSizeAdjustment adjustment = Qgis::DashPatternSizeAdjustment::ScaleBothDashAndGap,
+      double patternOffset = 0
+    ) const;
+
   private:
     const QgsAbstractGeometry *mGeometry = nullptr;
 
@@ -215,7 +353,7 @@ class QgsInternalGeometryEngine
 };
 
 /**
- * A 2D ray which extends from an origin point to an infinite distance in a given direction.
+ * \brief A 2D ray which extends from an origin point to an infinite distance in a given direction.
  * \ingroup core
  * \note not available in Python bindings
  * \since QGIS 3.2
@@ -223,7 +361,6 @@ class QgsInternalGeometryEngine
 class CORE_EXPORT QgsRay2D
 {
   public:
-
     /**
      * Constructor for a ray starting at the given \a origin and extending an infinite distance
      * in the specified \a direction.
@@ -243,7 +380,6 @@ class CORE_EXPORT QgsRay2D
     bool intersects( const QgsLineSegment2D &segment, QgsPointXY &intersectPoint ) const;
 
   private:
-
     QgsPointXY origin;
     QgsVector direction;
 };
@@ -253,7 +389,8 @@ class CORE_EXPORT QgsRay2D
 // adapted for QGIS geometry classes from original work at https://github.com/trylock/visibility by trylock
 
 /**
- * Compares two line segments based on their distance from a given point
+ * \brief Compares two line segments based on their distance from a given point.
+ *
  * Assumes: (1) the line segments are intersected by some ray from the origin
  *          (2) the line segments do not intersect except at their endpoints
  *          (3) no line segment is collinear with the origin
@@ -263,7 +400,6 @@ class CORE_EXPORT QgsRay2D
 class CORE_EXPORT QgsLineSegmentDistanceComparer
 {
   public:
-
     /**
      * Constructor for QgsLineSegmentDistanceComparer, comparing points
      * to the specified \a origin point.
@@ -282,16 +418,15 @@ class CORE_EXPORT QgsLineSegmentDistanceComparer
     bool operator()( QgsLineSegment2D ab, QgsLineSegment2D cd ) const;
 
   private:
-
     QgsPointXY mOrigin;
-
 };
 
 
 // adapted for QGIS geometry classes from original work at https://github.com/trylock/visibility by trylock
 
 /**
- * Compares angles from an origin to points clockwise, starting at the positive y-axis.
+ * \brief Compares angles from an origin to points clockwise, starting at the positive y-axis.
+ *
  * \ingroup core
  * \since QGIS 3.2
  */
@@ -305,9 +440,7 @@ class CORE_EXPORT QgsClockwiseAngleComparer
     bool operator()( const QgsPointXY &a, const QgsPointXY &b ) const;
 
   private:
-
     QgsPointXY mVertex;
-
 };
 
 ///@endcond PRIVATE

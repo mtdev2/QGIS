@@ -18,25 +18,24 @@
 #ifndef QGSWMSRESTORER_H
 #define QGSWMSRESTORER_H
 
-#include <QList>
-#include <QDomDocument>
-#include <QMap>
-
 #include "qgsfeatureid.h"
 #include "qgswmsrendercontext.h"
 
+#include <QDomDocument>
+#include <QList>
+#include <QMap>
+
 class QgsMapLayer;
+class QgsAbstractVectorLayerLabeling;
 
 /**
  * \ingroup server
- * RAII class to restore layer configuration on destruction (opacity,
- * filters, ...)
- * \since QGIS 3.0
+ * \brief RAII class to restore layer configuration on destruction (opacity,
+ * filters, ...).
  */
 class QgsLayerRestorer
 {
   public:
-
     /**
      * Constructor for QgsLayerRestorer.
      * \param layers List of layers to restore in their initial states
@@ -51,17 +50,17 @@ class QgsLayerRestorer
     ~QgsLayerRestorer();
 
   private:
-
     struct QgsLayerSettings
     {
-      QString name;
-      double mOpacity;
-      QString mNamedStyle;
-      QString mFilter;
-      QgsFeatureIds mSelectedFeatureIds;
+        QString name;
+        double mOpacity;
+        std::unique_ptr<QgsAbstractVectorLayerLabeling> mLabeling;
+        QString mNamedStyle;
+        QString mFilter;
+        QgsFeatureIds mSelectedFeatureIds;
     };
 
-    QMap<QgsMapLayer *, QgsLayerSettings> mLayerSettings;
+    std::map<QgsMapLayer *, QgsLayerSettings> mLayerSettings;
 };
 
 namespace QgsWms
@@ -69,28 +68,23 @@ namespace QgsWms
 
   /**
    * \ingroup server
-   * RAII class to restore the rendering context configuration on destruction
+   * \brief RAII class to restore the rendering context configuration on destruction
    * \since QGIS 3.14
    */
   class QgsWmsRestorer
   {
     public:
-
       /**
        * Constructor for QgsWmsRestorer.
        * \param context The rendering context to restore in its initial state
        */
       QgsWmsRestorer( const QgsWmsRenderContext &context );
 
-      /**
-       * Default destructor.
-       */
       ~QgsWmsRestorer() = default;
 
     private:
-
       QgsLayerRestorer mLayerRestorer;
   };
-};
+}; // namespace QgsWms
 
 #endif

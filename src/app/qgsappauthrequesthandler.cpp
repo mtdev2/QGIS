@@ -14,14 +14,19 @@
  ***************************************************************************/
 
 #include "qgsappauthrequesthandler.h"
-#include "qgslogger.h"
-#include "qgsauthcertutils.h"
-#include "qgsapplication.h"
-#include "qgsauthmanager.h"
+
 #include "qgisapp.h"
+#include "qgsapplication.h"
+#include "qgsauthcertutils.h"
+#include "qgsauthmanager.h"
 #include "qgscredentials.h"
+#include "qgslogger.h"
 
 #include <QAuthenticator>
+#include <QDesktopServices>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 void QgsAppAuthRequestHandler::handleAuthRequest( QNetworkReply *reply, QAuthenticator *auth )
 {
@@ -32,11 +37,11 @@ void QgsAppAuthRequestHandler::handleAuthRequest( QNetworkReply *reply, QAuthent
 
   if ( username.isEmpty() && password.isEmpty() && reply->request().hasRawHeader( "Authorization" ) )
   {
-    QByteArray header( reply->request().rawHeader( "Authorization" ) );
+    const QByteArray header( reply->request().rawHeader( "Authorization" ) );
     if ( header.startsWith( "Basic " ) )
     {
-      QByteArray auth( QByteArray::fromBase64( header.mid( 6 ) ) );
-      int pos = auth.indexOf( ':' );
+      const QByteArray auth( QByteArray::fromBase64( header.mid( 6 ) ) );
+      const int pos = auth.indexOf( ':' );
       if ( pos >= 0 )
       {
         username = auth.left( pos );
@@ -47,31 +52,47 @@ void QgsAppAuthRequestHandler::handleAuthRequest( QNetworkReply *reply, QAuthent
 
   for ( ;; )
   {
-    bool ok = QgsCredentials::instance()->get(
-                QStringLiteral( "%1 at %2" ).arg( auth->realm(), reply->url().host() ),
-                username, password,
-                QObject::tr( "Authentication required" ) );
+    const bool ok = QgsCredentials::instance()->get( u"%1 at %2"_s.arg( auth->realm(), reply->url().host() ), username, password, QObject::tr( "Authentication required" ) );
     if ( !ok )
       return;
 
     if ( auth->user() != username || ( password != auth->password() && !password.isNull() ) )
     {
       // save credentials
-      QgsCredentials::instance()->put(
-        QStringLiteral( "%1 at %2" ).arg( auth->realm(), reply->url().host() ),
-        username, password
-      );
+      QgsCredentials::instance()->put( u"%1 at %2"_s.arg( auth->realm(), reply->url().host() ), username, password );
       break;
     }
     else
     {
       // credentials didn't change - stored ones probably wrong? clear password and retry
-      QgsCredentials::instance()->put(
-        QStringLiteral( "%1 at %2" ).arg( auth->realm(), reply->url().host() ),
-        username, QString() );
+      QgsCredentials::instance()->put( u"%1 at %2"_s.arg( auth->realm(), reply->url().host() ), username, QString() );
     }
   }
 
   auth->setUser( username );
   auth->setPassword( password );
+}
+
+void QgsAppAuthRequestHandler::handleAuthRequestOpenBrowser( const QUrl &url )
+{
+  QDesktopServices::openUrl( url );
+}
+
+void QgsAppAuthRequestHandler::handleAuthRequestCloseBrowser()
+{
+  // Bring focus back to QGIS app
+  if ( qApp )
+  {
+    const QList<QWidget *> topWidgets = QgsApplication::topLevelWidgets();
+    for ( QWidget *topWidget : topWidgets )
+    {
+      if ( topWidget->objectName() == "MainWindow"_L1 )
+      {
+        topWidget->raise();
+        topWidget->activateWindow();
+        topWidget->show();
+        break;
+      }
+    }
+  }
 }

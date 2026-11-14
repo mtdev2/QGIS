@@ -15,10 +15,72 @@ email                : sherman at mrcc.com
  *                                                                         *
  ***************************************************************************/
 
-#include <cmath>
+#include "qgsmapcanvas.h"
 
-#include <QtGlobal>
+#include <cmath>
+#include <memory>
+
+#include "qgis.h"
+#include "qgs2dmapcontroller.h"
+#include "qgsannotationlayer.h"
+#include "qgsapplication.h"
+#include "qgscoordinatereferencesystemregistry.h"
+#include "qgscoordinatereferencesystemutils.h"
+#include "qgscoordinatetransformcontext.h"
+#include "qgscustomdrophandler.h"
+#include "qgsexception.h"
+#include "qgsexpressioncontextutils.h"
+#include "qgsfeatureiterator.h"
+#include "qgsgrouplayer.h"
+#include "qgsimagecache.h"
+#include "qgslabelingresults.h"
+#include "qgslogger.h"
+#include "qgsmapcanvasannotationitem.h"
+#include "qgsmapcanvasmap.h"
+#include "qgsmapcanvassnappingutils.h"
+#include "qgsmaplayer.h"
+#include "qgsmaplayerelevationproperties.h"
+#include "qgsmaplayertemporalproperties.h"
+#include "qgsmaplayerutils.h"
+#include "qgsmapmouseevent.h"
+#include "qgsmaprenderercache.h"
+#include "qgsmaprenderercustompainterjob.h"
+#include "qgsmaprendererjob.h"
+#include "qgsmaprendererparalleljob.h"
+#include "qgsmaprenderersequentialjob.h"
+#include "qgsmapsettingsutils.h"
+#include "qgsmapthemecollection.h"
+#include "qgsmaptoolpan.h"
+#include "qgsmaptopixel.h"
+#include "qgsmessagebar.h"
+#include "qgsmessagelog.h"
+#include "qgsmimedatautils.h"
+#include "qgsoverlaywidgetlayout.h"
+#include "qgspainting.h"
+#include "qgsproject.h"
+#include "qgsprojectionselectiondialog.h"
+#include "qgsprojectviewsettings.h"
+#include "qgsreferencedgeometry.h"
+#include "qgsrendereditemresults.h"
+#include "qgsrubberband.h"
+#include "qgsruntimeprofiler.h"
+#include "qgsscreenhelper.h"
+#include "qgssettings.h"
+#include "qgssettingsentryenumflag.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingsregistrygui.h"
+#include "qgssettingstree.h"
+#include "qgsstatusbar.h"
+#include "qgssvgcache.h"
+#include "qgssymbollayerutils.h"
+#include "qgstemporalcontroller.h"
+#include "qgstemporalnavigationobject.h"
+#include "qgsuserinputwidget.h"
+#include "qgsvectorlayer.h"
+#include "qgsvectortilelayer.h"
+
 #include <QApplication>
+#include <QClipboard>
 #include <QCursor>
 #include <QDir>
 #include <QFile>
@@ -26,84 +88,48 @@ email                : sherman at mrcc.com
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QKeyEvent>
-#include <QPainter>
+#include <QMenu>
 #include <QPaintEvent>
+#include <QPainter>
 #include <QPixmap>
+#include <QPropertyAnimation>
 #include <QRect>
-#include <QTextStream>
 #include <QResizeEvent>
 #include <QScreen>
 #include <QString>
 #include <QStringList>
+#include <QTextStream>
+#include <QVariantAnimation>
 #include <QWheelEvent>
 #include <QWindow>
-#include <QMenu>
-#include <QClipboard>
+#include <QtGlobal>
 
-#include "qgis.h"
-#include "qgssettings.h"
-#include "qgsmapcanvasannotationitem.h"
-#include "qgsapplication.h"
-#include "qgsexception.h"
-#include "qgsdatumtransformdialog.h"
-#include "qgsfeatureiterator.h"
-#include "qgslogger.h"
-#include "qgsmapcanvas.h"
-#include "qgsmapcanvasmap.h"
-#include "qgsmapcanvassnappingutils.h"
-#include "qgsmaplayer.h"
-#include "qgsmapmouseevent.h"
-#include "qgsmaptoolpan.h"
-#include "qgsmaptoolzoom.h"
-#include "qgsmaptopixel.h"
-#include "qgsmapoverviewcanvas.h"
-#include "qgsmaprenderercache.h"
-#include "qgsmaprenderercustompainterjob.h"
-#include "qgsmaprendererparalleljob.h"
-#include "qgsmaprenderersequentialjob.h"
-#include "qgsmapsettingsutils.h"
-#include "qgsmessagelog.h"
-#include "qgsmessageviewer.h"
-#include "qgspallabeling.h"
-#include "qgsproject.h"
-#include "qgsrubberband.h"
-#include "qgsvectorlayer.h"
-#include "qgsmapthemecollection.h"
-#include "qgscoordinatetransformcontext.h"
-#include "qgssvgcache.h"
-#include "qgsimagecache.h"
-#include "qgsexpressioncontextutils.h"
-#include "qgsmimedatautils.h"
-#include "qgscustomdrophandler.h"
-#include "qgsreferencedgeometry.h"
-#include "qgsprojectviewsettings.h"
-#include "qgsmaplayertemporalproperties.h"
-#include "qgsrasterlayertemporalproperties.h"
-#include "qgsvectorlayertemporalproperties.h"
-#include "qgstemporalcontroller.h"
-#include "qgsruntimeprofiler.h"
-#include "qgsprojectionselectiondialog.h"
-#include "qgsannotationlayer.h"
-#include "qgsmaplayerelevationproperties.h"
-#include "qgscoordinatereferencesystemregistry.h"
+#include "moc_qgsmapcanvas.cpp"
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryString *QgsMapCanvas::settingsCustomCoordinateCrs = new QgsSettingsEntryString( u"custom-coordinate-crs"_s, QgsSettingsTree::sTreeMap, QString() );
+const QgsSettingsEntryBool *QgsMapCanvas::settingsMainCanvasPreviewJobs
+  = new QgsSettingsEntryBool( u"main-canvas-preview-jobs"_s, QgsSettingsTree::sTreeRendering, true, u"Whether the main map canvas displays preview tiles while rendering"_s );
+const QgsSettingsEntryBool *QgsMapCanvas::settingsEnableRenderCaching
+  = new QgsSettingsEntryBool( u"enable-render-caching"_s, QgsSettingsTree::sTreeRendering, true, u"Whether map rendering uses a cache to speed up redraws"_s );
 
 /**
  * \ingroup gui
- * Deprecated to be deleted, stuff from here should be moved elsewhere.
+ * \brief Deprecated to be deleted, stuff from here should be moved elsewhere.
  * \note not available in Python bindings
 */
-//TODO QGIS 4.0 - remove
+//TODO QGIS 5.0 - remove
 class QgsMapCanvas::CanvasProperties
 {
   public:
-
     /**
      * Constructor for CanvasProperties.
      */
     CanvasProperties() = default;
 
     //!Flag to indicate status of mouse button
-    bool mouseButtonDown{ false };
+    bool mouseButtonDown { false };
 
     //! Last seen point of the mouse
     QPoint mouseLastXY;
@@ -112,9 +138,8 @@ class QgsMapCanvas::CanvasProperties
     QPoint rubberStartPoint;
 
     //! Flag to indicate the pan selector key is held down by user
-    bool panSelectorDown{ false };
+    bool panSelectorDown { false };
 };
-
 
 
 QgsMapCanvas::QgsMapCanvas( QWidget *parent )
@@ -123,11 +148,17 @@ QgsMapCanvas::QgsMapCanvas( QWidget *parent )
   , mExpressionContextScope( tr( "Map Canvas" ) )
 {
   mScene = new QGraphicsScene();
+  mLayout = new QgsOverlayWidgetLayout();
+  setLayout( mLayout );
+
   setScene( mScene );
   setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
   setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
   setMouseTracking( true );
   setFocusPolicy( Qt::StrongFocus );
+
+  mScreenHelper = new QgsScreenHelper( this );
+  connect( mScreenHelper, &QgsScreenHelper::screenDpiChanged, this, &QgsMapCanvas::updateDevicePixelFromScreen );
 
   mResizeTimer = new QTimer( this );
   mResizeTimer->setSingleShot( true );
@@ -141,38 +172,40 @@ QgsMapCanvas::QgsMapCanvas( QWidget *parent )
   mMap = new QgsMapCanvasMap( this );
 
   // project handling
-  connect( QgsProject::instance(), &QgsProject::readProject,
-           this, &QgsMapCanvas::readProject );
-  connect( QgsProject::instance(), &QgsProject::writeProject,
-           this, &QgsMapCanvas::writeProject );
+  connect( QgsProject::instance(), &QgsProject::readProject, this, &QgsMapCanvas::readProject );
+  connect( QgsProject::instance(), &QgsProject::writeProject, this, &QgsMapCanvas::writeProject );
 
+  connect( QgsProject::instance()->mainAnnotationLayer(), &QgsMapLayer::repaintRequested, this, &QgsMapCanvas::layerRepaintRequested );
   connect( QgsProject::instance()->mapThemeCollection(), &QgsMapThemeCollection::mapThemeChanged, this, &QgsMapCanvas::mapThemeChanged );
   connect( QgsProject::instance()->mapThemeCollection(), &QgsMapThemeCollection::mapThemeRenamed, this, &QgsMapCanvas::mapThemeRenamed );
   connect( QgsProject::instance()->mapThemeCollection(), &QgsMapThemeCollection::mapThemesChanged, this, &QgsMapCanvas::projectThemesChanged );
 
   {
     QgsScopedRuntimeProfile profile( "Map settings initialization" );
-    mSettings.setFlag( QgsMapSettings::DrawEditingInfo );
-    mSettings.setFlag( QgsMapSettings::UseRenderingOptimization );
-    mSettings.setFlag( QgsMapSettings::RenderPartialOutput );
+    mSettings.setFlag( Qgis::MapSettingsFlag::DrawEditingInfo );
+    mSettings.setFlag( Qgis::MapSettingsFlag::UseRenderingOptimization );
+    mSettings.setFlag( Qgis::MapSettingsFlag::RenderPartialOutput );
+    mSettings.setFlag( Qgis::MapSettingsFlag::DrawLabelSelection );
     mSettings.setEllipsoid( QgsProject::instance()->ellipsoid() );
-    connect( QgsProject::instance(), &QgsProject::ellipsoidChanged,
-             this, [ = ]
-    {
+    connect( QgsProject::instance(), &QgsProject::ellipsoidChanged, this, [this] {
       mSettings.setEllipsoid( QgsProject::instance()->ellipsoid() );
       refresh();
     } );
     mSettings.setTransformContext( QgsProject::instance()->transformContext() );
-    connect( QgsProject::instance(), &QgsProject::transformContextChanged,
-             this, [ = ]
-    {
+    connect( QgsProject::instance(), &QgsProject::transformContextChanged, this, [this] {
       mSettings.setTransformContext( QgsProject::instance()->transformContext() );
       emit transformContextChanged();
       refresh();
     } );
 
-    connect( QgsApplication::coordinateReferenceSystemRegistry(), &QgsCoordinateReferenceSystemRegistry::userCrsChanged, this, [ = ]
-    {
+    mSettings.setScaleMethod( QgsProject::instance()->scaleMethod() );
+    connect( QgsProject::instance(), &QgsProject::scaleMethodChanged, this, [this] {
+      mSettings.setScaleMethod( QgsProject::instance()->scaleMethod() );
+      updateScale();
+      refresh();
+    } );
+
+    connect( QgsApplication::coordinateReferenceSystemRegistry(), &QgsCoordinateReferenceSystemRegistry::userCrsChanged, this, [this] {
       QgsCoordinateReferenceSystem crs = mSettings.destinationCrs();
       crs.updateDefinition();
       if ( mSettings.destinationCrs() != crs )
@@ -190,28 +223,20 @@ QgsMapCanvas::QgsMapCanvas( QWidget *parent )
   connect( QgsProject::instance(), &QgsProject::projectColorsChanged, this, &QgsMapCanvas::redrawAllLayers );
 
   //segmentation parameters
-  QgsSettings settings;
-  double segmentationTolerance = settings.value( QStringLiteral( "qgis/segmentationTolerance" ), "0.01745" ).toDouble();
-  QgsAbstractGeometry::SegmentationToleranceType toleranceType = settings.enumValue( QStringLiteral( "qgis/segmentationToleranceType" ), QgsAbstractGeometry::MaximumAngle );
-  mSettings.setSegmentationTolerance( segmentationTolerance );
-  mSettings.setSegmentationToleranceType( toleranceType );
+  mSettings.setSegmentationTolerance( QgsSettingsRegistryGui::settingsSegmentationTolerance->value() );
+  mSettings.setSegmentationToleranceType( QgsSettingsRegistryGui::settingsSegmentationToleranceType->value() );
 
-  mWheelZoomFactor = settings.value( QStringLiteral( "qgis/zoom_factor" ), 2 ).toDouble();
+  mWheelZoomFactor = QgsSettingsRegistryGui::settingsZoomFactor->value();
 
   QSize s = viewport()->size();
   mSettings.setOutputSize( s );
-  mSettings.setDevicePixelRatio( devicePixelRatio() );
+
+  mSettings.setRendererUsage( Qgis::RendererUsage::View );
+
   setSceneRect( 0, 0, s.width(), s.height() );
   mScene->setSceneRect( QRectF( 0, 0, s.width(), s.height() ) );
 
   moveCanvasContents( true );
-
-  // keep device pixel ratio up to date on screen or resolution change
-  if ( window()->windowHandle() )
-  {
-    connect( window()->windowHandle(), &QWindow::screenChanged, this, [ = ]( QScreen * ) {mSettings.setDevicePixelRatio( devicePixelRatio() );} );
-    connect( window()->windowHandle()->screen(), &QScreen::physicalDotsPerInchChanged, this, [ = ]( qreal ) {mSettings.setDevicePixelRatio( devicePixelRatio() );} );
-  }
 
   connect( &mMapUpdateTimer, &QTimer::timeout, this, &QgsMapCanvas::mapUpdateTimeout );
   mMapUpdateTimer.setInterval( 250 );
@@ -240,7 +265,6 @@ QgsMapCanvas::QgsMapCanvas( QWidget *parent )
   setCanvasColor( mSettings.backgroundColor() );
 
   setTemporalRange( mSettings.temporalRange() );
-
   refresh();
 }
 
@@ -250,20 +274,47 @@ QgsMapCanvas::~QgsMapCanvas()
   if ( mMapTool )
   {
     mMapTool->deactivate();
+    disconnect( mMapTool, &QObject::destroyed, this, &QgsMapCanvas::mapToolDestroyed );
     mMapTool = nullptr;
   }
-  mLastNonZoomMapTool = nullptr;
 
+  // we also clear the canvas pointer for all child map tools. We're now in a partially destroyed state and it's
+  // no longer safe for map tools to try to cleanup things in the canvas during their destruction (such as removing
+  // associated canvas items)
+  // NOTE -- it may be better to just delete the map tool children here upfront?
+  const QList<QgsMapTool *> tools = findChildren<QgsMapTool *>();
+  for ( QgsMapTool *tool : tools )
+  {
+    tool->mCanvas = nullptr;
+  }
+
+  cancelJobs();
+
+  // delete canvas items prior to deleting the canvas
+  // because they might try to update canvas when it's
+  // already being destructed, ends with segfault
+  qDeleteAll( mScene->items() );
+
+  mScene->deleteLater(); // crashes in python tests on windows
+}
+
+void QgsMapCanvas::addOverlayWidget( QWidget *widget, Qt::Edge edge )
+{
+  mLayout->addWidget( widget, edge );
+}
+
+void QgsMapCanvas::cancelJobs()
+{
   // rendering job may still end up writing into canvas map item
   // so kill it before deleting canvas items
   if ( mJob )
   {
     whileBlocking( mJob )->cancel();
     delete mJob;
+    mJob = nullptr;
   }
 
-  QList< QgsMapRendererQImageJob * >::const_iterator previewJob = mPreviewJobs.constBegin();
-  for ( ; previewJob != mPreviewJobs.constEnd(); ++previewJob )
+  for ( auto previewJob = mPreviewJobs.constBegin(); previewJob != mPreviewJobs.constEnd(); ++previewJob )
   {
     if ( *previewJob )
     {
@@ -271,16 +322,7 @@ QgsMapCanvas::~QgsMapCanvas()
       delete *previewJob;
     }
   }
-
-  // delete canvas items prior to deleting the canvas
-  // because they might try to update canvas when it's
-  // already being destructed, ends with segfault
-  qDeleteAll( mScene->items() );
-
-  mScene->deleteLater();  // crashes in python tests on windows
-
-  delete mCache;
-  delete mLabelingResults;
+  mPreviewJobs.clear();
 }
 
 void QgsMapCanvas::setMagnificationFactor( double factor, const QgsPointXY *center )
@@ -288,7 +330,7 @@ void QgsMapCanvas::setMagnificationFactor( double factor, const QgsPointXY *cent
   // do not go higher or lower than min max magnification ratio
   double magnifierMin = QgsGuiUtils::CANVAS_MAGNIFICATION_MIN;
   double magnifierMax = QgsGuiUtils::CANVAS_MAGNIFICATION_MAX;
-  factor = qBound( magnifierMin, factor, magnifierMax );
+  factor = std::clamp( factor, magnifierMin, magnifierMax );
 
   // the magnifier widget is in integer percent
   if ( !qgsDoubleNear( factor, mSettings.magnificationFactor(), 0.01 ) )
@@ -306,12 +348,18 @@ double QgsMapCanvas::magnificationFactor() const
 
 void QgsMapCanvas::enableAntiAliasing( bool flag )
 {
-  mSettings.setFlag( QgsMapSettings::Antialiasing, flag );
-} // anti aliasing
+  mSettings.setFlag( Qgis::MapSettingsFlag::Antialiasing, flag );
+  mSettings.setFlag( Qgis::MapSettingsFlag::HighQualityImageTransforms, flag );
+}
+
+bool QgsMapCanvas::antiAliasingEnabled() const
+{
+  return mSettings.testFlag( Qgis::MapSettingsFlag::Antialiasing );
+}
 
 void QgsMapCanvas::enableMapTileRendering( bool flag )
 {
-  mSettings.setFlag( QgsMapSettings::RenderMapTile, flag );
+  mSettings.setFlag( Qgis::MapSettingsFlag::RenderMapTile, flag );
 }
 
 QgsMapLayer *QgsMapCanvas::layer( int index )
@@ -321,6 +369,21 @@ QgsMapLayer *QgsMapCanvas::layer( int index )
     return layers[index];
   else
     return nullptr;
+}
+
+QgsMapLayer *QgsMapCanvas::layer( const QString &id )
+{
+  // first check for layers from canvas map settings
+  const QList<QgsMapLayer *> layers = mapSettings().layers();
+  for ( QgsMapLayer *layer : layers )
+  {
+    if ( layer && layer->id() == id )
+      return layer;
+  }
+
+  // else fallback to searching project layers
+  // TODO: allow a specific project to be associated with a canvas!
+  return QgsProject::instance()->mapLayer( id );
 }
 
 void QgsMapCanvas::setCurrentLayer( QgsMapLayer *layer )
@@ -358,41 +421,94 @@ void QgsMapCanvas::setLayers( const QList<QgsMapLayer *> &layers )
   setLayersPrivate( layers );
 }
 
+void QgsMapCanvas::setFlags( Qgis::MapCanvasFlags flags )
+{
+  mFlags = flags;
+}
+
+Qgis::MapCanvasFlags QgsMapCanvas::flags() const
+{
+  return mFlags;
+}
+
 void QgsMapCanvas::setLayersPrivate( const QList<QgsMapLayer *> &layers )
 {
-  QList<QgsMapLayer *> oldLayers = mSettings.layers();
+  const QList<QgsMapLayer *> oldLayers = mSettings.layers();
 
   // update only if needed
   if ( layers == oldLayers )
     return;
 
-  const auto constOldLayers = oldLayers;
-  for ( QgsMapLayer *layer : constOldLayers )
+  for ( QgsMapLayer *layer : oldLayers )
   {
     disconnect( layer, &QgsMapLayer::repaintRequested, this, &QgsMapCanvas::layerRepaintRequested );
     disconnect( layer, &QgsMapLayer::autoRefreshIntervalChanged, this, &QgsMapCanvas::updateAutoRefreshTimer );
-    if ( QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer ) )
+    switch ( layer->type() )
     {
-      disconnect( vlayer, &QgsVectorLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+      case Qgis::LayerType::Vector:
+      {
+        QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer );
+        disconnect( vlayer, &QgsVectorLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+        disconnect( vlayer, &QgsVectorLayer::rendererChanged, this, &QgsMapCanvas::updateAutoRefreshTimer );
+        break;
+      }
+
+      case Qgis::LayerType::VectorTile:
+      {
+        QgsVectorTileLayer *vtlayer = qobject_cast<QgsVectorTileLayer *>( layer );
+        disconnect( vtlayer, &QgsVectorTileLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+        break;
+      }
+
+      case Qgis::LayerType::Raster:
+      case Qgis::LayerType::Plugin:
+      case Qgis::LayerType::Mesh:
+      case Qgis::LayerType::Annotation:
+      case Qgis::LayerType::PointCloud:
+      case Qgis::LayerType::Group:
+      case Qgis::LayerType::TiledScene:
+        break;
     }
   }
 
   mSettings.setLayers( layers );
 
-  const auto constLayers = layers;
-  for ( QgsMapLayer *layer : constLayers )
+  for ( QgsMapLayer *layer : std::as_const( layers ) )
   {
     if ( !layer )
       continue;
     connect( layer, &QgsMapLayer::repaintRequested, this, &QgsMapCanvas::layerRepaintRequested );
     connect( layer, &QgsMapLayer::autoRefreshIntervalChanged, this, &QgsMapCanvas::updateAutoRefreshTimer );
-    if ( QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer ) )
+
+    switch ( layer->type() )
     {
-      connect( vlayer, &QgsVectorLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+      case Qgis::LayerType::Vector:
+      {
+        QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer );
+        connect( vlayer, &QgsVectorLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+        connect( vlayer, &QgsVectorLayer::rendererChanged, this, &QgsMapCanvas::updateAutoRefreshTimer );
+        break;
+      }
+
+      case Qgis::LayerType::VectorTile:
+      {
+        QgsVectorTileLayer *vtlayer = qobject_cast<QgsVectorTileLayer *>( layer );
+        connect( vtlayer, &QgsVectorTileLayer::selectionChanged, this, &QgsMapCanvas::selectionChangedSlot );
+        break;
+      }
+
+      case Qgis::LayerType::Raster:
+      case Qgis::LayerType::Plugin:
+      case Qgis::LayerType::Mesh:
+      case Qgis::LayerType::Annotation:
+      case Qgis::LayerType::PointCloud:
+      case Qgis::LayerType::Group:
+      case Qgis::LayerType::TiledScene:
+        break;
     }
   }
 
-  QgsDebugMsgLevel( QStringLiteral( "Layers have changed, refreshing" ), 2 );
+  QgsDebugMsgLevel( u"Layers have changed, refreshing"_s, 2 );
   emit layersChanged();
 
   updateAutoRefreshTimer();
@@ -405,6 +521,11 @@ const QgsMapSettings &QgsMapCanvas::mapSettings() const
   return mSettings;
 }
 
+QgsMapSettings &QgsMapCanvas::mapSettings()
+{
+  return mSettings;
+}
+
 void QgsMapCanvas::setDestinationCrs( const QgsCoordinateReferenceSystem &crs )
 {
   if ( mSettings.destinationCrs() == crs )
@@ -412,10 +533,10 @@ void QgsMapCanvas::setDestinationCrs( const QgsCoordinateReferenceSystem &crs )
 
   // try to reproject current extent to the new one
   QgsRectangle rect;
-  if ( !mSettings.visibleExtent().isEmpty() )
+  if ( !mSettings.visibleExtent().isEmpty() && crs.isSameCelestialBody( mSettings.destinationCrs() ) )
   {
-    QgsCoordinateTransform transform( mSettings.destinationCrs(), crs, QgsProject::instance() );
-    transform.setBallparkTransformsAreAppropriate( true );
+    const QgsCoordinateTransform
+      transform( mSettings.destinationCrs(), crs, QgsProject::instance(), Qgis::CoordinateTransformationFlag::BallparkTransformsAreAppropriate | Qgis::CoordinateTransformationFlag::IgnoreImpossibleTransformations );
     try
     {
       rect = transform.transformBoundingBox( mSettings.visibleExtent() );
@@ -423,9 +544,15 @@ void QgsMapCanvas::setDestinationCrs( const QgsCoordinateReferenceSystem &crs )
     catch ( QgsCsException &e )
     {
       Q_UNUSED( e )
-      QgsDebugMsg( QStringLiteral( "Transform error caught: %1" ).arg( e.what() ) );
+      QgsDebugError( u"Transform error caught: %1"_s.arg( e.what() ) );
     }
   }
+
+  // defer extent and scale changed signals until we've correctly
+  // set the destination crs, otherwise slots which connect to these signals
+  // may retrieve an outdated CRS for the map canvas
+  mBlockExtentChangedSignal++;
+  mBlockScaleChangedSignal++;
 
   if ( !rect.isEmpty() )
   {
@@ -436,11 +563,16 @@ void QgsMapCanvas::setDestinationCrs( const QgsCoordinateReferenceSystem &crs )
     mBlockItemPositionUpdates--;
   }
 
+  mBlockExtentChangedSignal--;
+  mBlockScaleChangedSignal--;
+
   mSettings.setDestinationCrs( crs );
   updateScale();
+  emitExtentsChanged();
+
   updateCanvasItemPositions();
 
-  QgsDebugMsgLevel( QStringLiteral( "refreshing after destination CRS changed" ), 2 );
+  QgsDebugMsgLevel( u"refreshing after destination CRS changed"_s, 2 );
   refresh();
 
   emit destinationCrsChanged();
@@ -450,9 +582,43 @@ void QgsMapCanvas::setTemporalController( QgsTemporalController *controller )
 {
   if ( mController )
     disconnect( mController, &QgsTemporalController::updateTemporalRange, this, &QgsMapCanvas::setTemporalRange );
+  if ( QgsTemporalNavigationObject *temporalNavigationObject = qobject_cast<QgsTemporalNavigationObject *>( mController ) )
+  {
+    disconnect( temporalNavigationObject, &QgsTemporalNavigationObject::navigationModeChanged, this, &QgsMapCanvas::temporalControllerModeChanged );
+
+    // clear any existing animation settings from map settings. We don't do this on every render, as a 3rd party plugin
+    // might be in control of these!
+    mSettings.setFrameRate( -1 );
+    mSettings.setCurrentFrame( -1 );
+  }
 
   mController = controller;
   connect( mController, &QgsTemporalController::updateTemporalRange, this, &QgsMapCanvas::setTemporalRange );
+  if ( QgsTemporalNavigationObject *temporalNavigationObject = qobject_cast<QgsTemporalNavigationObject *>( mController ) )
+    connect( temporalNavigationObject, &QgsTemporalNavigationObject::navigationModeChanged, this, &QgsMapCanvas::temporalControllerModeChanged );
+}
+
+void QgsMapCanvas::temporalControllerModeChanged()
+{
+  if ( QgsTemporalNavigationObject *temporalNavigationObject = qobject_cast<QgsTemporalNavigationObject *>( mController ) )
+  {
+    switch ( temporalNavigationObject->navigationMode() )
+    {
+      case Qgis::TemporalNavigationMode::Animated:
+      case Qgis::TemporalNavigationMode::Movie:
+        mSettings.setFrameRate( temporalNavigationObject->framesPerSecond() );
+        mSettings.setCurrentFrame( temporalNavigationObject->currentFrameNumber() );
+        break;
+
+      case Qgis::TemporalNavigationMode::Disabled:
+      case Qgis::TemporalNavigationMode::FixedRange:
+        // clear any existing animation settings from map settings. We don't do this on every render, as a 3rd party plugin
+        // might be in control of these!
+        mSettings.setFrameRate( -1 );
+        mSettings.setCurrentFrame( -1 );
+        break;
+    }
+  }
 }
 
 const QgsTemporalController *QgsMapCanvas::temporalController() const
@@ -460,16 +626,27 @@ const QgsTemporalController *QgsMapCanvas::temporalController() const
   return mController;
 }
 
-void QgsMapCanvas::setMapSettingsFlags( QgsMapSettings::Flags flags )
+void QgsMapCanvas::setMapSettingsFlags( Qgis::MapSettingsFlags flags )
 {
   mSettings.setFlags( flags );
   clearCache();
   refresh();
 }
 
-const QgsLabelingResults *QgsMapCanvas::labelingResults() const
+const QgsLabelingResults *QgsMapCanvas::labelingResults( bool allowOutdatedResults ) const
 {
-  return mLabelingResults;
+  if ( !allowOutdatedResults && mLabelingResultsOutdated )
+    return nullptr;
+
+  return mLabelingResults.get();
+}
+
+const QgsRenderedItemResults *QgsMapCanvas::renderedItemResults( bool allowOutdatedResults ) const
+{
+  if ( !allowOutdatedResults && mRenderedItemResultsOutdated )
+    return nullptr;
+
+  return mRenderedItemResults.get();
 }
 
 void QgsMapCanvas::setCachingEnabled( bool enabled )
@@ -485,24 +662,34 @@ void QgsMapCanvas::setCachingEnabled( bool enabled )
 
   if ( enabled )
   {
-    mCache = new QgsMapRendererCache;
+    mCache = std::make_unique<QgsMapRendererCache>();
   }
   else
   {
-    delete mCache;
-    mCache = nullptr;
+    mCache.reset();
   }
+  mPreviousRenderedItemResults.reset();
 }
 
 bool QgsMapCanvas::isCachingEnabled() const
 {
-  return nullptr != mCache;
+  return nullptr != mCache.get();
 }
 
 void QgsMapCanvas::clearCache()
 {
   if ( mCache )
     mCache->clear();
+
+  if ( mPreviousRenderedItemResults )
+    mPreviousRenderedItemResults.reset();
+  if ( mRenderedItemResults )
+    mRenderedItemResults.reset();
+}
+
+QgsMapRendererCache *QgsMapCanvas::cache()
+{
+  return mCache.get();
 }
 
 void QgsMapCanvas::setParallelRenderingEnabled( bool enabled )
@@ -531,65 +718,122 @@ QgsMapLayer *QgsMapCanvas::currentLayer()
   return mCurrentLayer;
 }
 
-QgsExpressionContextScope *QgsMapCanvas::defaultExpressionContextScope()
+std::unique_ptr<QgsExpressionContextScope> QgsMapCanvas::defaultExpressionContextScope() const
 {
-  QgsExpressionContextScope *s = new QgsExpressionContextScope( QObject::tr( "Map Canvas" ) );
-  s->setVariable( QStringLiteral( "canvas_cursor_point" ), QgsGeometry::fromPointXY( cursorPoint() ), true );
-
+  auto s = std::make_unique<QgsExpressionContextScope>( QObject::tr( "Map Canvas" ) );
+  s->setVariable( u"canvas_cursor_point"_s, QgsGeometry::fromPointXY( cursorPoint() ), true );
   return s;
+}
+
+QgsExpressionContext QgsMapCanvas::createExpressionContext() const
+{
+  //build the expression context
+  QgsExpressionContext expressionContext;
+  expressionContext
+    << QgsExpressionContextUtils::globalScope()
+    << QgsExpressionContextUtils::projectScope( QgsProject::instance() )
+    << QgsExpressionContextUtils::atlasScope( nullptr )
+    << QgsExpressionContextUtils::mapSettingsScope( mSettings );
+  if ( QgsExpressionContextScopeGenerator *generator = dynamic_cast<QgsExpressionContextScopeGenerator *>( mController ) )
+  {
+    expressionContext << generator->createExpressionContextScope();
+  }
+  expressionContext << defaultExpressionContextScope() << new QgsExpressionContextScope( mExpressionContextScope );
+  return expressionContext;
 }
 
 void QgsMapCanvas::refresh()
 {
   if ( !mSettings.hasValidSettings() )
   {
-    QgsDebugMsgLevel( QStringLiteral( "CANVAS refresh - invalid settings -> nothing to do" ), 2 );
+    QgsDebugMsgLevel( u"CANVAS refresh - invalid settings -> nothing to do"_s, 2 );
     return;
   }
 
   if ( !mRenderFlag || mFrozen )
   {
-    QgsDebugMsgLevel( QStringLiteral( "CANVAS render flag off" ), 2 );
+    QgsDebugMsgLevel( u"CANVAS render flag off"_s, 2 );
     return;
   }
 
   if ( mRefreshScheduled )
   {
-    QgsDebugMsgLevel( QStringLiteral( "CANVAS refresh already scheduled" ), 2 );
+    QgsDebugMsgLevel( u"CANVAS refresh already scheduled"_s, 2 );
     return;
   }
 
   mRefreshScheduled = true;
 
-  QgsDebugMsgLevel( QStringLiteral( "CANVAS refresh scheduling" ), 2 );
+  QgsDebugMsgLevel( u"CANVAS refresh scheduling"_s, 2 );
 
   // schedule a refresh
   mRefreshTimer->start( 1 );
+
+  mLabelingResultsOutdated = true;
+  mRenderedItemResultsOutdated = true;
+}
+
+QList<QgsMapLayer *> filterLayersForRender( const QList<QgsMapLayer *> &layers )
+{
+  QList<QgsMapLayer *> filteredLayers;
+  for ( QgsMapLayer *layer : layers )
+  {
+    if ( QgsAnnotationLayer *annotationLayer = qobject_cast<QgsAnnotationLayer *>( layer ) )
+    {
+      if ( QgsMapLayer *linkedLayer = annotationLayer->linkedVisibilityLayer() )
+      {
+        if ( !layers.contains( linkedLayer ) )
+          continue;
+      }
+    }
+    filteredLayers.append( layer );
+  }
+
+  // remove any invalid layers
+  filteredLayers.erase( std::remove_if( filteredLayers.begin(), filteredLayers.end(), []( QgsMapLayer *layer ) { return !layer || !layer->isValid(); } ), filteredLayers.end() );
+
+  return filteredLayers;
 }
 
 void QgsMapCanvas::refreshMap()
 {
   Q_ASSERT( mRefreshScheduled );
 
-  QgsDebugMsgLevel( QStringLiteral( "CANVAS refresh!" ), 3 );
+  QgsDebugMsgLevel( u"CANVAS refresh!"_s, 3 );
 
   stopRendering(); // if any...
   stopPreviewJobs();
 
-  //build the expression context
-  QgsExpressionContext expressionContext;
-  expressionContext << QgsExpressionContextUtils::globalScope()
-                    << QgsExpressionContextUtils::projectScope( QgsProject::instance() )
-                    << QgsExpressionContextUtils::atlasScope( nullptr )
-                    << QgsExpressionContextUtils::mapSettingsScope( mSettings );
-  if ( QgsExpressionContextScopeGenerator *generator = dynamic_cast< QgsExpressionContextScopeGenerator * >( mController ) )
+  if ( mCacheInvalidations.testFlag( CacheInvalidationType::Temporal ) )
   {
-    expressionContext << generator->createExpressionContextScope();
+    clearTemporalCache();
+    mCacheInvalidations &= ~( static_cast<int>( CacheInvalidationType::Temporal ) );
   }
-  expressionContext << defaultExpressionContextScope()
-                    << new QgsExpressionContextScope( mExpressionContextScope );
+  if ( mCacheInvalidations.testFlag( CacheInvalidationType::Elevation ) )
+  {
+    clearElevationCache();
+    mCacheInvalidations &= ~( static_cast<int>( CacheInvalidationType::Elevation ) );
+  }
 
-  mSettings.setExpressionContext( expressionContext );
+  mSettings.setExpressionContext( createExpressionContext() );
+
+  // if using the temporal controller in animation mode, get the frame settings from that
+  if ( QgsTemporalNavigationObject *temporalNavigationObject = dynamic_cast<QgsTemporalNavigationObject *>( mController ) )
+  {
+    switch ( temporalNavigationObject->navigationMode() )
+    {
+      case Qgis::TemporalNavigationMode::Animated:
+      case Qgis::TemporalNavigationMode::Movie:
+        mSettings.setFrameRate( temporalNavigationObject->framesPerSecond() );
+        mSettings.setCurrentFrame( temporalNavigationObject->currentFrameNumber() );
+        break;
+
+      case Qgis::TemporalNavigationMode::Disabled:
+      case Qgis::TemporalNavigationMode::FixedRange:
+        break;
+    }
+  }
+
   mSettings.setPathResolver( QgsProject::instance()->pathResolver() );
 
   if ( !mTheme.isEmpty() )
@@ -606,10 +850,15 @@ void QgsMapCanvas::refreshMap()
   // render main annotation layer above all other layers
   QgsMapSettings renderSettings = mSettings;
   QList<QgsMapLayer *> allLayers = renderSettings.layers();
-  allLayers.insert( 0, QgsProject::instance()->mainAnnotationLayer() );
-  renderSettings.setLayers( allLayers );
+  if ( mFlags & Qgis::MapCanvasFlag::ShowMainAnnotationLayer )
+    allLayers.insert( 0, QgsProject::instance()->mainAnnotationLayer() );
+
+  renderSettings.setLayers( filterLayersForRender( allLayers ) );
 
   // create the renderer job
+
+  QgsApplication::profiler()->clear( u"rendering"_s );
+
   Q_ASSERT( !mJob );
   mJobCanceled = false;
   if ( mUseParallelRendering )
@@ -618,7 +867,7 @@ void QgsMapCanvas::refreshMap()
     mJob = new QgsMapRendererSequentialJob( renderSettings );
 
   connect( mJob, &QgsMapRendererJob::finished, this, &QgsMapCanvas::rendererJobFinished );
-  mJob->setCache( mCache );
+  mJob->setCache( mCache.get() );
   mJob->setLayerRenderingTimeHints( mLastLayerRenderTime );
 
   mJob->start();
@@ -669,18 +918,11 @@ void QgsMapCanvas::mapThemeRenamed( const QString &theme, const QString &newThem
 
 void QgsMapCanvas::rendererJobFinished()
 {
-  QgsDebugMsgLevel( QStringLiteral( "CANVAS finish! %1" ).arg( !mJobCanceled ), 2 );
+  QgsDebugMsgLevel( u"CANVAS finish! %1"_s.arg( !mJobCanceled ), 2 );
 
   mMapUpdateTimer.stop();
 
-  // TODO: would be better to show the errors in message bar
-  const auto constErrors = mJob->errors();
-  for ( const QgsMapRendererJob::Error &error : constErrors )
-  {
-    QgsMapLayer *layer = QgsProject::instance()->mapLayer( error.layerID );
-    emit renderErrorOccurred( error.message, layer );
-    QgsMessageLog::logMessage( error.layerID + " :: " + error.message, tr( "Rendering" ) );
-  }
+  notifyRendererErrors( mJob->errors() );
 
   if ( !mJobCanceled )
   {
@@ -688,18 +930,47 @@ void QgsMapCanvas::rendererJobFinished()
     // connected to signal work with correct results
     if ( !mJob->usedCachedLabels() )
     {
-      delete mLabelingResults;
-      mLabelingResults = mJob->takeLabelingResults();
+      mLabelingResults.reset( mJob->takeLabelingResults() );
     }
+    mLabelingResultsOutdated = false;
+
+    std::unique_ptr<QgsRenderedItemResults> renderedItemResults( mJob->takeRenderedItemResults() );
+    // if a layer was redrawn from the cached version, we should copy any existing rendered item results from that layer
+    if ( mRenderedItemResults )
+    {
+      renderedItemResults->transferResults( mRenderedItemResults.get(), mJob->layersRedrawnFromCache() );
+    }
+    if ( mPreviousRenderedItemResults )
+    {
+      // also transfer any results from previous renders which happened before this
+      renderedItemResults->transferResults( mPreviousRenderedItemResults.get(), mJob->layersRedrawnFromCache() );
+    }
+
+    if ( mCache && !mPreviousRenderedItemResults )
+      mPreviousRenderedItemResults = std::make_unique<QgsRenderedItemResults>( mJob->mapSettings().extent() );
+
+    if ( mRenderedItemResults && mPreviousRenderedItemResults )
+    {
+      // for other layers which ARE present in the most recent rendered item results BUT were not part of this render, we
+      // store the results in a temporary store in case they are later switched back on and the layer's image is taken
+      // from the cache
+      mPreviousRenderedItemResults->transferResults( mRenderedItemResults.get() );
+    }
+    if ( mPreviousRenderedItemResults )
+    {
+      mPreviousRenderedItemResults->eraseResultsFromLayers( mJob->mapSettings().layerIds() );
+    }
+
+    mRenderedItemResults = std::move( renderedItemResults );
+    mRenderedItemResultsOutdated = false;
 
     QImage img = mJob->renderedImage();
 
-    // emit renderComplete to get our decorations drawn
+    // emit renderComplete to get our decorations drawn and to handle computed statistics
     QPainter p( &img );
     emit renderComplete( &p );
 
-    QgsSettings settings;
-    if ( settings.value( QStringLiteral( "Map/logCanvasRefreshEvent" ), false ).toBool() )
+    if ( QgsMapRendererJob::settingsLogCanvasRefreshEvent->value() )
     {
       QString logMsg = tr( "Canvas refresh: %1 ms" ).arg( mJob->renderingTime() );
       QgsMessageLog::logMessage( logMsg, tr( "Rendering" ) );
@@ -717,7 +988,7 @@ void QgsMapCanvas::rendererJobFinished()
       p.setBrush( QColor( 0, 0, 0, 110 ) );
       p.drawRect( r );
       p.setPen( Qt::white );
-      QString msg = QStringLiteral( "%1 :: %2 ms" ).arg( mUseParallelRendering ? QStringLiteral( "PARALLEL" ) : QStringLiteral( "SEQUENTIAL" ) ).arg( mJob->renderingTime() );
+      QString msg = u"%1 :: %2 ms"_s.arg( mUseParallelRendering ? u"PARALLEL"_s : u"SEQUENTIAL"_s ).arg( mJob->renderingTime() );
       p.drawText( r, msg, QTextOption( Qt::AlignCenter ) );
     }
 
@@ -749,8 +1020,6 @@ void QgsMapCanvas::rendererJobFinished()
   if ( mRefreshAfterJob )
   {
     mRefreshAfterJob = false;
-    clearTemporalCache();
-    clearElevationCache();
     refresh();
   }
 }
@@ -762,7 +1031,7 @@ void QgsMapCanvas::previewJobFinished()
 
   if ( mMap )
   {
-    mMap->addPreviewImage( job->renderedImage(), job->mapSettings().extent() );
+    mMap->addPreviewImage( job->renderedImage(), job->mapSettings().visiblePolygon() );
     mPreviewJobs.removeAll( job );
 
     int number = job->property( "number" ).toInt();
@@ -785,12 +1054,42 @@ QgsRectangle QgsMapCanvas::imageRect( const QImage &img, const QgsMapSettings &m
   // do not assert this, since it might lead to crashes when changing screen while rendering
   if ( img.devicePixelRatio() != mapSettings.devicePixelRatio() )
   {
-    QgsLogger::warning( QStringLiteral( "The renderer map has a wrong device pixel ratio" ) );
+    QgsLogger::warning( u"The renderer map has a wrong device pixel ratio"_s );
   }
 #endif
   double res = m2p.mapUnitsPerPixel() / img.devicePixelRatioF();
-  QgsRectangle rect( topLeft.x(), topLeft.y(), topLeft.x() + img.width()*res, topLeft.y() - img.height()*res );
+  QgsRectangle rect( topLeft.x(), topLeft.y(), topLeft.x() + img.width() * res, topLeft.y() - img.height() * res );
   return rect;
+}
+
+QgsStatusBar *QgsMapCanvas::statusBar()
+{
+  return mStatusBar.data();
+}
+
+void QgsMapCanvas::setStatusBar( QgsStatusBar *bar )
+{
+  mStatusBar = bar;
+}
+
+void QgsMapCanvas::setMessageBar( QgsMessageBar *bar )
+{
+  mMessageBar = bar;
+}
+
+QgsMessageBar *QgsMapCanvas::messageBar()
+{
+  return mMessageBar.data();
+}
+
+void QgsMapCanvas::setUserInputWidget( QgsUserInputWidget *userInputWidget )
+{
+  mUserInputWidget = userInputWidget;
+}
+
+QgsUserInputWidget *QgsMapCanvas::userInputWidget()
+{
+  return mUserInputWidget.data();
 }
 
 bool QgsMapCanvas::previewJobsEnabled() const
@@ -803,7 +1102,7 @@ void QgsMapCanvas::setPreviewJobsEnabled( bool enabled )
   mUsePreviewJobs = enabled;
 }
 
-void QgsMapCanvas::setCustomDropHandlers( const QVector<QPointer<QgsCustomDropHandler> > &handlers )
+void QgsMapCanvas::setCustomDropHandlers( const QVector<QPointer<QgsCustomDropHandler>> &handlers )
 {
   mDropHandlers = handlers;
 }
@@ -812,16 +1111,61 @@ void QgsMapCanvas::clearTemporalCache()
 {
   if ( mCache )
   {
+    bool invalidateLabels = false;
     const QList<QgsMapLayer *> layerList = mapSettings().layers();
     for ( QgsMapLayer *layer : layerList )
     {
+      bool alreadyInvalidatedThisLayer = false;
+      if ( QgsVectorLayer *vl = qobject_cast<QgsVectorLayer *>( layer ) )
+      {
+        if ( vl->renderer() && QgsSymbolLayerUtils::rendererFrameRate( vl->renderer() ) > -1 )
+        {
+          // layer has an animated symbol assigned, so we have to redraw it regardless of whether
+          // or not it has temporal settings
+          mCache->invalidateCacheForLayer( layer );
+          alreadyInvalidatedThisLayer = true;
+          // we can't shortcut and "continue" here, as we still need to check whether the layer
+          // will cause label invalidation using the logic below
+        }
+      }
+
       if ( layer->temporalProperties() && layer->temporalProperties()->isActive() )
       {
+        if ( QgsVectorLayer *vl = qobject_cast<QgsVectorLayer *>( layer ) )
+        {
+          if ( vl->labelsEnabled() || vl->diagramsEnabled() || ( vl->renderer() && vl->renderer()->flags().testFlag( Qgis::FeatureRendererFlag::AffectsLabeling ) ) )
+            invalidateLabels = true;
+        }
+
         if ( layer->temporalProperties()->flags() & QgsTemporalProperty::FlagDontInvalidateCachedRendersWhenRangeChanges )
           continue;
 
-        mCache->invalidateCacheForLayer( layer );
+        if ( !alreadyInvalidatedThisLayer )
+        {
+          mCache->invalidateCacheForLayer( layer );
+        }
       }
+      else if ( QgsGroupLayer *gl = qobject_cast<QgsGroupLayer *>( layer ) )
+      {
+        const QList<QgsMapLayer *> childLayerList = gl->childLayers();
+        for ( QgsMapLayer *childLayer : childLayerList )
+        {
+          if ( childLayer->temporalProperties() && childLayer->temporalProperties()->isActive() )
+          {
+            if ( childLayer->temporalProperties()->flags() & QgsTemporalProperty::FlagDontInvalidateCachedRendersWhenRangeChanges )
+              continue;
+
+            mCache->invalidateCacheForLayer( layer );
+            break;
+          }
+        }
+      }
+    }
+
+    if ( invalidateLabels )
+    {
+      mCache->clearCacheImage( u"_labels_"_s );
+      mCache->clearCacheImage( u"_preview_labels_"_s );
     }
   }
 }
@@ -830,16 +1174,44 @@ void QgsMapCanvas::clearElevationCache()
 {
   if ( mCache )
   {
+    bool invalidateLabels = false;
     const QList<QgsMapLayer *> layerList = mapSettings().layers();
     for ( QgsMapLayer *layer : layerList )
     {
       if ( layer->elevationProperties() && layer->elevationProperties()->hasElevation() )
       {
+        if ( QgsVectorLayer *vl = qobject_cast<QgsVectorLayer *>( layer ) )
+        {
+          if ( vl->labelsEnabled() || vl->diagramsEnabled() || ( vl->renderer() && vl->renderer()->flags().testFlag( Qgis::FeatureRendererFlag::AffectsLabeling ) ) )
+            invalidateLabels = true;
+        }
+
         if ( layer->elevationProperties()->flags() & QgsMapLayerElevationProperties::FlagDontInvalidateCachedRendersWhenRangeChanges )
           continue;
 
         mCache->invalidateCacheForLayer( layer );
       }
+      else if ( QgsGroupLayer *gl = qobject_cast<QgsGroupLayer *>( layer ) )
+      {
+        const QList<QgsMapLayer *> childLayerList = gl->childLayers();
+        for ( QgsMapLayer *childLayer : childLayerList )
+        {
+          if ( childLayer->elevationProperties() && childLayer->elevationProperties()->hasElevation() )
+          {
+            if ( childLayer->elevationProperties()->flags() & QgsMapLayerElevationProperties::FlagDontInvalidateCachedRendersWhenRangeChanges )
+              continue;
+
+            mCache->invalidateCacheForLayer( layer );
+            break;
+          }
+        }
+      }
+    }
+
+    if ( invalidateLabels )
+    {
+      mCache->clearCacheImage( u"_labels_"_s );
+      mCache->clearCacheImage( u"_preview_labels_"_s );
     }
   }
 }
@@ -848,14 +1220,13 @@ void QgsMapCanvas::showContextMenu( QgsMapMouseEvent *event )
 {
   const QgsPointXY mapPoint = event->originalMapPoint();
 
-  QMenu menu;
+  QMenu menu( this );
 
   QMenu *copyCoordinateMenu = new QMenu( tr( "Copy Coordinate" ), &menu );
-  copyCoordinateMenu->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionEditCopy.svg" ) ) );
+  copyCoordinateMenu->setIcon( QgsApplication::getThemeIcon( u"/mActionEditCopy.svg"_s ) );
 
-  auto addCoordinateFormat = [ &, this]( const QString identifier, const QgsCoordinateReferenceSystem & crs )
-  {
-    QgsCoordinateTransform ct( mSettings.destinationCrs(), crs, mSettings.transformContext() );
+  auto addCoordinateFormat = [&, this]( const QString identifier, const QgsCoordinateReferenceSystem &crs ) {
+    const QgsCoordinateTransform ct( mSettings.destinationCrs(), crs, mSettings.transformContext() );
     try
     {
       const QgsPointXY transformedPoint = ct.transform( mapPoint );
@@ -864,7 +1235,9 @@ void QgsMapCanvas::showContextMenu( QgsMapMouseEvent *event )
       int displayPrecision = 0;
       try
       {
-        QgsRectangle extentReproj = ct.transformBoundingBox( extent() );
+        QgsCoordinateTransform extentTransform = ct;
+        extentTransform.setBallparkTransformsAreAppropriate( true );
+        QgsRectangle extentReproj = extentTransform.transformBoundingBox( extent() );
         const double mapUnitsPerPixel = ( extentReproj.width() / width() + extentReproj.height() / height() ) * 0.5;
         if ( mapUnitsPerPixel > 10 )
           displayPrecision = 0;
@@ -889,19 +1262,37 @@ void QgsMapCanvas::showContextMenu( QgsMapMouseEvent *event )
       }
       catch ( QgsCsException & )
       {
-        displayPrecision = crs.mapUnits() == QgsUnitTypes::DistanceDegrees ? 5 : 3;
+        displayPrecision = crs.mapUnits() == Qgis::DistanceUnit::Degrees ? 5 : 3;
       }
 
-      QAction *copyCoordinateAction = new QAction( QStringLiteral( "%3 (%1, %2)" ).arg(
-            QString::number( transformedPoint.x(), 'f', displayPrecision ),
-            QString::number( transformedPoint.y(), 'f', displayPrecision ),
-            identifier ), &menu );
-
-      connect( copyCoordinateAction, &QAction::triggered, this, [displayPrecision, transformedPoint]
+      const QList<Qgis::CrsAxisDirection> axisList = crs.axisOrdering();
+      QString firstSuffix;
+      QString secondSuffix;
+      if ( axisList.size() >= 2 )
       {
+        firstSuffix = QgsCoordinateReferenceSystemUtils::axisDirectionToAbbreviatedString( axisList.at( 0 ) );
+        secondSuffix = QgsCoordinateReferenceSystemUtils::axisDirectionToAbbreviatedString( axisList.at( 1 ) );
+      }
+
+      QString firstNumber;
+      QString secondNumber;
+      if ( QgsCoordinateReferenceSystemUtils::defaultCoordinateOrderForCrs( crs ) == Qgis::CoordinateOrder::YX )
+      {
+        firstNumber = QString::number( transformedPoint.y(), 'f', displayPrecision );
+        secondNumber = QString::number( transformedPoint.x(), 'f', displayPrecision );
+      }
+      else
+      {
+        firstNumber = QString::number( transformedPoint.x(), 'f', displayPrecision );
+        secondNumber = QString::number( transformedPoint.y(), 'f', displayPrecision );
+      }
+
+      QAction *copyCoordinateAction = new QAction( u"%5 (%1%2, %3%4)"_s.arg( firstNumber, firstSuffix, secondNumber, secondSuffix, identifier ), &menu );
+
+      connect( copyCoordinateAction, &QAction::triggered, this, [firstNumber, secondNumber, transformedPoint] {
         QClipboard *clipboard = QApplication::clipboard();
 
-        const QString coordinates = QString::number( transformedPoint.x(), 'f', displayPrecision ) + ',' + QString::number( transformedPoint.y(), 'f', displayPrecision );
+        const QString coordinates = firstNumber + ',' + secondNumber;
 
         //if we are on x11 system put text into selection ready for middle button pasting
         if ( clipboard->supportsSelection() )
@@ -909,39 +1300,36 @@ void QgsMapCanvas::showContextMenu( QgsMapMouseEvent *event )
           clipboard->setText( coordinates, QClipboard::Selection );
         }
         clipboard->setText( coordinates, QClipboard::Clipboard );
-
       } );
       copyCoordinateMenu->addAction( copyCoordinateAction );
     }
     catch ( QgsCsException & )
-    {
-
-    }
+    {}
   };
 
-  addCoordinateFormat( tr( "Map CRS — %1" ).arg( mSettings.destinationCrs().userFriendlyIdentifier( QgsCoordinateReferenceSystem::ShortString ) ), mSettings.destinationCrs() );
-  if ( mSettings.destinationCrs() != QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:4326" ) ) )
-    addCoordinateFormat( tr( "WGS84" ), QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:4326" ) ) );
+  addCoordinateFormat( tr( "Map CRS — %1" ).arg( mSettings.destinationCrs().userFriendlyIdentifier( Qgis::CrsIdentifierType::MediumString ) ), mSettings.destinationCrs() );
+  QgsCoordinateReferenceSystem wgs84( u"EPSG:4326"_s );
+  if ( mSettings.destinationCrs() != wgs84 && mSettings.destinationCrs().isSameCelestialBody( wgs84 ) )
+    addCoordinateFormat( wgs84.userFriendlyIdentifier( Qgis::CrsIdentifierType::MediumString ), wgs84 );
 
   QgsSettings settings;
-  const QString customCrsString = settings.value( QStringLiteral( "qgis/custom_coordinate_crs" ) ).toString();
+  const QString customCrsString = QgsMapCanvas::settingsCustomCoordinateCrs->value();
   if ( !customCrsString.isEmpty() )
   {
     QgsCoordinateReferenceSystem customCrs( customCrsString );
-    if ( customCrs != mSettings.destinationCrs() && customCrs != QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:4326" ) ) )
+    if ( customCrs != mSettings.destinationCrs() && customCrs != QgsCoordinateReferenceSystem( u"EPSG:4326"_s ) )
     {
-      addCoordinateFormat( customCrs.userFriendlyIdentifier( QgsCoordinateReferenceSystem::ShortString ), customCrs );
+      addCoordinateFormat( customCrs.userFriendlyIdentifier( Qgis::CrsIdentifierType::MediumString ), customCrs );
     }
   }
   copyCoordinateMenu->addSeparator();
   QAction *setCustomCrsAction = new QAction( tr( "Set Custom CRS…" ), &menu );
-  connect( setCustomCrsAction, &QAction::triggered, this, [ = ]
-  {
+  connect( setCustomCrsAction, &QAction::triggered, this, [this, customCrsString] {
     QgsProjectionSelectionDialog selector( this );
     selector.setCrs( QgsCoordinateReferenceSystem( customCrsString ) );
     if ( selector.exec() )
     {
-      QgsSettings().setValue( QStringLiteral( "qgis/custom_coordinate_crs" ), selector.crs().authid().isEmpty() ? selector.crs().toWkt( QgsCoordinateReferenceSystem::WKT_PREFERRED ) : selector.crs().authid() );
+      QgsMapCanvas::settingsCustomCoordinateCrs->setValue( selector.crs().authid().isEmpty() ? selector.crs().toWkt( Qgis::CrsWktVariant::Preferred ) : selector.crs().authid() );
     }
   } );
   copyCoordinateMenu->addAction( setCustomCrsAction );
@@ -954,7 +1342,63 @@ void QgsMapCanvas::showContextMenu( QgsMapMouseEvent *event )
 
   emit contextMenuAboutToShow( &menu, event );
 
-  menu.exec( event->globalPos() );
+  if ( !menu.isEmpty() ) // menu can be empty after populateContextMenu() and contextMenuAboutToShow()
+    menu.exec( event->globalPos() );
+}
+
+void QgsMapCanvas::notifyRendererErrors( const QgsMapRendererJob::Errors &errors )
+{
+  const QDateTime currentTime = QDateTime::currentDateTime();
+
+  // remove errors too old
+  for ( const QgsMapRendererJob::Error &error : errors )
+  {
+    const QString errorKey = error.layerID + ':' + error.message;
+    if ( mRendererErrors.contains( errorKey ) )
+    {
+      const QDateTime sameErrorTime = mRendererErrors.value( errorKey );
+
+      if ( sameErrorTime.secsTo( currentTime ) < 60 )
+        continue;
+    }
+
+    mRendererErrors[errorKey] = currentTime;
+
+    if ( QgsMapLayer *layer = QgsProject::instance()->mapLayer( error.layerID ) )
+      emit renderErrorOccurred( error.message, layer );
+  }
+}
+
+void QgsMapCanvas::updateDevicePixelFromScreen()
+{
+  mSettings.setDevicePixelRatio( static_cast<float>( devicePixelRatioF() ) );
+  // TODO: QGIS 5 -> always respect screen dpi
+  if ( QgsSettingsRegistryGui::settingsRespectScreenDPI->value() )
+  {
+    if ( window()->windowHandle() )
+    {
+      mSettings.setOutputDpi( window()->windowHandle()->screen()->physicalDotsPerInch() );
+      mSettings.setDpiTarget( window()->windowHandle()->screen()->physicalDotsPerInch() );
+    }
+  }
+  else
+  {
+    // Fallback: compatibility with QGIS <= 3.20; always assume low dpi screens
+    mSettings.setOutputDpi( window()->windowHandle()->screen()->logicalDotsPerInch() );
+    mSettings.setDpiTarget( window()->windowHandle()->screen()->logicalDotsPerInch() );
+  }
+  refresh();
+}
+
+void QgsMapCanvas::onElevationShadingRendererChanged()
+{
+  if ( !mProject )
+    return;
+  bool wasDeactivated = !mSettings.elevationShadingRenderer().isActive();
+  mSettings.setElevationShadingRenderer( mProject->elevationShadingRenderer() );
+  if ( mCache && wasDeactivated )
+    mCache->clear();
+  refresh();
 }
 
 void QgsMapCanvas::setTemporalRange( const QgsDateTimeRange &dateTimeRange )
@@ -969,8 +1413,7 @@ void QgsMapCanvas::setTemporalRange( const QgsDateTimeRange &dateTimeRange )
 
   // we need to discard any previously cached images which have temporal properties enabled, so that these will be updated when
   // the canvas is redrawn
-  if ( !mJob )
-    clearTemporalCache();
+  mCacheInvalidations |= CacheInvalidationType::Temporal;
 
   autoRefreshTriggered();
 }
@@ -1000,6 +1443,26 @@ bool QgsMapCanvas::allowInteraction( QgsMapCanvasInteractionBlocker::Interaction
   return true;
 }
 
+void QgsMapCanvas::setMapController( QgsAbstract2DMapController *controller )
+{
+  if ( mMapController )
+  {
+    delete mMapController;
+    mMapController = nullptr;
+  }
+
+  if ( !controller )
+    return;
+
+  mMapController = controller;
+  mMapController->setParent( this );
+
+#if 0
+  // connect high level signals to the canvas, e.g.
+  connect( mMapController, &QgsAbstract2DMapController::zoomMap, this, []( double factor ) { zoomByFactor( factor ); } );
+#endif
+}
+
 void QgsMapCanvas::mapUpdateTimeout()
 {
   if ( mJob )
@@ -1013,7 +1476,7 @@ void QgsMapCanvas::stopRendering()
 {
   if ( mJob )
   {
-    QgsDebugMsgLevel( QStringLiteral( "CANVAS stop rendering!" ), 2 );
+    QgsDebugMsgLevel( u"CANVAS stop rendering!"_s, 2 );
     mJobCanceled = true;
     disconnect( mJob, &QgsMapRendererJob::finished, this, &QgsMapCanvas::rendererJobFinished );
     connect( mJob, &QgsMapRendererQImageJob::finished, mJob, &QgsMapRendererQImageJob::deleteLater );
@@ -1060,7 +1523,7 @@ void QgsMapCanvas::saveAsImage( const QString &fileName, QPixmap *theQPixmap, co
   {
     item = i.previous();
 
-    if ( !( item && dynamic_cast< QgsMapCanvasAnnotationItem * >( item ) ) )
+    if ( !( item && dynamic_cast<QgsMapCanvasAnnotationItem *>( item ) ) )
     {
       continue;
     }
@@ -1076,12 +1539,11 @@ void QgsMapCanvas::saveAsImage( const QString &fileName, QPixmap *theQPixmap, co
   painter.end();
   image.save( fileName, format.toLocal8Bit().data() );
 
-  QFileInfo myInfo  = QFileInfo( fileName );
+  QFileInfo myInfo = QFileInfo( fileName );
 
   // build the world file name
   QString outputSuffix = myInfo.suffix();
-  QString myWorldFileName = myInfo.absolutePath() + '/' + myInfo.completeBaseName() + '.'
-                            + outputSuffix.at( 0 ) + outputSuffix.at( myInfo.suffix().size() - 1 ) + 'w';
+  QString myWorldFileName = myInfo.absolutePath() + '/' + myInfo.completeBaseName() + '.' + outputSuffix.at( 0 ) + outputSuffix.at( myInfo.suffix().size() - 1 ) + 'w';
   QFile myWorldFile( myWorldFileName );
   if ( !myWorldFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) //don't use QIODevice::Text
   {
@@ -1098,8 +1560,13 @@ QgsRectangle QgsMapCanvas::extent() const
 
 QgsRectangle QgsMapCanvas::fullExtent() const
 {
-  const QgsReferencedRectangle extent = QgsProject::instance()->viewSettings()->fullExtent();
-  QgsCoordinateTransform ct( extent.crs(), mapSettings().destinationCrs(), QgsProject::instance()->transformContext() );
+  return QgsMapLayerUtils::combinedExtent( mSettings.layers(), mapSettings().destinationCrs(), QgsProject::instance()->transformContext() );
+}
+
+QgsRectangle QgsMapCanvas::projectExtent() const
+{
+  const QgsReferencedRectangle extent = mProject ? mProject->viewSettings()->fullExtent() : QgsProject::instance()->viewSettings()->fullExtent();
+  QgsCoordinateTransform ct( extent.crs(), mapSettings().destinationCrs(), mProject ? mProject->transformContext() : QgsProject::instance()->transformContext() );
   ct.setBallparkTransformsAreAppropriate( true );
   QgsRectangle rect;
   try
@@ -1126,12 +1593,13 @@ void QgsMapCanvas::setExtent( const QgsRectangle &r, bool magnified )
     if ( !mSettings.hasValidSettings() )
     {
       // we can't even just move the map center
-      QgsDebugMsgLevel( QStringLiteral( "Empty extent - ignoring" ), 2 );
+      QgsDebugMsgLevel( u"Empty extent - ignoring"_s, 2 );
       return;
     }
 
     // ### QGIS 3: do not allow empty extent - require users to call setCenter() explicitly
-    QgsDebugMsgLevel( QStringLiteral( "Empty extent - keeping old scale with new center!" ), 2 );
+    QgsDebugMsgLevel( u"Empty extent - keeping old scale with new center!"_s, 2 );
+
     setCenter( r.center() );
   }
   else
@@ -1142,9 +1610,9 @@ void QgsMapCanvas::setExtent( const QgsRectangle &r, bool magnified )
     if ( mScaleLocked && magnified )
     {
       ScaleRestorer restorer( this );
-      const double ratio { extent().width() / extent().height() };
-      const double factor { r.width() / r.height() > ratio ? extent().width() / r.width() :  extent().height() / r.height() };
-      const double scaleFactor { qBound( QgsGuiUtils::CANVAS_MAGNIFICATION_MIN,  mSettings.magnificationFactor() * factor, QgsGuiUtils::CANVAS_MAGNIFICATION_MAX ) };
+      const double ratio { mapSettings().extent().width() / mapSettings().extent().height() };
+      const double factor { r.width() / r.height() > ratio ? mapSettings().extent().width() / r.width() : mapSettings().extent().height() / r.height() };
+      const double scaleFactor { std::clamp( mSettings.magnificationFactor() * factor, QgsGuiUtils::CANVAS_MAGNIFICATION_MIN, QgsGuiUtils::CANVAS_MAGNIFICATION_MAX ) };
       const QgsPointXY newCenter { r.center() };
       mSettings.setMagnificationFactor( scaleFactor, &newCenter );
       emit magnificationChanged( scaleFactor );
@@ -1154,7 +1622,7 @@ void QgsMapCanvas::setExtent( const QgsRectangle &r, bool magnified )
       mSettings.setExtent( r, magnified );
     }
   }
-  emit extentsChanged();
+  emitExtentsChanged();
   updateScale();
 
   //clear all extent items after current index
@@ -1163,7 +1631,10 @@ void QgsMapCanvas::setExtent( const QgsRectangle &r, bool magnified )
     mLastExtent.removeAt( i );
   }
 
-  mLastExtent.append( extent() );
+  if ( !mLastExtent.isEmpty() && mLastExtent.last() != mSettings.extent() )
+  {
+    mLastExtent.append( mSettings.extent() );
+  }
 
   // adjust history to no more than 100
   if ( mLastExtent.size() > 100 )
@@ -1185,7 +1656,8 @@ bool QgsMapCanvas::setReferencedExtent( const QgsReferencedRectangle &extent )
   if ( extent.crs() != mapSettings().destinationCrs() )
   {
     QgsCoordinateTransform ct( extent.crs(), mapSettings().destinationCrs(), QgsProject::instance() );
-    canvasExtent = ct.transform( extent );
+    ct.setBallparkTransformsAreAppropriate( true );
+    canvasExtent = ct.transformBoundingBox( extent );
 
     if ( canvasExtent.isEmpty() )
     {
@@ -1202,11 +1674,8 @@ void QgsMapCanvas::setCenter( const QgsPointXY &center )
   const QgsRectangle r = mapSettings().extent();
   const double xMin = center.x() - r.width() / 2.0;
   const double yMin = center.y() - r.height() / 2.0;
-  const QgsRectangle rect(
-    xMin, yMin,
-    xMin + r.width(), yMin + r.height()
-  );
-  if ( ! rect.isEmpty() )
+  const QgsRectangle rect( xMin, yMin, xMin + r.width(), yMin + r.height() );
+  if ( !rect.isEmpty() )
   {
     setExtent( rect, true );
   }
@@ -1226,7 +1695,7 @@ QgsPointXY QgsMapCanvas::cursorPoint() const
 double QgsMapCanvas::rotation() const
 {
   return mapSettings().rotation();
-} // rotation
+}
 
 void QgsMapCanvas::setRotation( double degrees )
 {
@@ -1237,15 +1706,14 @@ void QgsMapCanvas::setRotation( double degrees )
 
   mSettings.setRotation( degrees );
   emit rotationChanged( degrees );
-  emit extentsChanged(); // visible extent changes with rotation
-} // setRotation
-
+  emitExtentsChanged(); // visible extent changes with rotation
+}
 
 void QgsMapCanvas::updateScale()
 {
-  emit scaleChanged( mapSettings().scale() );
+  if ( !mBlockScaleChangedSignal )
+    emit scaleChanged( mapSettings().scale() );
 }
-
 
 void QgsMapCanvas::zoomToFullExtent()
 {
@@ -1255,12 +1723,24 @@ void QgsMapCanvas::zoomToFullExtent()
   {
     // Add a 5% margin around the full extent
     extent.scale( 1.05 );
-    setExtent( extent );
+    setExtent( extent, true );
   }
   refresh();
+}
 
-} // zoomToFullExtent
+void QgsMapCanvas::zoomToProjectExtent()
+{
+  QgsRectangle extent = projectExtent();
 
+  // If the full extent is an empty set, don't do the zoom
+  if ( !extent.isEmpty() )
+  {
+    // Add a 5% margin around the full extent
+    extent.scale( 1.05 );
+    setExtent( extent, true );
+  }
+  refresh();
+}
 
 void QgsMapCanvas::zoomToPreviousExtent()
 {
@@ -1268,7 +1748,7 @@ void QgsMapCanvas::zoomToPreviousExtent()
   {
     mLastExtentIndex--;
     mSettings.setExtent( mLastExtent[mLastExtentIndex] );
-    emit extentsChanged();
+    emitExtentsChanged();
     updateScale();
     refresh();
     // update controls' enabled state
@@ -1284,30 +1764,30 @@ void QgsMapCanvas::zoomToNextExtent()
   {
     mLastExtentIndex++;
     mSettings.setExtent( mLastExtent[mLastExtentIndex] );
-    emit extentsChanged();
+    emitExtentsChanged();
     updateScale();
     refresh();
     // update controls' enabled state
     emit zoomLastStatusChanged( mLastExtentIndex > 0 );
     emit zoomNextStatusChanged( mLastExtentIndex < mLastExtent.size() - 1 );
   }
-}// zoomToNextExtent
+} // zoomToNextExtent
 
 void QgsMapCanvas::clearExtentHistory()
 {
-  mLastExtent.clear(); // clear the zoom history list
-  mLastExtent.append( extent() ) ; // set the current extent in the list
+  mLastExtent.clear();                      // clear the zoom history list
+  mLastExtent.append( mSettings.extent() ); // set the current extent in the list
   mLastExtentIndex = mLastExtent.size() - 1;
   // update controls' enabled state
   emit zoomLastStatusChanged( mLastExtentIndex > 0 );
   emit zoomNextStatusChanged( mLastExtentIndex < mLastExtent.size() - 1 );
-}// clearExtentHistory
+} // clearExtentHistory
 
 QgsRectangle QgsMapCanvas::optimalExtentForPointLayer( QgsVectorLayer *layer, const QgsPointXY &center, int scaleFactor )
 {
   QgsRectangle rect( center, center );
 
-  if ( layer->geometryType() == QgsWkbTypes::PointGeometry )
+  if ( layer->geometryType() == Qgis::GeometryType::Point )
   {
     QgsPointXY centerLayerCoordinates = mSettings.mapToLayerCoordinates( layer, center );
     QgsRectangle extentRect = mSettings.mapToLayerCoordinates( layer, extent() ).scaled( 1.0 / scaleFactor, &centerLayerCoordinates );
@@ -1337,72 +1817,203 @@ QgsRectangle QgsMapCanvas::optimalExtentForPointLayer( QgsVectorLayer *layer, co
   return rect;
 }
 
-void QgsMapCanvas::zoomToSelected( QgsVectorLayer *layer )
+void QgsMapCanvas::zoomToSelected( QgsMapLayer *layer )
 {
   QgsTemporaryCursorOverride cursorOverride( Qt::WaitCursor );
 
   if ( !layer )
   {
     // use current layer by default
-    layer = qobject_cast<QgsVectorLayer *>( mCurrentLayer );
+    layer = mCurrentLayer;
   }
 
-  if ( !layer || !layer->isSpatial() || layer->selectedFeatureCount() == 0 )
+  if ( !layer || !layer->isSpatial() )
     return;
 
-  QgsRectangle rect = layer->boundingBoxOfSelected();
-  if ( rect.isNull() )
+  QgsRectangle rect;
+
+  switch ( layer->type() )
   {
-    cursorOverride.release();
-    emit messageEmitted( tr( "Cannot zoom to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::Warning );
-    return;
+    case Qgis::LayerType::Vector:
+    {
+      QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer );
+      if ( vlayer->selectedFeatureCount() == 0 )
+        return;
+
+      rect = vlayer->boundingBoxOfSelected();
+      if ( rect.isNull() )
+      {
+        cursorOverride.release();
+        emit messageEmitted( tr( "Cannot zoom to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::MessageLevel::Warning );
+        return;
+      }
+
+      rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+
+      // zoom in if point cannot be distinguished from others
+      // also check that rect is empty, as it might not in case of multi points
+      if ( vlayer->geometryType() == Qgis::GeometryType::Point && rect.isEmpty() )
+      {
+        rect = optimalExtentForPointLayer( vlayer, rect.center() );
+      }
+      break;
+    }
+
+    case Qgis::LayerType::VectorTile:
+    {
+      QgsVectorTileLayer *vtLayer = qobject_cast<QgsVectorTileLayer *>( layer );
+      if ( vtLayer->selectedFeatureCount() == 0 )
+        return;
+
+      const QList<QgsFeature> selectedFeatures = vtLayer->selectedFeatures();
+      for ( const QgsFeature &feature : selectedFeatures )
+      {
+        if ( !feature.hasGeometry() )
+          continue;
+
+        rect.combineExtentWith( feature.geometry().boundingBox() );
+      }
+
+      if ( rect.isNull() )
+      {
+        cursorOverride.release();
+        emit messageEmitted( tr( "Cannot zoom to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::MessageLevel::Warning );
+        return;
+      }
+
+      rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+      break;
+    }
+
+    case Qgis::LayerType::Raster:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Mesh:
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::PointCloud:
+    case Qgis::LayerType::Group:
+    case Qgis::LayerType::TiledScene:
+      return; // not supported
   }
 
-  rect = mapSettings().layerExtentToOutputExtent( layer, rect );
-
-  // zoom in if point cannot be distinguished from others
-  // also check that rect is empty, as it might not in case of multi points
-  if ( layer->geometryType() == QgsWkbTypes::PointGeometry && rect.isEmpty() )
-  {
-    rect = optimalExtentForPointLayer( layer, rect.center() );
-  }
   zoomToFeatureExtent( rect );
 }
 
 void QgsMapCanvas::zoomToSelected( const QList<QgsMapLayer *> &layers )
 {
   QgsRectangle rect;
-  rect.setMinimal();
+  rect.setNull();
   QgsRectangle selectionExtent;
-  selectionExtent.setMinimal();
+  selectionExtent.setNull();
 
   for ( QgsMapLayer *mapLayer : layers )
   {
-    QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mapLayer );
-
-    if ( !layer || !layer->isSpatial() || layer->selectedFeatureCount() == 0 )
+    if ( !mapLayer || !mapLayer->isSpatial() )
       continue;
 
-    rect = layer->boundingBoxOfSelected();
+    switch ( mapLayer->type() )
+    {
+      case Qgis::LayerType::Vector:
+      {
+        QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mapLayer );
 
-    if ( rect.isNull() )
-      continue;
+        if ( layer->selectedFeatureCount() == 0 )
+          continue;
 
-    rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+        rect = layer->boundingBoxOfSelected();
 
-    if ( layer->geometryType() == QgsWkbTypes::PointGeometry && rect.isEmpty() )
-      rect = optimalExtentForPointLayer( layer, rect.center() );
+        if ( rect.isNull() )
+          continue;
 
-    selectionExtent.combineExtentWith( rect );
+        rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+
+        if ( layer->geometryType() == Qgis::GeometryType::Point && rect.isEmpty() )
+          rect = optimalExtentForPointLayer( layer, rect.center() );
+
+        selectionExtent.combineExtentWith( rect );
+        break;
+      }
+
+      case Qgis::LayerType::VectorTile:
+      {
+        QgsVectorTileLayer *vtLayer = qobject_cast<QgsVectorTileLayer *>( mapLayer );
+        if ( vtLayer->selectedFeatureCount() == 0 )
+          continue;
+
+        const QList<QgsFeature> selectedFeatures = vtLayer->selectedFeatures();
+        QgsRectangle rect;
+        for ( const QgsFeature &feature : selectedFeatures )
+        {
+          if ( !feature.hasGeometry() )
+            continue;
+
+          rect.combineExtentWith( feature.geometry().boundingBox() );
+        }
+
+        rect = mapSettings().layerExtentToOutputExtent( vtLayer, rect );
+        selectionExtent.combineExtentWith( rect );
+        break;
+      }
+
+      case Qgis::LayerType::Raster:
+      case Qgis::LayerType::Plugin:
+      case Qgis::LayerType::Mesh:
+      case Qgis::LayerType::Annotation:
+      case Qgis::LayerType::PointCloud:
+      case Qgis::LayerType::Group:
+      case Qgis::LayerType::TiledScene:
+        break;
+    }
   }
 
   if ( selectionExtent.isNull() )
   {
-    emit messageEmitted( tr( "Cannot zoom to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::Warning );
+    emit messageEmitted( tr( "Cannot zoom to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::MessageLevel::Warning );
     return;
   }
 
   zoomToFeatureExtent( selectionExtent );
+}
+
+void QgsMapCanvas::zoomToLayers( const QList<QgsMapLayer *> &layers )
+{
+  QgsRectangle extent;
+  extent.setNull();
+
+  for ( QgsMapLayer *mapLayer : layers )
+  {
+    QgsRectangle layerExtent = mapLayer->extent();
+
+    QgsVectorLayer *vLayer = qobject_cast<QgsVectorLayer *>( mapLayer );
+    if ( vLayer )
+    {
+      if ( vLayer->geometryType() == Qgis::GeometryType::Null )
+        continue;
+
+      if ( layerExtent.isEmpty() )
+      {
+        vLayer->updateExtents();
+        layerExtent = vLayer->extent();
+      }
+    }
+
+    if ( layerExtent.isNull() )
+      continue;
+
+    //transform extent
+    layerExtent = mapSettings().layerExtentToOutputExtent( mapLayer, layerExtent );
+
+    extent.combineExtentWith( layerExtent );
+  }
+
+  if ( extent.isNull() )
+    return;
+
+  // Increase bounding box with 5%, so that layer is a bit inside the borders
+  extent.scale( 1.05 );
+
+  //zoom to bounding box
+  setExtent( extent, true );
+  refresh();
 }
 
 QgsDoubleRange QgsMapCanvas::zRange() const
@@ -1421,8 +2032,7 @@ void QgsMapCanvas::setZRange( const QgsDoubleRange &range )
 
   // we need to discard any previously cached images which are elevation aware, so that these will be updated when
   // the canvas is redrawn
-  if ( !mJob )
-    clearElevationCache();
+  mCacheInvalidations |= CacheInvalidationType::Elevation;
 
   autoRefreshTriggered();
 }
@@ -1431,7 +2041,7 @@ void QgsMapCanvas::zoomToFeatureExtent( QgsRectangle &rect )
 {
   // no selected features, only one selected point feature
   //or two point features with the same x- or y-coordinates
-  if ( rect.isEmpty() )
+  if ( rect.isEmpty() || !QgsMapSettingsUtils::isValidExtent( rect ) )
   {
     // zoom in
     QgsPointXY c = rect.center();
@@ -1447,7 +2057,7 @@ void QgsMapCanvas::zoomToFeatureExtent( QgsRectangle &rect )
     rect.scale( 1.05 );
   }
 
-  setExtent( rect );
+  setExtent( rect, true );
   refresh();
 }
 
@@ -1470,9 +2080,8 @@ void QgsMapCanvas::zoomToFeatureIds( QgsVectorLayer *layer, const QgsFeatureIds 
   }
   else
   {
-    emit messageEmitted( tr( "Zoom to feature id failed" ), errorMsg, Qgis::Warning );
+    emit messageEmitted( tr( "Zoom to feature id failed" ), errorMsg, Qgis::MessageLevel::Warning );
   }
-
 }
 
 void QgsMapCanvas::panToFeatureIds( QgsVectorLayer *layer, const QgsFeatureIds &ids, bool alwaysRecenter )
@@ -1492,14 +2101,14 @@ void QgsMapCanvas::panToFeatureIds( QgsVectorLayer *layer, const QgsFeatureIds &
   }
   else
   {
-    emit messageEmitted( tr( "Pan to feature id failed" ), errorMsg, Qgis::Warning );
+    emit messageEmitted( tr( "Pan to feature id failed" ), errorMsg, Qgis::MessageLevel::Warning );
   }
 }
 
 bool QgsMapCanvas::boundingBoxOfFeatureIds( const QgsFeatureIds &ids, QgsVectorLayer *layer, QgsRectangle &bbox, QString &errorMsg ) const
 {
   QgsFeatureIterator it = layer->getFeatures( QgsFeatureRequest().setFilterFids( ids ).setNoAttributes() );
-  bbox.setMinimal();
+  bbox.setNull();
   QgsFeature fet;
   int featureCount = 0;
   errorMsg.clear();
@@ -1533,21 +2142,58 @@ bool QgsMapCanvas::boundingBoxOfFeatureIds( const QgsFeatureIds &ids, QgsVectorL
   return true;
 }
 
-void QgsMapCanvas::panToSelected( QgsVectorLayer *layer )
+void QgsMapCanvas::panToSelected( QgsMapLayer *layer )
 {
   if ( !layer )
   {
     // use current layer by default
-    layer = qobject_cast<QgsVectorLayer *>( mCurrentLayer );
+    layer = mCurrentLayer;
   }
-
-  if ( !layer || !layer->isSpatial() || layer->selectedFeatureCount() == 0 )
+  if ( !layer || !layer->isSpatial() )
     return;
 
-  QgsRectangle rect = layer->boundingBoxOfSelected();
+  QgsRectangle rect;
+  switch ( layer->type() )
+  {
+    case Qgis::LayerType::Vector:
+    {
+      QgsVectorLayer *vLayer = qobject_cast<QgsVectorLayer *>( layer );
+      if ( vLayer->selectedFeatureCount() == 0 )
+        return;
+
+      rect = vLayer->boundingBoxOfSelected();
+      break;
+    }
+    case Qgis::LayerType::VectorTile:
+    {
+      QgsVectorTileLayer *vtLayer = qobject_cast<QgsVectorTileLayer *>( layer );
+      if ( vtLayer->selectedFeatureCount() == 0 )
+        return;
+
+      const QList<QgsFeature> selectedFeatures = vtLayer->selectedFeatures();
+      for ( const QgsFeature &feature : selectedFeatures )
+      {
+        if ( !feature.hasGeometry() )
+          continue;
+
+        rect.combineExtentWith( feature.geometry().boundingBox() );
+      }
+      break;
+    }
+
+    case Qgis::LayerType::Raster:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Mesh:
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::PointCloud:
+    case Qgis::LayerType::Group:
+    case Qgis::LayerType::TiledScene:
+      return;
+  }
+
   if ( rect.isNull() )
   {
-    emit messageEmitted( tr( "Cannot pan to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::Warning );
+    emit messageEmitted( tr( "Cannot pan to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::MessageLevel::Warning );
     return;
   }
 
@@ -1558,34 +2204,70 @@ void QgsMapCanvas::panToSelected( QgsVectorLayer *layer )
 
 void QgsMapCanvas::panToSelected( const QList<QgsMapLayer *> &layers )
 {
-  QgsRectangle rect;
-  rect.setMinimal();
   QgsRectangle selectionExtent;
-  selectionExtent.setMinimal();
+  selectionExtent.setNull();
 
   for ( QgsMapLayer *mapLayer : layers )
   {
-    QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mapLayer );
-
-    if ( !layer || !layer->isSpatial() || layer->selectedFeatureCount() == 0 )
+    if ( !mapLayer || !mapLayer->isSpatial() )
       continue;
 
-    rect = layer->boundingBoxOfSelected();
+    QgsRectangle rect;
+    switch ( mapLayer->type() )
+    {
+      case Qgis::LayerType::Vector:
+      {
+        QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mapLayer );
+        if ( layer->selectedFeatureCount() == 0 )
+          continue;
 
-    if ( rect.isNull() )
-      continue;
+        rect = layer->boundingBoxOfSelected();
 
-    rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+        if ( rect.isNull() )
+          continue;
 
-    if ( layer->geometryType() == QgsWkbTypes::PointGeometry && rect.isEmpty() )
-      rect = optimalExtentForPointLayer( layer, rect.center() );
+        rect = mapSettings().layerExtentToOutputExtent( layer, rect );
+
+        if ( layer->geometryType() == Qgis::GeometryType::Point && rect.isEmpty() )
+          rect = optimalExtentForPointLayer( layer, rect.center() );
+        break;
+      }
+
+      case Qgis::LayerType::VectorTile:
+      {
+        QgsVectorTileLayer *vtLayer = qobject_cast<QgsVectorTileLayer *>( mapLayer );
+        if ( vtLayer->selectedFeatureCount() == 0 )
+          continue;
+
+        const QList<QgsFeature> selectedFeatures = vtLayer->selectedFeatures();
+        for ( const QgsFeature &feature : selectedFeatures )
+        {
+          if ( !feature.hasGeometry() )
+            continue;
+
+          rect.combineExtentWith( feature.geometry().boundingBox() );
+        }
+
+        rect = mapSettings().layerExtentToOutputExtent( vtLayer, rect );
+        break;
+      }
+
+      case Qgis::LayerType::Raster:
+      case Qgis::LayerType::Plugin:
+      case Qgis::LayerType::Mesh:
+      case Qgis::LayerType::Annotation:
+      case Qgis::LayerType::PointCloud:
+      case Qgis::LayerType::Group:
+      case Qgis::LayerType::TiledScene:
+        continue;
+    }
 
     selectionExtent.combineExtentWith( rect );
   }
 
   if ( selectionExtent.isNull() )
   {
-    emit messageEmitted( tr( "Cannot pan to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::Warning );
+    emit messageEmitted( tr( "Cannot pan to selected feature(s)" ), tr( "No extent could be determined." ), Qgis::MessageLevel::Warning );
     return;
   }
 
@@ -1593,16 +2275,14 @@ void QgsMapCanvas::panToSelected( const QList<QgsMapLayer *> &layers )
   refresh();
 }
 
-void QgsMapCanvas::flashFeatureIds( QgsVectorLayer *layer, const QgsFeatureIds &ids,
-                                    const QColor &color1, const QColor &color2,
-                                    int flashes, int duration )
+void QgsMapCanvas::flashFeatureIds( QgsVectorLayer *layer, const QgsFeatureIds &ids, const QColor &color1, const QColor &color2, int flashes, int duration )
 {
   if ( !layer )
   {
     return;
   }
 
-  QList< QgsGeometry > geoms;
+  QList<QgsGeometry> geoms;
 
   QgsFeatureIterator it = layer->getFeatures( QgsFeatureRequest().setFilterFids( ids ).setNoAttributes() );
   QgsFeature fet;
@@ -1621,23 +2301,25 @@ void QgsMapCanvas::flashGeometries( const QList<QgsGeometry> &geometries, const 
   if ( geometries.isEmpty() )
     return;
 
-  QgsWkbTypes::GeometryType geomType = QgsWkbTypes::geometryType( geometries.at( 0 ).wkbType() );
+  Qgis::GeometryType geomType = QgsWkbTypes::geometryType( geometries.at( 0 ).wkbType() );
   QgsRubberBand *rb = new QgsRubberBand( this, geomType );
   for ( const QgsGeometry &geom : geometries )
-    rb->addGeometry( geom, crs );
+    rb->addGeometry( geom, crs, false );
+  rb->updatePosition();
+  rb->update();
 
-  if ( geomType == QgsWkbTypes::LineGeometry || geomType == QgsWkbTypes::PointGeometry )
+  if ( geomType == Qgis::GeometryType::Line || geomType == Qgis::GeometryType::Point )
   {
     rb->setWidth( 2 );
     rb->setSecondaryStrokeColor( QColor( 255, 255, 255 ) );
   }
-  if ( geomType == QgsWkbTypes::PointGeometry )
-    rb->setIcon( QgsRubberBand::ICON_CIRCLE );
+  if ( geomType == Qgis::GeometryType::Point )
+    rb->setIcon( Qgis::RubberBandIconType::Circle );
 
   QColor startColor = color1;
   if ( !startColor.isValid() )
   {
-    if ( geomType == QgsWkbTypes::PolygonGeometry )
+    if ( geomType == Qgis::GeometryType::Polygon )
     {
       startColor = rb->fillColor();
     }
@@ -1656,24 +2338,19 @@ void QgsMapCanvas::flashGeometries( const QList<QgsGeometry> &geometries, const 
 
 
   QVariantAnimation *animation = new QVariantAnimation( this );
-  connect( animation, &QVariantAnimation::finished, this, [animation, rb]
-  {
+  connect( animation, &QVariantAnimation::finished, this, [animation, rb] {
     animation->deleteLater();
     delete rb;
   } );
-  connect( animation, &QPropertyAnimation::valueChanged, this, [rb, geomType]( const QVariant & value )
-  {
+  connect( animation, &QPropertyAnimation::valueChanged, this, [rb, geomType]( const QVariant &value ) {
     QColor c = value.value<QColor>();
-    if ( geomType == QgsWkbTypes::PolygonGeometry )
+    if ( geomType == Qgis::GeometryType::Polygon )
     {
       rb->setFillColor( c );
     }
     else
     {
       rb->setStrokeColor( c );
-      QColor c = rb->secondaryStrokeColor();
-      c.setAlpha( c.alpha() );
-      rb->setSecondaryStrokeColor( c );
     }
     rb->update();
   } );
@@ -1683,9 +2360,9 @@ void QgsMapCanvas::flashGeometries( const QList<QgsGeometry> &geometries, const 
   double midStep = 0.2 / flashes;
   for ( int i = 0; i < flashes; ++i )
   {
-    double start = static_cast< double >( i ) / flashes;
+    double start = static_cast<double>( i ) / flashes;
     animation->setKeyValueAt( start + midStep, startColor );
-    double end = static_cast< double >( i + 1 ) / flashes;
+    double end = static_cast<double>( i + 1 ) / flashes;
     if ( !qgsDoubleNear( end, 1.0 ) )
       animation->setKeyValueAt( end, endColor );
   }
@@ -1701,9 +2378,20 @@ void QgsMapCanvas::keyPressEvent( QKeyEvent *e )
     return;
   }
 
-  if ( ! mCanvasProperties->mouseButtonDown )
+  // Don't want to interfer with mouse events
+  if ( !mCanvasProperties->mouseButtonDown )
   {
-    // Don't want to interfer with mouse events
+    // this is backwards, but we can't change now without breaking api because
+    // forever QgsMapTools have had to explicitly mark events as ignored in order to
+    // indicate that they've consumed the event and that the default behavior should not
+    // be applied..!
+    e->accept();
+    if ( mMapTool )
+    {
+      mMapTool->keyPressEvent( e );
+      if ( !e->isAccepted() ) // map tool consumed event
+        return;
+    }
 
     QgsRectangle currentExtent = mapSettings().visibleExtent();
     double dx = std::fabs( currentExtent.width() / 4 );
@@ -1712,50 +2400,48 @@ void QgsMapCanvas::keyPressEvent( QKeyEvent *e )
     switch ( e->key() )
     {
       case Qt::Key_Left:
-        QgsDebugMsgLevel( QStringLiteral( "Pan left" ), 2 );
+        QgsDebugMsgLevel( u"Pan left"_s, 2 );
         setCenter( center() - QgsVector( dx, 0 ).rotateBy( rotation() * M_PI / 180.0 ) );
         refresh();
         break;
 
       case Qt::Key_Right:
-        QgsDebugMsgLevel( QStringLiteral( "Pan right" ), 2 );
+        QgsDebugMsgLevel( u"Pan right"_s, 2 );
         setCenter( center() + QgsVector( dx, 0 ).rotateBy( rotation() * M_PI / 180.0 ) );
         refresh();
         break;
 
       case Qt::Key_Up:
-        QgsDebugMsgLevel( QStringLiteral( "Pan up" ), 2 );
+        QgsDebugMsgLevel( u"Pan up"_s, 2 );
         setCenter( center() + QgsVector( 0, dy ).rotateBy( rotation() * M_PI / 180.0 ) );
         refresh();
         break;
 
       case Qt::Key_Down:
-        QgsDebugMsgLevel( QStringLiteral( "Pan down" ), 2 );
+        QgsDebugMsgLevel( u"Pan down"_s, 2 );
         setCenter( center() - QgsVector( 0, dy ).rotateBy( rotation() * M_PI / 180.0 ) );
         refresh();
         break;
 
-
-
       case Qt::Key_Space:
-        QgsDebugMsgLevel( QStringLiteral( "Pressing pan selector" ), 2 );
+        QgsDebugMsgLevel( u"Pressing pan selector"_s, 2 );
 
         //mCanvasProperties->dragging = true;
-        if ( ! e->isAutoRepeat() )
+        if ( !e->isAutoRepeat() )
         {
-          QApplication::setOverrideCursor( Qt::ClosedHandCursor );
+          mTemporaryCursorOverride = std::make_unique<QgsTemporaryCursorOverride>( Qt::ClosedHandCursor );
           mCanvasProperties->panSelectorDown = true;
           panActionStart( mCanvasProperties->mouseLastXY );
         }
         break;
 
       case Qt::Key_PageUp:
-        QgsDebugMsgLevel( QStringLiteral( "Zoom in" ), 2 );
+        QgsDebugMsgLevel( u"Zoom in"_s, 2 );
         zoomIn();
         break;
 
       case Qt::Key_PageDown:
-        QgsDebugMsgLevel( QStringLiteral( "Zoom out" ), 2 );
+        QgsDebugMsgLevel( u"Zoom out"_s, 2 );
         zoomOut();
         break;
 
@@ -1773,31 +2459,28 @@ void QgsMapCanvas::keyPressEvent( QKeyEvent *e )
 
       default:
         // Pass it on
-        if ( mMapTool )
+        if ( !mMapTool )
         {
-          mMapTool->keyPressEvent( e );
+          e->ignore();
+          QgsDebugMsgLevel( "Ignoring key: " + QString::number( e->key() ), 2 );
         }
-        else e->ignore();
-
-        QgsDebugMsgLevel( "Ignoring key: " + QString::number( e->key() ), 2 );
     }
   }
 
   emit keyPressed( e );
-
-} //keyPressEvent()
+}
 
 void QgsMapCanvas::keyReleaseEvent( QKeyEvent *e )
 {
-  QgsDebugMsgLevel( QStringLiteral( "keyRelease event" ), 2 );
+  QgsDebugMsgLevel( u"keyRelease event"_s, 2 );
 
   switch ( e->key() )
   {
     case Qt::Key_Space:
       if ( !e->isAutoRepeat() && mCanvasProperties->panSelectorDown )
       {
-        QgsDebugMsgLevel( QStringLiteral( "Releasing pan selector" ), 2 );
-        QApplication::restoreOverrideCursor();
+        QgsDebugMsgLevel( u"Releasing pan selector"_s, 2 );
+        mTemporaryCursorOverride.reset();
         mCanvasProperties->panSelectorDown = false;
         panActionEnd( mCanvasProperties->mouseLastXY );
       }
@@ -1809,7 +2492,8 @@ void QgsMapCanvas::keyReleaseEvent( QKeyEvent *e )
       {
         mMapTool->keyReleaseEvent( e );
       }
-      else e->ignore();
+      else
+        e->ignore();
 
       QgsDebugMsgLevel( "Ignoring key release: " + QString::number( e->key() ), 2 );
   }
@@ -1824,33 +2508,44 @@ void QgsMapCanvas::mouseDoubleClickEvent( QMouseEvent *e )
   // call handler of current map tool
   if ( mMapTool )
   {
-    std::unique_ptr<QgsMapMouseEvent> me( new QgsMapMouseEvent( this, e ) );
+    auto me = std::make_unique<QgsMapMouseEvent>( this, e );
     mMapTool->canvasDoubleClickEvent( me.get() );
   }
-}// mouseDoubleClickEvent
+} // mouseDoubleClickEvent
 
 
 void QgsMapCanvas::beginZoomRect( QPoint pos )
 {
   mZoomRect.setRect( 0, 0, 0, 0 );
-  QApplication::setOverrideCursor( mZoomCursor );
+  mTemporaryCursorOverride = std::make_unique<QgsTemporaryCursorOverride>( mZoomCursor );
   mZoomDragging = true;
-  mZoomRubberBand.reset( new QgsRubberBand( this, QgsWkbTypes::PolygonGeometry ) );
+  mZoomRubberBand = std::make_unique<QgsRubberBand>( this, Qgis::GeometryType::Polygon );
   QColor color( Qt::blue );
   color.setAlpha( 63 );
   mZoomRubberBand->setColor( color );
   mZoomRect.setTopLeft( pos );
 }
 
+void QgsMapCanvas::stopZoomRect()
+{
+  if ( mZoomDragging )
+  {
+    mZoomDragging = false;
+    mZoomRubberBand.reset( nullptr );
+    mTemporaryCursorOverride.reset();
+  }
+}
+
 void QgsMapCanvas::endZoomRect( QPoint pos )
 {
-  mZoomDragging = false;
-  mZoomRubberBand.reset( nullptr );
-  QApplication::restoreOverrideCursor();
+  stopZoomRect();
 
   // store the rectangle
   mZoomRect.setRight( pos.x() );
   mZoomRect.setBottom( pos.y() );
+
+  //account for bottom right -> top left dragging
+  mZoomRect = mZoomRect.normalized();
 
   if ( mZoomRect.width() < 5 && mZoomRect.height() < 5 )
   {
@@ -1858,14 +2553,11 @@ void QgsMapCanvas::endZoomRect( QPoint pos )
     return;
   }
 
-  //account for bottom right -> top left dragging
-  mZoomRect = mZoomRect.normalized();
-
   // set center and zoom
   const QSize &zoomRectSize = mZoomRect.size();
   const QSize &canvasSize = mSettings.outputSize();
-  double sfx = static_cast< double >( zoomRectSize.width() ) / canvasSize.width();
-  double sfy = static_cast< double >( zoomRectSize.height() ) / canvasSize.height();
+  double sfx = static_cast<double>( zoomRectSize.width() ) / canvasSize.width();
+  double sfy = static_cast<double>( zoomRectSize.height() ) / canvasSize.height();
   double sf = std::max( sfx, sfy );
 
   QgsPointXY c = mSettings.mapToPixel().toMapCoordinates( mZoomRect.center() );
@@ -1874,34 +2566,63 @@ void QgsMapCanvas::endZoomRect( QPoint pos )
   refresh();
 }
 
-void QgsMapCanvas::mousePressEvent( QMouseEvent *e )
+void QgsMapCanvas::startPan()
 {
-  //use middle mouse button for panning, map tools won't receive any events in that case
-  if ( e->button() == Qt::MidButton )
+  if ( !mCanvasProperties->panSelectorDown )
   {
     mCanvasProperties->panSelectorDown = true;
+    mTemporaryCursorOverride = std::make_unique<QgsTemporaryCursorOverride>( Qt::ClosedHandCursor );
     panActionStart( mCanvasProperties->mouseLastXY );
+  }
+}
+
+void QgsMapCanvas::stopPan()
+{
+  if ( mCanvasProperties->panSelectorDown )
+  {
+    mCanvasProperties->panSelectorDown = false;
+    mTemporaryCursorOverride.reset();
+    panActionEnd( mCanvasProperties->mouseLastXY );
+  }
+}
+
+void QgsMapCanvas::mousePressEvent( QMouseEvent *e )
+{
+  // use shift+middle mouse button for zooming, map tools won't receive any events in that case
+  if ( e->button() == Qt::MiddleButton && e->modifiers() & Qt::ShiftModifier )
+  {
+    beginZoomRect( e->pos() );
+    return;
+  }
+  //use middle mouse button for panning, map tools won't receive any events in that case
+  else if ( e->button() == Qt::MiddleButton )
+  {
+    startPan();
   }
   else
   {
+    // If doing a middle-button-click, followed by a right-button-click,
+    // cancel the pan or zoomRect action started above.
+    stopPan();
+    stopZoomRect();
+
     // call handler of current map tool
     if ( mMapTool )
     {
-      if ( mMapTool->flags() & QgsMapTool::AllowZoomRect && e->button() == Qt::LeftButton
-           && e->modifiers() & Qt::ShiftModifier )
+      if ( mMapTool->flags() & QgsMapTool::AllowZoomRect && e->button() == Qt::LeftButton && e->modifiers() & Qt::ShiftModifier )
       {
         beginZoomRect( e->pos() );
         return;
       }
       else if ( mMapTool->flags() & QgsMapTool::ShowContextMenu && e->button() == Qt::RightButton )
       {
-        std::unique_ptr<QgsMapMouseEvent> me( new QgsMapMouseEvent( this, e ) );
+        auto me = std::make_unique<QgsMapMouseEvent>( this, e );
         showContextMenu( me.get() );
         return;
       }
       else
       {
-        std::unique_ptr<QgsMapMouseEvent> me( new QgsMapMouseEvent( this, e ) );
+        auto me = std::make_unique<QgsMapMouseEvent>( this, e );
         mMapTool->canvasPressEvent( me.get() );
       }
     }
@@ -1918,11 +2639,16 @@ void QgsMapCanvas::mousePressEvent( QMouseEvent *e )
 
 void QgsMapCanvas::mouseReleaseEvent( QMouseEvent *e )
 {
-  //use middle mouse button for panning, map tools won't receive any events in that case
-  if ( e->button() == Qt::MidButton )
+  // if using shift+middle mouse button for zooming, end zooming and return
+  if ( mZoomDragging && e->button() == Qt::MiddleButton )
   {
-    mCanvasProperties->panSelectorDown = false;
-    panActionEnd( mCanvasProperties->mouseLastXY );
+    endZoomRect( e->pos() );
+    return;
+  }
+  //use middle mouse button for panning, map tools won't receive any events in that case
+  else if ( e->button() == Qt::MiddleButton )
+  {
+    stopPan();
   }
   else if ( e->button() == Qt::BackButton )
   {
@@ -1945,26 +2671,7 @@ void QgsMapCanvas::mouseReleaseEvent( QMouseEvent *e )
     // call handler of current map tool
     if ( mMapTool )
     {
-      // right button was pressed in zoom tool? return to previous non zoom tool
-      if ( e->button() == Qt::RightButton && mMapTool->flags() & QgsMapTool::Transient )
-      {
-        QgsDebugMsgLevel( QStringLiteral( "Right click in map tool zoom or pan, last tool is %1." ).arg(
-                            mLastNonZoomMapTool ? QStringLiteral( "not null" ) : QStringLiteral( "null" ) ), 2 );
-
-        QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( mCurrentLayer );
-
-        // change to older non-zoom tool
-        if ( mLastNonZoomMapTool
-             && ( !( mLastNonZoomMapTool->flags() & QgsMapTool::EditTool )
-                  || ( vlayer && vlayer->isEditable() ) ) )
-        {
-          QgsMapTool *t = mLastNonZoomMapTool;
-          mLastNonZoomMapTool = nullptr;
-          setMapTool( t );
-        }
-        return;
-      }
-      std::unique_ptr<QgsMapMouseEvent> me( new QgsMapMouseEvent( this, e ) );
+      auto me = std::make_unique<QgsMapMouseEvent>( this, e );
       mMapTool->canvasReleaseEvent( me.get() );
     }
   }
@@ -1974,7 +2681,6 @@ void QgsMapCanvas::mouseReleaseEvent( QMouseEvent *e )
 
   if ( mCanvasProperties->panSelectorDown )
     return;
-
 }
 
 void QgsMapCanvas::resizeEvent( QResizeEvent *e )
@@ -2003,7 +2709,7 @@ void QgsMapCanvas::resizeEvent( QResizeEvent *e )
     updateScale();
   }
 
-  emit extentsChanged();
+  emitExtentsChanged();
 }
 
 void QgsMapCanvas::paintEvent( QPaintEvent *e )
@@ -2036,7 +2742,7 @@ void QgsMapCanvas::wheelEvent( QWheelEvent *e )
   // Zoom the map canvas in response to a mouse wheel event. Moving the
   // wheel forward (away) from the user zooms in
 
-  QgsDebugMsgLevel( "Wheel event delta " + QString::number( e->delta() ), 2 );
+  QgsDebugMsgLevel( "Wheel event delta " + QString::number( e->angleDelta().y() ), 2 );
 
   if ( mMapTool )
   {
@@ -2045,13 +2751,15 @@ void QgsMapCanvas::wheelEvent( QWheelEvent *e )
       return;
   }
 
-  if ( e->delta() == 0 )
+  if ( e->angleDelta().y() == 0 )
   {
     e->accept();
     return;
   }
 
-  double zoomFactor = e->angleDelta().y() > 0 ? 1. / zoomInFactor() : zoomOutFactor();
+  bool reverseZoom = QgsSettingsRegistryGui::settingsReverseWheelZoom->value();
+  bool zoomIn = reverseZoom ? e->angleDelta().y() < 0 : e->angleDelta().y() > 0;
+  double zoomFactor = zoomIn ? 1. / zoomInFactor() : zoomOutFactor();
 
   // "Normal" mouse have an angle delta of 120, precision mouses provide data faster, in smaller steps
   zoomFactor = 1.0 + ( zoomFactor - 1.0 ) / 120.0 * std::fabs( e->angleDelta().y() );
@@ -2062,13 +2770,12 @@ void QgsMapCanvas::wheelEvent( QWheelEvent *e )
     zoomFactor = 1.0 + ( zoomFactor - 1.0 ) / 20.0;
   }
 
-  double signedWheelFactor = e->angleDelta().y() > 0 ? 1 / zoomFactor : zoomFactor;
+  double signedWheelFactor = zoomIn ? 1 / zoomFactor : zoomFactor;
 
   // zoom map to mouse cursor by scaling
   QgsPointXY oldCenter = center();
-  QgsPointXY mousePos( getCoordinateTransform()->toMapCoordinates( e->x(), e->y() ) );
-  QgsPointXY newCenter( mousePos.x() + ( ( oldCenter.x() - mousePos.x() ) * signedWheelFactor ),
-                        mousePos.y() + ( ( oldCenter.y() - mousePos.y() ) * signedWheelFactor ) );
+  QgsPointXY mousePos( getCoordinateTransform()->toMapCoordinates( e->position().x(), e->position().y() ) );
+  QgsPointXY newCenter( mousePos.x() + ( ( oldCenter.x() - mousePos.x() ) * signedWheelFactor ), mousePos.y() + ( ( oldCenter.y() - mousePos.y() ) * signedWheelFactor ) );
 
   zoomByFactor( signedWheelFactor, &newCenter );
   e->accept();
@@ -2076,18 +2783,18 @@ void QgsMapCanvas::wheelEvent( QWheelEvent *e )
 
 void QgsMapCanvas::setWheelFactor( double factor )
 {
-  mWheelZoomFactor = factor;
+  mWheelZoomFactor = std::max( factor, 1.01 );
 }
 
 void QgsMapCanvas::zoomIn()
 {
-  // magnification is alreday handled in zoomByFactor
+  // magnification is already handled in zoomByFactor
   zoomByFactor( zoomInFactor() );
 }
 
 void QgsMapCanvas::zoomOut()
 {
-  // magnification is alreday handled in zoomByFactor
+  // magnification is already handled in zoomByFactor
   zoomByFactor( zoomOutFactor() );
 }
 
@@ -2101,7 +2808,7 @@ void QgsMapCanvas::zoomWithCenter( int x, int y, bool zoomIn )
   double scaleFactor = ( zoomIn ? zoomInFactor() : zoomOutFactor() );
 
   // transform the mouse pos to map coordinates
-  QgsPointXY center  = getCoordinateTransform()->toMapCoordinates( x, y );
+  QgsPointXY center = getCoordinateTransform()->toMapCoordinates( x, y );
 
   if ( mScaleLocked )
   {
@@ -2110,16 +2817,17 @@ void QgsMapCanvas::zoomWithCenter( int x, int y, bool zoomIn )
   }
   else
   {
-    QgsRectangle r = mapSettings().visibleExtent();
-    r.scale( scaleFactor, &center );
-    setExtent( r, true );
-    refresh();
+    zoomByFactor( scaleFactor, &center );
   }
 }
 
 void QgsMapCanvas::setScaleLocked( bool isLocked )
 {
-  mScaleLocked = isLocked;
+  if ( mScaleLocked != isLocked )
+  {
+    mScaleLocked = isLocked;
+    emit scaleLockChanged( mScaleLocked );
+  }
 }
 
 void QgsMapCanvas::mouseMoveEvent( QMouseEvent *e )
@@ -2141,7 +2849,7 @@ void QgsMapCanvas::mouseMoveEvent( QMouseEvent *e )
     // call handler of current map tool
     if ( mMapTool )
     {
-      std::unique_ptr<QgsMapMouseEvent> me( new QgsMapMouseEvent( this, e ) );
+      auto me = std::make_unique<QgsMapMouseEvent>( this, e );
       mMapTool->canvasMoveEvent( me.get() );
     }
   }
@@ -2159,6 +2867,12 @@ void QgsMapCanvas::setMapTool( QgsMapTool *tool, bool clean )
   if ( !tool )
     return;
 
+  if ( tool == mMapTool )
+  {
+    mMapTool->reactivate();
+    return;
+  }
+
   if ( mMapTool )
   {
     if ( clean )
@@ -2166,19 +2880,6 @@ void QgsMapCanvas::setMapTool( QgsMapTool *tool, bool clean )
 
     disconnect( mMapTool, &QObject::destroyed, this, &QgsMapCanvas::mapToolDestroyed );
     mMapTool->deactivate();
-  }
-
-  if ( ( tool->flags() & QgsMapTool::Transient )
-       && mMapTool && !( mMapTool->flags() & QgsMapTool::Transient ) )
-  {
-    // if zoom or pan tool will be active, save old tool
-    // to bring it back on right click
-    // (but only if it wasn't also zoom or pan tool)
-    mLastNonZoomMapTool = mMapTool;
-  }
-  else
-  {
-    mLastNonZoomMapTool = nullptr;
   }
 
   QgsMapTool *oldTool = mMapTool;
@@ -2205,16 +2906,23 @@ void QgsMapCanvas::unsetMapTool( QgsMapTool *tool )
     emit mapToolSet( nullptr, oldTool );
     setCursor( Qt::ArrowCursor );
   }
-
-  if ( mLastNonZoomMapTool && mLastNonZoomMapTool == tool )
-  {
-    mLastNonZoomMapTool = nullptr;
-  }
 }
 
 void QgsMapCanvas::setProject( QgsProject *project )
 {
+  if ( mProject )
+  {
+    disconnect( mProject, &QgsProject::elevationShadingRendererChanged, this, &QgsMapCanvas::onElevationShadingRendererChanged );
+    disconnect( mProject, &QgsProject::cleared, this, &QgsMapCanvas::onElevationShadingRendererChanged );
+  }
+
   mProject = project;
+
+  if ( mProject )
+  {
+    connect( mProject, &QgsProject::elevationShadingRendererChanged, this, &QgsMapCanvas::onElevationShadingRendererChanged );
+    connect( mProject, &QgsProject::cleared, this, &QgsMapCanvas::onElevationShadingRendererChanged );
+  }
 }
 
 void QgsMapCanvas::setCanvasColor( const QColor &color )
@@ -2284,12 +2992,11 @@ QColor QgsMapCanvas::selectionColor() const
 int QgsMapCanvas::layerCount() const
 {
   return mapSettings().layers().size();
-} // layerCount
+}
 
-
-QList<QgsMapLayer *> QgsMapCanvas::layers() const
+QList<QgsMapLayer *> QgsMapCanvas::layers( bool expandGroupLayers ) const
 {
-  return mapSettings().layers();
+  return mapSettings().layers( expandGroupLayers );
 }
 
 void QgsMapCanvas::layerStateChange()
@@ -2313,7 +3020,7 @@ double QgsMapCanvas::mapUnitsPerPixel() const
   return mapSettings().mapUnitsPerPixel();
 }
 
-QgsUnitTypes::DistanceUnit QgsMapCanvas::mapUnits() const
+Qgis::DistanceUnit QgsMapCanvas::mapUnits() const
 {
   return mapSettings().mapUnits();
 }
@@ -2342,7 +3049,7 @@ void QgsMapCanvas::setTheme( const QString &theme )
   if ( theme.isEmpty() || !QgsProject::instance()->mapThemeCollection()->hasMapTheme( theme ) )
   {
     mTheme.clear();
-    mSettings.setLayerStyleOverrides( QMap< QString, QString>() );
+    mSettings.setLayerStyleOverrides( QMap<QString, QString>() );
     setLayers( QgsProject::instance()->mapThemeCollection()->masterVisibleLayers() );
     emit themeChanged( QString() );
   }
@@ -2370,7 +3077,7 @@ void QgsMapCanvas::setRenderFlag( bool flag )
 void QgsMapCanvas::connectNotify( const char *signal )
 {
   Q_UNUSED( signal )
-  QgsDebugMsg( "QgsMapCanvas connected to " + QString( signal ) );
+  QgsDebugMsgLevel( "QgsMapCanvas connected to " + QString( signal ), 2 );
 } //connectNotify
 #endif
 
@@ -2401,8 +3108,28 @@ void QgsMapCanvas::updateAutoRefreshTimer()
   const auto layers = mSettings.layers();
   for ( QgsMapLayer *layer : layers )
   {
+    int layerRefreshInterval = 0;
+
     if ( layer->hasAutoRefreshEnabled() && layer->autoRefreshInterval() > 0 )
-      minAutoRefreshInterval = minAutoRefreshInterval > 0 ? std::min( layer->autoRefreshInterval(), minAutoRefreshInterval ) : layer->autoRefreshInterval();
+    {
+      layerRefreshInterval = layer->autoRefreshInterval();
+    }
+    else if ( QgsVectorLayer *vectorLayer = qobject_cast<QgsVectorLayer *>( layer ) )
+    {
+      if ( const QgsFeatureRenderer *renderer = vectorLayer->renderer() )
+      {
+        const double rendererRefreshRate = QgsSymbolLayerUtils::rendererFrameRate( renderer );
+        if ( rendererRefreshRate > 0 )
+        {
+          layerRefreshInterval = 1000 / rendererRefreshRate;
+        }
+      }
+    }
+
+    if ( layerRefreshInterval == 0 )
+      continue;
+
+    minAutoRefreshInterval = minAutoRefreshInterval > 0 ? std::min( layerRefreshInterval, minAutoRefreshInterval ) : layerRefreshInterval;
   }
 
   if ( minAutoRefreshInterval > 0 )
@@ -2426,10 +3153,9 @@ void QgsMapCanvas::projectThemesChanged()
     // theme has been removed - stop following
     setTheme( QString() );
   }
-
 }
 
-QgsMapTool *QgsMapCanvas::mapTool()
+QgsMapTool *QgsMapCanvas::mapTool() const
 {
   return mMapTool;
 }
@@ -2473,7 +3199,12 @@ void QgsMapCanvas::panAction( QMouseEvent *e )
 
   QgsPointXY currentMapPoint = getCoordinateTransform()->toMapCoordinates( e->pos() );
   QgsPointXY startMapPoint = getCoordinateTransform()->toMapCoordinates( mCanvasProperties->rubberStartPoint );
-  emit panDistanceBearingChanged( mDa.measureLine( currentMapPoint, startMapPoint ), mDa.lengthUnits(), mDa.bearing( currentMapPoint, startMapPoint ) * 180 / M_PI );
+  try
+  {
+    emit panDistanceBearingChanged( mDa.measureLine( currentMapPoint, startMapPoint ), mDa.lengthUnits(), mDa.bearing( currentMapPoint, startMapPoint ) * 180 / M_PI );
+  }
+  catch ( QgsCsException & )
+  {}
 
   // move all map canvas items
   moveCanvasContents();
@@ -2497,7 +3228,7 @@ void QgsMapCanvas::dropEvent( QDropEvent *event )
     for ( const QgsMimeDataUtils::Uri &uri : lst )
     {
       bool handled = false;
-      for ( QgsCustomDropHandler *handler : qgis::as_const( mDropHandlers ) )
+      for ( QgsCustomDropHandler *handler : std::as_const( mDropHandlers ) )
       {
         if ( handler && handler->customUriProviderKey() == uri.providerKey )
         {
@@ -2520,6 +3251,18 @@ void QgsMapCanvas::dropEvent( QDropEvent *event )
   {
     event->ignore();
   }
+}
+
+void QgsMapCanvas::showEvent( QShowEvent *event )
+{
+  Q_UNUSED( event )
+  updateDevicePixelFromScreen();
+}
+
+void QgsMapCanvas::emitExtentsChanged()
+{
+  if ( !mBlockExtentChangedSignal )
+    emit extentsChanged();
 }
 
 QPoint QgsMapCanvas::mouseLastXY()
@@ -2585,9 +3328,9 @@ void QgsMapCanvas::setSnappingUtils( QgsSnappingUtils *utils )
 
 void QgsMapCanvas::readProject( const QDomDocument &doc )
 {
-  QgsProject *project = qobject_cast< QgsProject * >( sender() );
+  QgsProject *project = qobject_cast<QgsProject *>( sender() );
 
-  QDomNodeList nodes = doc.elementsByTagName( QStringLiteral( "mapcanvas" ) );
+  QDomNodeList nodes = doc.elementsByTagName( u"mapcanvas"_s );
   if ( nodes.count() )
   {
     QDomNode node = nodes.item( 0 );
@@ -2599,7 +3342,7 @@ void QgsMapCanvas::readProject( const QDomDocument &doc )
       {
         QDomElement elementNode = nodes.at( i ).toElement();
 
-        if ( elementNode.hasAttribute( QStringLiteral( "name" ) ) && elementNode.attribute( QStringLiteral( "name" ) ) == objectName() )
+        if ( elementNode.hasAttribute( u"name"_s ) && elementNode.attribute( u"name"_s ) == objectName() )
         {
           node = nodes.at( i );
           break;
@@ -2609,29 +3352,36 @@ void QgsMapCanvas::readProject( const QDomDocument &doc )
 
     QgsMapSettings tmpSettings;
     tmpSettings.readXml( node );
-    if ( objectName() != QLatin1String( "theMapCanvas" ) )
+    if ( objectName() != "theMapCanvas"_L1 )
     {
       // never manually set the crs for the main canvas - this is instead connected to the project CRS
       setDestinationCrs( tmpSettings.destinationCrs() );
     }
-    setExtent( tmpSettings.extent() );
+    if ( QgsProject::instance()->viewSettings()->restoreProjectExtentOnProjectLoad() && objectName() == "theMapCanvas"_L1 )
+    {
+      zoomToProjectExtent();
+    }
+    else
+    {
+      setExtent( tmpSettings.extent() );
+    }
     setRotation( tmpSettings.rotation() );
-    enableMapTileRendering( tmpSettings.testFlag( QgsMapSettings::RenderMapTile ) );
+    enableMapTileRendering( tmpSettings.testFlag( Qgis::MapSettingsFlag::RenderMapTile ) );
 
     clearExtentHistory(); // clear the extent history on project load
 
     QDomElement elem = node.toElement();
-    if ( elem.hasAttribute( QStringLiteral( "theme" ) ) )
+    if ( elem.hasAttribute( u"theme"_s ) )
     {
-      if ( QgsProject::instance()->mapThemeCollection()->hasMapTheme( elem.attribute( QStringLiteral( "theme" ) ) ) )
+      if ( QgsProject::instance()->mapThemeCollection()->hasMapTheme( elem.attribute( u"theme"_s ) ) )
       {
-        setTheme( elem.attribute( QStringLiteral( "theme" ) ) );
+        setTheme( elem.attribute( u"theme"_s ) );
       }
     }
-    setAnnotationsVisible( elem.attribute( QStringLiteral( "annotationsVisible" ), QStringLiteral( "1" ) ).toInt() );
+    setAnnotationsVisible( elem.attribute( u"annotationsVisible"_s, u"1"_s ).toInt() );
 
     // restore canvas expression context
-    const QDomNodeList scopeElements = elem.elementsByTagName( QStringLiteral( "expressionContextScope" ) );
+    const QDomNodeList scopeElements = elem.elementsByTagName( u"expressionContextScope"_s );
     if ( scopeElements.size() > 0 )
     {
       const QDomElement scopeElement = scopeElements.at( 0 ).toElement();
@@ -2640,12 +3390,14 @@ void QgsMapCanvas::readProject( const QDomDocument &doc )
   }
   else
   {
-    QgsDebugMsg( QStringLiteral( "Couldn't read mapcanvas information from project" ) );
+    QgsDebugMsgLevel( u"Couldn't read mapcanvas information from project"_s, 2 );
     if ( !project->viewSettings()->defaultViewExtent().isNull() )
     {
       setReferencedExtent( project->viewSettings()->defaultViewExtent() );
-      clearExtentHistory(); // clear the extent history on project load
     }
+
+    setRotation( project->viewSettings()->defaultRotation() );
+    clearExtentHistory(); // clear the extent history on project load
   }
 }
 
@@ -2653,31 +3405,31 @@ void QgsMapCanvas::writeProject( QDomDocument &doc )
 {
   // create node "mapcanvas" and call mMapRenderer->writeXml()
 
-  QDomNodeList nl = doc.elementsByTagName( QStringLiteral( "qgis" ) );
+  QDomNodeList nl = doc.elementsByTagName( u"qgis"_s );
   if ( !nl.count() )
   {
-    QgsDebugMsg( QStringLiteral( "Unable to find qgis element in project file" ) );
+    QgsDebugError( u"Unable to find qgis element in project file"_s );
     return;
   }
-  QDomNode qgisNode = nl.item( 0 );  // there should only be one, so zeroth element OK
+  QDomNode qgisNode = nl.item( 0 ); // there should only be one, so zeroth element OK
 
-  QDomElement mapcanvasNode = doc.createElement( QStringLiteral( "mapcanvas" ) );
-  mapcanvasNode.setAttribute( QStringLiteral( "name" ), objectName() );
+  QDomElement mapcanvasNode = doc.createElement( u"mapcanvas"_s );
+  mapcanvasNode.setAttribute( u"name"_s, objectName() );
   if ( !mTheme.isEmpty() )
-    mapcanvasNode.setAttribute( QStringLiteral( "theme" ), mTheme );
-  mapcanvasNode.setAttribute( QStringLiteral( "annotationsVisible" ), mAnnotationsVisible );
+    mapcanvasNode.setAttribute( u"theme"_s, mTheme );
+  mapcanvasNode.setAttribute( u"annotationsVisible"_s, mAnnotationsVisible );
   qgisNode.appendChild( mapcanvasNode );
 
   mSettings.writeXml( mapcanvasNode, doc );
 
   // store canvas expression context
-  QDomElement scopeElement = doc.createElement( QStringLiteral( "expressionContextScope" ) );
+  QDomElement scopeElement = doc.createElement( u"expressionContextScope"_s );
   QgsExpressionContextScope tmpScope( mExpressionContextScope );
-  tmpScope.removeVariable( QStringLiteral( "atlas_featurenumber" ) );
-  tmpScope.removeVariable( QStringLiteral( "atlas_pagename" ) );
-  tmpScope.removeVariable( QStringLiteral( "atlas_feature" ) );
-  tmpScope.removeVariable( QStringLiteral( "atlas_featureid" ) );
-  tmpScope.removeVariable( QStringLiteral( "atlas_geometry" ) );
+  tmpScope.removeVariable( u"atlas_featurenumber"_s );
+  tmpScope.removeVariable( u"atlas_pagename"_s );
+  tmpScope.removeVariable( u"atlas_feature"_s );
+  tmpScope.removeVariable( u"atlas_featureid"_s );
+  tmpScope.removeVariable( u"atlas_geometry"_s );
   tmpScope.writeXml( scopeElement, doc, QgsReadWriteContext() );
   mapcanvasNode.appendChild( scopeElement );
 
@@ -2703,7 +3455,7 @@ void QgsMapCanvas::zoomByFactor( double scaleFactor, const QgsPointXY *center, b
 void QgsMapCanvas::selectionChangedSlot()
 {
   // Find out which layer it was that sent the signal.
-  QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( sender() );
+  QgsMapLayer *layer = qobject_cast<QgsMapLayer *>( sender() );
   if ( layer )
   {
     emit selectionChanged( layer );
@@ -2727,7 +3479,7 @@ void QgsMapCanvas::dragEnterEvent( QDragEnterEvent *event )
     for ( const QgsMimeDataUtils::Uri &uri : lst )
     {
       bool handled = false;
-      for ( QgsCustomDropHandler *handler : qgis::as_const( mDropHandlers ) )
+      for ( QgsCustomDropHandler *handler : std::as_const( mDropHandlers ) )
       {
         if ( handler->canHandleCustomUriCanvasDrop( uri, this ) )
         {
@@ -2749,31 +3501,37 @@ void QgsMapCanvas::dragEnterEvent( QDragEnterEvent *event )
   }
 }
 
+bool QgsMapCanvas::viewportEvent( QEvent *event )
+{
+  if ( event->type() == QEvent::ToolTip && mMapTool && mMapTool->canvasToolTipEvent( qgis::down_cast<QHelpEvent *>( event ) ) )
+  {
+    return true;
+  }
+  return QGraphicsView::viewportEvent( event );
+}
+
 void QgsMapCanvas::mapToolDestroyed()
 {
-  QgsDebugMsgLevel( QStringLiteral( "maptool destroyed" ), 2 );
+  QgsDebugMsgLevel( u"maptool destroyed"_s, 2 );
   mMapTool = nullptr;
 }
 
 bool QgsMapCanvas::event( QEvent *e )
 {
-  if ( !QTouchDevice::devices().empty() )
+  if ( e->type() == QEvent::Gesture )
   {
-    if ( e->type() == QEvent::Gesture )
+    if ( QTapAndHoldGesture *tapAndHoldGesture = qobject_cast<QTapAndHoldGesture *>( static_cast<QGestureEvent *>( e )->gesture( Qt::TapAndHoldGesture ) ) )
     {
-      if ( QTapAndHoldGesture *tapAndHoldGesture = qobject_cast< QTapAndHoldGesture * >( static_cast<QGestureEvent *>( e )->gesture( Qt::TapAndHoldGesture ) ) )
-      {
-        QPointF pos = tapAndHoldGesture->position();
-        pos = mapFromGlobal( QPoint( pos.x(), pos.y() ) );
-        QgsPointXY mapPoint = getCoordinateTransform()->toMapCoordinates( pos.x(), pos.y() );
-        emit tapAndHoldGestureOccurred( mapPoint, tapAndHoldGesture );
-      }
+      QPointF pos = tapAndHoldGesture->position();
+      pos = mapFromGlobal( QPoint( pos.x(), pos.y() ) );
+      QgsPointXY mapPoint = getCoordinateTransform()->toMapCoordinates( pos.x(), pos.y() );
+      emit tapAndHoldGestureOccurred( mapPoint, tapAndHoldGesture );
+    }
 
-      // call handler of current map tool
-      if ( mMapTool )
-      {
-        return mMapTool->gestureEvent( static_cast<QGestureEvent *>( e ) );
-      }
+    // call handler of current map tool
+    if ( mMapTool )
+    {
+      return mMapTool->gestureEvent( static_cast<QGestureEvent *>( e ) );
     }
   }
 
@@ -2826,7 +3584,7 @@ QList<QgsMapCanvasAnnotationItem *> QgsMapCanvas::annotationItems() const
   const QList<QGraphicsItem *> items = mScene->items();
   for ( QGraphicsItem *gi : items )
   {
-    QgsMapCanvasAnnotationItem *aItem = dynamic_cast< QgsMapCanvasAnnotationItem *>( gi );
+    QgsMapCanvasAnnotationItem *aItem = dynamic_cast<QgsMapCanvasAnnotationItem *>( gi );
     if ( aItem )
     {
       annotationItemList.push_back( aItem );
@@ -2856,62 +3614,81 @@ const QgsLabelingEngineSettings &QgsMapCanvas::labelingEngineSettings() const
   return mSettings.labelingEngineSettings();
 }
 
+void QgsMapCanvas::setSelectiveMaskingSourceSets( const QVector<QgsSelectiveMaskingSourceSet> &sets )
+{
+  mSettings.setSelectiveMaskingSourceSets( sets );
+}
+
 void QgsMapCanvas::startPreviewJobs()
 {
   stopPreviewJobs(); //just in case still running
-
-  //canvas preview jobs aren't compatible with rotation
-  // TODO fix this
-  if ( !qgsDoubleNear( mSettings.rotation(), 0.0 ) )
-    return;
-
   schedulePreviewJob( 0 );
 }
 
 void QgsMapCanvas::startPreviewJob( int number )
 {
-  QgsRectangle mapRect = mSettings.visibleExtent();
-
   if ( number == 4 )
     number += 1;
 
   int j = number / 3;
   int i = number % 3;
 
+  QgsMapSettings mapSettings = mSettings;
+  mapSettings.setRotation( 0 );
+  const QgsRectangle mapRect = mapSettings.visibleExtent();
+  QgsPointXY jobCenter = mapRect.center();
+  const double dx = ( i - 1 ) * mapRect.width();
+  const double dy = ( 1 - j ) * mapRect.height();
+  if ( !qgsDoubleNear( mSettings.rotation(), 0.0 ) )
+  {
+    const double radians = mSettings.rotation() * M_PI / 180;
+    const double rdx = dx * cos( radians ) - dy * sin( radians );
+    const double rdy = dy * cos( radians ) + dx * sin( radians );
+    jobCenter.setX( jobCenter.x() + rdx );
+    jobCenter.setY( jobCenter.y() + rdy );
+  }
+  else
+  {
+    jobCenter.setX( jobCenter.x() + dx );
+    jobCenter.setY( jobCenter.y() + dy );
+  }
+  const QgsRectangle jobExtent = QgsRectangle::fromCenterAndSize( jobCenter, mapRect.width(), mapRect.height() );
+
   //copy settings, only update extent
   QgsMapSettings jobSettings = mSettings;
-
-  double dx = ( i - 1 ) * mapRect.width();
-  double dy = ( 1 - j ) * mapRect.height();
-  QgsRectangle jobExtent = mapRect;
-
-  jobExtent.setXMaximum( jobExtent.xMaximum() + dx );
-  jobExtent.setXMinimum( jobExtent.xMinimum() + dx );
-  jobExtent.setYMaximum( jobExtent.yMaximum() + dy );
-  jobExtent.setYMinimum( jobExtent.yMinimum() + dy );
-
   jobSettings.setExtent( jobExtent );
-  jobSettings.setFlag( QgsMapSettings::DrawLabeling, false );
-  jobSettings.setFlag( QgsMapSettings::RenderPreviewJob, true );
+  jobSettings.setFlag( Qgis::MapSettingsFlag::DrawLabeling, false );
+  jobSettings.setFlag( Qgis::MapSettingsFlag::RenderPreviewJob, true );
+  // never profile preview jobs
+  jobSettings.setFlag( Qgis::MapSettingsFlag::RecordProfile, false );
 
   // truncate preview layers to fast layers
   const QList<QgsMapLayer *> layers = jobSettings.layers();
-  QList< QgsMapLayer * > previewLayers;
+  QList<QgsMapLayer *> previewLayers;
   QgsDataProvider::PreviewContext context;
-  context.maxRenderingTimeMs = MAXIMUM_LAYER_PREVIEW_TIME_MS;
+  context.maxRenderingTimeMs = Qgis::MAXIMUM_LAYER_PREVIEW_TIME_MS;
   for ( QgsMapLayer *layer : layers )
   {
+    if ( layer->customProperty( u"rendering/noPreviewJobs"_s, false ).toBool() )
+    {
+      QgsDebugMsgLevel( u"Layer %1 not rendered because it is explicitly blocked from preview jobs"_s.arg( layer->id() ), 3 );
+      continue;
+    }
     context.lastRenderingTimeMs = mLastLayerRenderTime.value( layer->id(), 0 );
     QgsDataProvider *provider = layer->dataProvider();
     if ( provider && !provider->renderInPreview( context ) )
     {
-      QgsDebugMsgLevel( QStringLiteral( "Layer %1 not rendered because it does not match the renderInPreview criterion %2" ).arg( layer->id() ).arg( mLastLayerRenderTime.value( layer->id() ) ), 3 );
+      QgsDebugMsgLevel( u"Layer %1 not rendered because it does not match the renderInPreview criterion %2"_s.arg( layer->id() ).arg( mLastLayerRenderTime.value( layer->id() ) ), 3 );
       continue;
     }
 
     previewLayers << layer;
   }
-  jobSettings.setLayers( previewLayers );
+  if ( ( mFlags & Qgis::MapCanvasFlag::ShowMainAnnotationLayer ) && QgsProject::instance()->mainAnnotationLayer()->dataProvider()->renderInPreview( context ) )
+  {
+    previewLayers.insert( 0, QgsProject::instance()->mainAnnotationLayer() );
+  }
+  jobSettings.setLayers( filterLayersForRender( previewLayers ) );
 
   QgsMapRendererQImageJob *job = new QgsMapRendererSequentialJob( jobSettings );
   job->setProperty( "number", number );
@@ -2923,14 +3700,13 @@ void QgsMapCanvas::startPreviewJob( int number )
 void QgsMapCanvas::stopPreviewJobs()
 {
   mPreviewTimer.stop();
-  const auto previewJobs = mPreviewJobs;
-  for ( auto previewJob : previewJobs )
+  for ( auto previewJob = mPreviewJobs.constBegin(); previewJob != mPreviewJobs.constEnd(); ++previewJob )
   {
-    if ( previewJob )
+    if ( *previewJob )
     {
-      disconnect( previewJob, &QgsMapRendererJob::finished, this, &QgsMapCanvas::previewJobFinished );
-      connect( previewJob, &QgsMapRendererQImageJob::finished, previewJob, &QgsMapRendererQImageJob::deleteLater );
-      previewJob->cancelWithoutBlocking();
+      disconnect( *previewJob, &QgsMapRendererJob::finished, this, &QgsMapCanvas::previewJobFinished );
+      connect( *previewJob, &QgsMapRendererQImageJob::finished, *previewJob, &QgsMapRendererQImageJob::deleteLater );
+      ( *previewJob )->cancelWithoutBlocking();
     }
   }
   mPreviewJobs.clear();
@@ -2939,12 +3715,9 @@ void QgsMapCanvas::stopPreviewJobs()
 void QgsMapCanvas::schedulePreviewJob( int number )
 {
   mPreviewTimer.setSingleShot( true );
-  mPreviewTimer.setInterval( PREVIEW_JOB_DELAY_MS );
+  mPreviewTimer.setInterval( Qgis::PREVIEW_JOB_DELAY_MS );
   disconnect( mPreviewTimerConnection );
-  mPreviewTimerConnection = connect( &mPreviewTimer, &QTimer::timeout, this, [ = ]()
-  {
-    startPreviewJob( number );
-  } );
+  mPreviewTimerConnection = connect( &mPreviewTimer, &QTimer::timeout, this, [this, number]() { startPreviewJob( number ); } );
   mPreviewTimer.start();
 }
 
@@ -2953,7 +3726,7 @@ bool QgsMapCanvas::panOperationInProgress()
   if ( mCanvasProperties->panSelectorDown )
     return true;
 
-  if ( QgsMapToolPan *panTool = qobject_cast< QgsMapToolPan *>( mMapTool ) )
+  if ( QgsMapToolPan *panTool = qobject_cast<QgsMapToolPan *>( mMapTool ) )
   {
     if ( panTool->isDragging() )
       return true;
@@ -2966,8 +3739,9 @@ int QgsMapCanvas::nextZoomLevel( const QList<double> &resolutions, bool zoomIn )
 {
   int resolutionLevel = -1;
   double currentResolution = mapUnitsPerPixel();
+  int nResolutions = resolutions.size();
 
-  for ( int i = 0, n = resolutions.size(); i < n; ++i )
+  for ( int i = 0; i < nResolutions; ++i )
   {
     if ( qgsDoubleNear( resolutions[i], currentResolution, 0.0001 ) )
     {
@@ -2979,8 +3753,24 @@ int QgsMapCanvas::nextZoomLevel( const QList<double> &resolutions, bool zoomIn )
       resolutionLevel = zoomIn ? ( i - 1 ) : i;
       break;
     }
+    resolutionLevel = zoomIn ? i : i + 1;
   }
-  return ( resolutionLevel < 0 || resolutionLevel >= resolutions.size() ) ? -1 : resolutionLevel;
+
+  if ( resolutionLevel < 0 || resolutionLevel >= nResolutions )
+  {
+    return -1;
+  }
+  if ( zoomIn && resolutionLevel == nResolutions - 1 && resolutions[nResolutions - 1] < currentResolution / mWheelZoomFactor )
+  {
+    // Avoid jumping straight to last resolution when zoomed far out and zooming in
+    return -1;
+  }
+  if ( !zoomIn && resolutionLevel == 0 && resolutions[0] > mWheelZoomFactor * currentResolution )
+  {
+    // Avoid jumping straight to first resolution when zoomed far in and zooming out
+    return -1;
+  }
+  return resolutionLevel;
 }
 
 double QgsMapCanvas::zoomInFactor() const

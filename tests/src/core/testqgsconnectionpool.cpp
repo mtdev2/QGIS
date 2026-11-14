@@ -17,16 +17,22 @@
 #include "qgsapplication.h"
 #include "qgsfeatureiterator.h"
 #include "qgsgeometry.h"
-#include "qgspoint.h"
 #include "qgslinestring.h"
+#include "qgspoint.h"
+#include "qgstest.h"
 #include "qgsvectorlayer.h"
+#include "qgsvectorlayerfeatureiterator.h"
+
 #include <QEventLoop>
+#include <QFutureWatcher>
 #include <QObject>
+#include <QString>
 #include <QTemporaryFile>
 #include <QtConcurrentMap>
-#include "qgstest.h"
 
-class TestQgsConnectionPool: public QObject
+using namespace Qt::StringLiterals;
+
+class TestQgsConnectionPool : public QObject
 {
     Q_OBJECT
 
@@ -38,28 +44,28 @@ class TestQgsConnectionPool: public QObject
   private:
     struct ReadJob
     {
-      explicit ReadJob( QgsVectorLayer *_layer ) : layer( _layer ) {}
-      QgsVectorLayer *layer = nullptr;
-      QList<QgsFeature> features;
+        explicit ReadJob( QgsVectorLayer *_layer )
+          : source( std::make_shared<QgsVectorLayerFeatureSource>( _layer ) )
+        {}
+        std::shared_ptr<QgsVectorLayerFeatureSource> source;
+        QList<QgsFeature> features;
     };
 
     static void processJob( ReadJob &job )
     {
-      QgsFeatureIterator it = job.layer->getFeatures();
+      QgsFeatureIterator it = job.source->getFeatures();
       QgsFeature f;
       while ( it.nextFeature( f ) )
       {
         job.features.append( f );
       }
     }
-
 };
 
 void TestQgsConnectionPool::initTestCase()
 {
   QgsApplication::init();
   QgsApplication::initQgis();
-
 }
 
 void TestQgsConnectionPool::cleanupTestCase()
@@ -71,32 +77,32 @@ void TestQgsConnectionPool::layersFromSameDatasetGPX()
 {
   // Tests whether features are correctly retrevied from different layers which are
   // loaded from the same dataset. See issue #14560
-  int nWaypoints = 100000;
-  int nRoutes = 100000;
-  int nRoutePts = 10;
-  QTemporaryFile testFile( QStringLiteral( "testXXXXXX.gpx" ) );
+  const int nWaypoints = 100000;
+  const int nRoutes = 100000;
+  const int nRoutePts = 10;
+  QTemporaryFile testFile( u"testXXXXXX.gpx"_s );
   testFile.setAutoRemove( false );
-  testFile.open();
+  QVERIFY( testFile.open() );
   testFile.write( "<gpx version=\"1.1\" creator=\"qgis\">\n" );
   for ( int i = 0; i < nWaypoints; ++i )
   {
-    testFile.write( QStringLiteral( "<wpt lon=\"%1\" lat=\"%1\"><name></name></wpt>\n" ).arg( i ).toLocal8Bit() );
+    testFile.write( u"<wpt lon=\"%1\" lat=\"%1\"><name></name></wpt>\n"_s.arg( i ).toLocal8Bit() );
   }
   for ( int i = 0; i < nRoutes; ++i )
   {
     testFile.write( "<rte><name></name><number></number>\n" );
     for ( int j = 0; j < nRoutePts; ++j )
     {
-      testFile.write( QStringLiteral( "<rtept lon=\"%1\" lat=\"%2\"/>\n" ).arg( j ).arg( i ).toLocal8Bit() );
+      testFile.write( u"<rtept lon=\"%1\" lat=\"%2\"/>\n"_s.arg( j ).arg( i ).toLocal8Bit() );
     }
     testFile.write( "</rte>\n" );
   }
   testFile.write( "</gpx>\n" );
   testFile.close();
 
-  QgsVectorLayer *layer1 = new QgsVectorLayer( testFile.fileName() + "|layername=waypoints", QStringLiteral( "Waypoints" ), QStringLiteral( "ogr" ) );
+  QgsVectorLayer *layer1 = new QgsVectorLayer( testFile.fileName() + "|layername=waypoints", u"Waypoints"_s, u"ogr"_s );
   QVERIFY( layer1->isValid() );
-  QgsVectorLayer *layer2 = new QgsVectorLayer( testFile.fileName() + "|layername=routes", QStringLiteral( "Routes" ), QStringLiteral( "ogr" ) );
+  QgsVectorLayer *layer2 = new QgsVectorLayer( testFile.fileName() + "|layername=routes", u"Routes"_s, u"ogr"_s );
   QVERIFY( layer2->isValid() );
 
   QList<ReadJob> jobs = QList<ReadJob>() << ReadJob( layer1 ) << ReadJob( layer2 );
@@ -115,7 +121,7 @@ void TestQgsConnectionPool::layersFromSameDatasetGPX()
 
   for ( int i = 0, n = layer1Features.count(); i < n; ++i )
   {
-    QgsGeometry featureGeom = layer1Features[i].geometry();
+    const QgsGeometry featureGeom = layer1Features[i].geometry();
     const QgsPoint *geom = dynamic_cast<const QgsPoint *>( featureGeom.constGet() );
     QVERIFY( geom );
     QVERIFY( qFuzzyCompare( geom->x(), i ) );
@@ -123,14 +129,14 @@ void TestQgsConnectionPool::layersFromSameDatasetGPX()
   }
   for ( int i = 0, n = layer2Features.count(); i < n; ++i )
   {
-    QgsGeometry featureGeom = layer2Features[i].geometry();
+    const QgsGeometry featureGeom = layer2Features[i].geometry();
     const QgsLineString *geom = dynamic_cast<const QgsLineString *>( featureGeom.constGet() );
     QVERIFY( geom );
-    int nVtx = geom->vertexCount();
+    const int nVtx = geom->vertexCount();
     QVERIFY( nVtx == nRoutePts );
     for ( int j = 0; j < nVtx; ++j )
     {
-      QgsPoint p = geom->vertexAt( QgsVertexId( 0, 0, j ) );
+      const QgsPoint p = geom->vertexAt( QgsVertexId( 0, 0, j ) );
       QVERIFY( qFuzzyCompare( p.x(), j ) );
       QVERIFY( qFuzzyCompare( p.y(), i ) );
     }

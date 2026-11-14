@@ -1,9 +1,12 @@
 ########################################################
 # Files
 
+if(WITH_SERVER_LANDINGPAGE_WEBAPP)
+add_subdirectory(webapp)
+endif()
+
 set (LANDINGPAGE_SRCS
-  ${CMAKE_SOURCE_DIR}/external/nlohmann/json.hpp
-  ${CMAKE_SOURCE_DIR}/external/inja/inja.hpp
+  ${CMAKE_SOURCE_DIR}/external/inja/inja/inja.hpp
   qgslandingpage.cpp
   qgslandingpageutils.cpp
   qgslandingpagehandlers.cpp
@@ -14,11 +17,14 @@ set (LANDINGPAGE_SRCS
 
 add_library (landingpage MODULE ${LANDINGPAGE_SRCS})
 
-include_directories(SYSTEM
-)
+if(QGISPOSTFIX)
+  set_target_properties(landingpage PROPERTIES
+    LIBRARY_OUTPUT_NAME landingpage${QGISPOSTFIX}
+    RUNTIME_OUTPUT_NAME landingpage${QGISPOSTFIX}
+  )
+endif()
 
 include_directories(
-
   ${CMAKE_SOURCE_DIR}/src/server
   ${CMAKE_SOURCE_DIR}/src/server/services
   ${CMAKE_SOURCE_DIR}/src/server/services/landingpage
@@ -28,7 +34,6 @@ include_directories(
 
   ${CMAKE_CURRENT_BINARY_DIR}
 )
-
 
 target_link_libraries(landingpage
   qgis_core
@@ -43,4 +48,3 @@ install(TARGETS landingpage
     RUNTIME DESTINATION ${QGIS_SERVER_MODULE_DIR}
     LIBRARY DESTINATION ${QGIS_SERVER_MODULE_DIR}
 )
-

@@ -17,13 +17,13 @@
 #define QGSLAYOUT_H
 
 #include "qgis_core.h"
-#include <QGraphicsScene>
-#include "qgslayoutsnapper.h"
 #include "qgsexpressioncontextgenerator.h"
 #include "qgslayoutgridsettings.h"
 #include "qgslayoutguidecollection.h"
-#include "qgslayoutexporter.h"
+#include "qgslayoutsnapper.h"
 #include "qgsmasterlayoutinterface.h"
+
+#include <QGraphicsScene>
 
 class QgsLayoutItemMap;
 class QgsLayoutModel;
@@ -32,6 +32,8 @@ class QgsLayoutPageCollection;
 class QgsLayoutUndoStack;
 class QgsLayoutRenderContext;
 class QgsLayoutReportContext;
+class QgsSettingsEntryString;
+class QgsSettingsEntryStringList;
 
 /**
  * \ingroup core
@@ -44,24 +46,22 @@ class QgsLayoutReportContext;
  * preparing the layout and paint devices for correct exports, respecting various
  * user settings such as the layout context DPI.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContextGenerator, public QgsLayoutUndoObjectInterface
 {
     Q_OBJECT
 
   public:
-
     //! Preset item z-values, to ensure correct stacking
     enum ZValues
     {
-      ZPage = 0, //!< Z-value for page (paper) items
-      ZItem = 1, //!< Minimum z value for items
-      ZGrid = 9997, //!< Z-value for page grids
-      ZGuide = 9998, //!< Z-value for page guides
-      ZSmartGuide = 9999, //!< Z-value for smart (item bounds based) guides
-      ZMouseHandles = 10000, //!< Z-value for mouse handles
-      ZViewTool = 10001, //!< Z-value for temporary view tool items
+      ZPage = 0,              //!< Z-value for page (paper) items
+      ZItem = 1,              //!< Minimum z value for items
+      ZGrid = 9997,           //!< Z-value for page grids
+      ZGuide = 9998,          //!< Z-value for page guides
+      ZSmartGuide = 9999,     //!< Z-value for smart (item bounds based) guides
+      ZMouseHandles = 10000,  //!< Z-value for mouse handles
+      ZViewTool = 10001,      //!< Z-value for temporary view tool items
       ZSnapIndicator = 10002, //!< Z-value for snapping indicator
     };
 
@@ -142,7 +142,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
       objectList.clear();
       const QList<QGraphicsItem *> itemList( items() );
       const QList<QgsLayoutMultiFrame *> frameList( multiFrames() );
-      for ( const auto &obj :  itemList )
+      for ( const auto &obj : itemList )
       {
         T *item = dynamic_cast<T *>( obj );
         if ( item )
@@ -150,7 +150,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
           objectList.push_back( item );
         }
       }
-      for ( const auto &obj :  frameList )
+      for ( const auto &obj : frameList )
       {
         T *item = dynamic_cast<T *>( obj );
         if ( item )
@@ -303,14 +303,16 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
     /**
      * Returns the topmost layout item at a specified \a position. Ignores paper items.
      * If \a ignoreLocked is set to TRUE any locked items will be ignored.
+     * Since QGIS 3.34 the \a searchTolerance parameter was added, which can be used to specify a search tolerance in layout units.
      */
-    QgsLayoutItem *layoutItemAt( QPointF position, bool ignoreLocked = false ) const;
+    QgsLayoutItem *layoutItemAt( QPointF position, bool ignoreLocked = false, double searchTolerance = 0 ) const;
 
     /**
      * Returns the topmost layout item at a specified \a position which is below a specified \a item. Ignores paper items.
      * If \a ignoreLocked is set to TRUE any locked items will be ignored.
+     * Since QGIS 3.34 the \a searchTolerance parameter was added, which can be used to specify a search tolerance in layout units.
      */
-    QgsLayoutItem *layoutItemAt( QPointF position, const QgsLayoutItem *belowItem, bool ignoreLocked = false ) const;
+    QgsLayoutItem *layoutItemAt( QPointF position, const QgsLayoutItem *belowItem, bool ignoreLocked = false, double searchTolerance = 0 ) const;
 
     /**
      * Sets the native measurement \a units for the layout. These also form the default unit
@@ -318,14 +320,14 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      * \see units()
      * \see convertToLayoutUnits()
     */
-    void setUnits( QgsUnitTypes::LayoutUnit units ) { mUnits = units; }
+    void setUnits( Qgis::LayoutUnit units ) { mUnits = units; }
 
     /**
      * Returns the native units for the layout.
      * \see setUnits()
      * \see convertToLayoutUnits()
     */
-    QgsUnitTypes::LayoutUnit units() const { return mUnits; }
+    Qgis::LayoutUnit units() const { return mUnits; }
 
     /**
      * Converts a measurement into the layout's native units.
@@ -357,7 +359,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      * \see convertToLayoutUnits()
      * \see units()
     */
-    QgsLayoutMeasurement convertFromLayoutUnits( double length, QgsUnitTypes::LayoutUnit unit ) const;
+    QgsLayoutMeasurement convertFromLayoutUnits( double length, Qgis::LayoutUnit unit ) const;
 
     /**
      * Converts a \a size from the layout's native units to a specified target \a unit.
@@ -365,7 +367,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      * \see convertToLayoutUnits()
      * \see units()
     */
-    QgsLayoutSize convertFromLayoutUnits( QSizeF size, QgsUnitTypes::LayoutUnit unit ) const;
+    QgsLayoutSize convertFromLayoutUnits( QSizeF size, Qgis::LayoutUnit unit ) const;
 
     /**
      * Converts a \a point from the layout's native units to a specified target \a unit.
@@ -373,7 +375,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      * \see convertToLayoutUnits()
      * \see units()
     */
-    QgsLayoutPoint convertFromLayoutUnits( QPointF point, QgsUnitTypes::LayoutUnit unit ) const;
+    QgsLayoutPoint convertFromLayoutUnits( QPointF point, Qgis::LayoutUnit unit ) const;
 
     /**
      * Returns a reference to the layout's render context, which stores information relating to the
@@ -610,9 +612,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      *
      * A list of the newly added items is returned.
      */
-    QList< QgsLayoutItem * > addItemsFromXml( const QDomElement &parentElement, const QDomDocument &document,
-        const QgsReadWriteContext &context,
-        QPointF *position = nullptr, bool pasteInPlace = false );
+    QList< QgsLayoutItem * > addItemsFromXml( const QDomElement &parentElement, const QDomDocument &document, const QgsReadWriteContext &context, QPointF *position = nullptr, bool pasteInPlace = false );
 
     /**
      * Returns a pointer to the layout's undo stack, which manages undo/redo states for the layout
@@ -656,6 +656,23 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      * \since QGIS 3.10
      */
     bool accept( QgsStyleEntityVisitorInterface *visitor ) const;
+
+#ifndef SIP_RUN
+    //! Settings entry search path for templates
+    static const QgsSettingsEntryStringList *settingsSearchPathForTemplates;
+
+    /**
+     * Settings entry for the default font family used for new layout items.
+     * \since QGIS 4.0.1
+     */
+    static const QgsSettingsEntryString *settingsLayoutDefaultFont;
+
+    /**
+     * Settings entry for the default north arrow SVG path.
+     * \since QGIS 4.0.1
+     */
+    static const QgsSettingsEntryString *settingsLayoutDefaultNorthArrow;
+#endif
 
   public slots:
 
@@ -707,17 +724,24 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
      */
     void backgroundTaskCountChanged( int total );
 
+    /**
+     * Emitted when an \a item was added to the layout.
+     *
+     * \since QGIS 3.20
+     */
+    void itemAdded( QgsLayoutItem *item );
+
   private slots:
     void itemBackgroundTaskCountChanged( int count );
+    void multiFrameBackgroundTaskCountChanged( int count );
 
   private:
-
     QgsProject *mProject = nullptr;
     std::unique_ptr< QgsLayoutModel > mItemsModel;
 
     QgsObjectCustomProperties mCustomProperties;
 
-    QgsUnitTypes::LayoutUnit mUnits = QgsUnitTypes::LayoutMillimeters;
+    Qgis::LayoutUnit mUnits = Qgis::LayoutUnit::Millimeters;
     QgsLayoutRenderContext *mRenderContext = nullptr;
     QgsLayoutReportContext *mReportContext = nullptr;
     QgsLayoutSnapper mSnapper;
@@ -733,6 +757,7 @@ class CORE_EXPORT QgsLayout : public QGraphicsScene, public QgsExpressionContext
     QString mWorldFileMapId;
 
     QHash< QgsLayoutItem *, int > mBackgroundTaskCount;
+    QHash< QgsLayoutMultiFrame *, int > mMultiFrameBackgroundTaskCount;
 
     //! Writes only the layout settings (not member settings like grid settings, etc) to XML
     void writeXmlLayoutSettings( QDomElement &element, QDomDocument &document, const QgsReadWriteContext &context ) const;

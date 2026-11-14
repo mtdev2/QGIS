@@ -15,12 +15,14 @@
 #ifndef QGSFEATUREEXPRESSIONVALUESGATHERER_H
 #define QGSFEATUREEXPRESSIONVALUESGATHERER_H
 
-#include <QThread>
-#include <QMutex>
 #include "qgsapplication.h"
+#include "qgsexpressioncontextutils.h"
 #include "qgslogger.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayerfeatureiterator.h"
+
+#include <QMutex>
+#include <QThread>
 
 #define SIP_NO_FILE
 
@@ -33,12 +35,11 @@
  *
  * \since QGIS 3.14
  */
-class QgsFeatureExpressionValuesGatherer: public QThread
+class QgsFeatureExpressionValuesGatherer : public QThread
 {
     Q_OBJECT
 
   public:
-
     /**
        * Constructor
        * \param layer the vector layer
@@ -46,46 +47,66 @@ class QgsFeatureExpressionValuesGatherer: public QThread
        * \param request the request to perform
        * \param identifierFields an optional list of fields name to be save in a variant list for an easier reuse
        */
-    QgsFeatureExpressionValuesGatherer( QgsVectorLayer *layer,
-                                        const QString &displayExpression = QString(),
-                                        const QgsFeatureRequest &request = QgsFeatureRequest(),
-                                        const QStringList &identifierFields = QStringList() )
+    QgsFeatureExpressionValuesGatherer(
+      QgsVectorLayer *layer, const QString &displayExpression = QString(), const QgsFeatureRequest &request = QgsFeatureRequest(), const QStringList &identifierFields = QStringList()
+    )
       : mSource( new QgsVectorLayerFeatureSource( layer ) )
       , mDisplayExpression( displayExpression.isEmpty() ? layer->displayExpression() : displayExpression )
+      , mExpressionContext( QgsExpressionContextUtils::globalProjectLayerScopes( layer ) )
       , mRequest( request )
       , mIdentifierFields( identifierFields )
-    {
-    }
+    {}
+
+    QgsFeatureExpressionValuesGatherer(
+      QgsVectorLayer *layer,
+      const QString &displayExpression = QString(),
+      const QString &orderExpression = QString(),
+      const QgsFeatureRequest &request = QgsFeatureRequest(),
+      const QStringList &identifierFields = QStringList()
+    )
+      : mSource( new QgsVectorLayerFeatureSource( layer ) )
+      , mDisplayExpression( displayExpression.isEmpty() ? layer->displayExpression() : displayExpression )
+      , mOrderExpression( orderExpression.isEmpty() ? displayExpression.isEmpty() ? layer->displayExpression() : displayExpression : orderExpression )
+      , mExpressionContext( QgsExpressionContextUtils::globalProjectLayerScopes( layer ) )
+      , mRequest( request )
+      , mIdentifierFields( identifierFields )
+    {}
 
     struct Entry
     {
-      Entry() = default;
+        Entry() = default;
 
-      Entry( const QVariantList &_identifierFields, const QString &_value, const QgsFeature &_feature )
-        : identifierFields( _identifierFields )
-        , featureId( _feature.isValid() ? _feature.id() : FID_NULL )
-        , value( _value )
-        , feature( _feature )
-      {}
+        Entry( const QVariantList &_identifierFields, const QString &_value, const QString &_orderValue, const QgsFeature &_feature )
+          : identifierFields( _identifierFields )
+          , featureId( _feature.isValid() ? _feature.id() : FID_NULL )
+          , value( _value )
+          , orderValue( _orderValue )
+          , feature( _feature )
+        {}
 
-      Entry( const QgsFeatureId &_featureId, const QString &_value, const QgsVectorLayer *layer )
-        : featureId( _featureId )
-        , value( _value )
-        , feature( QgsFeature( layer ? layer->fields() : QgsFields() ) )
-      {}
+        Entry( const QVariantList &_identifierFields, const QString &_value, const QgsFeature &_feature )
+          : identifierFields( _identifierFields )
+          , featureId( _feature.isValid() ? _feature.id() : FID_NULL )
+          , value( _value )
+          , feature( _feature )
+        {}
 
-      QVariantList identifierFields;
-      QgsFeatureId featureId;
-      QString value;
-      QgsFeature feature;
+        Entry( const QgsFeatureId &_featureId, const QString &_value, const QgsVectorLayer *layer )
+          : featureId( _featureId )
+          , value( _value )
+          , feature( QgsFeature( layer ? layer->fields() : QgsFields() ) )
+        {}
 
-      bool operator()( const Entry &lhs, const Entry &rhs ) const;
+        QVariantList identifierFields;
+        QgsFeatureId featureId;
+        QString value;
+        QString orderValue;
+        QgsFeature feature;
+
+        bool operator()( const Entry &lhs, const Entry &rhs ) const;
     };
 
-    static Entry nullEntry( QgsVectorLayer *layer )
-    {
-      return Entry( QVariantList(), QgsApplication::nullRepresentation(), QgsFeature( layer->fields() ) );
-    }
+    static Entry nullEntry( QgsVectorLayer *layer ) { return Entry( QVariantList(), QgsApplication::nullRepresentation(), QgsFeature( layer->fields() ) ); }
 
     void run() override
     {
@@ -94,11 +115,12 @@ class QgsFeatureExpressionValuesGatherer: public QThread
       QgsFeatureIterator iterator = mSource->getFeatures( mRequest );
 
       mDisplayExpression.prepare( &mExpressionContext );
+      mOrderExpression.prepare( &mExpressionContext );
 
       QgsFeature feature;
       QList<int> attributeIndexes;
-      for ( const QString &fieldName : qgis::as_const( mIdentifierFields ) )
-        attributeIndexes << mSource->fields().indexOf( fieldName );
+      for ( auto it = mIdentifierFields.constBegin(); it != mIdentifierFields.constEnd(); ++it )
+        attributeIndexes << mSource->fields().indexOf( *it );
 
       while ( iterator.nextFeature( feature ) )
       {
@@ -108,10 +130,11 @@ class QgsFeatureExpressionValuesGatherer: public QThread
           attributes << feature.attribute( idx );
 
         const QString expressionValue = mDisplayExpression.evaluate( &mExpressionContext ).toString();
+        const QString orderValue = mOrderExpression.evaluate( &mExpressionContext ).toString();
 
-        mEntries.append( Entry( attributes, expressionValue, feature ) );
+        mEntries.append( Entry( attributes, expressionValue, orderValue, feature ) );
 
-        QMutexLocker locker( &mCancelMutex );
+        const QMutexLocker locker( &mCancelMutex );
         if ( mWasCanceled )
           return;
       }
@@ -120,42 +143,30 @@ class QgsFeatureExpressionValuesGatherer: public QThread
     //! Informs the gatherer to immediately stop collecting values
     void stop()
     {
-      QMutexLocker locker( &mCancelMutex );
+      const QMutexLocker locker( &mCancelMutex );
       mWasCanceled = true;
     }
 
     //! Returns TRUE if collection was canceled before completion
     bool wasCanceled() const
     {
-      QMutexLocker locker( &mCancelMutex );
+      const QMutexLocker locker( &mCancelMutex );
       return mWasCanceled;
     }
 
-    QVector<Entry> entries() const
-    {
-      return mEntries;
-    }
+    QVector<Entry> entries() const { return mEntries; }
 
-    QgsFeatureRequest request() const
-    {
-      return mRequest;
-    }
+    QgsFeatureRequest request() const { return mRequest; }
 
     /**
      * Internal data, use for whatever you want.
      */
-    QVariant data() const
-    {
-      return mData;
-    }
+    QVariant data() const { return mData; }
 
     /**
      * Internal data, use for whatever you want.
      */
-    void setData( const QVariant &data )
-    {
-      mData = data;
-    }
+    void setData( const QVariant &data ) { mData = data; }
 
   protected:
     QVector<Entry> mEntries;
@@ -163,6 +174,7 @@ class QgsFeatureExpressionValuesGatherer: public QThread
   private:
     std::unique_ptr<QgsVectorLayerFeatureSource> mSource;
     QgsExpression mDisplayExpression;
+    QgsExpression mOrderExpression;
     QgsExpressionContext mExpressionContext;
     QgsFeatureRequest mRequest;
     bool mWasCanceled = false;

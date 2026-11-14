@@ -30,13 +30,14 @@
 #ifndef LABELPOSITION_H
 #define LABELPOSITION_H
 
-#define SIP_NO_FILE
 
-
-#include "qgis_core.h"
-#include "pointset.h"
-#include "palrtree.h"
 #include <fstream>
+
+#include "palrtree.h"
+#include "pointset.h"
+#include "qgis_core.h"
+
+#define SIP_NO_FILE
 
 namespace pal
 {
@@ -58,21 +59,13 @@ namespace pal
       friend class PolygonCostCalculator;
 
     public:
-
       /**
-       * \brief Position of label candidate relative to feature.
+       * \brief Label directions in relation to line or polygon ring directions
        */
-      enum Quadrant
+      enum class LabelDirectionToLine
       {
-        QuadrantAboveLeft,
-        QuadrantAbove,
-        QuadrantAboveRight,
-        QuadrantLeft,
-        QuadrantOver,
-        QuadrantRight,
-        QuadrantBelowLeft,
-        QuadrantBelow,
-        QuadrantBelowRight
+        SameDirection,
+        Reversed
       };
 
       /**
@@ -83,69 +76,102 @@ namespace pal
        * \param y1 down-left y coordinate
        * \param w label width
        * \param h label height
-       * \param alpha rotation in rad
+       * \param alpha rotation in radians
        * \param cost geographic cost
        * \param feature labelpos owners
-       * \param isReversed label is reversed
+       * \param directionToLine whether the label direction is reversed from the line or polygon ring direction
        * \param quadrant relative position of label to feature
        */
-      LabelPosition( int id, double x1, double y1,
-                     double w, double h,
-                     double alpha, double cost,
-                     FeaturePart *feature, bool isReversed = false, Quadrant quadrant = QuadrantOver );
+      LabelPosition(
+        int id,
+        double x1,
+        double y1,
+        double w,
+        double h,
+        double alpha,
+        double cost,
+        FeaturePart *feature,
+        LabelDirectionToLine directionToLine = LabelDirectionToLine::SameDirection,
+        Qgis::LabelQuadrantPosition quadrant = Qgis::LabelQuadrantPosition::Over
+      );
 
-      //! Copy constructor
       LabelPosition( const LabelPosition &other );
 
-      /**
-       * \brief Is the labelposition in the bounding-box ? (intersect or inside????)
-       *
-       *\param bbox the bounding-box double[4] = {xmin, ymin, xmax, ymax}
-       */
-      bool isIn( double *bbox );
-
-      /**
-       * \brief Is the labelposition intersect the bounding-box ?
-       *
-       *\param bbox the bounding-box double[4] = {xmin, ymin, xmax, ymax}
-       */
-      bool isIntersect( double *bbox );
+      ~LabelPosition() override;
 
       /**
        * Returns TRUE if the label position intersects a \a geometry.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
        */
       bool intersects( const GEOSPreparedGeometry *geometry );
 
       /**
        * Returns TRUE if the label position is within a \a geometry.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
        */
       bool within( const GEOSPreparedGeometry *geometry );
 
       /**
-       * \brief Is the labelposition inside the bounding-box ?
+       * Check whether or not this overlap with another labelPosition.
        *
-       *\param bbox the bounding-box double[4] = {xmin, ymin, xmax, ymax}
-       */
-      bool isInside( double *bbox );
-
-      /**
-       * \brief Check whether or not this overlap with another labelPosition
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
        *
        * \param ls other labelposition
        * \returns TRUE or FALSE
        */
       bool isInConflict( const LabelPosition *ls ) const;
 
-      //! Returns bounding box - amin: xmin,ymin - amax: xmax,ymax
+      /**
+       * Returns bounding box - amin: xmin,ymin - amax: xmax,ymax
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
+       * \see boundingBox()
+       */
       void getBoundingBox( double amin[2], double amax[2] ) const;
 
-      //! Gets distance from this label to a point. If point lies inside, returns negative number.
-      double getDistanceToPoint( double xp, double yp ) const;
+      /**
+       * Returns bounding box.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
+       */
+      QgsRectangle outerBoundingBox() const;
 
-      //! Returns TRUE if this label crosses the specified line
+      /**
+       * Returns the bounding box to use for candidate conflicts.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
+       */
+      QgsRectangle boundingBoxForCandidateConflicts( Pal *pal ) const;
+
+      /**
+       * Returns TRUE if the outer bounding box of this pointset intersects the outer bounding box
+       * of another label position.
+       */
+      bool outerBoundingBoxIntersects( const LabelPosition *other ) const;
+
+      /**
+       * Gets distance from this label to a point. If point lies inside, returns negative number.
+       *
+       * If \a useOuterBounds is TRUE then the distance will be calculated to the outer bounds
+       * of the label (see QgsLabelFeature::outerBounds()), otherwise it will be calculated
+       * to the label's actual rectangle.
+       */
+      double getDistanceToPoint( double xp, double yp, bool useOuterBounds ) const;
+
+      /**
+       * Returns TRUE if this label crosses the specified line.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
+       */
       bool crossesLine( PointSet *line ) const;
 
-      //! Returns TRUE if this label crosses the boundary of the specified polygon
+      /**
+       * Returns TRUE if this label crosses the boundary of the specified polygon.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
+       */
       bool crossesBoundary( PointSet *polygon ) const;
 
       /**
@@ -156,17 +182,15 @@ namespace pal
 
       /**
        * Returns TRUE if any intersection between polygon and position exists.
+       *
+       * \note This method considers the label's outer bounds (see QgsLabelFeature::outerBounds())
       */
       bool intersectsWithPolygon( PointSet *polygon ) const;
-
-      //! Shift the label by specified offset
-      void offsetPosition( double xOffset, double yOffset );
 
       /**
        * Returns the id
        */
       int getId() const;
-
 
       /**
        * Returns the feature corresponding to this labelposition
@@ -196,7 +220,8 @@ namespace pal
       {
         probFeat = probFid;
         id = lpId;
-        if ( mNextPart ) mNextPart->setProblemIds( probFid, lpId );
+        if ( mNextPart )
+          mNextPart->setProblemIds( probFid, lpId );
       }
 
       /**
@@ -261,13 +286,21 @@ namespace pal
       double getHeight() const { return h; }
 
       /**
-       * Returns the angle to rotate text (in rad).
+       * Returns the angle to rotate text (in radians).
        */
-      double getAlpha() const;
-      bool getReversed() const { return reversed; }
+      double angleRadians() const;
+
+      /**
+       * Returns TRUE if the label direction is the reversed from the line or polygon ring direction.
+       */
+      bool isReversedFromLineDirection() const { return mDirectionToLine == LabelDirectionToLine::Reversed; }
+
       bool getUpsideDown() const { return upsideDown; }
 
-      Quadrant getQuadrant() const { return quadrant; }
+      /**
+       * Returns the quadrant associated with this label position.
+       */
+      Qgis::LabelQuadrantPosition quadrant() const { return mQuadrant; }
 
       /**
        * Returns the next part of this label position (i.e. the next character for a curved label).
@@ -287,56 +320,120 @@ namespace pal
       int getPartId() const { return partId; }
       void setPartId( int id ) { partId = id; }
 
-      //! Increases the count of upside down characters for this label position
-      int incrementUpsideDownCharCount() { return ++mUpsideDownCharCount; }
+      /**
+       * Sets the \a count of upside down characters for this label position.
+       *
+       * \see upsideDownCharCount()
+       */
+      void setUpsideDownCharCount( int count ) { mUpsideDownCharCount = count; }
 
-      //! Returns the number of upside down characters for this label position
+      /**
+       * Returns the number of upside down characters for this label position.
+       *
+       * \see setUpsideDownCharCount()
+       */
       int upsideDownCharCount() const { return mUpsideDownCharCount; }
 
       /**
        * Removes the label position from the specified \a index.
        */
-      void removeFromIndex( PalRtree<LabelPosition> &index );
+      void removeFromIndex( PalRtree<LabelPosition> &index, Pal *pal );
 
       /**
        * Inserts the label position into the specified \a index.
        */
-      void insertIntoIndex( PalRtree<LabelPosition> &index );
+      void insertIntoIndex( PalRtree<LabelPosition> &index, Pal *pal );
+
+      /**
+       * Returns a GEOS representation of all label parts as a multipolygon.
+       *
+       * \since QGIS 3.40
+       */
+      const GEOSGeometry *multiPartGeom() const;
+
+      /**
+       * Returns a prepared GEOS representation of all label parts as a multipolygon.
+       *
+       * \since QGIS 3.20
+       */
+      const GEOSPreparedGeometry *preparedMultiPartGeom() const;
+
+      /**
+       * Returns the prepared outer boundary geometry.
+       *
+       * \since QGIS 3.30
+       */
+      const GEOSPreparedGeometry *preparedOuterBoundsGeom() const;
+
+      /**
+       * Returns the global ID for the candidate, which is unique for a single run of the pal
+       * labelling engine.
+       *
+       * A return value of 0 means that the ID has not been assigned.
+       *
+       * \see setGlobalId()
+       */
+      unsigned int globalId() const { return mGlobalId; }
+
+      /**
+       * Sets the global \a id for the candidate, which is unique for a single run of the pal
+       * labelling engine.
+       *
+       * \see globalId()
+       */
+      void setGlobalId( unsigned int id ) { mGlobalId = id; }
+
+      /**
+       * Returns the angle differential of all LabelPosition parts
+       */
+      double angleDifferential();
 
     protected:
-
       int id;
 
       FeaturePart *feature = nullptr;
 
       // bug # 1 (maxence 10/23/2008)
-      int probFeat;
+      int probFeat = 0;
 
-      int nbOverlap;
+      int nbOverlap = 0;
 
+      //! Rotation in radians
       double alpha;
+
       double w;
       double h;
 
-      int partId;
+      int partId = -1;
 
-      //True if label direction is the same as line / polygon ring direction.
-      //Could be used by the application to draw a directional arrow ('<' or '>')
-      //if the layer arrangement is P_LINE
-      bool reversed;
 
-      bool upsideDown;
-
-      LabelPosition::Quadrant quadrant;
+      bool upsideDown = false;
 
     private:
+      Qgis::LabelQuadrantPosition mQuadrant = Qgis::LabelQuadrantPosition::AboveLeft;
 
+      LabelDirectionToLine mDirectionToLine = LabelDirectionToLine::SameDirection;
+
+      unsigned int mGlobalId = 0;
       std::unique_ptr< LabelPosition > mNextPart;
 
+      std::vector< double > mOuterBoundsX;
+      std::vector< double > mOuterBoundsY;
+
+      double mOuterBoundsXMin = std::numeric_limits<double>::max();
+      double mOuterBoundsXMax = std::numeric_limits<double>::lowest();
+      double mOuterBoundsYMin = std::numeric_limits<double>::max();
+      double mOuterBoundsYMax = std::numeric_limits<double>::lowest();
+
+      geos::unique_ptr mOuterBoundsGeos;
+      const GEOSPreparedGeometry *mPreparedOuterBoundsGeos = nullptr;
+
+      mutable QgsRectangle mBoundsForConflictIndex;
+
       double mCost;
-      bool mHasObstacleConflict;
+      bool mHasObstacleConflict = false;
       bool mHasHardConflict = false;
-      int mUpsideDownCharCount;
+      int mUpsideDownCharCount = 0;
 
       /**
        * Calculates the total number of parts for this label position
@@ -349,12 +446,18 @@ namespace pal
        */
       double polygonIntersectionCostForParts( PointSet *polygon ) const;
 
-      bool isInConflictSinglePart( const LabelPosition *lp ) const;
+      /**
+       * Creates a GEOS representation of all label parts as a multipolygon.
+       */
+      void createMultiPartGeosGeom() const;
+
       bool isInConflictMultiPart( const LabelPosition *lp ) const;
+
+      void createOuterBoundsGeom();
 
       LabelPosition &operator=( const LabelPosition & ) = delete;
   };
 
-} // end namespace
+} //namespace pal
 
 #endif

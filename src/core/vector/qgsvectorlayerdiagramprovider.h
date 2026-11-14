@@ -16,16 +16,17 @@
 #ifndef QGSVECTORLAYERDIAGRAMPROVIDER_H
 #define QGSVECTORLAYERDIAGRAMPROVIDER_H
 
-#define SIP_NO_FILE
 
 #include "qgis_core.h"
-#include "qgslabelingengine.h"
-#include "qgslabelfeature.h"
 #include "qgsdiagramrenderer.h"
+#include "qgslabelfeature.h"
+#include "qgslabelingengine.h"
+
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
- * Class that adds extra information to QgsLabelFeature for labeling of diagrams
+ * \brief Adds extra information to QgsLabelFeature for labeling of diagrams.
  *
  * \note this class is not a part of public API yet. See notes in QgsLabelingEngine
  * \note not available in Python bindings
@@ -34,17 +35,11 @@ class QgsDiagramLabelFeature : public QgsLabelFeature
 {
   public:
     //! Create label feature, takes ownership of the geometry instance
-    QgsDiagramLabelFeature( QgsFeatureId id, geos::unique_ptr geometry, QSizeF size )
-      : QgsLabelFeature( id, std::move( geometry ), size ) {}
-
-    //! Store feature's attributes - used for rendering of diagrams
-    void setAttributes( const QgsAttributes &attrs ) { mAttributes = attrs; }
-    //! Gets feature's attributes - used for rendering of diagrams
-    const QgsAttributes &attributes() { return mAttributes; }
-
-  protected:
-    //! Stores attribute values for diagram rendering
-    QgsAttributes mAttributes;
+    QgsDiagramLabelFeature( const QgsFeature &feature, geos::unique_ptr geometry, QSizeF size )
+      : QgsLabelFeature( feature.id(), std::move( geometry ), size )
+    {
+      setFeature( feature );
+    }
 };
 
 
@@ -52,17 +47,16 @@ class QgsAbstractFeatureSource;
 
 /**
  * \ingroup core
- * \brief The QgsVectorLayerDiagramProvider class implements support for diagrams within
- * the labeling engine. Parameters for the diagrams are taken from the layer settings.
+ * \brief Implements support for diagrams within the labeling engine.
+ *
+ * Parameters for the diagrams are taken from the layer settings.
  *
  * \note this class is not a part of public API yet. See notes in QgsLabelingEngine
  * \note not available in Python bindings
- * \since QGIS 2.12
  */
 class CORE_EXPORT QgsVectorLayerDiagramProvider : public QgsAbstractLabelProvider
 {
   public:
-
     //! Convenience constructor to initialize the provider from given vector layer
     explicit QgsVectorLayerDiagramProvider( QgsVectorLayer *layer, bool ownFeatureLoop = true );
 
@@ -108,10 +102,9 @@ class CORE_EXPORT QgsVectorLayerDiagramProvider : public QgsAbstractLabelProvide
     //! initialization method - called from constructors
     void init();
     //! helper method to register one diagram feature
-    QgsLabelFeature *registerDiagram( QgsFeature &feat, QgsRenderContext &context, const QgsGeometry &obstacleGeometry = QgsGeometry() );
+    QgsLabelFeature *registerDiagram( const QgsFeature &feat, QgsRenderContext &context, const QgsGeometry &obstacleGeometry = QgsGeometry() );
 
   protected:
-
     //! Diagram layer settings
     QgsDiagramLayerSettings mSettings;
     //! Diagram renderer instance (owned by mSettings)
@@ -130,6 +123,8 @@ class CORE_EXPORT QgsVectorLayerDiagramProvider : public QgsAbstractLabelProvide
 
     //! List of generated label features (owned by the provider)
     QList<QgsLabelFeature *> mFeatures;
+
+    std::unique_ptr< QgsExpressionContextScope > mLayerScope;
 
     QgsGeometry mLabelClipFeatureGeom;
 };

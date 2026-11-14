@@ -16,22 +16,27 @@ email                : hugo dot mercier at oslandia dot com
  ***************************************************************************/
 
 #include "qgsvirtuallayerfeatureiterator.h"
-#include "qgsmessagelog.h"
-#include "qgsgeometry.h"
-#include "qgsvirtuallayerblob.h"
-#include "qgsexception.h"
 
+#include <memory>
 #include <stdexcept>
+
+#include "qgsexception.h"
+#include "qgsgeometry.h"
+#include "qgsmessagelog.h"
+#include "qgsvirtuallayerblob.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 static QString quotedColumn( QString name )
 {
-  return "\"" + name.replace( QLatin1String( "\"" ), QLatin1String( "\"\"" ) ) + "\"";
+  return "\"" + name.replace( "\""_L1, "\"\""_L1 ) + "\"";
 }
 
 QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerFeatureSource *source, bool ownSource, const QgsFeatureRequest &request )
   : QgsAbstractFeatureIteratorFromSource<QgsVirtualLayerFeatureSource>( source, ownSource, request )
 {
-
   // NOTE: this is really bad and should be removed.
   // it's only here to guard mSource->mSqlite - because if the provider is removed
   // then mSqlite will be meaningless.
@@ -43,10 +48,7 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
     return;
   }
 
-  if ( mRequest.destinationCrs().isValid() && mRequest.destinationCrs() != mSource->mCrs )
-  {
-    mTransform = QgsCoordinateTransform( mSource->mCrs, mRequest.destinationCrs(), mRequest.transformContext() );
-  }
+  mTransform = mRequest.calculateTransform( mSource->mCrs );
   try
   {
     mFilterRect = filterRectToSourceCrs( mTransform );
@@ -58,13 +60,30 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
     return;
   }
 
+  // prepare spatial filter geometries for optimal speed
+  switch ( mRequest.spatialFilterType() )
+  {
+    case Qgis::SpatialFilterType::NoFilter:
+    case Qgis::SpatialFilterType::BoundingBox:
+      break;
+
+    case Qgis::SpatialFilterType::DistanceWithin:
+      if ( !mRequest.referenceGeometry().isEmpty() )
+      {
+        mDistanceWithinGeom = mRequest.referenceGeometry();
+        mDistanceWithinEngine = QgsGeometry::createGeometryEngine( mDistanceWithinGeom.constGet() );
+        mDistanceWithinEngine->prepareGeometry();
+      }
+      break;
+  }
+
   try
   {
-    QString tableName = mSource->mTableName;
+    const QString tableName = mSource->mTableName;
 
     QStringList wheres;
     QString offset;
-    QString subset = mSource->mSubset;
+    const QString subset = mSource->mSubset;
     if ( !subset.isEmpty() )
     {
       wheres << subset;
@@ -76,72 +95,66 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
       // filters are only available when a column with unique id exists
       if ( mSource->mDefinition.hasDefinedGeometry() && !mFilterRect.isNull() )
       {
-        bool do_exact = request.flags() & QgsFeatureRequest::ExactIntersect;
+        const bool do_exact = request.flags() & Qgis::FeatureRequestFlag::ExactIntersect;
         wheres << quotedColumn( mSource->mDefinition.geometryField() ) + " is not null";
-        wheres <<  QStringLiteral( "%1Intersects(%2,BuildMbr(?,?,?,?))" )
-               .arg( do_exact ? "" : "Mbr",
-                     quotedColumn( mSource->mDefinition.geometryField() ) );
+        wheres << u"%1Intersects(%2,BuildMbr(?,?,?,?))"_s.arg( do_exact ? "" : "Mbr", quotedColumn( mSource->mDefinition.geometryField() ) );
 
-        binded << mFilterRect.xMinimum() << mFilterRect.yMinimum()
-               << mFilterRect.xMaximum() << mFilterRect.yMaximum();
+        binded << mFilterRect.xMinimum() << mFilterRect.yMinimum() << mFilterRect.xMaximum() << mFilterRect.yMaximum();
       }
-      else if ( request.filterType() == QgsFeatureRequest::FilterFid )
+      else if ( request.filterType() == Qgis::FeatureRequestFilterType::Fid )
       {
-        wheres << QStringLiteral( "%1=%2" )
-               .arg( quotedColumn( mSource->mDefinition.uid() ) )
-               .arg( request.filterFid() );
+        wheres << u"%1=%2"_s.arg( quotedColumn( mSource->mDefinition.uid() ) ).arg( request.filterFid() );
       }
-      else if ( request.filterType() == QgsFeatureRequest::FilterFids )
+      else if ( request.filterType() == Qgis::FeatureRequestFilterType::Fids )
       {
         QString values = quotedColumn( mSource->mDefinition.uid() ) + " IN (";
         bool first = true;
         const auto constFilterFids = request.filterFids();
-        for ( QgsFeatureId v : constFilterFids )
+        for ( const QgsFeatureId v : constFilterFids )
         {
           if ( !first )
           {
-            values += QLatin1Char( ',' );
+            values += ','_L1;
           }
           first = false;
           values += QString::number( v );
         }
-        values += QLatin1Char( ')' );
+        values += ')'_L1;
         wheres << values;
       }
     }
     else
     {
-      if ( request.filterType() == QgsFeatureRequest::FilterFid )
+      if ( request.filterType() == Qgis::FeatureRequestFilterType::Fid )
       {
         if ( request.filterFid() >= 0 )
-          offset = QStringLiteral( " LIMIT 1 OFFSET %1" ).arg( request.filterFid() );
+          offset = u" LIMIT 1 OFFSET %1"_s.arg( request.filterFid() );
         else // never return a feature if the id is negative
-          offset = QStringLiteral( " LIMIT 0" );
+          offset = u" LIMIT 0"_s;
       }
-      if ( !mFilterRect.isNull() &&
-           mRequest.flags() & QgsFeatureRequest::ExactIntersect )
+      if ( !mFilterRect.isNull() && mRequest.spatialFilterType() == Qgis::SpatialFilterType::BoundingBox && mRequest.flags() & Qgis::FeatureRequestFlag::ExactIntersect )
       {
         // if an exact intersection is requested, prepare the geometry to intersect
-        QgsGeometry rectGeom = QgsGeometry::fromRect( mFilterRect );
-        mRectEngine.reset( QgsGeometry::createGeometryEngine( rectGeom.constGet() ) );
+        const QgsGeometry rectGeom = QgsGeometry::fromRect( mFilterRect );
+        mRectEngine = QgsGeometry::createGeometryEngine( rectGeom.constGet() );
         mRectEngine->prepareGeometry();
       }
     }
 
-    if ( request.flags() & QgsFeatureRequest::SubsetOfAttributes )
+    if ( request.flags() & Qgis::FeatureRequestFlag::SubsetOfAttributes )
     {
       // copy only selected fields
       const auto subsetOfAttributes = request.subsetOfAttributes();
-      for ( int idx : subsetOfAttributes )
+      for ( const int idx : subsetOfAttributes )
       {
         mAttributes << idx;
       }
 
       // ensure that all attributes required for expression filter are being fetched
-      if ( request.filterType() == QgsFeatureRequest::FilterExpression )
+      if ( request.filterType() == Qgis::FeatureRequestFilterType::Expression )
       {
         const QSet<int> attributeIndexes = request.filterExpression()->referencedAttributeIndexes( mSource->mFields );
-        for ( int attrIdx : attributeIndexes )
+        for ( const int attrIdx : attributeIndexes )
         {
           if ( !mAttributes.contains( attrIdx ) )
             mAttributes << attrIdx;
@@ -149,10 +162,10 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
       }
 
       // also need attributes required by order by
-      if ( mRequest.flags() & QgsFeatureRequest::SubsetOfAttributes && !mRequest.orderBy().isEmpty() )
+      if ( ( mRequest.flags() & Qgis::FeatureRequestFlag::SubsetOfAttributes ) && !mRequest.orderBy().isEmpty() )
       {
         const auto usedAttributeIndices = mRequest.orderBy().usedAttributeIndices( mSource->mFields );
-        for ( int attrIdx : usedAttributeIndices )
+        for ( const int attrIdx : usedAttributeIndices )
         {
           if ( !mAttributes.contains( attrIdx ) )
             mAttributes << attrIdx;
@@ -173,27 +186,27 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
       }
       else
       {
-        if ( request.filterType() == QgsFeatureRequest::FilterFid )
+        if ( request.filterType() == Qgis::FeatureRequestFilterType::Fid )
         {
           columns = QString::number( request.filterFid() );
         }
         else
         {
-          columns = QStringLiteral( "0" );
+          columns = u"0"_s;
         }
       }
       const auto constMAttributes = mAttributes;
-      for ( int i : constMAttributes )
+      for ( const int i : constMAttributes )
       {
-        columns += QLatin1Char( ',' );
-        QString cname = mSource->mFields.at( i ).name().toLower();
+        columns += ','_L1;
+        const QString cname = mSource->mFields.at( i ).name().toLower();
         columns += quotedColumn( cname );
       }
     }
     // the last column is the geometry, if any
-    if ( ( !( request.flags() & QgsFeatureRequest::NoGeometry )
-           || ( request.filterType() == QgsFeatureRequest::FilterExpression && request.filterExpression()->needsGeometry() ) )
-         && !mSource->mDefinition.geometryField().isNull() && mSource->mDefinition.geometryField() != QLatin1String( "*no*" ) )
+    if ( ( !( request.flags() & Qgis::FeatureRequestFlag::NoGeometry ) || ( request.filterType() == Qgis::FeatureRequestFilterType::Expression && request.filterExpression()->needsGeometry() ) )
+         && !mSource->mDefinition.geometryField().isNull()
+         && mSource->mDefinition.geometryField() != "*no*"_L1 )
     {
       columns += "," + quotedColumn( mSource->mDefinition.geometryField() );
     }
@@ -201,7 +214,7 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
     mSqlQuery = "SELECT " + columns + " FROM " + tableName;
     if ( !wheres.isEmpty() )
     {
-      mSqlQuery += " WHERE " + wheres.join( QLatin1String( " AND " ) );
+      mSqlQuery += " WHERE " + wheres.join( " AND "_L1 );
     }
 
     if ( !offset.isEmpty() )
@@ -209,8 +222,8 @@ QgsVirtualLayerFeatureIterator::QgsVirtualLayerFeatureIterator( QgsVirtualLayerF
       mSqlQuery += offset;
     }
 
-    mQuery.reset( new Sqlite::Query( mSource->mSqlite, mSqlQuery ) );
-    for ( QVariant toBind : binded )
+    mQuery = std::make_unique<Sqlite::Query>( mSource->mSqlite, mSqlQuery );
+    for ( const QVariant &toBind : binded )
     {
       mQuery->bind( toBind );
     }
@@ -264,7 +277,6 @@ bool QgsVirtualLayerFeatureIterator::fetchFeature( QgsFeature &feature )
     return false;
   }
 
-
   bool skipFeature = false;
   do
   {
@@ -272,11 +284,11 @@ bool QgsVirtualLayerFeatureIterator::fetchFeature( QgsFeature &feature )
     {
       return false;
     }
+    skipFeature = false;
 
     feature.setFields( mSource->mFields, /* init */ true );
 
-    if ( mSource->mDefinition.uid().isNull() &&
-         mRequest.filterType() != QgsFeatureRequest::FilterFid )
+    if ( mSource->mDefinition.uid().isNull() && mRequest.filterType() != Qgis::FeatureRequestFilterType::Fid )
     {
       // no id column => autoincrement
       feature.setId( mFid++ );
@@ -287,12 +299,12 @@ bool QgsVirtualLayerFeatureIterator::fetchFeature( QgsFeature &feature )
       feature.setId( mQuery->columnInt64( 0 ) );
     }
 
-    int n = mQuery->columnCount();
+    const int n = mQuery->columnCount();
     int i = 0;
     const auto constMAttributes = mAttributes;
-    for ( int idx : constMAttributes )
+    for ( const int idx : constMAttributes )
     {
-      int type = mQuery->columnType( i + 1 );
+      const int type = mQuery->columnType( i + 1 );
       switch ( type )
       {
         case SQLITE_INTEGER:
@@ -305,13 +317,13 @@ bool QgsVirtualLayerFeatureIterator::fetchFeature( QgsFeature &feature )
         default:
           feature.setAttribute( idx, mQuery->columnText( i + 1 ) );
           break;
-      };
+      }
       i++;
     }
     if ( n > mAttributes.size() + 1 )
     {
       // geometry field
-      QByteArray blob( mQuery->columnBlob( n - 1 ) );
+      const QByteArray blob( mQuery->columnBlob( n - 1 ) );
       if ( blob.size() > 0 )
       {
         feature.setGeometry( spatialiteBlobToQgsGeometry( blob.constData(), blob.size() ) );
@@ -327,21 +339,29 @@ bool QgsVirtualLayerFeatureIterator::fetchFeature( QgsFeature &feature )
 
     // if the FilterRect has not been applied on the query
     // apply it here by skipping features until they intersect
-    if ( mSource->mDefinition.uid().isNull() && feature.hasGeometry() && mSource->mDefinition.hasDefinedGeometry() && !mFilterRect.isNull() )
+    if ( mSource->mDefinition.uid().isNull() && feature.hasGeometry() && mSource->mDefinition.hasDefinedGeometry() )
     {
-      if ( mRequest.flags() & QgsFeatureRequest::ExactIntersect )
+      if ( !mFilterRect.isNull() )
       {
-        // using exact test when checking for intersection
-        skipFeature = !mRectEngine->intersects( feature.geometry().constGet() );
-      }
-      else
-      {
-        // check just bounding box against rect when not using intersection
-        skipFeature = !feature.geometry().boundingBox().intersects( mFilterRect );
+        if ( mRequest.spatialFilterType() == Qgis::SpatialFilterType::BoundingBox && ( mRequest.flags() & Qgis::FeatureRequestFlag::ExactIntersect ) )
+        {
+          // using exact test when checking for intersection
+          skipFeature = !mRectEngine->intersects( feature.geometry().constGet() );
+        }
+        else
+        {
+          // check just bounding box against rect when not using intersection
+          skipFeature = !feature.geometry().boundingBox().intersects( mFilterRect );
+        }
       }
     }
-  }
-  while ( skipFeature );
+
+    if ( !skipFeature && mDistanceWithinEngine )
+    {
+      if ( mDistanceWithinEngine->distance( feature.geometry().constGet() ) > mRequest.distanceWithin() )
+        skipFeature = true;
+    }
+  } while ( skipFeature );
 
   return true;
 }
@@ -354,8 +374,7 @@ QgsVirtualLayerFeatureSource::QgsVirtualLayerFeatureSource( const QgsVirtualLaye
   , mTableName( p->mTableName )
   , mSubset( p->mSubset )
   , mCrs( p->crs() )
-{
-}
+{}
 
 QgsFeatureIterator QgsVirtualLayerFeatureSource::getFeatures( const QgsFeatureRequest &request )
 {

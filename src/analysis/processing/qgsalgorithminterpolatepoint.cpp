@@ -16,14 +16,19 @@
  ***************************************************************************/
 
 #include "qgsalgorithminterpolatepoint.h"
-#include "qgsgeometrycollection.h"
+
 #include "qgscurve.h"
+#include "qgsgeometrycollection.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsInterpolatePointAlgorithm::name() const
 {
-  return QStringLiteral( "interpolatepoint" );
+  return u"interpolatepoint"_s;
 }
 
 QString QgsInterpolatePointAlgorithm::displayName() const
@@ -43,7 +48,7 @@ QString QgsInterpolatePointAlgorithm::group() const
 
 QString QgsInterpolatePointAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeometry" );
+  return u"vectorgeometry"_s;
 }
 
 QString QgsInterpolatePointAlgorithm::outputName() const
@@ -53,11 +58,13 @@ QString QgsInterpolatePointAlgorithm::outputName() const
 
 QString QgsInterpolatePointAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm creates a point geometry interpolated at a set distance along line or curve geometries.\n\n"
-                      "Z and M values are linearly interpolated from existing values.\n\n"
-                      "If a multipart geometry is encountered, only the first part is considered when "
-                      "interpolating the point.\n\n"
-                      "If the specified distance is greater than the curve's length, the resultant feature will have a null geometry." );
+  return QObject::tr(
+    "This algorithm creates a point geometry interpolated at a set distance along line or curve geometries.\n\n"
+    "Z and M values are linearly interpolated from existing values.\n\n"
+    "If a multipart geometry is encountered, only the first part is considered when "
+    "interpolating the point.\n\n"
+    "If the specified distance is greater than the curve's length, the resultant feature will have a null geometry."
+  );
 }
 
 QString QgsInterpolatePointAlgorithm::shortDescription() const
@@ -67,17 +74,17 @@ QString QgsInterpolatePointAlgorithm::shortDescription() const
 
 QList<int> QgsInterpolatePointAlgorithm::inputLayerTypes() const
 {
-  return QList<int>() << QgsProcessing::TypeVectorLine << QgsProcessing::TypeVectorPolygon;
+  return QList<int>() << static_cast<int>( Qgis::ProcessingSourceType::VectorLine ) << static_cast<int>( Qgis::ProcessingSourceType::VectorPolygon );
 }
 
-QgsProcessing::SourceType QgsInterpolatePointAlgorithm::outputLayerType() const
+Qgis::ProcessingSourceType QgsInterpolatePointAlgorithm::outputLayerType() const
 {
-  return QgsProcessing::TypeVectorPoint;
+  return Qgis::ProcessingSourceType::VectorPoint;
 }
 
-QgsWkbTypes::Type QgsInterpolatePointAlgorithm::outputWkbType( QgsWkbTypes::Type inputType ) const
+Qgis::WkbType QgsInterpolatePointAlgorithm::outputWkbType( Qgis::WkbType inputType ) const
 {
-  QgsWkbTypes::Type out = QgsWkbTypes::Point;
+  Qgis::WkbType out = Qgis::WkbType::Point;
   if ( QgsWkbTypes::hasZ( inputType ) )
     out = QgsWkbTypes::addZ( out );
   if ( QgsWkbTypes::hasM( inputType ) )
@@ -92,32 +99,33 @@ QgsInterpolatePointAlgorithm *QgsInterpolatePointAlgorithm::createInstance() con
 
 void QgsInterpolatePointAlgorithm::initParameters( const QVariantMap & )
 {
-  std::unique_ptr< QgsProcessingParameterDistance> distance = qgis::make_unique< QgsProcessingParameterDistance >( QStringLiteral( "DISTANCE" ),
-      QObject::tr( "Distance" ), 0.0, QStringLiteral( "INPUT" ), false, 0 );
+  auto distance = std::make_unique<QgsProcessingParameterDistance>( u"DISTANCE"_s, QObject::tr( "Distance" ), 0.0, u"INPUT"_s, false, 0 );
   distance->setIsDynamic( true );
-  distance->setDynamicPropertyDefinition( QgsPropertyDefinition( QStringLiteral( "DISTANCE" ), QObject::tr( "Distance" ), QgsPropertyDefinition::DoublePositive ) );
-  distance->setDynamicLayerParameterName( QStringLiteral( "INPUT" ) );
+  distance->setDynamicPropertyDefinition( QgsPropertyDefinition( u"DISTANCE"_s, QObject::tr( "Distance" ), QgsPropertyDefinition::DoublePositive ) );
+  distance->setDynamicLayerParameterName( u"INPUT"_s );
   addParameter( distance.release() );
 }
 
-QgsProcessingFeatureSource::Flag QgsInterpolatePointAlgorithm::sourceFlags() const
+Qgis::ProcessingFeatureSourceFlags QgsInterpolatePointAlgorithm::sourceFlags() const
 {
   // skip geometry checks - this algorithm doesn't care about invalid geometries
-  return QgsProcessingFeatureSource::FlagSkipGeometryValidityChecks;
+  return Qgis::ProcessingFeatureSourceFlag::SkipGeometryValidityChecks;
 }
 
 bool QgsInterpolatePointAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mDistance = parameterAsDouble( parameters, QStringLiteral( "DISTANCE" ), context );
-  mDynamicDistance = QgsProcessingParameters::isDynamic( parameters, QStringLiteral( "DISTANCE" ) );
+  mDistance = parameterAsDouble( parameters, u"DISTANCE"_s, context );
+  mDynamicDistance = QgsProcessingParameters::isDynamic( parameters, u"DISTANCE"_s );
   if ( mDynamicDistance )
-    mDistanceProperty = parameters.value( QStringLiteral( "DISTANCE" ) ).value< QgsProperty >();
+    mDistanceProperty = parameters.value( u"DISTANCE"_s ).value<QgsProperty>();
 
   return true;
 }
 
 QgsFeatureList QgsInterpolatePointAlgorithm::processFeature( const QgsFeature &feature, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFeature f = feature;
   if ( f.hasGeometry() )
   {
@@ -132,5 +140,3 @@ QgsFeatureList QgsInterpolatePointAlgorithm::processFeature( const QgsFeature &f
 }
 
 ///@endcond
-
-

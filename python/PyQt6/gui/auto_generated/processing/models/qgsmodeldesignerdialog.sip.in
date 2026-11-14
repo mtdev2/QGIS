@@ -1,0 +1,108 @@
+/************************************************************************
+ * This file has been generated automatically from                      *
+ *                                                                      *
+ * src/gui/processing/models/qgsmodeldesignerdialog.h                   *
+ *                                                                      *
+ * Do not edit manually ! Edit header and run scripts/sipify.py again   *
+ ************************************************************************/
+
+
+
+
+
+
+
+class QgsModelDesignerDialog : QMainWindow, QgsProcessingFeedbackGenerator, QgsProcessingContextGenerator, QgsProcessingWidgetContextGenerator
+{
+%Docstring(signature="appended")
+Model designer dialog base class.
+
+.. warning::
+
+   Not stable API
+
+.. versionadded:: 3.14
+%End
+
+%TypeHeaderCode
+#include "qgsmodeldesignerdialog.h"
+%End
+  public:
+    QgsModelDesignerDialog( QWidget *parent /TransferThis/ = 0, Qt::WindowFlags flags = Qt::WindowFlags() );
+    ~QgsModelDesignerDialog();
+
+    virtual void closeEvent( QCloseEvent *event );
+
+
+    QgsProcessingModelAlgorithm *model();
+%Docstring
+Returns the model shown in the dialog.
+%End
+
+    void setModel( QgsProcessingModelAlgorithm *model /Transfer/ );
+%Docstring
+Sets the ``model`` shown in the dialog.
+
+Ownership of ``model`` is transferred to the dialog.
+%End
+
+    void loadModel( const QString &path );
+%Docstring
+Loads a model into the designer from the specified file ``path``.
+%End
+
+
+
+    virtual QgsProcessingFeedback *createFeedback() /Factory/;
+
+    virtual QgsProcessingParameterWidgetContext createWidgetContext();
+
+
+  public slots:
+
+    void activate();
+%Docstring
+Raise, unminimize and activate this window.
+
+.. versionadded:: 3.24
+%End
+
+    void saveInProject();
+%Docstring
+Saves the model to the current project.
+
+.. versionadded:: 4.4
+%End
+
+  signals:
+
+    void aboutToClose();
+%Docstring
+Emitted when the dialog is about to close.
+
+.. versionadded:: 4.4
+%End
+
+    void modelUpdated();
+%Docstring
+Emitted when the model is updated.
+
+.. warning::
+
+   DO NOT USE -- this is bad API, here for compatibility with Python code only.
+%End
+
+  protected:
+    virtual QgsProcessingContext *processingContext() const;
+
+
+};
+
+
+/************************************************************************
+ * This file has been generated automatically from                      *
+ *                                                                      *
+ * src/gui/processing/models/qgsmodeldesignerdialog.h                   *
+ *                                                                      *
+ * Do not edit manually ! Edit header and run scripts/sipify.py again   *
+ ************************************************************************/

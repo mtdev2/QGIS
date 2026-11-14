@@ -16,16 +16,17 @@
 #ifndef QGSVECTORTILEMVTENCODER_H
 #define QGSVECTORTILEMVTENCODER_H
 
-#define SIP_NO_FILE
 
+#include "qgscoordinatetransform.h"
 #include "qgstiles.h"
 #include "qgsvectortilerenderer.h"
 #include "vector_tile.pb.h"
 
+#define SIP_NO_FILE
 
 /**
  * \ingroup core
- * Handles conversion of vector features to Mapbox vector tiles encoding.
+ * \brief Handles conversion of vector features to Mapbox vector tiles encoding.
  *
  * Geometries are stored as a series of MoveTo / LineTo / ClosePath commands
  * with coordinates in integer values (see resolution(), called "extent" in the spec).
@@ -40,8 +41,11 @@
 class CORE_EXPORT QgsVectorTileMVTEncoder
 {
   public:
-    //! Creates MVT encoder for the given tile coordinates
+    //! Creates MVT encoder for the given tile coordinates for Web Mercator
     explicit QgsVectorTileMVTEncoder( QgsTileXYZ tileID );
+
+    //! Creates MVT encoder for the given tile coordinates and tile matrix
+    explicit QgsVectorTileMVTEncoder( QgsTileXYZ tileID, const QgsTileMatrix &tileMatrix );
 
     //! Returns resolution of coordinates of geometries within the tile. The default is 4096.
     int resolution() const { return mResolution; }
@@ -76,13 +80,13 @@ class CORE_EXPORT QgsVectorTileMVTEncoder
     QgsCoordinateTransformContext mTransformContext;
 
     QgsRectangle mTileExtent;
+    QgsCoordinateReferenceSystem mCrs;
 
     QgsVectorTileFeatures mFeatures;
 
     vector_tile::Tile tile;
 
     QMap<QVariant, int> mKnownValues;
-
 };
 
 #endif // QGSVECTORTILEMVTENCODER_H

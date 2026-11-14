@@ -16,30 +16,25 @@
 #ifndef QGSOPTIONALEXPRESSION_H
 #define QGSOPTIONALEXPRESSION_H
 
-#include "qgsoptional.h"
-#include "qgsexpression.h"
-
 #include "qgis_core.h"
-
+#include "qgsexpression.h"
+#include "qgsoptional.h"
 
 /**
  * \ingroup core
  *
- * An expression with an additional enabled flag.
+ * \brief An expression with an additional enabled flag.
  *
  * This can be used for configuration options where an expression can be enabled
  * or disabled but when disabled it shouldn't lose it's information for the case
  * it gets re-enabled later on and a user shouldn't be force to redo the configuration.
  *
- * \since QGIS 2.18
  */
-
 
 
 class CORE_EXPORT QgsOptionalExpression : public QgsOptional<QgsExpression>
 {
   public:
-
     /**
      * Construct a default optional expression.
      * It will be disabled and with an empty expression.
@@ -64,20 +59,18 @@ class CORE_EXPORT QgsOptionalExpression : public QgsOptional<QgsExpression>
      * The caller is responsible to pass an empty QDomElement and to append it to
      * a parent element.
      *
-     * \since QGIS 2.18
      */
-    void writeXml( QDomElement &element );
+    void writeXml( QDomElement &element ) const;
 
     /**
      * Read the optional expression from the provided QDomElement.
      *
-     * \since QGIS 2.18
      */
     void readXml( const QDomElement &element );
 };
 
 
-#if defined(_MSC_VER)
+#if defined( _MSC_VER )
 #ifndef SIP_RUN
 template class CORE_EXPORT QgsOptional<QgsExpression>;
 #endif

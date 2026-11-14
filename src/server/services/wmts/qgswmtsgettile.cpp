@@ -14,24 +14,26 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgswmtsutils.h"
-#include "qgswmtsparameters.h"
 #include "qgswmtsgettile.h"
 
+#include "qgswmtsparameters.h"
+#include "qgswmtsutils.h"
+
 #include <QImage>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 namespace QgsWmts
 {
 
-  void writeGetTile( QgsServerInterface *serverIface, const QgsProject *project,
-                     const QString &version, const QgsServerRequest &request,
-                     QgsServerResponse &response )
+  void writeGetTile( QgsServerInterface *serverIface, const QgsProject *project, const QString &version, const QgsServerRequest &request, QgsServerResponse &response )
   {
     Q_UNUSED( version )
     const QgsWmtsParameters params( QUrlQuery( request.url() ) );
 
     // WMS query
-    QUrlQuery query = translateWmtsParamToWmsQueryItem( QStringLiteral( "GetMap" ), params, project, serverIface );
+    const QUrlQuery query = translateWmtsParamToWmsQueryItem( u"GetMap"_s, params, project, serverIface );
 
     // Get cached image
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
@@ -39,41 +41,41 @@ namespace QgsWmts
     QgsServerCacheManager *cacheManager = serverIface->cacheManager();
     if ( cacheManager )
     {
-      QgsWmtsParameters::Format f = params.format();
+      const QgsWmtsParameters::Format f = params.format();
       QString contentType;
       QString saveFormat;
       std::unique_ptr<QImage> image;
       if ( f == QgsWmtsParameters::Format::JPG )
       {
-        contentType = QStringLiteral( "image/jpeg" );
-        saveFormat = QStringLiteral( "JPEG" );
-        image = qgis::make_unique<QImage>( 256, 256, QImage::Format_RGB32 );
+        contentType = u"image/jpeg"_s;
+        saveFormat = u"JPEG"_s;
+        image = std::make_unique<QImage>( 256, 256, QImage::Format_RGB32 );
       }
       else
       {
-        contentType = QStringLiteral( "image/png" );
-        saveFormat = QStringLiteral( "PNG" );
-        image = qgis::make_unique<QImage>( 256, 256, QImage::Format_ARGB32_Premultiplied );
+        contentType = u"image/png"_s;
+        saveFormat = u"PNG"_s;
+        image = std::make_unique<QImage>( 256, 256, QImage::Format_ARGB32_Premultiplied );
       }
 
-      QByteArray content = cacheManager->getCachedImage( project, request, accessControl );
+      const QByteArray content = cacheManager->getCachedImage( project, request, accessControl );
       if ( !content.isEmpty() && image->loadFromData( content ) )
       {
-        response.setHeader( QStringLiteral( "Content-Type" ), contentType );
+        response.setHeader( u"Content-Type"_s, contentType );
         image->save( response.io(), qPrintable( saveFormat ) );
         return;
       }
     }
 #endif
 
-    QgsServerParameters wmsParams( query );
-    QgsServerRequest wmsRequest( "?" + query.query( QUrl::FullyDecoded ) );
+    const QgsServerParameters wmsParams( query );
+    const QgsServerRequest wmsRequest( "?" + query.query( QUrl::FullyDecoded ) );
     QgsService *service = serverIface->serviceRegistry()->getService( wmsParams.service(), wmsParams.version() );
     service->executeRequest( wmsRequest, response, project );
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
     if ( cacheManager )
     {
-      QByteArray content = response.data();
+      const QByteArray content = response.data();
       if ( !content.isEmpty() )
         cacheManager->setCachedImage( &content, project, request, accessControl );
     }
@@ -81,7 +83,3 @@ namespace QgsWmts
   }
 
 } // namespace QgsWmts
-
-
-
-

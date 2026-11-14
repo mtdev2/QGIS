@@ -14,11 +14,19 @@
  ***************************************************************************/
 
 #include "qgsgdalutils.h"
-#include "qgslogger.h"
-#include "qgsnetworkaccessmanager.h"
-#include "qgssettings.h"
 
-#define CPL_SUPRESS_CPLUSPLUS  //#spellok
+#include "qgscoordinatereferencesystem.h"
+#include "qgslogger.h"
+#include "qgsmessagelog.h"
+#include "qgsnetworkaccessmanager.h"
+#include "qgsrasterblock.h"
+#include "qgssettingsentryimpl.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+#define CPL_SUPRESS_CPLUSPLUS //#spellok
 #include "gdal.h"
 #include "gdalwarper.h"
 #include "cpl_string.h"
@@ -26,18 +34,143 @@
 #include <QNetworkProxy>
 #include <QString>
 #include <QImage>
+#include <QFileInfo>
+#include <mutex>
+
+
+QgsGdalOption QgsGdalOption::fromXmlNode( const CPLXMLNode *node )
+{
+  if ( node->eType != CXT_Element || !EQUAL( node->pszValue, "Option" ) )
+    return {};
+
+  const QString optionName( CPLGetXMLValue( node, "name", nullptr ) );
+  if ( optionName.isEmpty() )
+    return {};
+
+  QgsGdalOption option;
+  option.name = optionName;
+
+  option.description = QString( CPLGetXMLValue( node, "description", nullptr ) );
+  option.scope = QString( CPLGetXMLValue( node, "scope", nullptr ) );
+
+  option.type = QgsGdalOption::Type::Text;
+
+  const char *pszType = CPLGetXMLValue( node, "type", nullptr );
+  const char *pszDefault = CPLGetXMLValue( node, "default", nullptr );
+  if ( pszType && EQUAL( pszType, "string-select" ) )
+  {
+    option.type = QgsGdalOption::Type::Select;
+    for ( auto psOption = node->psChild; psOption != nullptr; psOption = psOption->psNext )
+    {
+      if ( psOption->eType != CXT_Element || !EQUAL( psOption->pszValue, "Value" ) || !psOption->psChild )
+      {
+        continue;
+      }
+      option.options << psOption->psChild->pszValue;
+    }
+    option.defaultValue = pszDefault ? QString( pszDefault ) : option.options.value( 0 );
+    return option;
+  }
+  else if ( pszType && EQUAL( pszType, "boolean" ) )
+  {
+    option.type = QgsGdalOption::Type::Boolean;
+    option.defaultValue = pszDefault ? QString( pszDefault ) : u"YES"_s;
+    return option;
+  }
+  else if ( pszType && EQUAL( pszType, "string" ) )
+  {
+    option.type = QgsGdalOption::Type::Text;
+    if ( pszDefault )
+      option.defaultValue = QString( pszDefault );
+    return option;
+  }
+  else if ( pszType && ( EQUAL( pszType, "int" ) || EQUAL( pszType, "integer" ) ) )
+  {
+    option.type = QgsGdalOption::Type::Int;
+    if ( pszDefault )
+    {
+      bool ok = false;
+      const int defaultInt = QString( pszDefault ).toInt( &ok );
+      if ( ok )
+        option.defaultValue = defaultInt;
+    }
+
+    if ( const char *pszMin = CPLGetXMLValue( node, "min", nullptr ) )
+    {
+      bool ok = false;
+      const int minInt = QString( pszMin ).toInt( &ok );
+      if ( ok )
+        option.minimum = minInt;
+    }
+    if ( const char *pszMax = CPLGetXMLValue( node, "max", nullptr ) )
+    {
+      bool ok = false;
+      const int maxInt = QString( pszMax ).toInt( &ok );
+      if ( ok )
+        option.maximum = maxInt;
+    }
+    return option;
+  }
+  else if ( pszType && ( EQUAL( pszType, "double" ) || EQUAL( pszType, "float" ) ) )
+  {
+    option.type = QgsGdalOption::Type::Double;
+    if ( pszDefault )
+    {
+      bool ok = false;
+      const double defaultDouble = QString( pszDefault ).toDouble( &ok );
+      if ( ok )
+        option.defaultValue = defaultDouble;
+    }
+
+    if ( const char *pszMin = CPLGetXMLValue( node, "min", nullptr ) )
+    {
+      bool ok = false;
+      const double minDouble = QString( pszMin ).toDouble( &ok );
+      if ( ok )
+        option.minimum = minDouble;
+    }
+    if ( const char *pszMax = CPLGetXMLValue( node, "max", nullptr ) )
+    {
+      bool ok = false;
+      const double maxDouble = QString( pszMax ).toDouble( &ok );
+      if ( ok )
+        option.maximum = maxDouble;
+    }
+    return option;
+  }
+
+  QgsDebugError( u"Unhandled GDAL option type: %1"_s.arg( pszType ) );
+  return {};
+}
+
+QList<QgsGdalOption> QgsGdalOption::optionsFromXml( const CPLXMLNode *node )
+{
+  QList< QgsGdalOption > options;
+  for ( auto psItem = node->psChild; psItem != nullptr; psItem = psItem->psNext )
+  {
+    const QgsGdalOption option = fromXmlNode( psItem );
+    if ( option.type == QgsGdalOption::Type::Invalid )
+      continue;
+
+    options << option;
+  }
+  return options;
+}
+
+
+//
+// QgsGdalUtils
+//
 
 bool QgsGdalUtils::supportsRasterCreate( GDALDriverH driver )
 {
-  QString driverShortName = GDALGetDriverShortName( driver );
-  if ( driverShortName == QLatin1String( "SQLite" ) )
+  const QString driverShortName = GDALGetDriverShortName( driver );
+  if ( driverShortName == "SQLite"_L1 || driverShortName == "PDF"_L1 )
   {
     // it supports Create() but only for vector side
     return false;
   }
-  char **driverMetadata = GDALGetMetadata( driver, nullptr );
-  return  CSLFetchBoolean( driverMetadata, GDAL_DCAP_CREATE, false ) &&
-          CSLFetchBoolean( driverMetadata, GDAL_DCAP_RASTER, false );
+  return GDALGetMetadataItem( driver, GDAL_DCAP_CREATE, nullptr ) && GDALGetMetadataItem( driver, GDAL_DCAP_RASTER, nullptr );
 }
 
 gdal::dataset_unique_ptr QgsGdalUtils::createSingleBandMemoryDataset( GDALDataType dataType, const QgsRectangle &extent, int width, int height, const QgsCoordinateReferenceSystem &crs )
@@ -55,8 +188,8 @@ gdal::dataset_unique_ptr QgsGdalUtils::createMultiBandMemoryDataset( GDALDataTyp
 
   gdal::dataset_unique_ptr hSrcDS( GDALCreate( hDriverMem, "", width, height, bands, dataType, nullptr ) );
 
-  double cellSizeX = extent.width() / width;
-  double cellSizeY = extent.height() / height;
+  const double cellSizeX = extent.width() / width;
+  const double cellSizeY = extent.height() / height;
   double geoTransform[6];
   geoTransform[0] = extent.xMinimum();
   geoTransform[1] = cellSizeX;
@@ -65,15 +198,15 @@ gdal::dataset_unique_ptr QgsGdalUtils::createMultiBandMemoryDataset( GDALDataTyp
   geoTransform[4] = 0;
   geoTransform[5] = -cellSizeY;
 
-  GDALSetProjection( hSrcDS.get(), crs.toWkt( QgsCoordinateReferenceSystem::WKT_PREFERRED_GDAL ).toLatin1().constData() );
+  GDALSetProjection( hSrcDS.get(), crs.toWkt( Qgis::CrsWktVariant::PreferredGdal ).toLatin1().constData() );
   GDALSetGeoTransform( hSrcDS.get(), geoTransform );
   return hSrcDS;
 }
 
 gdal::dataset_unique_ptr QgsGdalUtils::createSingleBandTiffDataset( const QString &filename, GDALDataType dataType, const QgsRectangle &extent, int width, int height, const QgsCoordinateReferenceSystem &crs )
 {
-  double cellSizeX = extent.width() / width;
-  double cellSizeY = extent.height() / height;
+  const double cellSizeX = extent.width() / width;
+  const double cellSizeY = extent.height() / height;
   double geoTransform[6];
   geoTransform[0] = extent.xMinimum();
   geoTransform[1] = cellSizeX;
@@ -89,14 +222,14 @@ gdal::dataset_unique_ptr QgsGdalUtils::createSingleBandTiffDataset( const QStrin
   }
 
   // Create the output file.
-  gdal::dataset_unique_ptr hDstDS( GDALCreate( hDriver, filename.toLocal8Bit().constData(), width, height, 1, dataType, nullptr ) );
+  gdal::dataset_unique_ptr hDstDS( GDALCreate( hDriver, filename.toUtf8().constData(), width, height, 1, dataType, nullptr ) );
   if ( !hDstDS )
   {
     return gdal::dataset_unique_ptr();
   }
 
   // Write out the projection definition.
-  GDALSetProjection( hDstDS.get(), crs.toWkt( QgsCoordinateReferenceSystem::WKT_PREFERRED_GDAL ).toLatin1().constData() );
+  GDALSetProjection( hDstDS.get(), crs.toWkt( Qgis::CrsWktVariant::PreferredGdal ).toLatin1().constData() );
   GDALSetGeoTransform( hDstDS.get(), geoTransform );
   return hDstDS;
 }
@@ -112,40 +245,124 @@ gdal::dataset_unique_ptr QgsGdalUtils::imageToMemoryDataset( const QImage &image
   {
     return nullptr;
   }
-  gdal::dataset_unique_ptr hSrcDS( GDALCreate( hDriverMem, "",  image.width(), image.height(), 0, GDT_Byte, nullptr ) );
+  gdal::dataset_unique_ptr hSrcDS( GDALCreate( hDriverMem, "", image.width(), image.height(), 0, GDT_Byte, nullptr ) );
 
-  char **papszOptions = QgsGdalUtils::papszFromStringList( QStringList()
-                        << QStringLiteral( "PIXELOFFSET=%1" ).arg( sizeof( QRgb ) )
-                        << QStringLiteral( "LINEOFFSET=%1" ).arg( image.bytesPerLine() )
-                        << QStringLiteral( "DATAPOINTER=%1" ).arg( reinterpret_cast< qulonglong >( rgb ) + 2 ) );
+  char **papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( sizeof( QRgb ) ) << u"LINEOFFSET=%1"_s.arg( image.bytesPerLine() ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( rgb ) + 2 )
+  );
   GDALAddBand( hSrcDS.get(), GDT_Byte, papszOptions );
   CSLDestroy( papszOptions );
 
-  papszOptions = QgsGdalUtils::papszFromStringList( QStringList()
-                 << QStringLiteral( "PIXELOFFSET=%1" ).arg( sizeof( QRgb ) )
-                 << QStringLiteral( "LINEOFFSET=%1" ).arg( image.bytesPerLine() )
-                 << QStringLiteral( "DATAPOINTER=%1" ).arg( reinterpret_cast< qulonglong >( rgb ) + 1 ) );
+  papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( sizeof( QRgb ) ) << u"LINEOFFSET=%1"_s.arg( image.bytesPerLine() ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( rgb ) + 1 )
+  );
   GDALAddBand( hSrcDS.get(), GDT_Byte, papszOptions );
   CSLDestroy( papszOptions );
 
-  papszOptions = QgsGdalUtils::papszFromStringList( QStringList()
-                 << QStringLiteral( "PIXELOFFSET=%1" ).arg( sizeof( QRgb ) )
-                 << QStringLiteral( "LINEOFFSET=%1" ).arg( image.bytesPerLine() )
-                 << QStringLiteral( "DATAPOINTER=%1" ).arg( reinterpret_cast< qulonglong >( rgb ) ) );
+  papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( sizeof( QRgb ) ) << u"LINEOFFSET=%1"_s.arg( image.bytesPerLine() ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( rgb ) )
+  );
   GDALAddBand( hSrcDS.get(), GDT_Byte, papszOptions );
   CSLDestroy( papszOptions );
 
-  papszOptions = QgsGdalUtils::papszFromStringList( QStringList()
-                 << QStringLiteral( "PIXELOFFSET=%1" ).arg( sizeof( QRgb ) )
-                 << QStringLiteral( "LINEOFFSET=%1" ).arg( image.bytesPerLine() )
-                 << QStringLiteral( "DATAPOINTER=%1" ).arg( reinterpret_cast< qulonglong >( rgb ) + 3 ) );
+  papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( sizeof( QRgb ) ) << u"LINEOFFSET=%1"_s.arg( image.bytesPerLine() ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( rgb ) + 3 )
+  );
   GDALAddBand( hSrcDS.get(), GDT_Byte, papszOptions );
   CSLDestroy( papszOptions );
 
   return hSrcDS;
 }
 
-bool QgsGdalUtils::resampleSingleBandRaster( GDALDatasetH hSrcDS, GDALDatasetH hDstDS, GDALResampleAlg resampleAlg, const char *pszCoordinateOperation )
+gdal::dataset_unique_ptr QgsGdalUtils::blockToSingleBandMemoryDataset( int pixelWidth, int pixelHeight, const QgsRectangle &extent, void *block, GDALDataType dataType )
+{
+  if ( !block )
+    return nullptr;
+
+  GDALDriverH hDriverMem = GDALGetDriverByName( "MEM" );
+  if ( !hDriverMem )
+    return nullptr;
+
+  const double cellSizeX = extent.width() / pixelWidth;
+  const double cellSizeY = extent.height() / pixelHeight;
+  double geoTransform[6];
+  geoTransform[0] = extent.xMinimum();
+  geoTransform[1] = cellSizeX;
+  geoTransform[2] = 0;
+  geoTransform[3] = extent.yMinimum() + ( cellSizeY * pixelHeight );
+  geoTransform[4] = 0;
+  geoTransform[5] = -cellSizeY;
+
+  gdal::dataset_unique_ptr hDstDS( GDALCreate( hDriverMem, "", pixelWidth, pixelHeight, 0, dataType, nullptr ) );
+
+  int dataTypeSize = GDALGetDataTypeSizeBytes( dataType );
+  char **papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( dataTypeSize ) << u"LINEOFFSET=%1"_s.arg( pixelWidth * dataTypeSize ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( block ) )
+  );
+  GDALAddBand( hDstDS.get(), dataType, papszOptions );
+  CSLDestroy( papszOptions );
+
+  GDALSetGeoTransform( hDstDS.get(), geoTransform );
+
+  return hDstDS;
+}
+
+gdal::dataset_unique_ptr QgsGdalUtils::blockToSingleBandMemoryDataset( const QgsRectangle &extent, QgsRasterBlock *block )
+{
+  if ( !block )
+    return nullptr;
+
+  gdal::dataset_unique_ptr ret = blockToSingleBandMemoryDataset( block->width(), block->height(), extent, block->bits(), gdalDataTypeFromQgisDataType( block->dataType() ) );
+  if ( ret )
+  {
+    GDALRasterBandH band = GDALGetRasterBand( ret.get(), 1 );
+    if ( band )
+      GDALSetRasterNoDataValue( band, block->noDataValue() );
+  }
+
+  return ret;
+}
+
+
+gdal::dataset_unique_ptr QgsGdalUtils::blockToSingleBandMemoryDataset( double rotation, const QgsPointXY &origin, double gridXSize, double gridYSize, QgsRasterBlock *block )
+{
+  if ( !block )
+    return nullptr;
+
+  GDALDriverH hDriverMem = GDALGetDriverByName( "MEM" );
+  if ( !hDriverMem )
+    return nullptr;
+
+  const double cellSizeX = gridXSize / block->width();
+  const double cellSizeY = gridYSize / block->height();
+  double geoTransform[6];
+  geoTransform[0] = origin.x();
+  geoTransform[1] = cellSizeX * std::cos( rotation );
+  geoTransform[2] = cellSizeY * std::sin( rotation );
+  geoTransform[3] = origin.y();
+  geoTransform[4] = cellSizeX * std::sin( rotation );
+  geoTransform[5] = -cellSizeY * std::cos( rotation );
+
+  GDALDataType dataType = gdalDataTypeFromQgisDataType( block->dataType() );
+  gdal::dataset_unique_ptr hDstDS( GDALCreate( hDriverMem, "", block->width(), block->height(), 0, dataType, nullptr ) );
+
+  int dataTypeSize = GDALGetDataTypeSizeBytes( dataType );
+  char **papszOptions = QgsGdalUtils::papszFromStringList(
+    QStringList() << u"PIXELOFFSET=%1"_s.arg( dataTypeSize ) << u"LINEOFFSET=%1"_s.arg( block->width() * dataTypeSize ) << u"DATAPOINTER=%1"_s.arg( reinterpret_cast< qulonglong >( block->bits() ) )
+  );
+  GDALAddBand( hDstDS.get(), dataType, papszOptions );
+  CSLDestroy( papszOptions );
+
+  GDALSetGeoTransform( hDstDS.get(), geoTransform );
+
+  GDALRasterBandH band = GDALGetRasterBand( hDstDS.get(), 1 );
+  if ( band )
+    GDALSetRasterNoDataValue( band, block->noDataValue() );
+
+  return hDstDS;
+}
+
+static bool resampleSingleBandRasterStatic( GDALDatasetH hSrcDS, GDALDatasetH hDstDS, GDALResampleAlg resampleAlg, char **papszOptions )
 {
   gdal::warp_options_unique_ptr psWarpOptions( GDALCreateWarpOptions() );
   psWarpOptions->hSrcDS = hSrcDS;
@@ -156,35 +373,62 @@ bool QgsGdalUtils::resampleSingleBandRaster( GDALDatasetH hSrcDS, GDALDatasetH h
   psWarpOptions->panDstBands = reinterpret_cast< int * >( CPLMalloc( sizeof( int ) * 1 ) );
   psWarpOptions->panSrcBands[0] = 1;
   psWarpOptions->panDstBands[0] = 1;
-
+  double noDataValue = GDALGetRasterNoDataValue( GDALGetRasterBand( hDstDS, 1 ), nullptr );
+  psWarpOptions->padfDstNoDataReal = reinterpret_cast< double * >( CPLMalloc( sizeof( double ) * 1 ) );
+  psWarpOptions->padfDstNoDataReal[0] = noDataValue;
+  psWarpOptions->padfSrcNoDataReal = reinterpret_cast< double * >( CPLMalloc( sizeof( double ) * 1 ) );
+  psWarpOptions->padfSrcNoDataReal[0] = noDataValue;
   psWarpOptions->eResampleAlg = resampleAlg;
 
   // Establish reprojection transformer.
-  char **papszOptions = nullptr;
-  if ( pszCoordinateOperation != nullptr )
-    papszOptions = CSLSetNameValue( papszOptions, "COORDINATE_OPERATION", pszCoordinateOperation );
   psWarpOptions->pTransformerArg = GDALCreateGenImgProjTransformer2( hSrcDS, hDstDS, papszOptions );
-  CSLDestroy( papszOptions );
 
-  if ( ! psWarpOptions->pTransformerArg )
+  if ( !psWarpOptions->pTransformerArg )
   {
     return false;
   }
 
   psWarpOptions->pfnTransformer = GDALGenImgProjTransform;
+  psWarpOptions->papszWarpOptions = CSLSetNameValue( psWarpOptions->papszWarpOptions, "INIT_DEST", "NO_DATA" );
 
   // Initialize and execute the warp operation.
+  bool retVal = false;
   GDALWarpOperation oOperation;
-  oOperation.Initialize( psWarpOptions.get() );
-
-  const bool retVal { oOperation.ChunkAndWarpImage( 0, 0, GDALGetRasterXSize( hDstDS ), GDALGetRasterYSize( hDstDS ) ) == CE_None };
+  CPLErr initResult = oOperation.Initialize( psWarpOptions.get() );
+  if ( initResult != CE_Failure )
+    retVal = oOperation.ChunkAndWarpImage( 0, 0, GDALGetRasterXSize( hDstDS ), GDALGetRasterYSize( hDstDS ) ) == CE_None;
   GDALDestroyGenImgProjTransformer( psWarpOptions->pTransformerArg );
   return retVal;
 }
 
+bool QgsGdalUtils::resampleSingleBandRaster( GDALDatasetH hSrcDS, GDALDatasetH hDstDS, GDALResampleAlg resampleAlg, const char *pszCoordinateOperation )
+{
+  char **papszOptions = nullptr;
+  if ( pszCoordinateOperation )
+    papszOptions = CSLSetNameValue( papszOptions, "COORDINATE_OPERATION", pszCoordinateOperation );
+
+  bool result = resampleSingleBandRasterStatic( hSrcDS, hDstDS, resampleAlg, papszOptions );
+  CSLDestroy( papszOptions );
+  return result;
+}
+
+bool QgsGdalUtils::resampleSingleBandRaster(
+  GDALDatasetH hSrcDS, GDALDatasetH hDstDS, GDALResampleAlg resampleAlg, const QgsCoordinateReferenceSystem &sourceCrs, const QgsCoordinateReferenceSystem &destinationCrs
+)
+{
+  char **papszOptions = nullptr;
+
+  papszOptions = CSLSetNameValue( papszOptions, "SRC_SRS", sourceCrs.toWkt( Qgis::CrsWktVariant::PreferredGdal ).toUtf8().constData() );
+  papszOptions = CSLSetNameValue( papszOptions, "DST_SRS", destinationCrs.toWkt( Qgis::CrsWktVariant::PreferredGdal ).toUtf8().constData() );
+
+  bool result = resampleSingleBandRasterStatic( hSrcDS, hDstDS, resampleAlg, papszOptions );
+  CSLDestroy( papszOptions );
+  return result;
+}
+
 QImage QgsGdalUtils::resampleImage( const QImage &image, QSize outputSize, GDALRIOResampleAlg resampleAlg )
 {
-  gdal::dataset_unique_ptr srcDS = QgsGdalUtils::imageToMemoryDataset( image );
+  const gdal::dataset_unique_ptr srcDS = QgsGdalUtils::imageToMemoryDataset( image );
   if ( !srcDS )
     return QImage();
 
@@ -198,35 +442,32 @@ QImage QgsGdalUtils::resampleImage( const QImage &image, QSize outputSize, GDALR
 
   GByte *rgb = reinterpret_cast<GByte *>( res.bits() );
 
-  CPLErr err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 1 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 2, outputSize.width(),
-                               outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
+  CPLErr err
+    = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 1 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 2, outputSize.width(), outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
   if ( err != CE_None )
   {
-    QgsDebugMsg( QStringLiteral( "failed to read red band" ) );
+    QgsDebugError( u"failed to read red band"_s );
     return QImage();
   }
 
-  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 2 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 1, outputSize.width(),
-                        outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
+  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 2 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 1, outputSize.width(), outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
   if ( err != CE_None )
   {
-    QgsDebugMsg( QStringLiteral( "failed to read green band" ) );
+    QgsDebugError( u"failed to read green band"_s );
     return QImage();
   }
 
-  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 3 ), GF_Read, 0, 0, image.width(), image.height(), rgb, outputSize.width(),
-                        outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
+  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 3 ), GF_Read, 0, 0, image.width(), image.height(), rgb, outputSize.width(), outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
   if ( err != CE_None )
   {
-    QgsDebugMsg( QStringLiteral( "failed to read blue band" ) );
+    QgsDebugError( u"failed to read blue band"_s );
     return QImage();
   }
 
-  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 4 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 3, outputSize.width(),
-                        outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
+  err = GDALRasterIOEx( GDALGetRasterBand( srcDS.get(), 4 ), GF_Read, 0, 0, image.width(), image.height(), rgb + 3, outputSize.width(), outputSize.height(), GDT_Byte, sizeof( QRgb ), res.bytesPerLine(), &extra );
   if ( err != CE_None )
   {
-    QgsDebugMsg( QStringLiteral( "failed to read alpha band" ) );
+    QgsDebugError( u"failed to read alpha band"_s );
     return QImage();
   }
 
@@ -236,29 +477,75 @@ QImage QgsGdalUtils::resampleImage( const QImage &image, QSize outputSize, GDALR
 QString QgsGdalUtils::helpCreationOptionsFormat( const QString &format )
 {
   QString message;
+
   GDALDriverH myGdalDriver = GDALGetDriverByName( format.toLocal8Bit().constData() );
   if ( myGdalDriver )
   {
     // first report details and help page
-    char **GDALmetadata = GDALGetMetadata( myGdalDriver, nullptr );
-    message += QLatin1String( "Format Details:\n" );
-    message += QStringLiteral( "  Extension: %1\n" ).arg( CSLFetchNameValue( GDALmetadata, GDAL_DMD_EXTENSION ) );
-    message += QStringLiteral( "  Short Name: %1" ).arg( GDALGetDriverShortName( myGdalDriver ) );
-    message += QStringLiteral( "  /  Long Name: %1\n" ).arg( GDALGetDriverLongName( myGdalDriver ) );
-    message += QStringLiteral( "  Help page:  http://www.gdal.org/%1\n\n" ).arg( CSLFetchNameValue( GDALmetadata, GDAL_DMD_HELPTOPIC ) );
+    CSLConstList GDALmetadata = GDALGetMetadata( myGdalDriver, nullptr );
+    message += "<h3>" + QCoreApplication::translate( "QgsGdalUtils", "Format Details" ) + "</h3>";
+    message += "<b>" + QCoreApplication::translate( "QgsGdalUtils", "Extension:" ) + u"</b> %1<br>"_s.arg( CSLFetchNameValue( GDALmetadata, GDAL_DMD_EXTENSION ) );
+    message += "<b>"
+               + QCoreApplication::translate( "QgsGdalUtils", "Short Name:" )
+               + u"</b> %1 / <b>"_s.arg( GDALGetDriverShortName( myGdalDriver ) )
+               + QCoreApplication::translate( "QgsGdalUtils", "Long Name:" )
+               + u"</b> %2<br>"_s.arg( GDALGetDriverLongName( myGdalDriver ) );
+    const QString helpUrl = gdalDocumentationUrlForDriver( myGdalDriver );
+    if ( !helpUrl.isEmpty() )
+    {
+      message += "<b>" + QCoreApplication::translate( "QgsGdalUtils", "Help page:" ) + u"</b> <a href=\"%1\">%1</a>"_s.arg( helpUrl );
+    }
 
     // next get creation options
-    // need to serialize xml to get newlines, should we make the basic xml prettier?
-    CPLXMLNode *psCOL = CPLParseXMLString( GDALGetMetadataItem( myGdalDriver,
-                                           GDAL_DMD_CREATIONOPTIONLIST, "" ) );
+    // serialize xml and convert it to html
+    CPLXMLNode *psCOL = CPLParseXMLString( GDALGetMetadataItem( myGdalDriver, GDAL_DMD_CREATIONOPTIONLIST, "" ) );
     char *pszFormattedXML = CPLSerializeXMLTree( psCOL );
     if ( pszFormattedXML )
-      message += QString( pszFormattedXML );
+    {
+      QDomDocument doc;
+      if ( doc.setContent( QString( pszFormattedXML ) ) )
+      {
+        message += "<h3>" + QCoreApplication::translate( "QgsGdalUtils", "Creation Options" ) + "</h3>";
+        message += "<dl>";
+        QDomNodeList options = doc.elementsByTagName( u"Option"_s );
+        for ( int i = 0; i < options.count(); ++i )
+        {
+          QDomElement element = options.at( i ).toElement();
+
+          const QString optionName = element.attribute( u"name"_s );
+          const QString optionType = element.attribute( u"type"_s );
+          const QString optionDefault = element.attribute( u"default"_s );
+          const QString optionDescription = element.attribute( u"description"_s );
+          message
+            += u"<dt><b>%1</b> (%2%3)</dt>"_s
+                 .arg( optionName.toHtmlEscaped(), optionType.toHtmlEscaped(), optionDefault.isEmpty() ? QString() : ", " + QCoreApplication::translate( "QgsGdalUtils", "default: " ) + optionDefault.toHtmlEscaped() );
+          if ( !optionDescription.isEmpty() )
+          {
+            message += u"<dd>%1</dd>"_s.arg( optionDescription.toHtmlEscaped() );
+          }
+
+          // supported values for option
+          QDomNodeList nodes = element.elementsByTagName( u"Value"_s );
+          if ( !nodes.isEmpty() )
+          {
+            QStringList values;
+            for ( int j = 0; j < nodes.count(); ++j )
+            {
+              values << nodes.at( j ).toElement().text().toHtmlEscaped();
+            }
+            message += "<dd><i>" + QCoreApplication::translate( "QgsGdalUtils", "Possible values:" ) + u"</i> %1</dd>"_s.arg( values.join( ", " ) );
+          }
+        }
+
+        message += "</dl>";
+      }
+    }
     if ( psCOL )
       CPLDestroyXMLNode( psCOL );
     if ( pszFormattedXML )
       CPLFree( pszFormattedXML );
   }
+
   return message;
 }
 
@@ -273,243 +560,150 @@ char **QgsGdalUtils::papszFromStringList( const QStringList &list )
   return papszRetList;
 }
 
-QString QgsGdalUtils::validateCreationOptionsFormat( const QStringList &createOptions, const QString &format )
+QString QgsGdalUtils::validateCreationOptionsFormat( const QStringList &creationOptions, const QString &format )
 {
   GDALDriverH myGdalDriver = GDALGetDriverByName( format.toLocal8Bit().constData() );
-  if ( ! myGdalDriver )
-    return QStringLiteral( "invalid GDAL driver" );
+  if ( !myGdalDriver )
+    return u"invalid GDAL driver"_s;
 
-  char **papszOptions = papszFromStringList( createOptions );
+  char **papszOptions = papszFromStringList( creationOptions );
   // get error string?
-  int ok = GDALValidateCreationOptions( myGdalDriver, papszOptions );
+  const int ok = GDALValidateCreationOptions( myGdalDriver, papszOptions );
   CSLDestroy( papszOptions );
 
   if ( !ok )
-    return QStringLiteral( "Failed GDALValidateCreationOptions() test" );
+    return u"Failed GDALValidateCreationOptions() test"_s;
   return QString();
 }
 
-#if GDAL_VERSION_NUM < GDAL_COMPUTE_VERSION(2,3,0)
-// GDAL < 2.3 does not come with GDALWarpInitDefaultBandMapping and GDALWarpInitNoDataReal
-// in the public API so we define them here for rpcAwareAutoCreateWarpedVrt()
-
-static void GDALWarpInitDefaultBandMapping( GDALWarpOptions *psOptionsIn, int nBandCount )
+static void setRPCTransformerOptions( GDALDatasetH hSrcDS, char ***opts )
 {
-  if ( psOptionsIn->nBandCount != 0 ) { return; }
-
-  psOptionsIn->nBandCount = nBandCount;
-
-  psOptionsIn->panSrcBands = static_cast<int *>(
-                               CPLMalloc( sizeof( int ) * psOptionsIn->nBandCount ) );
-  psOptionsIn->panDstBands = static_cast<int *>(
-                               CPLMalloc( sizeof( int ) * psOptionsIn->nBandCount ) );
-
-  for ( int i = 0; i < psOptionsIn->nBandCount; i++ )
-  {
-    psOptionsIn->panSrcBands[i] = i + 1;
-    psOptionsIn->panDstBands[i] = i + 1;
-  }
-}
-
-static void InitNoData( int nBandCount, double **ppdNoDataReal, double dDataReal )
-{
-  if ( nBandCount <= 0 ) { return; }
-  if ( *ppdNoDataReal != nullptr ) { return; }
-
-  *ppdNoDataReal = static_cast<double *>(
-                     CPLMalloc( sizeof( double ) * nBandCount ) );
-
-  for ( int i = 0; i < nBandCount; ++i )
-  {
-    ( *ppdNoDataReal )[i] = dDataReal;
-  }
-}
-
-static void GDALWarpInitNoDataReal( GDALWarpOptions *psOptionsIn, double  dNoDataReal )
-{
-  InitNoData( psOptionsIn->nBandCount, &psOptionsIn->padfDstNoDataReal, dNoDataReal );
-  InitNoData( psOptionsIn->nBandCount, &psOptionsIn->padfSrcNoDataReal, dNoDataReal );
-  // older GDAL also requires imaginary values to be set
-  InitNoData( psOptionsIn->nBandCount, &psOptionsIn->padfDstNoDataImag, 0 );
-  InitNoData( psOptionsIn->nBandCount, &psOptionsIn->padfSrcNoDataImag, 0 );
-}
-#endif
-
-#if GDAL_VERSION_NUM < GDAL_COMPUTE_VERSION(3,2,0)
-
-GDALDatasetH GDALAutoCreateWarpedVRTEx( GDALDatasetH hSrcDS, const char *pszSrcWKT, const char *pszDstWKT, GDALResampleAlg eResampleAlg,
-                                        double dfMaxError, const GDALWarpOptions *psOptionsIn, char **papszTransformerOptions )
-{
-  VALIDATE_POINTER1( hSrcDS, "GDALAutoCreateWarpedVRT", nullptr );
-
-  /* -------------------------------------------------------------------- */
-  /*      Populate the warp options.                                      */
-  /* -------------------------------------------------------------------- */
-  GDALWarpOptions *psWO = nullptr;
-  if ( psOptionsIn != nullptr )
-    psWO = GDALCloneWarpOptions( psOptionsIn );
-  else
-    psWO = GDALCreateWarpOptions();
-
-  psWO->eResampleAlg = eResampleAlg;
-
-  psWO->hSrcDS = hSrcDS;
-
-  GDALWarpInitDefaultBandMapping( psWO, GDALGetRasterCount( hSrcDS ) );
-
-  /* -------------------------------------------------------------------- */
-  /*      Setup no data values                                            */
-  /* -------------------------------------------------------------------- */
-  for ( int i = 0; i < psWO->nBandCount; i++ )
-  {
-    GDALRasterBandH rasterBand = GDALGetRasterBand( psWO->hSrcDS, psWO->panSrcBands[i] );
-
-    int hasNoDataValue;
-    double noDataValue = GDALGetRasterNoDataValue( rasterBand, &hasNoDataValue );
-
-    if ( hasNoDataValue )
-    {
-      // Check if the nodata value is out of range
-      int bClamped = FALSE;
-      int bRounded = FALSE;
-      CPL_IGNORE_RET_VAL(
-        GDALAdjustValueToDataType( GDALGetRasterDataType( rasterBand ),
-                                   noDataValue, &bClamped, &bRounded ) );
-      if ( !bClamped )
-      {
-        GDALWarpInitNoDataReal( psWO, -1e10 );
-
-        psWO->padfSrcNoDataReal[i] = noDataValue;
-        psWO->padfDstNoDataReal[i] = noDataValue;
-      }
-    }
-  }
-
-  if ( psWO->padfDstNoDataReal != nullptr )
-  {
-    if ( CSLFetchNameValue( psWO->papszWarpOptions, "INIT_DEST" ) == nullptr )
-    {
-      psWO->papszWarpOptions =
-        CSLSetNameValue( psWO->papszWarpOptions, "INIT_DEST", "NO_DATA" );
-    }
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*      Create the transformer.                                         */
-  /* -------------------------------------------------------------------- */
-  psWO->pfnTransformer = GDALGenImgProjTransform;
-
-  char **papszOptions = nullptr;
-  if ( pszSrcWKT != nullptr )
-    papszOptions = CSLSetNameValue( papszOptions, "SRC_SRS", pszSrcWKT );
-  if ( pszDstWKT != nullptr )
-    papszOptions = CSLSetNameValue( papszOptions, "DST_SRS", pszDstWKT );
-  papszOptions = CSLMerge( papszOptions, papszTransformerOptions );
-  psWO->pTransformerArg =
-    GDALCreateGenImgProjTransformer2( psWO->hSrcDS, nullptr,
-                                      papszOptions );
-  CSLDestroy( papszOptions );
-
-  if ( psWO->pTransformerArg == nullptr )
-  {
-    GDALDestroyWarpOptions( psWO );
-    return nullptr;
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*      Figure out the desired output bounds and resolution.            */
-  /* -------------------------------------------------------------------- */
-  double adfDstGeoTransform[6] = { 0.0 };
-  int nDstPixels = 0;
-  int nDstLines = 0;
-  CPLErr eErr =
-    GDALSuggestedWarpOutput( hSrcDS, psWO->pfnTransformer,
-                             psWO->pTransformerArg,
-                             adfDstGeoTransform, &nDstPixels, &nDstLines );
-  if ( eErr != CE_None )
-  {
-    GDALDestroyTransformer( psWO->pTransformerArg );
-    GDALDestroyWarpOptions( psWO );
-    return nullptr;
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*      Update the transformer to include an output geotransform        */
-  /*      back to pixel/line coordinates.                                 */
-  /*                                                                      */
-  /* -------------------------------------------------------------------- */
-  GDALSetGenImgProjTransformerDstGeoTransform(
-    psWO->pTransformerArg, adfDstGeoTransform );
-
-  /* -------------------------------------------------------------------- */
-  /*      Do we want to apply an approximating transformation?            */
-  /* -------------------------------------------------------------------- */
-  if ( dfMaxError > 0.0 )
-  {
-    psWO->pTransformerArg =
-      GDALCreateApproxTransformer( psWO->pfnTransformer,
-                                   psWO->pTransformerArg,
-                                   dfMaxError );
-    psWO->pfnTransformer = GDALApproxTransform;
-    GDALApproxTransformerOwnsSubtransformer( psWO->pTransformerArg, TRUE );
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*      Create the VRT file.                                            */
-  /* -------------------------------------------------------------------- */
-  GDALDatasetH hDstDS
-    = GDALCreateWarpedVRT( hSrcDS, nDstPixels, nDstLines,
-                           adfDstGeoTransform, psWO );
-
-  GDALDestroyWarpOptions( psWO );
-
-  if ( pszDstWKT != nullptr )
-    GDALSetProjection( hDstDS, pszDstWKT );
-  else if ( pszSrcWKT != nullptr )
-    GDALSetProjection( hDstDS, pszSrcWKT );
-  else if ( GDALGetGCPCount( hSrcDS ) > 0 )
-    GDALSetProjection( hDstDS, GDALGetGCPProjection( hSrcDS ) );
-  else
-    GDALSetProjection( hDstDS, GDALGetProjectionRef( hSrcDS ) );
-
-  return hDstDS;
-}
-#endif
-
-
-GDALDatasetH QgsGdalUtils::rpcAwareAutoCreateWarpedVrt(
-  GDALDatasetH hSrcDS,
-  const char *pszSrcWKT,
-  const char *pszDstWKT,
-  GDALResampleAlg eResampleAlg,
-  double dfMaxError,
-  const GDALWarpOptions *psOptionsIn )
-{
-  char **opts = nullptr;
   if ( GDALGetMetadata( hSrcDS, "RPC" ) )
   {
-    // well-behaved RPC should have height offset a good value for RPC_HEIGHT
-    const char *heightOffStr = GDALGetMetadataItem( hSrcDS, "HEIGHT_OFF", "RPC" );
-    if ( heightOffStr )
-      opts = CSLAddNameValue( opts, "RPC_HEIGHT", heightOffStr );
+    // Some RPC may contain a HEIGHT_DEFAULT entry, that must be used as the
+    // best default for RPC_HEIGHT. See https://github.com/OSGeo/gdal/pull/11989
+    const char *heightStr = GDALGetMetadataItem( hSrcDS, "HEIGHT_DEFAULT", "RPC" );
+    if ( !heightStr )
+    {
+      // Otherwise well-behaved RPC should have height offset which is also
+      // a resaonable default for RPC_HEIGHT.
+      heightStr = GDALGetMetadataItem( hSrcDS, "HEIGHT_OFF", "RPC" );
+    }
+    if ( heightStr )
+      *opts = CSLAddNameValue( *opts, "RPC_HEIGHT", heightStr );
   }
+}
 
-  return GDALAutoCreateWarpedVRTEx( hSrcDS, pszSrcWKT, pszDstWKT, eResampleAlg, dfMaxError, psOptionsIn, opts );
+GDALDatasetH QgsGdalUtils::rpcAwareAutoCreateWarpedVrt( GDALDatasetH hSrcDS, const char *pszSrcWKT, const char *pszDstWKT, GDALResampleAlg eResampleAlg, double dfMaxError, const GDALWarpOptions *psOptionsIn )
+{
+  char **opts = nullptr;
+  setRPCTransformerOptions( hSrcDS, &opts );
+  GDALDatasetH hRetDS = GDALAutoCreateWarpedVRTEx( hSrcDS, pszSrcWKT, pszDstWKT, eResampleAlg, dfMaxError, psOptionsIn, opts );
+  CSLDestroy( opts );
+  return hRetDS;
 }
 
 void *QgsGdalUtils::rpcAwareCreateTransformer( GDALDatasetH hSrcDS, GDALDatasetH hDstDS, char **papszOptions )
 {
   char **opts = CSLDuplicate( papszOptions );
-  if ( GDALGetMetadata( hSrcDS, "RPC" ) )
-  {
-    // well-behaved RPC should have height offset a good value for RPC_HEIGHT
-    const char *heightOffStr = GDALGetMetadataItem( hSrcDS, "HEIGHT_OFF", "RPC" );
-    if ( heightOffStr )
-      opts = CSLAddNameValue( opts, "RPC_HEIGHT", heightOffStr );
-  }
+  setRPCTransformerOptions( hSrcDS, &opts );
   void *transformer = GDALCreateGenImgProjTransformer2( hSrcDS, hDstDS, opts );
   CSLDestroy( opts );
   return transformer;
+}
+
+GDALDataType QgsGdalUtils::gdalDataTypeFromQgisDataType( Qgis::DataType dataType )
+{
+  switch ( dataType )
+  {
+    case Qgis::DataType::UnknownDataType:
+      return GDALDataType::GDT_Unknown;
+      break;
+    case Qgis::DataType::Byte:
+      return GDALDataType::GDT_Byte;
+      break;
+    case Qgis::DataType::Int8:
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 7, 0 )
+      return GDALDataType::GDT_Int8;
+#else
+      return GDALDataType::GDT_Unknown;
+#endif
+      break;
+    case Qgis::DataType::UInt16:
+      return GDALDataType::GDT_UInt16;
+      break;
+    case Qgis::DataType::Int16:
+      return GDALDataType::GDT_Int16;
+      break;
+    case Qgis::DataType::UInt32:
+      return GDALDataType::GDT_UInt32;
+      break;
+    case Qgis::DataType::Int32:
+      return GDALDataType::GDT_Int32;
+      break;
+    case Qgis::DataType::Float32:
+      return GDALDataType::GDT_Float32;
+      break;
+    case Qgis::DataType::Float64:
+      return GDALDataType::GDT_Float64;
+      break;
+    case Qgis::DataType::CInt16:
+      return GDALDataType::GDT_CInt16;
+      break;
+    case Qgis::DataType::CInt32:
+      return GDALDataType::GDT_CInt32;
+      break;
+    case Qgis::DataType::CFloat32:
+      return GDALDataType::GDT_CFloat32;
+      break;
+    case Qgis::DataType::CFloat64:
+      return GDALDataType::GDT_CFloat64;
+      break;
+    case Qgis::DataType::ARGB32:
+    case Qgis::DataType::ARGB32_Premultiplied:
+      return GDALDataType::GDT_Unknown;
+      break;
+  };
+
+  return GDALDataType::GDT_Unknown;
+}
+
+GDALResampleAlg QgsGdalUtils::gdalResamplingAlgorithm( Qgis::RasterResamplingMethod method )
+{
+  GDALResampleAlg eResampleAlg = GRA_NearestNeighbour;
+  switch ( method )
+  {
+    case Qgis::RasterResamplingMethod::Nearest:
+    case Qgis::RasterResamplingMethod::Gauss: // Gauss not available in GDALResampleAlg
+      eResampleAlg = GRA_NearestNeighbour;
+      break;
+
+    case Qgis::RasterResamplingMethod::Bilinear:
+      eResampleAlg = GRA_Bilinear;
+      break;
+
+    case Qgis::RasterResamplingMethod::Cubic:
+      eResampleAlg = GRA_Cubic;
+      break;
+
+    case Qgis::RasterResamplingMethod::CubicSpline:
+      eResampleAlg = GRA_CubicSpline;
+      break;
+
+    case Qgis::RasterResamplingMethod::Lanczos:
+      eResampleAlg = GRA_Lanczos;
+      break;
+
+    case Qgis::RasterResamplingMethod::Average:
+      eResampleAlg = GRA_Average;
+      break;
+
+    case Qgis::RasterResamplingMethod::Mode:
+      eResampleAlg = GRA_Mode;
+      break;
+  }
+
+  return eResampleAlg;
 }
 
 #ifndef QT_NO_NETWORKPROXY
@@ -520,37 +714,34 @@ void QgsGdalUtils::setupProxy()
   // given the limited cost of checking them on every provider instantiation
   // we can do it here so that new settings are applied whenever a new layer
   // is created.
-  QgsSettings settings;
   // Check that proxy is enabled
-  if ( settings.value( QStringLiteral( "proxy/proxyEnabled" ), false ).toBool() )
+  if ( QgsNetworkAccessManager::settingsProxyEnabled->value() )
   {
     // Get the first configured proxy
-    QList<QNetworkProxy> proxies( QgsNetworkAccessManager::instance()->proxyFactory()->queryProxy( ) );
-    if ( ! proxies.isEmpty() )
+    QList<QNetworkProxy> proxies( QgsNetworkAccessManager::instance()->proxyFactory()->queryProxy() );
+    if ( !proxies.isEmpty() )
     {
-      QNetworkProxy proxy( proxies.first() );
+      const QNetworkProxy proxy( proxies.first() );
       // TODO/FIXME: check excludes (the GDAL config options are global, we need a per-connection config option)
-      //QStringList excludes;
-      //excludes = settings.value( QStringLiteral( "proxy/proxyExcludedUrls" ), "" ).toStringList();
 
-      QString proxyHost( proxy.hostName() );
-      qint16 proxyPort( proxy.port() );
+      const QString proxyHost( proxy.hostName() );
+      const quint16 proxyPort( proxy.port() );
 
-      QString proxyUser( proxy.user() );
-      QString proxyPassword( proxy.password() );
+      const QString proxyUser( proxy.user() );
+      const QString proxyPassword( proxy.password() );
 
-      if ( ! proxyHost.isEmpty() )
+      if ( !proxyHost.isEmpty() )
       {
         QString connection( proxyHost );
         if ( proxyPort )
         {
-          connection += ':' +  QString::number( proxyPort );
+          connection += ':' + QString::number( proxyPort );
         }
         CPLSetConfigOption( "GDAL_HTTP_PROXY", connection.toUtf8() );
-        if ( !  proxyUser.isEmpty( ) )
+        if ( !proxyUser.isEmpty() )
         {
           QString credentials( proxyUser );
-          if ( !  proxyPassword.isEmpty( ) )
+          if ( !proxyPassword.isEmpty() )
           {
             credentials += ':' + proxyPassword;
           }
@@ -560,4 +751,390 @@ void QgsGdalUtils::setupProxy()
     }
   }
 }
+
+bool QgsGdalUtils::pathIsCheapToOpen( const QString &path, int smallFileSizeLimit )
+{
+  const QFileInfo info( path );
+  const long long size = info.size();
+
+  // if size could not be determined, safest to flag path as expensive
+  if ( size == 0 )
+    return false;
+
+  const QString suffix = info.suffix().toLower();
+  static const QStringList sFileSizeDependentExtensions { u"xlsx"_s, u"ods"_s, u"csv"_s };
+  if ( sFileSizeDependentExtensions.contains( suffix ) )
+  {
+    // path corresponds to a file type which is only cheap to open for small files
+    return size < smallFileSizeLimit;
+  }
+
+  // treat all other formats as expensive.
+  // TODO -- flag formats which only require a quick header parse as cheap
+  return false;
+}
+
+QStringList QgsGdalUtils::multiLayerFileExtensions()
+{
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 4, 0 )
+  // get supported extensions
+  static std::once_flag initialized;
+  static QStringList SUPPORTED_DB_LAYERS_EXTENSIONS;
+  std::call_once( initialized, [] {
+    // iterate through all of the supported drivers, adding the corresponding file extensions for
+    // types which advertise multilayer support
+    GDALDriverH driver = nullptr;
+
+    QSet< QString > extensions;
+
+    for ( int i = 0; i < GDALGetDriverCount(); ++i )
+    {
+      driver = GDALGetDriver( i );
+      if ( !driver )
+      {
+        QgsLogger::warning( "unable to get driver " + QString::number( i ) );
+        continue;
+      }
+
+      bool isMultiLayer = false;
+      if ( QString( GDALGetMetadataItem( driver, GDAL_DCAP_RASTER, nullptr ) ) == "YES"_L1 )
+      {
+        if ( GDALGetMetadataItem( driver, GDAL_DMD_SUBDATASETS, nullptr ) )
+        {
+          isMultiLayer = true;
+        }
+      }
+      if ( !isMultiLayer && QString( GDALGetMetadataItem( driver, GDAL_DCAP_VECTOR, nullptr ) ) == "YES"_L1 )
+      {
+        if ( GDALGetMetadataItem( driver, GDAL_DCAP_MULTIPLE_VECTOR_LAYERS, nullptr ) )
+        {
+          isMultiLayer = true;
+        }
+      }
+
+      if ( !isMultiLayer )
+        continue;
+
+      const QString driverExtensions = GDALGetMetadataItem( driver, GDAL_DMD_EXTENSIONS, "" );
+      if ( driverExtensions.isEmpty() )
+        continue;
+
+      const QStringList splitExtensions = driverExtensions.split( ' ', Qt::SkipEmptyParts );
+
+      for ( const QString &ext : splitExtensions )
+      {
+        // maintain older behavior -- don't always expose tiff files as containers
+        if ( ext == "tif"_L1 || ext == "tiff"_L1 )
+          continue;
+
+        extensions.insert( ext );
+      }
+    }
+
+    SUPPORTED_DB_LAYERS_EXTENSIONS = QStringList( extensions.constBegin(), extensions.constEnd() );
+  } );
+  return SUPPORTED_DB_LAYERS_EXTENSIONS;
+
+#else
+  static const QStringList SUPPORTED_DB_LAYERS_EXTENSIONS { u"gpkg"_s, u"sqlite"_s, u"db"_s,  u"gdb"_s, u"kml"_s, u"kmz"_s, u"osm"_s, u"mdb"_s, u"accdb"_s,   u"xls"_s,
+                                                            u"xlsx"_s, u"ods"_s,    u"gpx"_s, u"pdf"_s, u"pbf"_s, u"vrt"_s, u"nc"_s,  u"dxf"_s, u"shp.zip"_s, u"gdb.zip"_s };
+  return SUPPORTED_DB_LAYERS_EXTENSIONS;
 #endif
+}
+
+QString QgsGdalUtils::vsiPrefixForPath( const QString &path )
+{
+  const QStringList vsiPrefixes = QgsGdalUtils::vsiArchivePrefixes();
+
+  const thread_local QRegularExpression vsiRx( u"^(/vsi.+?/)"_s, QRegularExpression::PatternOption::CaseInsensitiveOption );
+  const QRegularExpressionMatch vsiMatch = vsiRx.match( path );
+  if ( vsiMatch.hasMatch() )
+    return vsiMatch.captured( 1 );
+
+  if ( path.endsWith( ".shp.zip"_L1, Qt::CaseInsensitive ) || path.endsWith( ".gdb.zip"_L1, Qt::CaseInsensitive ) )
+  {
+    // GDAL 3.1 Shapefile/OpenFileGDB drivers directly handle .shp.zip and .gdb.zip files
+    if ( GDALIdentifyDriverEx( path.toUtf8().constData(), GDAL_OF_VECTOR, nullptr, nullptr ) )
+      return QString();
+    return u"/vsizip/"_s;
+  }
+  else if ( path.endsWith( ".zip"_L1, Qt::CaseInsensitive ) )
+  {
+    // GTFS driver directly handles .zip files
+    const char *const apszAllowedDrivers[] = { "GTFS", nullptr };
+    if ( GDALIdentifyDriverEx( path.toUtf8().constData(), GDAL_OF_VECTOR, apszAllowedDrivers, nullptr ) )
+      return QString();
+    return u"/vsizip/"_s;
+  }
+  else if ( path.endsWith( ".tar"_L1, Qt::CaseInsensitive ) || path.endsWith( ".tar.gz"_L1, Qt::CaseInsensitive ) || path.endsWith( ".tgz"_L1, Qt::CaseInsensitive ) )
+    return u"/vsitar/"_s;
+  else if ( path.endsWith( ".gz"_L1, Qt::CaseInsensitive ) )
+    return u"/vsigzip/"_s;
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 7, 0 )
+  else if ( vsiPrefixes.contains( u"/vsi7z/"_s ) &&
+            ( path.endsWith( ".7z"_L1, Qt::CaseInsensitive ) ||
+              path.endsWith( ".lpk"_L1, Qt::CaseInsensitive ) ||
+              path.endsWith( ".lpkx"_L1, Qt::CaseInsensitive ) ||
+              path.endsWith( ".mpk"_L1, Qt::CaseInsensitive ) ||
+              path.endsWith( ".mpkx"_L1, Qt::CaseInsensitive ) ) )
+    return u"/vsi7z/"_s;
+  else if ( vsiPrefixes.contains( u"/vsirar/"_s ) && path.endsWith( ".rar"_L1, Qt::CaseInsensitive ) )
+    return u"/vsirar/"_s;
+#endif
+
+  return QString();
+}
+
+QStringList QgsGdalUtils::vsiArchivePrefixes()
+{
+  QStringList res {
+    u"/vsizip/"_s,
+    u"/vsitar/"_s,
+    u"/vsigzip/"_s,
+  };
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 7, 0 )
+  res.append( u"/vsi7z/"_s );
+  res.append( u"/vsirar/"_s );
+#endif
+  return res;
+}
+
+QList<QgsGdalUtils::VsiNetworkFileSystemDetails> QgsGdalUtils::vsiNetworkFileSystems()
+{
+  // get supported extensions
+  static std::once_flag initialized;
+  static QList<QgsGdalUtils::VsiNetworkFileSystemDetails> VSI_FILE_SYSTEM_DETAILS;
+  std::call_once( initialized, [] {
+    if ( char **papszPrefixes = VSIGetFileSystemsPrefixes() )
+    {
+      for ( int i = 0; papszPrefixes[i]; i++ )
+      {
+        QgsGdalUtils::VsiNetworkFileSystemDetails details;
+        details.identifier = QString( papszPrefixes[i] );
+        if ( details.identifier.startsWith( '/' ) )
+          details.identifier = details.identifier.mid( 1 );
+        if ( details.identifier.endsWith( '/' ) )
+          details.identifier.chop( 1 );
+
+        if ( details.identifier == "vsicurl"_L1 )
+          details.name = QObject::tr( "HTTP/HTTPS/FTP" );
+        else if ( details.identifier == "vsis3"_L1 )
+          details.name = QObject::tr( "AWS S3" );
+        else if ( details.identifier == "vsigs"_L1 )
+          details.name = QObject::tr( "Google Cloud Storage" );
+        else if ( details.identifier == "vsiaz"_L1 )
+          details.name = QObject::tr( "Microsoft Azure Blob" );
+        else if ( details.identifier == "vsiadls"_L1 )
+          details.name = QObject::tr( "Microsoft Azure Data Lake Storage" );
+        else if ( details.identifier == "vsioss"_L1 )
+          details.name = QObject::tr( "Alibaba Cloud OSS" );
+        else if ( details.identifier == "vsiswift"_L1 )
+          details.name = QObject::tr( "OpenStack Swift Object Storage" );
+        else if ( details.identifier == "vsihdfs"_L1 )
+          details.name = QObject::tr( "Hadoop File System" );
+        else
+          continue;
+        VSI_FILE_SYSTEM_DETAILS.append( details );
+      }
+
+      CSLDestroy( papszPrefixes );
+    }
+  } );
+
+  return VSI_FILE_SYSTEM_DETAILS;
+}
+
+bool QgsGdalUtils::isVsiArchivePrefix( const QString &prefix )
+{
+  const QStringList prefixes = vsiArchivePrefixes();
+  for ( const QString &archivePrefix : prefixes )
+  {
+    // catch chained prefixes, eg "/vsizip/vsicurl"
+    if ( prefix.contains( archivePrefix ) )
+      return true;
+  }
+  return false;
+}
+
+QStringList QgsGdalUtils::vsiArchiveFileExtensions()
+{
+  QStringList res {
+    u".zip"_s,
+    u".tar"_s,
+    u".tar.gz"_s,
+    u".tgz"_s,
+    u".gz"_s,
+  };
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 7, 0 )
+  res.append( { u".7z"_s, u".lpk"_s, u".lpkx"_s, u".mpk"_s, u".mpkx"_s, u".rar"_s } );
+#endif
+  return res;
+}
+
+bool QgsGdalUtils::isVsiArchiveFileExtension( const QString &extension )
+{
+  const QString extWithDot = extension.startsWith( '.' ) ? extension : ( '.' + extension );
+  return vsiArchiveFileExtensions().contains( extWithDot.toLower() );
+}
+
+Qgis::VsiHandlerType QgsGdalUtils::vsiHandlerType( const QString &prefix )
+{
+  if ( prefix.isEmpty() )
+    return Qgis::VsiHandlerType::Invalid;
+
+  QString vsiPrefix = prefix;
+  if ( vsiPrefix.startsWith( '/' ) )
+    vsiPrefix = vsiPrefix.mid( 1 );
+  if ( vsiPrefix.endsWith( '/' ) )
+    vsiPrefix.chop( 1 );
+
+  if ( !vsiPrefix.startsWith( "vsi"_L1 ) )
+    return Qgis::VsiHandlerType::Invalid;
+
+  if ( vsiPrefix == "vsizip"_L1 || vsiPrefix == "vsigzip"_L1 || vsiPrefix == "vsitar"_L1 || vsiPrefix == "vsi7z"_L1 || vsiPrefix == "vsirar"_L1 )
+    return Qgis::VsiHandlerType::Archive;
+
+  else if ( vsiPrefix == "vsicurl"_L1 || vsiPrefix == "vsicurl_streaming"_L1 )
+    return Qgis::VsiHandlerType::Network;
+
+  else if ( vsiPrefix == "vsis3"_L1
+            || vsiPrefix == "vsicurl_streaming"_L1
+            || vsiPrefix == "vsigs"_L1
+            || vsiPrefix == "vsigs_streaming"_L1
+            || vsiPrefix == "vsiaz"_L1
+            || vsiPrefix == "vsiaz_streaming"_L1
+            || vsiPrefix == "vsiadls"_L1
+            || vsiPrefix == "vsioss"_L1
+            || vsiPrefix == "vsioss_streaming"_L1
+            || vsiPrefix == "vsiswift"_L1
+            || vsiPrefix == "vsiswift_streaming"_L1
+            || vsiPrefix == "vsihdfs"_L1
+            || vsiPrefix == "vsiwebhdfs"_L1 )
+    return Qgis::VsiHandlerType::Cloud;
+
+  else if ( vsiPrefix == "vsimem"_L1 )
+    return Qgis::VsiHandlerType::Memory;
+
+  return Qgis::VsiHandlerType::Other;
+}
+
+bool QgsGdalUtils::vrtMatchesLayerType( const QString &vrtPath, Qgis::LayerType type )
+{
+  CPLPushErrorHandler( CPLQuietErrorHandler );
+  CPLErrorReset();
+  GDALDriverH hDriver = nullptr;
+
+  switch ( type )
+  {
+    case Qgis::LayerType::Vector:
+      hDriver = GDALIdentifyDriverEx( vrtPath.toUtf8().constData(), GDAL_OF_VECTOR, nullptr, nullptr );
+      break;
+
+    case Qgis::LayerType::Raster:
+      hDriver = GDALIdentifyDriverEx( vrtPath.toUtf8().constData(), GDAL_OF_RASTER, nullptr, nullptr );
+      break;
+
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Mesh:
+    case Qgis::LayerType::VectorTile:
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::PointCloud:
+    case Qgis::LayerType::Group:
+    case Qgis::LayerType::TiledScene:
+      break;
+  }
+
+  CPLPopErrorHandler();
+  return static_cast< bool >( hDriver );
+}
+
+QString QgsGdalUtils::gdalDocumentationUrlForDriver( GDALDriverH hDriver )
+{
+  if ( hDriver )
+  {
+    const QString gdalDriverHelpTopic = GDALGetMetadataItem( hDriver, GDAL_DMD_HELPTOPIC, nullptr ); // e.g. "drivers/vector/ili.html"
+    if ( !gdalDriverHelpTopic.isEmpty() )
+      return u"https://gdal.org/%1"_s.arg( gdalDriverHelpTopic );
+  }
+  return QString();
+}
+
+bool QgsGdalUtils::supportsMrfLercCompression()
+{
+  GDALDriverH hDriver = GDALGetDriverByName( "MRF" );
+  if ( hDriver )
+  {
+    const char *creationOptions = GDALGetMetadataItem( hDriver, GDAL_DMD_CREATIONOPTIONLIST, NULL );
+    if ( creationOptions && strstr( creationOptions, "LERC" ) )
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool QgsGdalUtils::supportsTiffLercCompression()
+{
+  GDALDriverH hDriver = GDALGetDriverByName( "GTiff" );
+  if ( hDriver )
+  {
+    const char *creationOptions = GDALGetMetadataItem( hDriver, GDAL_DMD_CREATIONOPTIONLIST, NULL );
+    if ( creationOptions && strstr( creationOptions, "LERC" ) )
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool QgsGdalUtils::applyVsiCredentialOptions( const QString &prefix, const QString &path, const QVariantMap &options )
+{
+  QString vsiPrefix = prefix;
+  if ( !vsiPrefix.startsWith( '/' ) )
+    vsiPrefix.prepend( '/' );
+  if ( !vsiPrefix.endsWith( '/' ) )
+    vsiPrefix.append( '/' );
+
+  QString vsiPath = path;
+  if ( vsiPath.endsWith( '/' ) )
+    vsiPath.chop( 1 );
+
+  const QString bucket = vsiPrefix + vsiPath;
+
+  for ( auto it = options.constBegin(); it != options.constEnd(); ++it )
+  {
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 6, 0 )
+    VSISetPathSpecificOption( bucket.toUtf8().constData(), it.key().toUtf8().constData(), it.value().toString().toUtf8().constData() );
+#elif GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 5, 0 )
+    VSISetCredential( bucket.toUtf8().constData(), it.key().toUtf8().constData(), it.value().toString().toUtf8().constData() );
+#else
+    ( void ) bucket;
+    QgsMessageLog::logMessage( QObject::tr( "Cannot use VSI credential options on GDAL versions earlier than 3.5" ), u"GDAL"_s, Qgis::MessageLevel::Critical );
+    return false;
+#endif
+  }
+  return true;
+}
+#endif
+
+QgsGdalProgressAdapter::QgsGdalProgressAdapter( QgsFeedback *feedback, double startPercentage, double endPercentage )
+  : mFeedback( feedback )
+  , mStartPercentage( startPercentage )
+  , mEndPercentage( endPercentage )
+{}
+
+/* static */
+int CPL_STDCALL QgsGdalProgressAdapter::progressCallback( double dfComplete, const char * /* pszMessage */, void *pProgressArg )
+{
+  const QgsGdalProgressAdapter *adapter = static_cast<QgsGdalProgressAdapter *>( pProgressArg );
+
+  if ( QgsFeedback *feedback = adapter->mFeedback )
+  {
+    feedback->setProgress( adapter->mStartPercentage + ( adapter->mEndPercentage - adapter->mStartPercentage ) * dfComplete );
+
+    if ( feedback->isCanceled() )
+      return false;
+  }
+
+  return true;
+}

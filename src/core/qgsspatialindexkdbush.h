@@ -23,19 +23,22 @@ class QgsFeedback;
 class QgsFeatureSource;
 class QgsSpatialIndexKDBushPrivate;
 class QgsRectangle;
+class QgsFeature;
+
+#include <functional>
+#include <memory>
 
 #include "qgis_core.h"
-#include "qgsspatialindexkdbushdata.h"
 #include "qgspointxy.h"
-#include <memory>
+#include "qgsspatialindexkdbushdata.h"
+
 #include <QList>
-#include <functional>
 
 /**
  * \class QgsSpatialIndexKDBush
  * \ingroup core
  *
- * A very fast static spatial index for 2D points based on a flat KD-tree.
+ * \brief A very fast static spatial index for 2D points based on a flat KD-tree.
  *
  * Compared to QgsSpatialIndex, this index:
  *
@@ -53,7 +56,6 @@ class QgsRectangle;
 class CORE_EXPORT QgsSpatialIndexKDBush
 {
   public:
-
     /**
      * Constructor - creates KDBush index and bulk loads it with features from the iterator.
      *
@@ -76,13 +78,62 @@ class CORE_EXPORT QgsSpatialIndexKDBush
      */
     explicit QgsSpatialIndexKDBush( const QgsFeatureSource &source, QgsFeedback *feedback = nullptr );
 
-    //! Copy constructor
-    QgsSpatialIndexKDBush( const QgsSpatialIndexKDBush &other );
+#ifndef SIP_RUN
 
-    //! Assignment operator
+    /**
+     * Constructor - creates KDBush index and bulk loads it with features from the source.
+     *
+     * This constructor allows for a \a callback function to be specified, which is
+     * called for each added feature in turn. It allows for bulk spatial index load along with other feature
+     * based operations on a single iteration through a feature source. If \a callback returns FALSE, the
+     * load and iteration is canceled.
+     *
+     * The optional \a feedback object can be used to allow cancellation of bulk feature loading. Ownership
+     * of \a feedback is not transferred, and callers must take care that the lifetime of feedback exceeds
+     * that of the spatial index construction.
+     *
+     * Any non-single point features encountered during iteration will be ignored and not included in the index.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 3.22
+     */
+    explicit QgsSpatialIndexKDBush( QgsFeatureIterator &fi, const std::function< bool( const QgsFeature & ) > &callback, QgsFeedback *feedback = nullptr );
+#endif
+
+    /**
+     * Constructs an empty index.
+     *
+     * The index must be manually populated by calls to addFeature() followed by finalize().
+     *
+     * \since QGIS 4.0
+     */
+    QgsSpatialIndexKDBush();
+
+    QgsSpatialIndexKDBush( const QgsSpatialIndexKDBush &other );
     QgsSpatialIndexKDBush &operator=( const QgsSpatialIndexKDBush &other );
 
     ~QgsSpatialIndexKDBush();
+
+    /**
+     * Adds a single \a feature to the index.
+     *
+     * \note A call to finalize() must be made after all features have been added. It is not
+     * possible to add features after finalizing the spatial index.
+     *
+     * \returns TRUE if feature was successfully added to index.
+     * \since QGIS 4.0
+     */
+    bool addFeature( QgsFeatureId id, const QgsPointXY &point );
+
+    /**
+     * Finalizes the index after manually adding features.
+     *
+     * This method must be called after adding all features via addFeature() and before
+     * performing any queries on the index.
+     *
+     * \since QGIS 4.0
+     */
+    void finalize();
 
     /**
      * Returns the list of features which fall within the specified \a rectangle.
@@ -94,7 +145,7 @@ class CORE_EXPORT QgsSpatialIndexKDBush
      *
      * \note Not available in Python bindings
      */
-    void intersects( const QgsRectangle &rectangle, const std::function<void( QgsSpatialIndexKDBushData )> &visitor ) const SIP_SKIP;
+    void intersects( const QgsRectangle &rectangle, const std::function<void( const QgsSpatialIndexKDBushData & )> &visitor ) const SIP_SKIP;
 
     /**
      * Returns the list of features which are within the given search \a radius
@@ -108,7 +159,7 @@ class CORE_EXPORT QgsSpatialIndexKDBush
      *
      * \note Not available in Python bindings
      */
-    void within( const QgsPointXY &point, double radius, const std::function<void( QgsSpatialIndexKDBushData )> &visitor ) SIP_SKIP;
+    void within( const QgsPointXY &point, double radius, const std::function<void( const QgsSpatialIndexKDBushData & )> &visitor ) const SIP_SKIP;
 
     /**
      * Returns the size of the index, i.e. the number of points contained within the index.
@@ -116,7 +167,6 @@ class CORE_EXPORT QgsSpatialIndexKDBush
     qgssize size() const;
 
   private:
-
     //! Implicitly shared data pointer
     QgsSpatialIndexKDBushPrivate *d = nullptr;
 

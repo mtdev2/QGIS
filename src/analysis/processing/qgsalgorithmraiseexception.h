@@ -18,11 +18,12 @@
 #ifndef QGSALGORITHMRAISEEXCEPTION_H
 #define QGSALGORITHMRAISEEXCEPTION_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
-#include "qgsprocessingalgorithm.h"
 #include "qgsapplication.h"
+#include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -34,7 +35,7 @@ class QgsRaiseExceptionAlgorithm : public QgsProcessingAlgorithm
   public:
     QgsRaiseExceptionAlgorithm() = default;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString name() const override;
     QString displayName() const override;
     QStringList tags() const override;
@@ -45,10 +46,7 @@ class QgsRaiseExceptionAlgorithm : public QgsProcessingAlgorithm
     QgsRaiseExceptionAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback * ) override;
-
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * ) override;
 };
 
 /**
@@ -59,7 +57,7 @@ class QgsRaiseWarningAlgorithm : public QgsProcessingAlgorithm
   public:
     QgsRaiseWarningAlgorithm() = default;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString name() const override;
     QString displayName() const override;
     QStringList tags() const override;
@@ -70,12 +68,30 @@ class QgsRaiseWarningAlgorithm : public QgsProcessingAlgorithm
     QgsRaiseWarningAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback * ) override;
-
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * ) override;
 };
 
+/**
+ * Native raise message algorithm.
+ */
+class QgsRaiseMessageAlgorithm : public QgsProcessingAlgorithm
+{
+  public:
+    QgsRaiseMessageAlgorithm() = default;
+    void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
+    QString name() const override;
+    QString displayName() const override;
+    QStringList tags() const override;
+    QString group() const override;
+    QString groupId() const override;
+    QString shortHelpString() const override;
+    QString shortDescription() const override;
+    QgsRaiseMessageAlgorithm *createInstance() const override SIP_FACTORY;
+
+  protected:
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * ) override;
+};
 
 ///@endcond PRIVATE
 

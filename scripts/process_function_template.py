@@ -1,27 +1,15 @@
-# -*- coding: utf-8 -*-
-
-import sys
-import os
-import json
 import glob
+import json
+import os
+import sys
+from copy import deepcopy
 
 sys.path.append(
-    os.path.join(
-        os.path.dirname(os.path.realpath(__file__)),
-        '../python/ext-libs'))
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "../python/ext-libs")
+)
 
 cpp = open(sys.argv[1], "w", encoding="utf-8")
-cpp.write(
-    "#include \"qgsexpression.h\"\n"
-    "#include \"qgsexpression_p.h\"\n"
-    "#include <mutex>\n"
-    "\n"
-    "void QgsExpression::initFunctionHelp()\n"
-    "{\n"
-    "  static std::once_flag initialized;\n"
-    "  std::call_once( initialized, []\n"
-    "  {"
-)
+cpp.write('#include "qgsexpression.h"\n\n')
 
 
 def quote(v):
@@ -33,7 +21,7 @@ def quote(v):
         return map(quote, v)
 
     elif isinstance(v, str):
-        return v.replace('"', '\\"').replace('\n', '\\n')
+        return v.replace('"', '\\"').replace("\n", "\\n")
 
     elif isinstance(v, bool):
         return v
@@ -42,7 +30,32 @@ def quote(v):
         raise BaseException("unexpected type " + repr(v))
 
 
-for f in sorted(glob.glob('resources/function_help/json/*')):
+def safe_tr(string: str) -> str:
+    """
+    Returns 'tr( "string" )' if string is non-empty, else 'QString()'
+    """
+    if not string:
+        return "QString()"
+    return f'QgsExpression::tr( "{string}" )'
+
+
+N = 20
+i0 = 0
+i1 = 0
+
+
+def next():
+    global i0, i1, N
+
+    if i0 % N == 0:
+        if i0 > 0:
+            cpp.write("\n\n}\n\n")
+        cpp.write(f"static void buildFunctionHelp{i1}(HelpTextHash &hth)\n{{")
+        i1 += 1
+    i0 += 1
+
+
+for f in sorted(glob.glob("resources/function_help/json/*")):
     with open(f, encoding="utf-8") as function_file:
         try:
             json_params = json.load(function_file)
@@ -52,86 +65,130 @@ for f in sorted(glob.glob('resources/function_help/json/*')):
 
     json_params = quote(json_params)
 
-    for field in ['name', 'type']:
+    for field in ["name", "type"]:
         if field not in json_params:
-            raise BaseException("%s: %s missing" % (f, field))
+            raise BaseException(f"{f}: {field} missing")
 
-    if not json_params['type'] in ['function', 'operator', 'value', 'expression', 'group']:
-        raise BaseException("%s: invalid type %s " % (f, json_params['type']))
+    if not json_params["type"] in [
+        "function",
+        "operator",
+        "value",
+        "expression",
+        "group",
+    ]:
+        raise BaseException("{}: invalid type {} ".format(f, json_params["type"]))
 
-    if 'variants' not in json_params:
+    if "variants" not in json_params:
         # convert single variant shortcut to a expanded variant
         v = {}
         for i in json_params:
             v[i] = json_params[i]
 
-        v['variant'] = json_params['name']
-        v['variant_description'] = json_params['description']
-        json_params['variants'] = [v]
+        v["variant"] = json_params["name"]
+        v["variant_description"] = json_params["description"]
+        json_params["variants"] = [v]
 
-    name = "\"{0}\"".format(json_params['name'])
+    name = '"{}"'.format(json_params["name"])
 
-    if json_params['type'] == 'operator':
-        for v in json_params['variants']:
-            if 'arguments' not in v:
-                raise BaseException("%s: arguments expected for operator")
-            if len(list(v['arguments'])) < 1 or len(list(v['arguments'])) > 2:
-                raise BaseException("%s: 1 or 2 arguments expected for operator")
+    if json_params["type"] == "operator":
+        for v in json_params["variants"]:
+            if "arguments" not in v:
+                raise BaseException("%s: arguments expected for operator" % f)
+            a_list = list(deepcopy(v["arguments"]))
+            if not 1 <= len(a_list) <= 2:
+                raise BaseException(
+                    "%s: 1 or 2 arguments expected for operator found %i"
+                    % (f, len(a_list))
+                )
 
-    cpp.write("\n\n    functionHelpTexts().insert( QStringLiteral( {0} ),\n      Help( QStringLiteral( {0} ), tr( \"{1}\" ), tr( \"{2}\" ),\n        QList<HelpVariant>()".format(
-        name, json_params['type'], json_params['description'])
+    next()
+
+    cpp.write(
+        "\n\n  hth.insert( QStringLiteral( {0} ),\n    Help( QStringLiteral( {0} ), {1}, {2},\n      QList<HelpVariant>()".format(
+            name, safe_tr(json_params["type"]), safe_tr(json_params["description"])
+        )
     )
 
-    for v in json_params['variants']:
+    for v in json_params["variants"]:
         cpp.write(
-            "\n          << HelpVariant( tr( \"{0}\" ), tr( \"{1}\" ),\n            QList<HelpArg>()".format(v['variant'], v['variant_description']))
+            "\n        << HelpVariant( {}, {},\n          QList<HelpArg>()".format(
+                safe_tr(v["variant"]), safe_tr(v["variant_description"])
+            )
+        )
 
-        if 'arguments' in v:
-            for a in v['arguments']:
-                cpp.write("\n                << HelpArg( QStringLiteral( \"{0}\" ), tr( \"{1}\" ), {2}, {3}, {4}, {5} )".format(
-                    a['arg'],
-                    a.get('description', ''),
-                    "true" if a.get('descOnly', False) else "false",
-                    "true" if a.get('syntaxOnly', False) else "false",
-                    "true" if a.get('optional', False) else "false",
-                    'QStringLiteral( "{}" )'.format(a.get('default', '')) if a.get('default', '') else "QString()"
-                )
-                )
-
-        cpp.write(",\n            /* variableLenArguments */ {0}".format(
-            "true" if v.get('variableLenArguments', False) else "false"))
-        cpp.write(",\n            QList<HelpExample>()")
-
-        if 'examples' in v:
-            for e in v['examples']:
-                cpp.write("\n              << HelpExample( tr( \"{0}\" ), tr( \"{1}\" ), tr( \"{2}\" ) )".format(
-                    e['expression'],
-                    e['returns'],
-                    e.get('note', ''))
+        if "arguments" in v:
+            for a in v["arguments"]:
+                cpp.write(
+                    '\n              << HelpArg( QStringLiteral( "{}" ), {}, {}, {}, {}, {} )'.format(
+                        a["arg"],
+                        safe_tr(a.get("description", "")),
+                        "true" if a.get("descOnly", False) else "false",
+                        "true" if a.get("syntaxOnly", False) else "false",
+                        "true" if a.get("optional", False) else "false",
+                        (
+                            'QStringLiteral( "{}" )'.format(a.get("default", ""))
+                            if a.get("default", "")
+                            else "QString()"
+                        ),
+                    )
                 )
 
-        if 'notes' in v:
-            cpp.write(",\n            tr( \"{0}\" )".format(v['notes']))
+        cpp.write(
+            ",\n          /* variableLenArguments */ {}".format(
+                "true" if v.get("variableLenArguments", False) else "false"
+            )
+        )
+        cpp.write(",\n          QList<HelpExample>()")
+
+        if "examples" in v:
+            for e in v["examples"]:
+                cpp.write(
+                    "\n            << HelpExample( {}, {}, {} )".format(
+                        safe_tr(e["expression"]),
+                        safe_tr(e["returns"]),
+                        safe_tr(e.get("note", "")),
+                    )
+                )
+
+        if "notes" in v:
+            cpp.write(",\n          {}".format(safe_tr(v["notes"])))
         else:
-            cpp.write(",\n            QString()")
+            cpp.write(",\n          QString()")
 
-        if 'tags' in v:
-            cpp.write(",\n            QStringList()")
+        cpp.write(",\n          QStringList()")
+        if "tags" in v:
+            cpp.write("\n            << {}".format(safe_tr(",".join(v["tags"]))))
 
-            for t in v['tags']:
-                cpp.write("\n              << QStringLiteral( \"{0}\" ) << tr( \"{0}\" )".format(t))
+        cpp.write("\n       )")
 
-        cpp.write("\n         )")
+    cpp.write("\n      )")
+    cpp.write("\n    );")
 
-    cpp.write("\n        )")
-    cpp.write("\n      );")
-
-for f in sorted(glob.glob('resources/function_help/text/*')):
+for f in sorted(glob.glob("resources/function_help/text/*")):
     n = os.path.basename(f)
 
     with open(f) as content:
-        cpp.write("\n\n    functionHelpTexts().insert( \"{0}\",\n    Help( tr( \"{0}\" ), tr( \"group\" ), tr( \"{1}\" ), QList<HelpVariant>() ) );\n".format(
-            n, content.read().replace("\\", "&#92;").replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')))
+        next()
 
-cpp.write("\n  } );\n}\n")
+        cpp.write(
+            '\n\n  hth.insert( "{0}",\n  Help( tr( "{0}" ), tr( "group" ), {1}, QList<HelpVariant>() ) );\n'.format(
+                n,
+                safe_tr(
+                    content.read()
+                    .replace("\\", "&#92;")
+                    .replace("\\", "\\\\")
+                    .replace('"', '\\"')
+                    .replace("\n", "\\n"),
+                ),
+            )
+        )
+
+cpp.write("\n\n}\n\n")
+
+cpp.write(
+    "void QgsExpression::buildFunctionHelp()\n{\n  HelpTextHash &hth = QgsExpression::functionHelpTexts();\n\n"
+)
+cpp.write("\n".join([f"  buildFunctionHelp{i}(hth);" for i in range(i1)]))
+cpp.write("\n}\n")
+
 cpp.close()

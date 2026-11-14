@@ -7,7 +7,7 @@
 #include <odbc/Forwards.h>
 #include <odbc/Types.h>
 //------------------------------------------------------------------------------
-namespace odbc {
+NS_ODBC_START
 //------------------------------------------------------------------------------
 /**
  * ODBC-related exception.
@@ -31,6 +31,7 @@ private:
     friend class ResultSetMetaDataUnicode;
     friend class Statement;
     friend class StatementBase;
+    friend class StringConverter;
     friend class time;
     friend class timestamp;
     friend class ValueBuffer;
@@ -48,12 +49,12 @@ public:
      *
      * @return  Returns a description of the error that occurred.
      */
-    virtual const char* what() const noexcept;
+    const char* what() const noexcept override;
 
 private:
     std::string msg_;
 };
 //------------------------------------------------------------------------------
-}
+NS_ODBC_END
 //------------------------------------------------------------------------------
 #endif

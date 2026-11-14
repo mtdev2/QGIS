@@ -16,15 +16,16 @@
 #ifndef QGSMESSAGELOG_H
 #define QGSMESSAGELOG_H
 
-#include <QString>
-#include <QObject>
-
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
+
+#include <QObject>
+#include <QString>
 
 /**
  * \ingroup core
- * Interface for logging messages from QGIS in GUI independent way.
+ * \brief Interface for logging messages from QGIS in GUI independent way.
+ *
  * This class provides abstraction of a tabbed window for showing messages to the user.
  * By default QgsMessageLogOutput will be used if not overridden with another
  * message log creator function.
@@ -40,11 +41,16 @@ class CORE_EXPORT QgsMessageLog : public QObject
     Q_OBJECT
 
   public:
-
-    /**
-     * Constructor for QgsMessageLog.
-     */
     QgsMessageLog() = default;
+
+    // TODO: Update this code to use std::source_location from C++20 when transitioning to a fully C++20-compliant codebase.
+    //       Currently, we rely on __builtin_XXX functions (e.g., __builtin_FILE(), __builtin_LINE()),
+    //       which have been successfully tested across multiple systems (Windows, macOS, Linux, FreeBSD)
+    //       and compilers (LLVM, GCC, MSVC).
+    // Note: We tested with LLVM on FreeBSD and macOS, and std::experimental::source_location is not available.
+    //       It works fine with GNU. It also seems unavailable with MSVC.
+    //       For now, we stick with __builtin_XXX because it is "portable" and functional across all tested environments.
+    //       We'll switch to std::source_location once the transition to C++20 is complete.
 
     /**
      * Adds a \a message to the log instance (and creates it if necessary).
@@ -52,8 +58,19 @@ class CORE_EXPORT QgsMessageLog : public QObject
      * If \a notifyUser is TRUE, then the message should be brought to the user's attention by various UI hints.
      * If it is FALSE, the message should appear in logs silently. Note that log viewer implementations may
      * only respect notification hints for certain message levels.
+     *
+     * The \a format parameter specifies the message format (since QGIS 4.0).
      */
-    static void logMessage( const QString &message, const QString &tag = QString(), Qgis::MessageLevel level = Qgis::Warning, bool notifyUser = true );
+    static void logMessage(
+      const QString &message,
+      const QString &tag = QString(),
+      Qgis::MessageLevel level = Qgis::MessageLevel::Warning,
+      bool notifyUser = true,
+      const char *file = __builtin_FILE(),
+      const char *function = __builtin_FUNCTION(),
+      int line = __builtin_LINE(),
+      Qgis::StringFormat format = Qgis::StringFormat::PlainText
+    );
 
   signals:
 
@@ -62,13 +79,23 @@ class CORE_EXPORT QgsMessageLog : public QObject
      *
      * This signal is emitted for all messages received by the log, regardless of the \a notifyUser flag's
      * value for the message.
+     *
+     * \deprecated QGIS 4.0. Use messageReceivedWithFormat() instead.
      */
-    void messageReceived( const QString &message, const QString &tag, Qgis::MessageLevel level );
-
-    //TODO QGIS 4.0 - remove received argument
+    Q_DECL_DEPRECATED void messageReceived( const QString &message, const QString &tag, Qgis::MessageLevel level ) SIP_DEPRECATED;
 
     /**
-     * Emitted whenever the log receives a message which is not a Qgis::Info level message
+     * Emitted whenever the log receives a \a message.
+     *
+     * This signal is emitted for all messages received by the log, regardless of the \a notifyUser flag's
+     * value for the message.
+     */
+    void messageReceivedWithFormat( const QString &message, const QString &tag, Qgis::MessageLevel level, Qgis::StringFormat );
+
+    //TODO QGIS 5.0 - remove received argument
+
+    /**
+     * Emitted whenever the log receives a message which is not a Qgis::MessageLevel::Info level message
      * and which has the \a notifyUser flag as TRUE.
      *
      * If QgsMessageLogNotifyBlocker objects have been created then this signal may be
@@ -78,17 +105,15 @@ class CORE_EXPORT QgsMessageLog : public QObject
     void messageReceived( bool received );
 
   private:
-
-    void emitMessage( const QString &message, const QString &tag, Qgis::MessageLevel level, bool notifyUser = true );
+    void emitMessage( const QString &message, const QString &tag, Qgis::MessageLevel level, bool notifyUser = true, Qgis::StringFormat format = Qgis::StringFormat::PlainText );
 
     int mAdviseBlockCount = 0;
 
     friend class QgsMessageLogNotifyBlocker;
-
 };
 
 /**
- * Temporarily blocks the application QgsMessageLog (see QgsApplication::messageLog()) from emitting the messageReceived( bool )
+ * \brief Temporarily blocks the application QgsMessageLog (see QgsApplication::messageLog()) from emitting the messageReceived( bool )
  * signal for the lifetime of the object.
  *
  * Using this blocker allows messages to be logged without causing user interface hints flagging message log
@@ -103,7 +128,6 @@ class CORE_EXPORT QgsMessageLog : public QObject
 class CORE_EXPORT QgsMessageLogNotifyBlocker
 {
   public:
-
     /**
      * Constructor for QgsMessageLogNotifyBlocker.
      *
@@ -111,16 +135,12 @@ class CORE_EXPORT QgsMessageLogNotifyBlocker
      */
     QgsMessageLogNotifyBlocker();
 
-    //! QgsMessageLogNotifyBlocker cannot be copied
     QgsMessageLogNotifyBlocker( const QgsMessageLogNotifyBlocker &other ) = delete;
-
-    //! QgsMessageLogNotifyBlocker cannot be copied
     QgsMessageLogNotifyBlocker &operator=( const QgsMessageLogNotifyBlocker &other ) = delete;
 
     ~QgsMessageLogNotifyBlocker();
 
   private:
-
 #ifdef SIP_RUN
     QgsMessageLogNotifyBlocker( const QgsMessageLogNotifyBlocker &other );
 #endif
@@ -128,7 +148,7 @@ class CORE_EXPORT QgsMessageLogNotifyBlocker
 
 /**
  * \ingroup core
- * \brief Default implementation of message logging interface
+ * \brief Default implementation of message logging interface.
  *
  * This class outputs log messages to the standard error. Therefore it might
  * be the right choice for applications without GUI.
@@ -138,14 +158,12 @@ class CORE_EXPORT QgsMessageLogConsole : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsMessageLogConsole.
      */
     QgsMessageLogConsole();
 
   protected:
-
     /**
      * Formats a log message. Used by child classes.
      *
@@ -154,7 +172,7 @@ class CORE_EXPORT QgsMessageLogConsole : public QObject
      * \param level the log level of the message
      * \since QGIS 3.4
      */
-    QString formatLogMessage( const QString &message, const QString &tag, Qgis::MessageLevel level = Qgis::Info ) const;
+    QString formatLogMessage( const QString &message, const QString &tag, Qgis::MessageLevel level = Qgis::MessageLevel::Info ) const;
 
   public slots:
 
@@ -166,6 +184,18 @@ class CORE_EXPORT QgsMessageLogConsole : public QObject
      * \param level the log level of the message
      */
     virtual void logMessage( const QString &message, const QString &tag, Qgis::MessageLevel level );
+
+    /**
+     * Logs a message to stderr.
+     *
+     * \param message the message to format
+     * \param tag the tag of the message
+     * \param level the log level of the message
+     * \param format the format of the message (currently ignored)
+     *
+     * \since QGIS 4.0
+     */
+    virtual void logMessage( const QString &message, const QString &tag, Qgis::MessageLevel level, Qgis::StringFormat format );
 };
 
 #endif

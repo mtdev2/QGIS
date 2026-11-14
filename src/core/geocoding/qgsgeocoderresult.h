@@ -17,14 +17,14 @@
 #define QGSGEOCODERRESULT_H
 
 #include "qgis_core.h"
-
 #include "qgscoordinatereferencesystem.h"
 #include "qgsgeometry.h"
 
+#include <QIcon>
 
 /**
  * \ingroup core
- * Represents a matching result from a geocoder search.
+ * \brief Represents a matching result from a geocoder search.
  *
  * QgsGeocoderResult objects may represent valid matches, or an invalid
  * error result. This can be checked by testing isValid(). An invalid
@@ -39,9 +39,7 @@
 */
 class CORE_EXPORT QgsGeocoderResult
 {
-
   public:
-
     /**
      * Creates an invalid error result, with the specified \a errorMessage string.
      */
@@ -181,8 +179,23 @@ class CORE_EXPORT QgsGeocoderResult
      */
     void setDescription( const QString &description );
 
-  private:
+    /**
+     * Returns the optional icon for the result.
+     *
+     * \see setIcon()
+     * \since QGIS 4.4
+     */
+    QIcon icon() const;
 
+    /**
+     * Sets an optional \a icon for the result.
+     *
+     * \see icon()
+     * \since QGIS 4.4
+     */
+    void setIcon( const QIcon &icon );
+
+  private:
     QgsGeocoderResult() = default;
 
     bool mIsValid = false;
@@ -195,7 +208,7 @@ class CORE_EXPORT QgsGeocoderResult
     QgsCoordinateReferenceSystem mCrs;
     QgsRectangle mViewport;
     QVariantMap mAdditionalAttributes;
-
+    QIcon mIcon;
 };
 
 #endif // QGSGEOCODERRESULT_H

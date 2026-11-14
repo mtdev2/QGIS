@@ -13,16 +13,21 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsspinbox.h"
+
+#include "qgsapplication.h"
+#include "qgsexpression.h"
+#include "qgsexpressioncontextutils.h"
+#include "qgsfilterlineedit.h"
+#include "qgslogger.h"
+
 #include <QLineEdit>
 #include <QMouseEvent>
 #include <QSettings>
 #include <QStyle>
+#include <QTimer>
 
-#include "qgsspinbox.h"
-#include "qgsexpression.h"
-#include "qgsapplication.h"
-#include "qgslogger.h"
-#include "qgsfilterlineedit.h"
+#include "moc_qgsspinbox.cpp"
 
 #define CLEAR_ICON_SIZE 16
 
@@ -39,14 +44,20 @@ QgsSpinBox::QgsSpinBox( QWidget *parent )
   : QSpinBox( parent )
 {
   mLineEdit = new QgsSpinBoxLineEdit();
+  connect( mLineEdit, &QLineEdit::returnPressed, this, &QgsSpinBox::returnPressed );
+  connect( mLineEdit, &QLineEdit::textEdited, this, &QgsSpinBox::textEdited );
   setLineEdit( mLineEdit );
 
-  QSize msz = minimumSizeHint();
-  setMinimumSize( msz.width() + CLEAR_ICON_SIZE + 9 + frameWidth() * 2 + 2,
-                  std::max( msz.height(), CLEAR_ICON_SIZE + frameWidth() * 2 + 2 ) );
+  const QSize msz = minimumSizeHint();
+  setMinimumSize( msz.width() + CLEAR_ICON_SIZE + 9 + frameWidth() * 2 + 2, std::max( msz.height(), CLEAR_ICON_SIZE + frameWidth() * 2 + 2 ) );
 
   connect( mLineEdit, &QgsFilterLineEdit::cleared, this, &QgsSpinBox::clear );
-  connect( this, static_cast < void ( QSpinBox::* )( int ) > ( &QSpinBox::valueChanged ), this, &QgsSpinBox::changed );
+  connect( this, static_cast<void ( QSpinBox::* )( int )>( &QSpinBox::valueChanged ), this, &QgsSpinBox::changed );
+
+  mLastEditTimer = new QTimer( this );
+  mLastEditTimer->setSingleShot( true );
+  mLastEditTimer->setInterval( 1000 );
+  connect( mLastEditTimer, &QTimer::timeout, this, &QgsSpinBox::onLastEditTimeout );
 }
 
 void QgsSpinBox::setShowClearButton( const bool showClearButton )
@@ -80,7 +91,7 @@ void QgsSpinBox::paintEvent( QPaintEvent *event )
 
 void QgsSpinBox::wheelEvent( QWheelEvent *event )
 {
-  int step = singleStep();
+  const int step = singleStep();
   if ( event->modifiers() & Qt::ControlModifier )
   {
     // ctrl modifier results in finer increments - 10% of usual step
@@ -110,9 +121,28 @@ void QgsSpinBox::timerEvent( QTimerEvent *event )
     QSpinBox::timerEvent( event );
 }
 
+void QgsSpinBox::focusOutEvent( QFocusEvent *event )
+{
+  QSpinBox::focusOutEvent( event );
+  onLastEditTimeout();
+}
+
 void QgsSpinBox::changed( int value )
 {
   mLineEdit->setShowClearButton( shouldShowClearForValue( value ) );
+  mLastEditTimer->start();
+}
+
+void QgsSpinBox::onLastEditTimeout()
+{
+  mLastEditTimer->stop();
+  const int currentValue = value();
+  if ( !mHasEmittedEditTimeout || mLastEditTimeoutValue != currentValue )
+  {
+    mHasEmittedEditTimeout = true;
+    mLastEditTimeoutValue = currentValue;
+    emit editingTimeout( mLastEditTimeoutValue );
+  }
 }
 
 void QgsSpinBox::clear()
@@ -124,12 +154,17 @@ void QgsSpinBox::clear()
 
 void QgsSpinBox::setClearValue( int customValue, const QString &specialValueText )
 {
+  if ( mClearValueMode == CustomValue && mCustomClearValue == customValue && QAbstractSpinBox::specialValueText() == specialValueText )
+  {
+    return;
+  }
+
   mClearValueMode = CustomValue;
   mCustomClearValue = customValue;
 
   if ( !specialValueText.isEmpty() )
   {
-    int v = value();
+    const int v = value();
     clear();
     setSpecialValueText( specialValueText );
     setValue( v );
@@ -138,12 +173,17 @@ void QgsSpinBox::setClearValue( int customValue, const QString &specialValueText
 
 void QgsSpinBox::setClearValueMode( QgsSpinBox::ClearValueMode mode, const QString &specialValueText )
 {
+  if ( mClearValueMode == mode && mCustomClearValue == 0 && QAbstractSpinBox::specialValueText() == specialValueText )
+  {
+    return;
+  }
+
   mClearValueMode = mode;
   mCustomClearValue = 0;
 
   if ( !specialValueText.isEmpty() )
   {
-    int v = value();
+    const int v = value();
     clear();
     setSpecialValueText( specialValueText );
     setValue( v );
@@ -186,24 +226,51 @@ int QgsSpinBox::valueFromText( const QString &text ) const
     return QSpinBox::valueFromText( text );
   }
 
-  QString trimmedText = stripped( text );
+  const QString trimmedText = stripped( text );
   if ( trimmedText.isEmpty() )
   {
     return mShowClearButton ? clearValue() : value();
   }
 
-  return std::round( QgsExpression::evaluateToDouble( trimmedText, value() ) );
+  QgsExpressionContext context;
+  context << QgsExpressionContextUtils::globalScope() << QgsExpressionContextUtils::projectScope( QgsProject::instance() );
+
+  return std::round( QgsExpression::evaluateToDouble( trimmedText, value(), &context ) );
 }
 
 QValidator::State QgsSpinBox::validate( QString &input, int &pos ) const
 {
   if ( !mExpressionsEnabled )
   {
-    QValidator::State r = QSpinBox::validate( input, pos );
+    const QValidator::State r = QSpinBox::validate( input, pos );
     return r;
   }
 
   return QValidator::Acceptable;
+}
+
+void QgsSpinBox::stepBy( int steps )
+{
+  const bool wasNull = mShowClearButton && value() == clearValue();
+  if ( wasNull && minimum() < 0 && maximum() > 0 && !( specialValueText().isEmpty() || specialValueText() == SPECIAL_TEXT_WHEN_EMPTY ) )
+  {
+    // value is currently null, and range allows both positive and negative numbers
+    // in this case we DON'T do the default step, as that would add one step to the NULL value,
+    // which is usually the minimum acceptable value... so the user will get a very large negative number!
+    // Instead, treat the initial value as 0 instead, and then perform the step.
+    whileBlocking( this )->setValue( 0 );
+  }
+  QSpinBox::stepBy( steps );
+}
+
+int QgsSpinBox::editingTimeoutInterval() const
+{
+  return mLastEditTimer->interval();
+}
+
+void QgsSpinBox::setEditingTimeoutInterval( int timeout )
+{
+  mLastEditTimer->setInterval( timeout );
 }
 
 int QgsSpinBox::frameWidth() const

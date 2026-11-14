@@ -15,22 +15,27 @@
 
 #include "qgsexternalresourcewidgetwrapper.h"
 
+#include "qgsapplication.h"
+#include "qgsdatadefinedutils.h"
+#include "qgsexpressioncontextutils.h"
+#include "qgsexternalresourcewidget.h"
+#include "qgsexternalstoragefilewidget.h"
+#include "qgsfilterlineedit.h"
+#include "qgsproject.h"
+
+#include <QLabel>
 #include <QPushButton>
 #include <QSettings>
-#include <QLabel>
+#include <QString>
 
-#include "qgsproject.h"
-#include "qgsexternalresourcewidget.h"
-#include "qgsfilterlineedit.h"
-#include "qgsapplication.h"
-#include "qgsexpressioncontextutils.h"
+#include "moc_qgsexternalresourcewidgetwrapper.cpp"
 
+using namespace Qt::StringLiterals;
 
-QgsExternalResourceWidgetWrapper::QgsExternalResourceWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QWidget *parent )
+QgsExternalResourceWidgetWrapper::QgsExternalResourceWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QgsMessageBar *messageBar, QWidget *parent )
   : QgsEditorWidgetWrapper( layer, fieldIdx, editor, parent )
-
-{
-}
+  , mMessageBar( messageBar )
+{}
 
 QVariant QgsExternalResourceWidgetWrapper::value() const
 {
@@ -43,7 +48,7 @@ QVariant QgsExternalResourceWidgetWrapper::value() const
   {
     if ( mLineEdit->text().isEmpty() || mLineEdit->text() == QgsApplication::nullRepresentation() )
     {
-      return QVariant( field().type() );
+      return QgsVariantUtils::createNullVariant( field().type() );
     }
     else
     {
@@ -51,7 +56,7 @@ QVariant QgsExternalResourceWidgetWrapper::value() const
     }
   }
 
-  return QVariant( field().type() );
+  return QgsVariantUtils::createNullVariant( field().type() );
 }
 
 void QgsExternalResourceWidgetWrapper::showIndeterminateState()
@@ -85,32 +90,34 @@ void QgsExternalResourceWidgetWrapper::updateProperties( const QgsFeature &featu
     expressionContext.setFeature( feature );
     bool ok = false;
 
-    if ( mPropertyCollection.isActive( QgsEditorWidgetWrapper::RootPath ) )
+    if ( mPropertyCollection.isActive( QgsEditorWidgetWrapper::Property::RootPath ) )
     {
-      QString path = mPropertyCollection.valueAsString( QgsEditorWidgetWrapper::RootPath, expressionContext, QString(), &ok );
+      const QString path = mPropertyCollection.valueAsString( QgsEditorWidgetWrapper::Property::RootPath, expressionContext, QString(), &ok );
       if ( ok )
       {
         mQgsWidget->setDefaultRoot( path );
       }
     }
-    if ( mPropertyCollection.isActive( QgsEditorWidgetWrapper::DocumentViewerContent ) )
+    if ( mPropertyCollection.isActive( QgsEditorWidgetWrapper::Property::DocumentViewerContent ) )
     {
-      QString dvcString = mPropertyCollection.valueAsString( QgsEditorWidgetWrapper::DocumentViewerContent, expressionContext, QStringLiteral( "NoContent" ), &ok );
+      const QString dvcString = mPropertyCollection.valueAsString( QgsEditorWidgetWrapper::Property::DocumentViewerContent, expressionContext, u"NoContent"_s, &ok );
       if ( ok )
       {
-        QgsExternalResourceWidget::DocumentViewerContent dvc;
-        if ( dvcString.compare( QLatin1String( "image" ), Qt::CaseInsensitive ) == 0 )
+        static constexpr auto CONTENT_MAP = makeDataDefinedStringDecoder<QgsExternalResourceWidget::DocumentViewerContent>( {
+          { u"image", QgsExternalResourceWidget::Image },
+          { u"audio", QgsExternalResourceWidget::Audio },
+          { u"video", QgsExternalResourceWidget::Video },
+          { u"web", QgsExternalResourceWidget::Web },
+          { u"nocontent", QgsExternalResourceWidget::NoContent },
+        } );
+
+        auto evaluatedContent = CONTENT_MAP.lookup( dvcString );
+        QgsExternalResourceWidget::DocumentViewerContent dvc = QgsExternalResourceWidget::NoContent;
+        if ( evaluatedContent )
         {
-          dvc = QgsExternalResourceWidget::Image;
+          dvc = *evaluatedContent;
         }
-        else if ( dvcString.compare( QLatin1String( "web" ), Qt::CaseInsensitive ) == 0 )
-        {
-          dvc = QgsExternalResourceWidget::Web;
-        }
-        else
-        {
-          dvc = QgsExternalResourceWidget::NoContent;
-        }
+
         mQgsWidget->setDocumentViewerContent( dvc );
       }
     }
@@ -121,6 +128,11 @@ void QgsExternalResourceWidgetWrapper::setFeature( const QgsFeature &feature )
 {
   updateProperties( feature );
   QgsEditorWidgetWrapper::setFeature( feature );
+
+  if ( mQgsWidget )
+  {
+    updateFileWidgetExpressionContext();
+  }
 }
 
 QWidget *QgsExternalResourceWidgetWrapper::createWidget( QWidget *parent )
@@ -152,74 +164,84 @@ void QgsExternalResourceWidgetWrapper::initWidget( QWidget *editor )
 
   if ( mQgsWidget )
   {
+    mQgsWidget->setMessageBar( mMessageBar );
+
     mQgsWidget->fileWidget()->setStorageMode( QgsFileWidget::GetFile );
 
-    QVariantMap cfg = config();
+    const QVariantMap cfg = config();
+    mPropertyCollection.loadVariant( cfg.value( u"PropertyCollection"_s ), propertyDefinitions() );
 
-    if ( cfg.contains( QStringLiteral( "UseLink" ) ) )
+    mQgsWidget->setStorageType( cfg.value( u"StorageType"_s ).toString() );
+    mQgsWidget->setStorageAuthConfigId( cfg.value( u"StorageAuthConfigId"_s ).toString() );
+
+    mQgsWidget->fileWidget()->setStorageUrlExpression(
+      mPropertyCollection.isActive( QgsWidgetWrapper::Property::StorageUrl ) ? mPropertyCollection.property( QgsWidgetWrapper::Property::StorageUrl ).asExpression()
+                                                                             : QgsExpression::quotedValue( cfg.value( u"StorageUrl"_s ).toString() )
+    );
+
+    updateFileWidgetExpressionContext();
+
+    if ( cfg.contains( u"UseLink"_s ) )
     {
-      mQgsWidget->fileWidget()->setUseLink( cfg.value( QStringLiteral( "UseLink" ) ).toBool() );
+      mQgsWidget->fileWidget()->setUseLink( cfg.value( u"UseLink"_s ).toBool() );
     }
-    if ( cfg.contains( QStringLiteral( "FullUrl" ) ) )
+    if ( cfg.contains( u"FullUrl"_s ) )
     {
-      mQgsWidget->fileWidget()->setFullUrl( cfg.value( QStringLiteral( "FullUrl" ) ).toBool() );
+      mQgsWidget->fileWidget()->setFullUrl( cfg.value( u"FullUrl"_s ).toBool() );
     }
 
-    mPropertyCollection.loadVariant( cfg.value( QStringLiteral( "PropertyCollection" ) ), propertyDefinitions() );
-    if ( !mPropertyCollection.isActive( QgsWidgetWrapper::RootPath ) )
+    if ( !mPropertyCollection.isActive( QgsWidgetWrapper::Property::RootPath ) )
     {
-      mQgsWidget->setDefaultRoot( cfg.value( QStringLiteral( "DefaultRoot" ) ).toString() );
+      mQgsWidget->setDefaultRoot( cfg.value( u"DefaultRoot"_s ).toString() );
     }
-    if ( cfg.contains( QStringLiteral( "StorageMode" ) ) )
+    if ( cfg.contains( u"StorageMode"_s ) )
     {
-      mQgsWidget->fileWidget()->setStorageMode( ( QgsFileWidget::StorageMode )cfg.value( QStringLiteral( "StorageMode" ) ).toInt() );
+      mQgsWidget->fileWidget()->setStorageMode( ( QgsFileWidget::StorageMode ) cfg.value( u"StorageMode"_s ).toInt() );
     }
-    if ( cfg.contains( QStringLiteral( "RelativeStorage" ) ) )
+    if ( cfg.contains( u"RelativeStorage"_s ) )
     {
-      mQgsWidget->setRelativeStorage( ( QgsFileWidget::RelativeStorage )cfg.value( QStringLiteral( "RelativeStorage" ) ).toInt() );
+      mQgsWidget->setRelativeStorage( ( QgsFileWidget::RelativeStorage ) cfg.value( u"RelativeStorage"_s ).toInt() );
     }
-    if ( cfg.contains( QStringLiteral( "FileWidget" ) ) )
+    if ( cfg.contains( u"FileWidget"_s ) )
     {
-      mQgsWidget->setFileWidgetVisible( cfg.value( QStringLiteral( "FileWidget" ) ).toBool() );
+      mQgsWidget->setFileWidgetVisible( cfg.value( u"FileWidget"_s ).toBool() );
     }
-    if ( cfg.contains( QStringLiteral( "FileWidgetButton" ) ) )
+    if ( cfg.contains( u"FileWidgetButton"_s ) )
     {
-      mQgsWidget->fileWidget()->setFileWidgetButtonVisible( cfg.value( QStringLiteral( "FileWidgetButton" ) ).toBool() );
+      mQgsWidget->fileWidget()->setFileWidgetButtonVisible( cfg.value( u"FileWidgetButton"_s ).toBool() );
     }
-    if ( cfg.contains( QStringLiteral( "DocumentViewer" ) ) )
+    if ( cfg.contains( u"DocumentViewer"_s ) )
     {
-      mQgsWidget->setDocumentViewerContent( ( QgsExternalResourceWidget::DocumentViewerContent )cfg.value( QStringLiteral( "DocumentViewer" ) ).toInt() );
+      mQgsWidget->setDocumentViewerContent( ( QgsExternalResourceWidget::DocumentViewerContent ) cfg.value( u"DocumentViewer"_s ).toInt() );
     }
-    if ( cfg.contains( QStringLiteral( "FileWidgetFilter" ) ) )
+    if ( cfg.contains( u"FileWidgetFilter"_s ) )
     {
-      mQgsWidget->fileWidget()->setFilter( cfg.value( QStringLiteral( "FileWidgetFilter" ) ).toString() );
+      mQgsWidget->fileWidget()->setFilter( cfg.value( u"FileWidgetFilter"_s ).toString() );
     }
-    if ( cfg.contains( QStringLiteral( "DocumentViewerHeight" ) ) )
+    if ( cfg.contains( u"DocumentViewerHeight"_s ) )
     {
-      mQgsWidget->setDocumentViewerHeight( cfg.value( QStringLiteral( "DocumentViewerHeight" ) ).toInt( ) );
+      mQgsWidget->setDocumentViewerHeight( cfg.value( u"DocumentViewerHeight"_s ).toInt() );
     }
-    if ( cfg.contains( QStringLiteral( "DocumentViewerWidth" ) ) )
+    if ( cfg.contains( u"DocumentViewerWidth"_s ) )
     {
-      mQgsWidget->setDocumentViewerWidth( cfg.value( QStringLiteral( "DocumentViewerWidth" ) ).toInt( ) );
+      mQgsWidget->setDocumentViewerWidth( cfg.value( u"DocumentViewerWidth"_s ).toInt() );
     }
   }
 
   if ( mLineEdit )
-    connect( mLineEdit, &QLineEdit::textChanged, this, [ = ]( const QString & value )
-  {
-    Q_NOWARN_DEPRECATED_PUSH
-    emit valueChanged( value );
-    Q_NOWARN_DEPRECATED_POP
-    emit valuesChanged( value );
-  } );
-
+    connect( mLineEdit, &QLineEdit::textChanged, this, [this]( const QString &value ) {
+      Q_NOWARN_DEPRECATED_PUSH
+      emit valueChanged( value );
+      Q_NOWARN_DEPRECATED_POP
+      emit valuesChanged( value );
+    } );
 }
 
 void QgsExternalResourceWidgetWrapper::updateValues( const QVariant &value, const QVariantList & )
 {
   if ( mLineEdit )
   {
-    if ( value.isNull() )
+    if ( QgsVariantUtils::isNull( value ) )
     {
       mLineEdit->setText( QgsApplication::nullRepresentation() );
     }
@@ -240,7 +262,7 @@ void QgsExternalResourceWidgetWrapper::updateValues( const QVariant &value, cons
 
   if ( mQgsWidget )
   {
-    if ( value.isNull() )
+    if ( QgsVariantUtils::isNull( value ) )
     {
       mQgsWidget->setDocumentPath( QgsApplication::nullRepresentation() );
     }
@@ -249,7 +271,6 @@ void QgsExternalResourceWidgetWrapper::updateValues( const QVariant &value, cons
       mQgsWidget->setDocumentPath( value.toString() );
     }
   }
-
 }
 
 void QgsExternalResourceWidgetWrapper::setEnabled( bool enabled )
@@ -266,13 +287,12 @@ void QgsExternalResourceWidgetWrapper::widgetValueChanged( const QString &attrib
   Q_UNUSED( newValue );
   if ( attributeChanged )
   {
-    QgsExpression documentViewerContentExp = QgsExpression( mPropertyCollection.property( QgsEditorWidgetWrapper::DocumentViewerContent ).expressionString() );
-    QgsExpression rootPathExp = QgsExpression( mPropertyCollection.property( QgsEditorWidgetWrapper::RootPath ).expressionString() );
+    const QgsExpression documentViewerContentExp = QgsExpression( mPropertyCollection.property( QgsEditorWidgetWrapper::Property::DocumentViewerContent ).expressionString() );
+    const QgsExpression rootPathExp = QgsExpression( mPropertyCollection.property( QgsEditorWidgetWrapper::Property::RootPath ).expressionString() );
 
-    if ( documentViewerContentExp.referencedColumns().contains( attribute ) ||
-         rootPathExp.referencedColumns().contains( attribute ) )
+    if ( documentViewerContentExp.referencedColumns().contains( attribute ) || rootPathExp.referencedColumns().contains( attribute ) )
     {
-      QgsFeature feature = mForm->currentFormFeature();
+      const QgsFeature feature = mForm->currentFormFeature();
       updateProperties( feature );
     }
   }
@@ -295,13 +315,29 @@ void QgsExternalResourceWidgetWrapper::updateConstraintWidgetStatus()
           break;
 
         case ConstraintResultFailHard:
-          mLineEdit->setStyleSheet( QStringLiteral( "QgsFilterLineEdit { background-color: #dd7777; }" ) );
+          mLineEdit->setStyleSheet( u"QgsFilterLineEdit { background-color: #dd7777; }"_s );
           break;
 
         case ConstraintResultFailSoft:
-          mLineEdit->setStyleSheet( QStringLiteral( "QgsFilterLineEdit { background-color: #ffd85d; }" ) );
+          mLineEdit->setStyleSheet( u"QgsFilterLineEdit { background-color: #ffd85d; }"_s );
           break;
       }
     }
   }
+}
+
+void QgsExternalResourceWidgetWrapper::updateFileWidgetExpressionContext()
+{
+  if ( !mQgsWidget || !layer() )
+    return;
+
+  QgsExpressionContext expressionContext( layer()->createExpressionContext() );
+  expressionContext.setFeature( formFeature() );
+  expressionContext.appendScope( QgsExpressionContextUtils::formScope( formFeature() ) );
+  if ( context().parentFormFeature().isValid() )
+  {
+    expressionContext.appendScope( QgsExpressionContextUtils::parentFormScope( context().parentFormFeature() ) );
+  }
+
+  mQgsWidget->fileWidget()->setExpressionContext( expressionContext );
 }

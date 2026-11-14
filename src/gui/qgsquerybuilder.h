@@ -14,20 +14,24 @@
  ***************************************************************************/
 #ifndef QGSQUERYBUILDER_H
 #define QGSQUERYBUILDER_H
+#include "ui_qgsquerybuilderbase.h"
+
 #include <map>
-#include "qgis_sip.h"
 #include <vector>
-#include <QStandardItemModel>
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsguiutils.h"
+#include "qgssubsetstringeditorinterface.h"
+
+#include <QModelIndex>
 #include <QSortFilterProxyModel>
 #include <QStandardItem>
-#include <QModelIndex>
-#include "ui_qgsquerybuilderbase.h"
-#include "qgsguiutils.h"
-#include "qgis_gui.h"
-#include "qgssubsetstringeditorinterface.h"
+#include <QStandardItemModel>
 
 class QgsVectorLayer;
 class QgsCodeEditor;
+class QgsFieldProxyModel;
 
 /**
  * \ingroup gui
@@ -45,7 +49,6 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
 {
     Q_OBJECT
   public:
-
     /**
      * This constructor is used when the query builder is called from the
      * vector layer properties dialog
@@ -53,8 +56,7 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
      * \param parent Parent widget
      * \param fl dialog flags
      */
-    QgsQueryBuilder( QgsVectorLayer *layer, QWidget *parent SIP_TRANSFERTHIS = nullptr,
-                     Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags );
+    QgsQueryBuilder( QgsVectorLayer *layer, QWidget *parent SIP_TRANSFERTHIS = nullptr, Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags );
 
     void showEvent( QShowEvent *event ) override;
 
@@ -76,13 +78,15 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
      */
     QgsCodeEditor *codeEditorWidget() const;
     SIP_END
+
     SIP_IF_FEATURE( !HAVE_QSCI_SIP )
 
     /**
      * Returns the code editor widget for the SQL.
      * \since QGIS 3.18
      */
-    QWidget *codeEditorWidget() const;
+    QWidget *
+      codeEditorWidget() const;
     SIP_END
 #else
 
@@ -92,6 +96,18 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
      */
     QgsCodeEditor *codeEditorWidget() const { return mTxtSql; }
 #endif
+
+    /**
+     * Save query to the XML file
+     * \since QGIS 3.26
+     */
+    static bool saveQueryToFile( const QString &subset );
+
+    /**
+     * Load query from the XML file
+     * \since QGIS 3.26
+     */
+    static bool loadQueryFromFile( QString &subset );
 
   public slots:
     void accept() override;
@@ -156,30 +172,23 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
     void btnSampleValues_clicked();
 
   private:
-
-    /**
-     * Populate the field list for the selected table
-     */
-    void populateFields();
-
     void showHelp();
 
     /**
      * Setup models for listviews
      */
     void setupGuiViews();
-    void setupLstFieldsModel();
-    void fillValues( int idx, int limit );
+    void fillValues( const QString &field, int limit );
 
     // private members
     //! Model for fields ListView
-    QStandardItemModel *mModelFields = nullptr;
+    QgsFieldProxyModel *mModelFields = nullptr;
     //! Model for values ListView
     QStandardItemModel *mModelValues = nullptr;
     //! Filter proxy Model for values ListView
     QSortFilterProxyModel *mProxyValues = nullptr;
     //! Previous field row to delete model
-    int mPreviousFieldRow;
+    int mPreviousFieldRow = -1;
 
     //! vector layer
     QgsVectorLayer *mLayer = nullptr;
@@ -189,5 +198,7 @@ class GUI_EXPORT QgsQueryBuilder : public QgsSubsetStringEditorInterface, privat
 
     //! whether to ignore subsetStringChanged() signal from the layer
     bool mIgnoreLayerSubsetStringChangedSignal = false;
+
+    friend class TestQgsQueryBuilder;
 };
 #endif //QGSQUERYBUILDER_H

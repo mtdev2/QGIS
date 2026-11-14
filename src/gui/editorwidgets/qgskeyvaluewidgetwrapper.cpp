@@ -14,23 +14,34 @@
  ***************************************************************************/
 
 #include "qgskeyvaluewidgetwrapper.h"
-#include "qgskeyvaluewidget.h"
-#include "qgsattributeform.h"
 
-QgsKeyValueWidgetWrapper::QgsKeyValueWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QWidget *parent ):
-  QgsEditorWidgetWrapper( layer, fieldIdx, editor, parent )
-{
-}
+#include "qgsattributeform.h"
+#include "qgskeyvaluewidget.h"
+
+#include "moc_qgskeyvaluewidgetwrapper.cpp"
+
+QgsKeyValueWidgetWrapper::QgsKeyValueWidgetWrapper( QgsVectorLayer *layer, int fieldIdx, QWidget *editor, QWidget *parent )
+  : QgsEditorWidgetWrapper( layer, fieldIdx, editor, parent )
+{}
 
 QVariant QgsKeyValueWidgetWrapper::value() const
 {
-  if ( !mWidget ) return QVariant( QVariant::Map );
+  if ( !mWidget )
+    return QgsVariantUtils::createNullVariant( QMetaType::Type::QVariantMap );
   return mWidget->map();
 }
 
 void QgsKeyValueWidgetWrapper::showIndeterminateState()
 {
   mWidget->setMap( QVariantMap() );
+}
+
+void QgsKeyValueWidgetWrapper::setEnabled( bool enabled )
+{
+  if ( mWidget )
+  {
+    mWidget->setReadOnly( !enabled );
+  }
 }
 
 QWidget *QgsKeyValueWidgetWrapper::createWidget( QWidget *parent )
@@ -69,7 +80,17 @@ bool QgsKeyValueWidgetWrapper::valid() const
 
 void QgsKeyValueWidgetWrapper::updateValues( const QVariant &value, const QVariantList & )
 {
-  mWidget->setMap( value.toMap() );
+  QVariantMap mapValue = value.toMap();
+  // on a string field, we convert the json content to variant map
+  if ( field().type() == QMetaType::Type::QString )
+  {
+    const QJsonDocument doc = QJsonDocument::fromJson( value.toString().toUtf8() );
+    if ( !doc.isNull() && doc.isObject() )
+    {
+      mapValue = doc.object().toVariantMap();
+    }
+  }
+  mWidget->setMap( mapValue );
 }
 
 void QgsKeyValueWidgetWrapper::updateConstraintWidgetStatus()

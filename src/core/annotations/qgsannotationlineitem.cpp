@@ -16,22 +16,30 @@
  ***************************************************************************/
 
 #include "qgsannotationlineitem.h"
+
+#include "qgsannotationitemeditoperation.h"
+#include "qgsannotationitemnode.h"
+#include "qgscurve.h"
+#include "qgslinestring.h"
+#include "qgslinesymbol.h"
 #include "qgssymbol.h"
 #include "qgssymbollayerutils.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsAnnotationLineItem::QgsAnnotationLineItem( QgsCurve *curve )
   : QgsAnnotationItem()
   , mCurve( curve )
-  , mSymbol( qgis::make_unique< QgsLineSymbol >() )
-{
-
-}
+  , mSymbol( std::make_unique< QgsLineSymbol >() )
+{}
 
 QgsAnnotationLineItem::~QgsAnnotationLineItem() = default;
 
 QString QgsAnnotationLineItem::type() const
 {
-  return QStringLiteral( "linestring" );
+  return u"linestring"_s;
 }
 
 void QgsAnnotationLineItem::render( QgsRenderContext &context, QgsFeedback * )
@@ -52,11 +60,7 @@ void QgsAnnotationLineItem::render( QgsRenderContext &context, QgsFeedback * )
   }
 
   // remove non-finite points, e.g. infinite or NaN points caused by reprojecting errors
-  pts.erase( std::remove_if( pts.begin(), pts.end(),
-                             []( const QPointF point )
-  {
-    return !std::isfinite( point.x() ) || !std::isfinite( point.y() );
-  } ), pts.end() );
+  pts.erase( std::remove_if( pts.begin(), pts.end(), []( const QPointF point ) { return !std::isfinite( point.x() ) || !std::isfinite( point.y() ); } ), pts.end() );
 
   QPointF *ptr = pts.data();
   for ( int i = 0; i < pts.size(); ++i, ++ptr )
@@ -71,31 +75,147 @@ void QgsAnnotationLineItem::render( QgsRenderContext &context, QgsFeedback * )
 
 bool QgsAnnotationLineItem::writeXml( QDomElement &element, QDomDocument &document, const QgsReadWriteContext &context ) const
 {
-  element.setAttribute( QStringLiteral( "wkt" ), mCurve->asWkt() );
-  element.setAttribute( QStringLiteral( "zIndex" ), zIndex() );
-
-  element.appendChild( QgsSymbolLayerUtils::saveSymbol( QStringLiteral( "lineSymbol" ), mSymbol.get(), document, context ) );
+  element.setAttribute( u"wkt"_s, mCurve->asWkt() );
+  element.appendChild( QgsSymbolLayerUtils::saveSymbol( u"lineSymbol"_s, mSymbol.get(), document, context ) );
+  writeCommonProperties( element, document, context );
 
   return true;
 }
 
-QgsAnnotationLineItem *QgsAnnotationLineItem::create()
+QList<QgsAnnotationItemNode> QgsAnnotationLineItem::nodesV2( const QgsAnnotationItemEditContext & ) const
 {
-  return new QgsAnnotationLineItem( new QgsLineString() );
+  QList< QgsAnnotationItemNode > res;
+  for ( auto it = mCurve->vertices_begin(); it != mCurve->vertices_end(); ++it )
+  {
+    res.append( QgsAnnotationItemNode( it.vertexId(), QgsPointXY( ( *it ).x(), ( *it ).y() ), Qgis::AnnotationItemNodeType::VertexHandle ) );
+  }
+  return res;
+}
+
+Qgis::AnnotationItemEditOperationResult QgsAnnotationLineItem::applyEditV2( QgsAbstractAnnotationItemEditOperation *operation, const QgsAnnotationItemEditContext & )
+{
+  switch ( operation->type() )
+  {
+    case QgsAbstractAnnotationItemEditOperation::Type::MoveNode:
+    {
+      QgsAnnotationItemEditOperationMoveNode *moveOperation = qgis::down_cast< QgsAnnotationItemEditOperationMoveNode * >( operation );
+      if ( mCurve->moveVertex( moveOperation->nodeId(), QgsPoint( moveOperation->after() ) ) )
+        return Qgis::AnnotationItemEditOperationResult::Success;
+      break;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::DeleteNode:
+    {
+      QgsAnnotationItemEditOperationDeleteNode *deleteOperation = qgis::down_cast< QgsAnnotationItemEditOperationDeleteNode * >( operation );
+      if ( mCurve->deleteVertex( deleteOperation->nodeId() ) )
+        return mCurve->isEmpty() ? Qgis::AnnotationItemEditOperationResult::ItemCleared : Qgis::AnnotationItemEditOperationResult::Success;
+      break;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::AddNode:
+    {
+      QgsAnnotationItemEditOperationAddNode *addOperation = qgis::down_cast< QgsAnnotationItemEditOperationAddNode * >( operation );
+
+      QgsPoint segmentPoint;
+      QgsVertexId endOfSegmentVertex;
+      mCurve->closestSegment( addOperation->point(), segmentPoint, endOfSegmentVertex );
+      if ( mCurve->insertVertex( endOfSegmentVertex, segmentPoint ) )
+        return Qgis::AnnotationItemEditOperationResult::Success;
+      break;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::TranslateItem:
+    {
+      QgsAnnotationItemEditOperationTranslateItem *moveOperation = qgis::down_cast< QgsAnnotationItemEditOperationTranslateItem * >( operation );
+      const QTransform transform = QTransform::fromTranslate( moveOperation->translationX(), moveOperation->translationY() );
+      mCurve->transform( transform );
+      return Qgis::AnnotationItemEditOperationResult::Success;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::RotateItem:
+    {
+      QgsAnnotationItemEditOperationRotateItem *rotateOperation = qgis::down_cast< QgsAnnotationItemEditOperationRotateItem * >( operation );
+      QgsPointXY center = mCurve->boundingBox().center();
+      QTransform transform = QTransform::fromTranslate( center.x(), center.y() );
+      transform.rotate( -rotateOperation->angle() );
+      transform.translate( -center.x(), -center.y() );
+      mCurve->transform( transform );
+      return Qgis::AnnotationItemEditOperationResult::Success;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::SetItemBounds:
+      break;
+  }
+
+  return Qgis::AnnotationItemEditOperationResult::Invalid;
+}
+
+QgsAnnotationItemEditOperationTransientResults *QgsAnnotationLineItem::transientEditResultsV2( QgsAbstractAnnotationItemEditOperation *operation, const QgsAnnotationItemEditContext & )
+{
+  switch ( operation->type() )
+  {
+    case QgsAbstractAnnotationItemEditOperation::Type::MoveNode:
+    {
+      QgsAnnotationItemEditOperationMoveNode *moveOperation = qgis::down_cast< QgsAnnotationItemEditOperationMoveNode * >( operation );
+      std::unique_ptr< QgsCurve > modifiedCurve( mCurve->clone() );
+      if ( modifiedCurve->moveVertex( moveOperation->nodeId(), QgsPoint( moveOperation->after() ) ) )
+      {
+        return new QgsAnnotationItemEditOperationTransientResults( QgsGeometry( std::move( modifiedCurve ) ) );
+      }
+      break;
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::TranslateItem:
+    {
+      QgsAnnotationItemEditOperationTranslateItem *moveOperation = qgis::down_cast< QgsAnnotationItemEditOperationTranslateItem * >( operation );
+      const QTransform transform = QTransform::fromTranslate( moveOperation->translationX(), moveOperation->translationY() );
+      std::unique_ptr< QgsCurve > modifiedCurve( mCurve->clone() );
+      modifiedCurve->transform( transform );
+      return new QgsAnnotationItemEditOperationTransientResults( QgsGeometry( std::move( modifiedCurve ) ) );
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::RotateItem:
+    {
+      QgsAnnotationItemEditOperationRotateItem *rotateOperation = qgis::down_cast< QgsAnnotationItemEditOperationRotateItem * >( operation );
+      std::unique_ptr< QgsCurve > modifiedCurve( mCurve->clone() );
+      QgsPointXY center = modifiedCurve->boundingBox().center();
+      QTransform transform = QTransform::fromTranslate( center.x(), center.y() );
+      transform.rotate( -rotateOperation->angle() );
+      transform.translate( -center.x(), -center.y() );
+      modifiedCurve->transform( transform );
+      return new QgsAnnotationItemEditOperationTransientResults( QgsGeometry( std::move( modifiedCurve ) ) );
+    }
+
+    case QgsAbstractAnnotationItemEditOperation::Type::SetItemBounds:
+    case QgsAbstractAnnotationItemEditOperation::Type::DeleteNode:
+    case QgsAbstractAnnotationItemEditOperation::Type::AddNode:
+      break;
+  }
+  return nullptr;
+}
+
+Qgis::AnnotationItemFlags QgsAnnotationLineItem::flags() const
+{
+  return Qgis::AnnotationItemFlag::SupportsReferenceScale;
+}
+
+std::unique_ptr<QgsAnnotationLineItem> QgsAnnotationLineItem::create()
+{
+  return std::make_unique<QgsAnnotationLineItem>( new QgsLineString() );
 }
 
 bool QgsAnnotationLineItem::readXml( const QDomElement &element, const QgsReadWriteContext &context )
 {
-  const QString wkt = element.attribute( QStringLiteral( "wkt" ) );
+  const QString wkt = element.attribute( u"wkt"_s );
   const QgsGeometry geometry = QgsGeometry::fromWkt( wkt );
   if ( const QgsCurve *curve = qgsgeometry_cast< const QgsCurve * >( geometry.constGet() ) )
     mCurve.reset( curve->clone() );
 
-  setZIndex( element.attribute( QStringLiteral( "zIndex" ) ).toInt() );
-
-  const QDomElement symbolElem = element.firstChildElement( QStringLiteral( "symbol" ) );
+  const QDomElement symbolElem = element.firstChildElement( u"symbol"_s );
   if ( !symbolElem.isNull() )
-    setSymbol( QgsSymbolLayerUtils::loadSymbol< QgsLineSymbol >( symbolElem, context ) );
+    setSymbol( QgsSymbolLayerUtils::loadSymbol< QgsLineSymbol >( symbolElem, context ).release() );
+
+  readCommonProperties( element, context );
 
   return true;
 }
@@ -105,12 +225,17 @@ QgsRectangle QgsAnnotationLineItem::boundingBox() const
   return mCurve->boundingBox();
 }
 
-QgsAnnotationLineItem *QgsAnnotationLineItem::clone()
+QgsAnnotationLineItem *QgsAnnotationLineItem::clone() const
 {
-  std::unique_ptr< QgsAnnotationLineItem > item = qgis::make_unique< QgsAnnotationLineItem >( mCurve->clone() );
+  auto item = std::make_unique< QgsAnnotationLineItem >( mCurve->clone() );
   item->setSymbol( mSymbol->clone() );
-  item->setZIndex( zIndex() );
+  item->copyCommonProperties( this );
   return item.release();
+}
+
+void QgsAnnotationLineItem::setGeometry( QgsCurve *geometry )
+{
+  mCurve.reset( geometry );
 }
 
 const QgsLineSymbol *QgsAnnotationLineItem::symbol() const

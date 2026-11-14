@@ -18,19 +18,19 @@
 #ifndef QGSABSTRACTRELATIONEDITORWIDGET_H
 #define QGSABSTRACTRELATIONEDITORWIDGET_H
 
-#include <QWidget>
-#include "qobjectuniqueptr.h"
-
+#include "qgis_gui.h"
+#include "qgis_sip.h"
 #include "qgsattributeeditorcontext.h"
 #include "qgsrelation.h"
-#include "qgis_sip.h"
-#include "qgis_gui.h"
+#include "qobjectuniqueptr.h"
+
+#include <QWidget>
 
 #ifdef SIP_RUN
 // this is needed for the "convert to subclass" code below to compile
-% ModuleHeaderCode
+//%ModuleHeaderCode
 #include "qgsrelationeditorwidget.h"
-% End
+//%End
 #endif
 
 class QgsFeature;
@@ -44,7 +44,6 @@ class QgsVectorLayer;
  */
 class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( qobject_cast<QgsRelationEditorWidget *>( sipCpp ) )
@@ -57,8 +56,6 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
     Q_OBJECT
 
   public:
-
-
     /**
      * Constructor
      */
@@ -84,12 +81,25 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
      * Returns the relation
      * \since QGIS 3.18
      */
-    QgsRelation relation() const {return mRelation;}
+    QgsRelation relation() const { return mRelation; }
+
+    /**
+     * Returns the nm relation
+     * \since QGIS 3.18
+     */
+    QgsRelation nmRelation() const { return mNmRelation; }
 
     /**
      * Sets the \a feature being edited and updates the UI unless \a update is set to FALSE
      */
     void setFeature( const QgsFeature &feature, bool update = true );
+
+    /**
+     * Set multiple feature to edit simultaneously.
+     * \param fids Multiple Id of features to edit
+     * \since QGIS 3.24
+     */
+    void setMultiEditFeatureIds( const QgsFeatureIds &fids );
 
     /**
      * Sets the editor \a context
@@ -101,17 +111,19 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
     /**
      * Returns the attribute editor context.
      */
-    QgsAttributeEditorContext editorContext( ) const;
+    QgsAttributeEditorContext editorContext() const;
 
     /**
      * Defines if a title label should be shown for this widget.
+     * \deprecated QGIS 3.20. Label is handled directly in QgsAttributeForm.
      */
-    bool showLabel() const;
+    Q_DECL_DEPRECATED bool showLabel() const SIP_DEPRECATED;
 
     /**
      * Defines if a title label should be shown for this widget.
+     * \deprecated QGIS 3.20. Label is handled directly in QgsAttributeForm.
      */
-    void setShowLabel( bool showLabel );
+    Q_DECL_DEPRECATED void setShowLabel( bool showLabel ) SIP_DEPRECATED;
 
     /**
     * Determines the relation id of the second relation involved in an N:M relation.
@@ -126,8 +138,9 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 
     /**
      * Determines the label of this element
+     * \deprecated QGIS 3.20. Label is handled directly in QgsAttributeForm.
      */
-    QString label() const;
+    Q_DECL_DEPRECATED QString label() const SIP_DEPRECATED;
 
     /**
      * Sets \a label for this element
@@ -137,8 +150,16 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 
     /**
      * Returns the widget's current feature
+     * If the widget is in multiedit mode only the first is returned
+     * \see features
      */
     QgsFeature feature() const;
+
+    /**
+     * Returns the widget's current features
+     * \since QGIS 3.24
+     */
+    QList<QgsFeature> features() const;
 
     /**
        * Determines the force suppress form popup status that is configured for this widget
@@ -161,6 +182,23 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
      */
     virtual void setConfig( const QVariantMap &config ) = 0;
 
+    /**
+     * Returns true if editing multiple features at a time
+     * \since QGIS 3.24
+     */
+    bool multiEditModeActive() const;
+
+  signals:
+
+    /**
+     * Emit this signal, whenever the related features changed.
+     * This happens for example when related features are added, removed,
+     * linked or unlinked.
+     *
+     * \since QGIS 3.22
+     */
+    void relatedFeaturesChanged();
+
   public slots:
 
     /**
@@ -181,9 +219,10 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
     void saveEdits();
 
     /**
-     * Adds a new feature with given \a geometry
+     * Adds new features with given \a geometry
+     * Returns the Id of added features \since QGIS 3.24
      */
-    void addFeature( const QgsGeometry &geometry = QgsGeometry() );
+    QgsFeatureIds addFeature( const QgsGeometry &geometry = QgsGeometry() );
 
     /**
      * Delete a feature with given \a fid
@@ -192,8 +231,9 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 
     /**
      * Links a new feature to the relation
+     * \param filterExpression to filter the available features in the link dialog since QGIS 3.40
      */
-    void linkFeature();
+    void linkFeature( const QString &filterExpression = QString() );
 
     /**
      * Called when the link feature dialog is confirmed by the user
@@ -216,23 +256,25 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
     void duplicateFeatures( const QgsFeatureIds &fids );
 
   protected:
-
     QgsAttributeEditorContext mEditorContext;
     QgsRelation mRelation;
     QgsRelation mNmRelation;
-    QgsFeature mFeature;
+    QgsFeatureList mFeatureList;
 
-    bool mShowLabel = true;
     bool mLayerInSameTransactionGroup = false;
 
     bool mForceSuppressFormPopup = false;
-    QVariant mNmRelationId;
-    QString mLabel;
+
+    /**
+     * Refresh the UI when the widget becomes visible
+     */
+    void showEvent( QShowEvent * ) override;
 
     /**
      * Updates the title contents to reflect the current state of the widget
+     * \deprecated QGIS 3.20. Label is handled directly in QgsAttributeForm.
      */
-    void updateTitle();
+    Q_DECL_DEPRECATED void updateTitle() SIP_DEPRECATED;
 
     /**
      * Deletes the features with \a fids
@@ -256,9 +298,9 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 
     /**
      * Sets the title of the widget, if it is wrapped within a QgsCollapsibleGroupBox
-     * Check QgsRealationEditorWidget as an example.
+     * \deprecated QGIS 3.20. Label is handled directly in QgsAttributeForm.
      */
-    virtual void setTitle( const QString &title );
+    Q_DECL_DEPRECATED virtual void setTitle( const QString &title ) SIP_DEPRECATED;
 
     /**
      * A hook called right before setRelationFeature() is executed. Used to update the UI once setting the relation feature is done.
@@ -288,7 +330,7 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
 
 /**
  * \ingroup gui
- * This class should be subclassed for every configurable relation widget type.
+ * \brief Abstract base class for configurable relation widget types.
  *
  * It implements the GUI configuration widget and transforms this to/from a configuration.
  *
@@ -297,7 +339,6 @@ class GUI_EXPORT QgsAbstractRelationEditorWidget : public QWidget
  */
 class GUI_EXPORT QgsAbstractRelationEditorConfigWidget : public QWidget
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( qobject_cast<QgsRelationEditorConfigWidget *>( sipCpp ) )
@@ -309,7 +350,6 @@ class GUI_EXPORT QgsAbstractRelationEditorConfigWidget : public QWidget
 
     Q_OBJECT
   public:
-
     /**
      * Create a new configuration widget
      *
@@ -346,10 +386,24 @@ class GUI_EXPORT QgsAbstractRelationEditorConfigWidget : public QWidget
      */
     QgsRelation relation() const;
 
+    /**
+     * \brief Set the nm relation for this widget.
+     *
+     * \param nmRelation The nm relation
+     */
+    virtual void setNmRelation( const QgsRelation &nmRelation );
+
+    /**
+     * Returns the nm relation for which this configuration widget applies
+     *
+     * \returns The nm relation
+     */
+    virtual QgsRelation nmRelation() const;
 
   private:
     QgsVectorLayer *mLayer = nullptr;
     QgsRelation mRelation;
+    QgsRelation mNmRelation;
 };
 
 
@@ -357,7 +411,7 @@ class GUI_EXPORT QgsAbstractRelationEditorConfigWidget : public QWidget
 
 
 /**
- * Factory class for creating relation widgets and their corresponding config widgets
+ * Factory class for creating relation widgets and their corresponding config widgets.
  * \ingroup gui
  * \class QgsAbstractRelationEditorWidgetFactory
  * \since QGIS 3.18
@@ -365,7 +419,6 @@ class GUI_EXPORT QgsAbstractRelationEditorConfigWidget : public QWidget
 class GUI_EXPORT QgsAbstractRelationEditorWidgetFactory
 {
   public:
-
     /**
      * Creates a new relation widget factory with given \a name
      */

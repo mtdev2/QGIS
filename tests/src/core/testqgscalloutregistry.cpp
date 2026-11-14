@@ -15,24 +15,27 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgscalloutsregistry.h"
 #include "qgscallout.h"
+#include "qgscalloutsregistry.h"
 #include "qgsrendercontext.h"
+#include "qgstest.h"
 
 #include <QObject>
-#include "qgstest.h"
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 //dummy callout for testing
 class DummyCallout : public QgsCallout
 {
   public:
     DummyCallout() = default;
-    QString type() const override { return QStringLiteral( "Dummy" ); }
+    QString type() const override { return u"Dummy"_s; }
     QgsCallout *clone() const override { return new DummyCallout(); }
-    static QgsCallout *create( const QVariantMap &, const QgsReadWriteContext & ) { return new DummyCallout(); }
-  protected:
-    void draw( QgsRenderContext &, QRectF, const double, const QgsGeometry &, QgsCallout::QgsCalloutContext & ) override {}
+    static std::unique_ptr<QgsCallout> create( const QVariantMap &, const QgsReadWriteContext & ) { return std::make_unique<DummyCallout>(); }
 
+  protected:
+    void draw( QgsRenderContext &, const QRectF &, const double, const QgsGeometry &, QgsCallout::QgsCalloutContext & ) override {}
 };
 
 class TestQgsCalloutRegistry : public QObject
@@ -53,7 +56,6 @@ class TestQgsCalloutRegistry : public QObject
     void defaultCallout();
 
   private:
-
 };
 
 void TestQgsCalloutRegistry::initTestCase()
@@ -68,24 +70,20 @@ void TestQgsCalloutRegistry::cleanupTestCase()
 }
 
 void TestQgsCalloutRegistry::init()
-{
-
-}
+{}
 
 void TestQgsCalloutRegistry::cleanup()
-{
-
-}
+{}
 
 void TestQgsCalloutRegistry::metadata()
 {
-  QgsCalloutMetadata metadata = QgsCalloutMetadata( QStringLiteral( "name" ), QStringLiteral( "display name" ), QIcon(), DummyCallout::create );
+  QgsCalloutMetadata metadata = QgsCalloutMetadata( u"name"_s, u"display name"_s, QIcon(), DummyCallout::create );
   QCOMPARE( metadata.name(), QString( "name" ) );
   QCOMPARE( metadata.visibleName(), QString( "display name" ) );
 
   //test creating callout from metadata
-  QVariantMap map;
-  std::unique_ptr< QgsCallout > callout( metadata.createCallout( map, QgsReadWriteContext() ) );
+  const QVariantMap map;
+  const std::unique_ptr<QgsCallout> callout( metadata.createCallout( map, QgsReadWriteContext() ) );
   QVERIFY( callout );
   DummyCallout *dummyCallout = dynamic_cast<DummyCallout *>( callout.get() );
   QVERIFY( dummyCallout );
@@ -109,13 +107,13 @@ void TestQgsCalloutRegistry::addCallout()
 {
   //create an empty registry
   QgsCalloutRegistry *registry = QgsApplication::calloutRegistry();
-  int previousCount = registry->calloutTypes().length();
+  const int previousCount = registry->calloutTypes().length();
 
-  registry->addCalloutType( new QgsCalloutMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy callout" ), QIcon(), DummyCallout::create ) );
+  registry->addCalloutType( new QgsCalloutMetadata( u"Dummy"_s, u"Dummy callout"_s, QIcon(), DummyCallout::create ) );
   QCOMPARE( registry->calloutTypes().length(), previousCount + 1 );
   //try adding again, should have no effect
-  QgsCalloutMetadata *dupe = new QgsCalloutMetadata( QStringLiteral( "Dummy" ), QStringLiteral( "Dummy callout" ), QIcon(), DummyCallout::create );
-  QVERIFY( ! registry->addCalloutType( dupe ) );
+  QgsCalloutMetadata *dupe = new QgsCalloutMetadata( u"Dummy"_s, u"Dummy callout"_s, QIcon(), DummyCallout::create );
+  QVERIFY( !registry->addCalloutType( dupe ) );
   QCOMPARE( registry->calloutTypes().length(), previousCount + 1 );
   delete dupe;
 
@@ -127,36 +125,35 @@ void TestQgsCalloutRegistry::addCallout()
 void TestQgsCalloutRegistry::fetchTypes()
 {
   QgsCalloutRegistry *registry = QgsApplication::calloutRegistry();
-  QStringList types = registry->calloutTypes();
+  const QStringList types = registry->calloutTypes();
 
   QVERIFY( types.contains( "Dummy" ) );
 
-  QgsCalloutAbstractMetadata *metadata = registry->calloutMetadata( QStringLiteral( "Dummy" ) );
+  QgsCalloutAbstractMetadata *metadata = registry->calloutMetadata( u"Dummy"_s );
   QCOMPARE( metadata->name(), QString( "Dummy" ) );
 
   //metadata for bad callout
-  metadata = registry->calloutMetadata( QStringLiteral( "bad callout" ) );
+  metadata = registry->calloutMetadata( u"bad callout"_s );
   QVERIFY( !metadata );
 }
 
 void TestQgsCalloutRegistry::createCallout()
 {
   QgsCalloutRegistry *registry = QgsApplication::calloutRegistry();
-  std::unique_ptr< QgsCallout > callout( registry->createCallout( QStringLiteral( "Dummy" ) ) );
+  std::unique_ptr<QgsCallout> callout( registry->createCallout( u"Dummy"_s ) );
 
   QVERIFY( callout.get() );
   DummyCallout *dummyCallout = dynamic_cast<DummyCallout *>( callout.get() );
   QVERIFY( dummyCallout );
 
   //try creating a bad callout
-  callout.reset( registry->createCallout( QStringLiteral( "bad callout" ) ) );
+  callout = registry->createCallout( u"bad callout"_s );
   QVERIFY( !callout.get() );
 }
 
 void TestQgsCalloutRegistry::defaultCallout()
 {
-  QgsCalloutRegistry *registry = QgsApplication::calloutRegistry();
-  std::unique_ptr< QgsCallout > callout( registry->defaultCallout() );
+  const std::unique_ptr<QgsCallout> callout( QgsCalloutRegistry::defaultCallout() );
   QVERIFY( callout.get() );
 }
 

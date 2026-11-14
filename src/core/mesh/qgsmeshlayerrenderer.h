@@ -20,23 +20,23 @@
 
 class QgsMeshLayer;
 
-#define SIP_NO_FILE
 
-#include <memory>
 #include <limits>
+#include <memory>
 
 #include "qgis.h"
-
+#include "qgsmapclippingregion.h"
 #include "qgsmaplayerrenderer.h"
+#include "qgsmeshdataprovider.h"
+#include "qgsmeshlayer.h"
+#include "qgsmeshtracerenderer.h"
 #include "qgsrasterinterface.h"
 #include "qgstriangularmesh.h"
-#include "qgsmeshlayer.h"
-#include "qgssymbol.h"
-#include "qgsmeshdataprovider.h"
-#include "qgsmeshtracerenderer.h"
-#include "qgsmapclippingregion.h"
+
+#define SIP_NO_FILE
 
 class QgsRenderContext;
+class QgsMeshLayerLabelProvider;
 
 ///@cond PRIVATE
 
@@ -55,28 +55,29 @@ class QgsMeshLayerRendererFeedback : public QgsRasterBlockFeedback
  */
 struct CORE_NO_EXPORT QgsMeshLayerRendererCache
 {
-  int mDatasetGroupsCount = 0;
+    int mDatasetGroupsCount = 0;
 
-  // scalar dataset
-  QgsMeshDatasetIndex mActiveScalarDatasetIndex;
-  QVector<double> mScalarDatasetValues;
-  QgsMeshDataBlock mScalarActiveFaceFlagValues;
-  QgsMeshDatasetGroupMetadata::DataType mScalarDataType = QgsMeshDatasetGroupMetadata::DataType::DataOnVertices;
-  double mScalarDatasetMinimum = std::numeric_limits<double>::quiet_NaN();
-  double mScalarDatasetMaximum = std::numeric_limits<double>::quiet_NaN();
-  QgsMeshRendererScalarSettings::DataResamplingMethod mDataInterpolationMethod = QgsMeshRendererScalarSettings::None;
-  std::unique_ptr<QgsMesh3dAveragingMethod> mScalarAveragingMethod;
+    // scalar dataset
+    QgsMeshDatasetIndex mActiveScalarDatasetIndex;
+    QVector<double> mScalarDatasetValues;
+    QgsMeshDataBlock mScalarActiveFaceFlagValues;
+    QgsMeshDatasetGroupMetadata::DataType mScalarDataType = QgsMeshDatasetGroupMetadata::DataType::DataOnVertices;
+    double mScalarDatasetMinimum = std::numeric_limits<double>::quiet_NaN();
+    double mScalarDatasetMaximum = std::numeric_limits<double>::quiet_NaN();
+    QgsMeshRendererScalarSettings::DataResamplingMethod mDataInterpolationMethod = QgsMeshRendererScalarSettings::NoResampling;
+    std::unique_ptr<QgsMesh3DAveragingMethod> mScalarAveragingMethod;
 
-  // vector dataset
-  QgsMeshDatasetIndex mActiveVectorDatasetIndex;
-  QgsMeshDataBlock mVectorDatasetValues;
-  QVector<double> mVectorDatasetValuesMag;
-  double mVectorDatasetMagMinimum = std::numeric_limits<double>::quiet_NaN();
-  double mVectorDatasetMagMaximum = std::numeric_limits<double>::quiet_NaN();
-  double mVectorDatasetGroupMagMinimum = std::numeric_limits<double>::quiet_NaN();
-  double mVectorDatasetGroupMagMaximum = std::numeric_limits<double>::quiet_NaN();
-  QgsMeshDatasetGroupMetadata::DataType mVectorDataType = QgsMeshDatasetGroupMetadata::DataType::DataOnVertices;
-  std::unique_ptr<QgsMesh3dAveragingMethod> mVectorAveragingMethod;
+    // vector dataset
+    QgsMeshDatasetIndex mActiveVectorDatasetIndex;
+    QgsMeshDataBlock mVectorDatasetValues;
+    QgsMeshDataBlock mVectorActiveFaceFlagValues;
+    QVector<double> mVectorDatasetValuesMag;
+    double mVectorDatasetMagMinimum = std::numeric_limits<double>::quiet_NaN();
+    double mVectorDatasetMagMaximum = std::numeric_limits<double>::quiet_NaN();
+    double mVectorDatasetGroupMagMinimum = std::numeric_limits<double>::quiet_NaN();
+    double mVectorDatasetGroupMagMaximum = std::numeric_limits<double>::quiet_NaN();
+    QgsMeshDatasetGroupMetadata::DataType mVectorDataType = QgsMeshDatasetGroupMetadata::DataType::DataOnVertices;
+    std::unique_ptr<QgsMesh3DAveragingMethod> mVectorAveragingMethod;
 };
 
 
@@ -84,7 +85,7 @@ struct CORE_NO_EXPORT QgsMeshLayerRendererCache
 
 /**
  * \ingroup core
- * Implementation of threaded rendering for mesh layers.
+ * \brief Implementation of threaded rendering for mesh layers.
  *
  * \note not available in Python bindings
  * \since QGIS 3.2
@@ -100,12 +101,14 @@ class QgsMeshLayerRenderer : public QgsMapLayerRenderer
     bool forceRasterRender() const override;
 
   private:
+    void prepareLabeling( QgsMeshLayer *layer, QSet<QString> &attributeNames );
     void renderMesh();
     void renderEdgeMesh( const QgsMeshRendererMeshSettings &settings, const QList<int> &edgesInExtent );
     void renderFaceMesh( const QgsMeshRendererMeshSettings &settings, const QVector<QgsMeshFace> &faces, const QList<int> &facesInExtent );
     void renderScalarDataset();
     void renderScalarDatasetOnEdges( const QgsMeshRendererScalarSettings &scalarSettings );
     void renderScalarDatasetOnFaces( const QgsMeshRendererScalarSettings &scalarSettings );
+    void registerLabelFeatures();
 
     void renderVectorDataset();
     void copyTriangularMeshes( QgsMeshLayer *layer, QgsRenderContext &context );
@@ -115,8 +118,17 @@ class QgsMeshLayerRenderer : public QgsMapLayerRenderer
     QgsPointXY fractionPoint( const QgsPointXY &p1, const QgsPointXY &p2, double fraction ) const;
     bool mIsMeshSimplificationActive = false;
     QColor colorAt( QgsColorRampShader *shader, double val ) const;
+    bool mIsEditable = false;
+
+    /**
+     * used with new labeling engine (QgsLabelingEngine): provider for labels.
+     * may be NULLPTR. no need to delete: if exists it is owned by labeling engine
+     */
+    QgsMeshLayerLabelProvider *mLabelProvider = nullptr;
 
   protected:
+    QString mLayerName;
+
     //! feedback class for cancellation
     std::unique_ptr<QgsMeshLayerRendererFeedback> mFeedback;
 
@@ -138,6 +150,7 @@ class QgsMeshLayerRenderer : public QgsMapLayerRenderer
 
     // copy of the vector dataset
     QgsMeshDataBlock mVectorDatasetValues;
+    QgsMeshDataBlock mVectorActiveFaceFlagValues;
     QVector<double> mVectorDatasetValuesMag;
     double mVectorDatasetMagMinimum = std::numeric_limits<double>::quiet_NaN();
     double mVectorDatasetMagMaximum = std::numeric_limits<double>::quiet_NaN();
@@ -153,8 +166,14 @@ class QgsMeshLayerRenderer : public QgsMapLayerRenderer
     // output screen size
     QSize mOutputSize;
 
-  private:
+    double mElevationScale = 1.0;
+    double mElevationOffset = 0.0;
+    bool mRenderElevationMap = false;
 
+    bool mEnableProfile = false;
+    quint64 mPreparationTime = 0;
+
+  private:
     double mLayerOpacity = 1.0;
 };
 

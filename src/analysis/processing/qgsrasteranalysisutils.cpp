@@ -15,22 +15,29 @@
 
 #include "qgsrasteranalysisutils.h"
 
-#include "qgsfeedback.h"
-#include "qgsrasterblock.h"
-#include "qgsrasteriterator.h"
-#include "qgsgeos.h"
-#include "qgsprocessingparameters.h"
+#include <cmath>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
-#include <cmath>
+
+#include "qgsfeedback.h"
+#include "qgsgeos.h"
+#include "qgsprocessingparameters.h"
+#include "qgsrasterblock.h"
+#include "qgsrasteriterator.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
-void QgsRasterAnalysisUtils::cellInfoForBBox( const QgsRectangle &rasterBBox, const QgsRectangle &featureBBox, double cellSizeX, double cellSizeY,
-    int &nCellsX, int &nCellsY, int rasterWidth, int rasterHeight, QgsRectangle &rasterBlockExtent )
+void QgsRasterAnalysisUtils::cellInfoForBBox(
+  const QgsRectangle &rasterBBox, const QgsRectangle &featureBBox, double cellSizeX, double cellSizeY, int &nCellsX, int &nCellsY, int rasterWidth, int rasterHeight, QgsRectangle &rasterBlockExtent
+)
 {
   //get intersecting bbox
-  QgsRectangle intersectBox = rasterBBox.intersect( featureBBox );
+  const QgsRectangle intersectBox = rasterBBox.intersect( featureBBox );
   if ( intersectBox.isEmpty() )
   {
     nCellsX = 0;
@@ -40,11 +47,11 @@ void QgsRasterAnalysisUtils::cellInfoForBBox( const QgsRectangle &rasterBBox, co
   }
 
   //get offset in pixels in x- and y- direction
-  int offsetX = static_cast< int >( std::floor( ( intersectBox.xMinimum() - rasterBBox.xMinimum() ) / cellSizeX ) );
-  int offsetY = static_cast< int >( std::floor( ( rasterBBox.yMaximum() - intersectBox.yMaximum() ) / cellSizeY ) );
+  const int offsetX = static_cast<int>( std::floor( ( intersectBox.xMinimum() - rasterBBox.xMinimum() ) / cellSizeX ) );
+  const int offsetY = static_cast<int>( std::floor( ( rasterBBox.yMaximum() - intersectBox.yMaximum() ) / cellSizeY ) );
 
-  int maxColumn = static_cast< int >( std::floor( ( intersectBox.xMaximum() - rasterBBox.xMinimum() ) / cellSizeX ) ) + 1;
-  int maxRow = static_cast< int >( std::floor( ( rasterBBox.yMaximum() - intersectBox.yMinimum() ) / cellSizeY ) ) + 1;
+  const int maxColumn = static_cast<int>( std::floor( ( intersectBox.xMaximum() - rasterBBox.xMinimum() ) / cellSizeX ) ) + 1;
+  const int maxRow = static_cast<int>( std::floor( ( rasterBBox.yMaximum() - intersectBox.yMinimum() ) / cellSizeY ) ) + 1;
 
   nCellsX = maxColumn - offsetX;
   nCellsY = maxRow - offsetY;
@@ -53,25 +60,33 @@ void QgsRasterAnalysisUtils::cellInfoForBBox( const QgsRectangle &rasterBBox, co
   nCellsX = std::min( offsetX + nCellsX, rasterWidth ) - offsetX;
   nCellsY = std::min( offsetY + nCellsY, rasterHeight ) - offsetY;
 
-  rasterBlockExtent = QgsRectangle( rasterBBox.xMinimum() + offsetX * cellSizeX,
-                                    rasterBBox.yMaximum() - offsetY * cellSizeY,
-                                    rasterBBox.xMinimum() + ( nCellsX + offsetX ) * cellSizeX,
-                                    rasterBBox.yMaximum() - ( nCellsY + offsetY ) * cellSizeY );
+  rasterBlockExtent
+    = QgsRectangle( rasterBBox.xMinimum() + offsetX * cellSizeX, rasterBBox.yMaximum() - offsetY * cellSizeY, rasterBBox.xMinimum() + ( nCellsX + offsetX ) * cellSizeX, rasterBBox.yMaximum() - ( nCellsY + offsetY ) * cellSizeY );
 }
 
-void QgsRasterAnalysisUtils::statisticsFromMiddlePointTest( QgsRasterInterface *rasterInterface, int rasterBand, const QgsGeometry &poly, int nCellsX, int nCellsY, double cellSizeX, double cellSizeY, const QgsRectangle &rasterBBox,  const std::function<void( double )> &addValue, bool skipNodata )
+void QgsRasterAnalysisUtils::statisticsFromMiddlePointTest(
+  QgsRasterInterface *rasterInterface,
+  int rasterBand,
+  const QgsGeometry &poly,
+  int nCellsX,
+  int nCellsY,
+  double cellSizeX,
+  double cellSizeY,
+  const QgsRectangle &rasterBBox,
+  const std::function<void( double, const QgsPointXY & )> &addValue,
+  bool skipNodata
+)
 {
-  std::unique_ptr< QgsGeometryEngine > polyEngine( QgsGeometry::createGeometryEngine( poly.constGet( ) ) );
-  if ( !polyEngine )
-  {
+  if ( !poly.constGet() )
     return;
-  }
+
+  auto polyEngine = std::make_unique<QgsGeos>( poly.constGet() );
   polyEngine->prepareGeometry();
 
   QgsRasterIterator iter( rasterInterface );
   iter.startRasterRead( rasterBand, nCellsX, nCellsY, rasterBBox );
 
-  std::unique_ptr< QgsRasterBlock > block;
+  std::unique_ptr<QgsRasterBlock> block;
   int iterLeft = 0;
   int iterTop = 0;
   int iterCols = 0;
@@ -90,10 +105,9 @@ void QgsRasterAnalysisUtils::statisticsFromMiddlePointTest( QgsRasterInterface *
         const double pixelValue = block->valueAndNoData( row, col, isNoData );
         if ( validPixel( pixelValue ) && ( !skipNodata || !isNoData ) )
         {
-          QgsPoint cellCenter( cellCenterX, cellCenterY );
-          if ( polyEngine->contains( &cellCenter ) )
+          if ( polyEngine->contains( cellCenterX, cellCenterY ) )
           {
-            addValue( pixelValue );
+            addValue( pixelValue, QgsPointXY( cellCenterX, cellCenterY ) );
           }
         }
         cellCenterX += cellSizeX;
@@ -103,16 +117,27 @@ void QgsRasterAnalysisUtils::statisticsFromMiddlePointTest( QgsRasterInterface *
   }
 }
 
-void QgsRasterAnalysisUtils::statisticsFromPreciseIntersection( QgsRasterInterface *rasterInterface, int rasterBand, const QgsGeometry &poly, int nCellsX, int nCellsY, double cellSizeX, double cellSizeY, const QgsRectangle &rasterBBox,  const std::function<void( double, double )> &addValue, bool skipNodata )
+void QgsRasterAnalysisUtils::statisticsFromPreciseIntersection(
+  QgsRasterInterface *rasterInterface,
+  int rasterBand,
+  const QgsGeometry &poly,
+  int nCellsX,
+  int nCellsY,
+  double cellSizeX,
+  double cellSizeY,
+  const QgsRectangle &rasterBBox,
+  const std::function<void( double, double, const QgsPointXY & )> &addValue,
+  bool skipNodata
+)
 {
   QgsGeometry pixelRectGeometry;
 
-  double hCellSizeX = cellSizeX / 2.0;
-  double hCellSizeY = cellSizeY / 2.0;
-  double pixelArea = cellSizeX * cellSizeY;
+  const double hCellSizeX = cellSizeX / 2.0;
+  const double hCellSizeY = cellSizeY / 2.0;
+  const double pixelArea = cellSizeX * cellSizeY;
   double weight = 0;
 
-  std::unique_ptr< QgsGeometryEngine > polyEngine( QgsGeometry::createGeometryEngine( poly.constGet( ) ) );
+  std::unique_ptr<QgsGeometryEngine> polyEngine( QgsGeometry::createGeometryEngine( poly.constGet() ) );
   if ( !polyEngine )
   {
     return;
@@ -122,7 +147,7 @@ void QgsRasterAnalysisUtils::statisticsFromPreciseIntersection( QgsRasterInterfa
   QgsRasterIterator iter( rasterInterface );
   iter.startRasterRead( rasterBand, nCellsX, nCellsY, rasterBBox );
 
-  std::unique_ptr< QgsRasterBlock > block;
+  std::unique_ptr<QgsRasterBlock> block;
   int iterLeft = 0;
   int iterTop = 0;
   int iterCols = 0;
@@ -146,14 +171,14 @@ void QgsRasterAnalysisUtils::statisticsFromPreciseIntersection( QgsRasterInterfa
           if ( !pixelRectGeometry.isNull() && polyEngine->intersects( pixelRectGeometry.constGet() ) )
           {
             //intersection
-            QgsGeometry intersectGeometry = pixelRectGeometry.intersection( poly );
+            const QgsGeometry intersectGeometry = pixelRectGeometry.intersection( poly );
             if ( !intersectGeometry.isEmpty() )
             {
-              double intersectionArea = intersectGeometry.area();
+              const double intersectionArea = intersectGeometry.area();
               if ( intersectionArea > 0.0 )
               {
                 weight = intersectionArea / pixelArea;
-                addValue( pixelValue, weight );
+                addValue( pixelValue, weight, QgsPointXY( currentX, currentY ) );
               }
             }
           }
@@ -182,23 +207,24 @@ void QgsRasterAnalysisUtils::pixelToMap( const int px, const int py, const QgsRe
   y = bounds.yMaximum() - ( py + 0.5 ) * unitsPerPixelY;
 }
 
-static QVector< QPair< QString, Qgis::DataType > > sDataTypes;
+static QVector<QPair<QString, Qgis::DataType>> sDataTypes;
 
 void populateDataTypes()
 {
   if ( sDataTypes.empty() )
   {
-    sDataTypes.append( qMakePair( QStringLiteral( "Byte" ), Qgis::Byte ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "Int16" ), Qgis::Int16 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "UInt16" ), Qgis::UInt16 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "Int32" ), Qgis::Int32 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "UInt32" ), Qgis::UInt32 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "Float32" ), Qgis::Float32 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "Float64" ), Qgis::Float64 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "CInt16" ), Qgis::CInt16 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "CInt32" ), Qgis::CInt32 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "CFloat32" ), Qgis::CFloat32 ) );
-    sDataTypes.append( qMakePair( QStringLiteral( "CFloat64" ), Qgis::CFloat64 ) );
+    sDataTypes.append( qMakePair( u"Byte"_s, Qgis::DataType::Byte ) );
+    sDataTypes.append( qMakePair( u"Int16"_s, Qgis::DataType::Int16 ) );
+    sDataTypes.append( qMakePair( u"UInt16"_s, Qgis::DataType::UInt16 ) );
+    sDataTypes.append( qMakePair( u"Int32"_s, Qgis::DataType::Int32 ) );
+    sDataTypes.append( qMakePair( u"UInt32"_s, Qgis::DataType::UInt32 ) );
+    sDataTypes.append( qMakePair( u"Float32"_s, Qgis::DataType::Float32 ) );
+    sDataTypes.append( qMakePair( u"Float64"_s, Qgis::DataType::Float64 ) );
+    sDataTypes.append( qMakePair( u"CInt16"_s, Qgis::DataType::CInt16 ) );
+    sDataTypes.append( qMakePair( u"CInt32"_s, Qgis::DataType::CInt32 ) );
+    sDataTypes.append( qMakePair( u"CFloat32"_s, Qgis::DataType::CFloat32 ) );
+    sDataTypes.append( qMakePair( u"CFloat64"_s, Qgis::DataType::CFloat64 ) );
+    sDataTypes.append( qMakePair( u"Int8"_s, Qgis::DataType::Int8 ) );
   }
 }
 
@@ -217,51 +243,58 @@ std::unique_ptr<QgsProcessingParameterDefinition> QgsRasterAnalysisUtils::create
     i++;
   }
 
-  return qgis::make_unique< QgsProcessingParameterEnum >( name, description, names, false, defaultChoice );
+  return std::make_unique<QgsProcessingParameterEnum>( name, description, names, false, defaultChoice );
 }
 
 Qgis::DataType QgsRasterAnalysisUtils::rasterTypeChoiceToDataType( int choice )
 {
   if ( choice < 0 || choice >= sDataTypes.count() )
-    return Qgis::Float32;
+    return Qgis::DataType::Float32;
 
   return sDataTypes.value( choice ).second;
 }
 
-void QgsRasterAnalysisUtils::applyRasterLogicOperator( const std::vector< QgsRasterAnalysisUtils::RasterLogicInput > &inputs, QgsRasterDataProvider *destinationRaster, double outputNoDataValue, const bool treatNoDataAsFalse,
-    int width, int height, const QgsRectangle &extent, QgsFeedback *feedback,
-    std::function<void( const std::vector< std::unique_ptr< QgsRasterBlock > > &, bool &, bool &, int, int, bool )> &applyLogicFunc,
-    qgssize &noDataCount, qgssize &trueCount, qgssize &falseCount )
+void QgsRasterAnalysisUtils::applyRasterLogicOperator(
+  const std::vector<QgsRasterAnalysisUtils::RasterLogicInput> &inputs,
+  std::unique_ptr<QgsRasterDataProvider> destinationRaster,
+  double outputNoDataValue,
+  const bool treatNoDataAsFalse,
+  int width,
+  int height,
+  const QgsRectangle &extent,
+  QgsFeedback *feedback,
+  std::function<void( const std::vector<std::unique_ptr<QgsRasterBlock>> &, bool &, bool &, int, int, bool )> &applyLogicFunc,
+  qgssize &noDataCount,
+  qgssize &trueCount,
+  qgssize &falseCount
+)
 {
-  int maxWidth = QgsRasterIterator::DEFAULT_MAXIMUM_TILE_WIDTH;
-  int maxHeight = QgsRasterIterator::DEFAULT_MAXIMUM_TILE_HEIGHT;
-  int nbBlocksWidth = static_cast< int>( std::ceil( 1.0 * width / maxWidth ) );
-  int nbBlocksHeight = static_cast< int >( std::ceil( 1.0 * height / maxHeight ) );
-  int nbBlocks = nbBlocksWidth * nbBlocksHeight;
-
   destinationRaster->setEditable( true );
-  QgsRasterIterator outputIter( destinationRaster );
+  QgsRasterIterator outputIter( destinationRaster.get() );
   outputIter.startRasterRead( 1, width, height, extent );
+
+  const bool hasReportsDuringClose = destinationRaster->hasReportsDuringClose();
+  const double maxProgressDuringBlockWriting = hasReportsDuringClose ? 50.0 : 100.0;
 
   int iterLeft = 0;
   int iterTop = 0;
   int iterCols = 0;
   int iterRows = 0;
   QgsRectangle blockExtent;
-  std::unique_ptr< QgsRasterBlock > outputBlock;
+  std::unique_ptr<QgsRasterBlock> outputBlock;
   while ( outputIter.readNextRasterPart( 1, iterCols, iterRows, outputBlock, iterLeft, iterTop, &blockExtent ) )
   {
-    std::vector< std::unique_ptr< QgsRasterBlock > > inputBlocks;
+    std::vector<std::unique_ptr<QgsRasterBlock>> inputBlocks;
     for ( const QgsRasterAnalysisUtils::RasterLogicInput &i : inputs )
     {
-      for ( int band : i.bands )
+      for ( const int band : i.bands )
       {
-        std::unique_ptr< QgsRasterBlock > b( i.interface->block( band, blockExtent, iterCols, iterRows ) );
+        std::unique_ptr<QgsRasterBlock> b( i.interface->block( band, blockExtent, iterCols, iterRows ) );
         inputBlocks.emplace_back( std::move( b ) );
       }
     }
 
-    feedback->setProgress( 100 * ( ( iterTop / maxHeight * nbBlocksWidth ) + iterLeft / maxWidth ) / nbBlocks );
+    feedback->setProgress( maxProgressDuringBlockWriting * outputIter.progress( 1 ) );
     for ( int row = 0; row < iterRows; row++ )
     {
       if ( feedback->isCanceled() )
@@ -282,12 +315,26 @@ void QgsRasterAnalysisUtils::applyRasterLogicOperator( const std::vector< QgsRas
         outputBlock->setValue( row, column, resIsNoData ? outputNoDataValue : ( res ? 1 : 0 ) );
       }
     }
-    destinationRaster->writeBlock( outputBlock.get(), 1, iterLeft, iterTop );
+    if ( !destinationRaster->writeBlock( outputBlock.get(), 1, iterLeft, iterTop ) )
+    {
+      throw QgsProcessingException( QObject::tr( "Could not write raster block: %1" ).arg( destinationRaster->error().summary() ) );
+    }
   }
   destinationRaster->setEditable( false );
+
+  if ( hasReportsDuringClose )
+  {
+    std::unique_ptr<QgsFeedback> scaledFeedback( QgsFeedback::createScaledFeedback( feedback, maxProgressDuringBlockWriting, 100.0 ) );
+    if ( !destinationRaster->closeWithProgress( scaledFeedback.get() ) )
+    {
+      if ( feedback->isCanceled() )
+        return;
+      throw QgsProcessingException( QObject::tr( "Could not write raster dataset" ) );
+    }
+  }
 }
 
-std::vector<double> QgsRasterAnalysisUtils::getCellValuesFromBlockStack( const std::vector< std::unique_ptr< QgsRasterBlock > > &inputBlocks, int &row, int &col, bool &noDataInStack )
+std::vector<double> QgsRasterAnalysisUtils::getCellValuesFromBlockStack( const std::vector<std::unique_ptr<QgsRasterBlock>> &inputBlocks, int &row, int &col, bool &noDataInStack )
 {
   //get all values from inputBlocks
   std::vector<double> cellValues;
@@ -321,15 +368,15 @@ std::vector<double> QgsRasterAnalysisUtils::getCellValuesFromBlockStack( const s
 
 double QgsRasterAnalysisUtils::meanFromCellValues( std::vector<double> &cellValues, int stackSize )
 {
-  double sum = std::accumulate( cellValues.begin(), cellValues.end(), 0.0 );
-  double mean = sum / static_cast<double>( stackSize );
+  const double sum = std::accumulate( cellValues.begin(), cellValues.end(), 0.0 );
+  const double mean = sum / static_cast<double>( stackSize );
   return mean;
 }
 
 double QgsRasterAnalysisUtils::medianFromCellValues( std::vector<double> &cellValues, int stackSize )
 {
   std::sort( cellValues.begin(), cellValues.end() );
-  bool even = ( stackSize % 2 ) < 1;
+  const bool even = ( stackSize % 2 ) < 1;
   if ( even )
   {
     return ( cellValues[stackSize / 2 - 1] + cellValues[stackSize / 2] ) / 2.0;
@@ -343,20 +390,20 @@ double QgsRasterAnalysisUtils::medianFromCellValues( std::vector<double> &cellVa
 
 double QgsRasterAnalysisUtils::stddevFromCellValues( std::vector<double> &cellValues, int stackSize )
 {
-  double variance = varianceFromCellValues( cellValues, stackSize );
-  double stddev = std::sqrt( variance );
+  const double variance = varianceFromCellValues( cellValues, stackSize );
+  const double stddev = std::sqrt( variance );
   return stddev;
 }
 
 double QgsRasterAnalysisUtils::varianceFromCellValues( std::vector<double> &cellValues, int stackSize )
 {
-  double mean = meanFromCellValues( cellValues, stackSize );
+  const double mean = meanFromCellValues( cellValues, stackSize );
   double accum = 0.0;
   for ( int i = 0; i < stackSize; i++ )
   {
     accum += std::pow( ( cellValues.at( i ) - mean ), 2.0 );
   }
-  double variance = accum / static_cast<double>( stackSize );
+  const double variance = accum / static_cast<double>( stackSize );
   return variance;
 }
 
@@ -380,7 +427,7 @@ double QgsRasterAnalysisUtils::majorityFromCellValues( std::vector<double> &cell
   else if ( stackSize == 2 )
   {
     //if only two layers are input, return NoData if values are not the same (eg. no Majority could  be found)
-    return ( qgsDoubleNear( cellValues[0], cellValues[1] ) ) ?  cellValues[0] : noDataValue;
+    return ( qgsDoubleNear( cellValues[0], cellValues[1] ) ) ? cellValues[0] : noDataValue;
   }
   else if ( std::adjacent_find( cellValues.begin(), cellValues.end(), std::not_equal_to<double>() ) == cellValues.end() )
   {
@@ -401,7 +448,7 @@ double QgsRasterAnalysisUtils::majorityFromCellValues( std::vector<double> &cell
     int maxCount = 0;
     bool multipleMajorities = false;
     double result = noDataValue;
-    for ( auto pair : map )
+    for ( const auto &pair : std::as_const( map ) )
     {
       if ( maxCount < pair.second )
       {
@@ -428,7 +475,7 @@ double QgsRasterAnalysisUtils::minorityFromCellValues( std::vector<double> &cell
   else if ( stackSize == 2 )
   {
     //if only two layers are input, return NoData if values are not the same (eg. no minority could  be found)
-    return ( qgsDoubleNear( cellValues[0], cellValues[1] ) ) ?  cellValues[0] : noDataValue;
+    return ( qgsDoubleNear( cellValues[0], cellValues[1] ) ) ? cellValues[0] : noDataValue;
   }
   else if ( std::adjacent_find( cellValues.begin(), cellValues.end(), std::not_equal_to<double>() ) == cellValues.end() )
   {
@@ -449,7 +496,7 @@ double QgsRasterAnalysisUtils::minorityFromCellValues( std::vector<double> &cell
     int minCount = stackSize;
     bool multipleMinorities = false;
     double result = noDataValue; //result will stay NoData if no minority value exists
-    for ( auto pair : map )
+    for ( const auto &pair : std::as_const( map ) )
     {
       if ( minCount > pair.second )
       {
@@ -468,14 +515,14 @@ double QgsRasterAnalysisUtils::minorityFromCellValues( std::vector<double> &cell
 
 double QgsRasterAnalysisUtils::rangeFromCellValues( std::vector<double> &cellValues )
 {
-  double max = *std::max_element( cellValues.begin(), cellValues.end() );
-  double min = *std::min_element( cellValues.begin(), cellValues.end() );
+  const double max = *std::max_element( cellValues.begin(), cellValues.end() );
+  const double min = *std::min_element( cellValues.begin(), cellValues.end() );
   return max - min;
 }
 
 double QgsRasterAnalysisUtils::varietyFromCellValues( std::vector<double> &cellValues )
 {
-  std::unordered_set<double> uniqueValues( cellValues.begin(), cellValues.end() );
+  const std::unordered_set<double> uniqueValues( cellValues.begin(), cellValues.end() );
   return uniqueValues.size();
 }
 
@@ -496,10 +543,20 @@ double QgsRasterAnalysisUtils::nearestRankPercentile( std::vector<double> &cellV
 double QgsRasterAnalysisUtils::interpolatedPercentileInc( std::vector<double> &cellValues, int stackSize, double percentile )
 {
   std::sort( cellValues.begin(), cellValues.end() );
-  double x = ( percentile * ( stackSize - 1 ) );
 
-  int i = static_cast<int>( std::floor( x ) );
-  double xFraction = std::fmod( x, 1 );
+  if ( qgsDoubleNear( percentile, 1.0 ) )
+  {
+    return cellValues[stackSize - 1];
+  }
+  else if ( qgsDoubleNear( percentile, 0.0 ) )
+  {
+    return cellValues[0];
+  }
+
+  const double x = ( percentile * ( stackSize - 1 ) );
+
+  const int i = static_cast<int>( std::floor( x ) );
+  const double xFraction = std::fmod( x, 1 );
 
   if ( stackSize == 1 )
   {
@@ -518,12 +575,12 @@ double QgsRasterAnalysisUtils::interpolatedPercentileInc( std::vector<double> &c
 double QgsRasterAnalysisUtils::interpolatedPercentileExc( std::vector<double> &cellValues, int stackSize, double percentile, double noDataValue )
 {
   std::sort( cellValues.begin(), cellValues.end() );
-  double x = ( percentile * ( stackSize + 1 ) );
+  const double x = ( percentile * ( stackSize + 1 ) );
 
-  int i = static_cast<int>( std::floor( x ) ) - 1;
-  double xFraction = std::fmod( x, 1 );
-  double lowerExcValue =  1.0 / ( static_cast<double>( stackSize ) + 1.0 );
-  double upperExcValue = static_cast<double>( stackSize ) / ( static_cast<double>( stackSize ) + 1.0 );
+  const int i = static_cast<int>( std::floor( x ) ) - 1;
+  const double xFraction = std::fmod( x, 1 );
+  const double lowerExcValue = 1.0 / ( static_cast<double>( stackSize ) + 1.0 );
+  const double upperExcValue = static_cast<double>( stackSize ) / ( static_cast<double>( stackSize ) + 1.0 );
 
   if ( stackSize < 2 || ( ( percentile < lowerExcValue || percentile > upperExcValue ) ) )
   {
@@ -589,6 +646,75 @@ double QgsRasterAnalysisUtils::interpolatedPercentRankExc( std::vector<double> &
   }
 }
 
+double QgsRasterAnalysisUtils::neighborCellDistance( int direction, double cellSizeX, double cellSizeY )
+{
+  switch ( direction )
+  {
+    case 0: // north
+    case 4: // south
+      return cellSizeY;
+    case 2: // east
+    case 6: // west
+      return cellSizeX;
+    default: // diagonal
+      return std::hypot( cellSizeX, cellSizeY );
+  }
+  BUILTIN_UNREACHABLE
+}
+
+bool QgsRasterAnalysisUtils::neighborCellCoordinates( int direction, int row, int column, int &neighborRow, int &neighborColumn, int rows, int columns )
+{
+  static constexpr std::array<int, 8> COL_DIRECTION_OFFSETS { 0, 1, 1, 1, 0, -1, -1, -1 };
+  static constexpr std::array<int, 8> ROW_DIRECTION_OFFSETS { -1, -1, 0, 1, 1, 1, 0, -1 };
+
+  neighborColumn = column + COL_DIRECTION_OFFSETS[direction];
+  neighborRow = row + ROW_DIRECTION_OFFSETS[direction];
+  return ( neighborColumn >= 0 && neighborColumn < columns && neighborRow >= 0 && neighborRow < rows );
+}
+
+int QgsRasterAnalysisUtils::steepestGradientDirection( const QgsRasterBlock *demBlock, int row, int column, double cellSizeX, double cellSizeY, bool down, bool noEdges )
+{
+  const int rows = demBlock->height();
+  const int columns = demBlock->width();
+
+  bool isCenterNoData = false;
+  const double z = demBlock->valueAndNoData( row, column, isCenterNoData );
+  if ( isCenterNoData )
+    return -3;
+
+  double maxGradient = 0.0;
+  int steepestDir = -1;
+
+  bool isNeighborNodata = false;
+  bool isFlat = true;
+  for ( int dir = 0; dir < 8; ++dir )
+  {
+    int nCol = 0;
+    int nRow = 0;
+    if ( neighborCellCoordinates( dir, row, column, nRow, nCol, rows, columns ) )
+    {
+      const double nZ = demBlock->valueAndNoData( nRow, nCol, isNeighborNodata );
+      if ( !isNeighborNodata )
+      {
+        const double grad = ( z - nZ ) / neighborCellDistance( dir, cellSizeX, cellSizeY );
+        isFlat &= qgsDoubleNear( grad, 0 );
+        if ( ( !down || grad > 0 ) && ( steepestDir == -1 || grad > maxGradient ) )
+        {
+          maxGradient = grad;
+          steepestDir = dir;
+        }
+      }
+      else if ( noEdges )
+      {
+        return -3;
+      }
+    }
+    else if ( noEdges )
+    {
+      return -3;
+    }
+  }
+  return isFlat ? -2 : steepestDir;
+}
 
 ///@endcond PRIVATE
-

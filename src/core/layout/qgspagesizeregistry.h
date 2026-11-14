@@ -19,26 +19,24 @@
 #define QGSPAGESIZEREGISTRY_H
 
 #include "qgslayoutsize.h"
-#include <QString>
-#include <QSizeF>
+
 #include <QList>
+#include <QSizeF>
+#include <QString>
 
 /**
  * \ingroup core
  * \class QgsPageSize
  * \brief A named page size for layouts.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsPageSize
 {
-
   public:
-
     QgsPageSize();
 
     /**
-     * Constructor for QgsPageSize, accepting the \a name of the page size and
-     * page \a size.
+     * Constructor for QgsPageSize, accepting the \a name of the page size, the
+     * page \a size and the \a displayName.
     */
     QgsPageSize( const QString &name, const QgsLayoutSize &size, const QString &displayName = QString() );
 
@@ -68,12 +66,10 @@ class CORE_EXPORT QgsPageSize
  * QgsPageSizeRegistry is not usually directly created, but rather accessed through
  * QgsApplication::pageSizeRegistry().
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsPageSizeRegistry
 {
   public:
-
     /**
      * Creates a registry and populates it with known sizes
      */
@@ -109,10 +105,9 @@ class CORE_EXPORT QgsPageSizeRegistry
      * The decoded page size will be stored in the \a size argument.
      * \returns TRUE if string was successfully decoded
     */
-    bool decodePageSize( const QString &string, QgsPageSize &size );
+    bool decodePageSize( const QString &string, QgsPageSize &size ) const;
 
   private:
-
     QList< QgsPageSize > mPageSizes;
 };
 

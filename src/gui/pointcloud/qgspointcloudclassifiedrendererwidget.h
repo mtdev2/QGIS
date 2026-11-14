@@ -18,12 +18,13 @@
 #ifndef QGSPOINTCLOUDCLASSIFIEDRENDERERWIDGET_H
 #define QGSPOINTCLOUDCLASSIFIEDRENDERERWIDGET_H
 
-#include "qgspointcloudrendererwidget.h"
-#include "qgspointcloudclassifiedrenderer.h"
 #include "ui_qgspointcloudclassifiedrendererwidgetbase.h"
+
 #include "qgis_gui.h"
-#include "qgsproxystyle.h"
 #include "qgspointcloudattribute.h"
+#include "qgspointcloudclassifiedrenderer.h"
+#include "qgspointcloudrendererwidget.h"
+#include "qgsproxystyle.h"
 
 class QgsPointCloudLayer;
 class QgsStyle;
@@ -63,20 +64,27 @@ class GUI_EXPORT QgsPointCloudClassifiedRendererModel : public QAbstractItemMode
     QgsPointCloudCategoryList categories() const { return mCategories; }
 
     void setCategoryColor( int row, const QColor &color );
+    void setCategoryPointSize( int row, double size );
+    //! Updates the model with percentage of points per category
+    void updateCategoriesPercentages( const QMap<int, float> &percentages ) { mPercentages = percentages; };
 
   signals:
     void categoriesChanged();
 
+    //! Informs views that categories were moved (e.g., via mCategories.move()) in the model.
+    void rowsMoved();
+
   private:
     QgsPointCloudCategoryList mCategories;
+    QMap<int, float> mPercentages;
     QString mMimeFormat;
 };
 
 /**
  * \ingroup gui
- * View style which shows drop indicator line between items
+ * \brief View style which shows a drop indicator line between items
  */
-class QgsPointCloudClassifiedRendererViewStyle: public QgsProxyStyle
+class QgsPointCloudClassifiedRendererViewStyle : public QgsProxyStyle
 {
     Q_OBJECT
 
@@ -87,7 +95,7 @@ class QgsPointCloudClassifiedRendererViewStyle: public QgsProxyStyle
 };
 
 
-class GUI_EXPORT QgsPointCloudClassifiedRendererWidget: public QgsPointCloudRendererWidget, private Ui::QgsPointCloudClassifiedRendererWidgetBase
+class GUI_EXPORT QgsPointCloudClassifiedRendererWidget : public QgsPointCloudRendererWidget, private Ui::QgsPointCloudClassifiedRendererWidgetBase
 {
     Q_OBJECT
 
@@ -96,29 +104,47 @@ class GUI_EXPORT QgsPointCloudClassifiedRendererWidget: public QgsPointCloudRend
     static QgsPointCloudRendererWidget *create( QgsPointCloudLayer *layer, QgsStyle *style, QgsPointCloudRenderer * );
 
     QgsPointCloudRenderer *renderer() override;
-    QgsPointCloudCategoryList categoriesList();
-    QString attribute();
+    QgsPointCloudCategoryList categoriesList() const;
+    QString attribute() const;
 
+    /**
+     * Sets the selected attribute and categories based on a 2D renderer.
+     * If the renderer is not a QgsPointCloudClassifiedRenderer, the widget is reinitialized
+     */
+    void setFromRenderer( const QgsPointCloudRenderer *r );
     void setFromCategories( QgsPointCloudCategoryList categories, const QString &attribute );
 
   private slots:
 
+    /**
+     * Gets the available classes for the selected attribute from the layer and adds any categories that are missing.
+     * Categories for the Classification attribute get a default color and name
+     */
+    void addCategories();
     void emitWidgetChanged();
     void categoriesDoubleClicked( const QModelIndex &idx );
-    void addCategories();
     void addCategory();
     void deleteCategories();
     void deleteAllCategories();
+    void attributeChanged();
+    void changeCategoryColor();
+    void changeCategoryOpacity();
+    void changeCategoryPointSize();
+    void rowsMoved();
+
   private:
-    void setFromRenderer( const QgsPointCloudRenderer *r );
-    void changeCategorySymbol();
+    //! Sets default category and available classes
+    void initialize();
     //! Returns a list of indexes for the categories under selection
     QList<int> selectedCategories();
     //! Returns row index for the currently selected category (-1 if on no selection)
     int currentCategoryRow();
+    //! Updates the model with percentage of points per category
+    void updateCategoriesPercentages();
 
     QgsPointCloudClassifiedRendererModel *mModel = nullptr;
     bool mBlockChangedSignal = false;
+    QMenu *contextMenu = nullptr;
 };
 
 ///@endcond

@@ -16,26 +16,25 @@
 #ifndef QGSMODELVIEWTOOLTEMPORARYKEYZOOM_H
 #define QGSMODELVIEWTOOLTEMPORARYKEYZOOM_H
 
-#include "qgis_sip.h"
-#include "qgis_gui.h"
-#include "qgsmodelviewtoolzoom.h"
-#include "qgsmodelviewrubberband.h"
 #include <memory>
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsmodelviewrubberband.h"
+#include "qgsmodelviewtoolzoom.h"
 
 #define SIP_NO_FILE
 
 /**
  * \ingroup gui
- * Model view tool for temporarily zooming a model while a key is depressed.
+ * \brief Model view tool for temporarily zooming a model while a key is depressed.
  * \since QGIS 3.14
  */
 class GUI_EXPORT QgsModelViewToolTemporaryKeyZoom : public QgsModelViewToolZoom
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsModelViewToolTemporaryKeyZoom.
      */
@@ -47,8 +46,7 @@ class GUI_EXPORT QgsModelViewToolTemporaryKeyZoom : public QgsModelViewToolZoom
     void activate() override;
 
   private:
-
-    QPointer< QgsModelViewTool > mPreviousViewTool;
+    QPointer<QgsModelViewTool> mPreviousViewTool;
 
     bool mDeactivateOnMouseRelease = false;
 

@@ -15,47 +15,59 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsrectangle.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
+
+#include "qgsbox3d.h"
+#include "qgsgeometry.h"
+#include "qgslinestring.h"
+#include "qgslogger.h"
+#include "qgspointxy.h"
+#include "qgspolygon.h"
+
 #include <QString>
 #include <QTextStream>
 #include <QTransform>
-#include <QRegExp>
 
-#include "qgsgeometry.h"
-#include "qgspointxy.h"
-#include "qgsrectangle.h"
-#include "qgslogger.h"
-#include "qgsbox3d.h"
-#include "qgspolygon.h"
-#include "qgslinestring.h"
+#include "moc_qgsrectangle.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsRectangle QgsRectangle::fromWkt( const QString &wkt )
 {
-  QgsGeometry geom = QgsGeometry::fromWkt( wkt );
-  if ( geom.isMultipart() )
+  const QgsGeometry geom = QgsGeometry::fromWkt( wkt );
+  if ( geom.isEmpty() )
     return QgsRectangle();
 
-  QgsPolygonXY poly = geom.asPolygon();
+  if ( const QgsPolygon *polygon = qgsgeometry_cast< const QgsPolygon * >( geom.constGet()->simplifiedTypeRef() ) )
+  {
+    if ( polygon->numInteriorRings() > 0 )
+      return QgsRectangle();
 
-  if ( poly.size() != 1 )
-    return QgsRectangle();
-
-  QgsPolylineXY polyline = geom.asPolygon().at( 0 );
-  if ( polyline.size() == 5 && polyline.at( 0 ) == polyline.at( 4 ) && geom.isGeosValid() )
-    return QgsRectangle( polyline.at( 0 ).x(), polyline.at( 0 ).y(), polyline.at( 2 ).x(), polyline.at( 2 ).y() );
-  else
-    return QgsRectangle();
+    if ( const QgsLineString *exterior = qgsgeometry_cast< const QgsLineString * >( polygon->exteriorRing() ) )
+    {
+      if ( exterior->numPoints() == 5 && qgsDoubleNear( exterior->xAt( 0 ), exterior->xAt( 4 ) ) && qgsDoubleNear( exterior->yAt( 0 ), exterior->yAt( 4 ) ) && geom.isGeosValid() )
+        return QgsRectangle( exterior->xAt( 0 ), exterior->yAt( 0 ), exterior->xAt( 2 ), exterior->yAt( 2 ) );
+    }
+  }
+  return QgsRectangle();
 }
 
-QgsRectangle QgsRectangle::fromCenterAndSize( QgsPointXY center, double width, double height )
+QgsRectangle QgsRectangle::fromCenterAndSize( const QgsPointXY &center, double width, double height )
 {
-  double xMin = center.x() - width / 2.0;
-  double xMax = xMin + width;
-  double yMin = center.y() - height / 2.0;
-  double yMax = yMin + height;
+  const double xMin = center.x() - width / 2.0;
+  const double xMax = xMin + width;
+  const double yMin = center.y() - height / 2.0;
+  const double yMax = yMin + height;
   return QgsRectangle( xMin, yMin, xMax, yMax );
+}
+
+QgsRectangle QgsRectangle::fromEdges( double left, double top, double right, double bottom )
+{
+  return QgsRectangle( left, bottom, right, top, false );
 }
 
 QgsRectangle QgsRectangle::scaled( double scaleFactor, const QgsPointXY *center ) const
@@ -67,19 +79,19 @@ QgsRectangle QgsRectangle::scaled( double scaleFactor, const QgsPointXY *center 
 
 QgsRectangle QgsRectangle::operator-( const QgsVector v ) const
 {
-  double xmin = mXmin - v.x();
-  double xmax = mXmax - v.x();
-  double ymin = mYmin - v.y();
-  double ymax = mYmax - v.y();
+  const double xmin = mXmin - v.x();
+  const double xmax = mXmax - v.x();
+  const double ymin = mYmin - v.y();
+  const double ymax = mYmax - v.y();
   return QgsRectangle( xmin, ymin, xmax, ymax );
 }
 
 QgsRectangle QgsRectangle::operator+( const QgsVector v ) const
 {
-  double xmin = mXmin + v.x();
-  double xmax = mXmax + v.x();
-  double ymin = mYmin + v.y();
-  double ymax = mYmax + v.y();
+  const double xmin = mXmin + v.x();
+  const double xmax = mXmax + v.x();
+  const double ymin = mYmin + v.y();
+  const double ymax = mYmax + v.y();
   return QgsRectangle( xmin, ymin, xmax, ymax );
 }
 
@@ -103,25 +115,19 @@ QgsRectangle &QgsRectangle::operator+=( const QgsVector v )
 
 QString QgsRectangle::asWktCoordinates() const
 {
-  QString rep =
-    qgsDoubleToString( mXmin ) + ' ' + qgsDoubleToString( mYmin ) + QLatin1String( ", " ) +
-    qgsDoubleToString( mXmax ) + ' ' + qgsDoubleToString( mYmax );
+  QString rep = qgsDoubleToString( mXmin ) + ' ' + qgsDoubleToString( mYmin ) + ", "_L1 + qgsDoubleToString( mXmax ) + ' ' + qgsDoubleToString( mYmax );
 
   return rep;
 }
 
 QString QgsRectangle::asWktPolygon() const
 {
-  QString rep =
-    QLatin1String( "POLYGON((" ) +
-    qgsDoubleToString( mXmin ) + ' ' + qgsDoubleToString( mYmin ) + QLatin1String( ", " ) +
-    qgsDoubleToString( mXmax ) + ' ' + qgsDoubleToString( mYmin ) + QLatin1String( ", " ) +
-    qgsDoubleToString( mXmax ) + ' ' + qgsDoubleToString( mYmax ) + QLatin1String( ", " ) +
-    qgsDoubleToString( mXmin ) + ' ' + qgsDoubleToString( mYmax ) + QLatin1String( ", " ) +
-    qgsDoubleToString( mXmin ) + ' ' + qgsDoubleToString( mYmin ) +
-    QStringLiteral( "))" );
+  if ( isNull() )
+  {
+    return u"Polygon EMPTY"_s;
+  }
 
-  return rep;
+  return u"Polygon ((%1 %2, %3 %2, %3 %4, %1 %4, %1 %2))"_s.arg( qgsDoubleToString( mXmin ), qgsDoubleToString( mYmin ), qgsDoubleToString( mXmax ), qgsDoubleToString( mYmax ) );
 }
 
 QString QgsRectangle::toString( int precision ) const
@@ -140,24 +146,23 @@ QString QgsRectangle::toString( int precision ) const
     }
   }
 
-  if ( isEmpty() )
-    rep = QStringLiteral( "Empty" );
+  if ( isNull() )
+    rep = u"Null"_s;
   else
-    rep = QStringLiteral( "%1,%2 : %3,%4" )
-          .arg( mXmin, 0, 'f', precision )
-          .arg( mYmin, 0, 'f', precision )
-          .arg( mXmax, 0, 'f', precision )
-          .arg( mYmax, 0, 'f', precision );
+    rep = u"%1,%2 : %3,%4"_s.arg( mXmin, 0, 'f', precision ).arg( mYmin, 0, 'f', precision ).arg( mXmax, 0, 'f', precision ).arg( mYmax, 0, 'f', precision );
 
-  QgsDebugMsgLevel( QStringLiteral( "Extents : %1" ).arg( rep ), 4 );
+  QgsDebugMsgLevel( u"Extents : %1"_s.arg( rep ), 4 );
 
   return rep;
 }
 
 QString QgsRectangle::asPolygon() const
 {
-//   QString rep = tmp.sprintf("%16f %16f,%16f %16f,%16f %16f,%16f %16f,%16f %16f",
-//     xmin, ymin, xmin, ymax, xmax, ymax, xmax, ymin, xmin, ymin);
+  if ( isNull() )
+  {
+    return u"EMPTY"_s;
+  }
+
   QString rep;
 
   QTextStream foo( &rep );
@@ -166,39 +171,73 @@ QString QgsRectangle::asPolygon() const
   foo.setRealNumberNotation( QTextStream::FixedNotation );
   // NOTE: a polygon isn't a polygon unless its closed. In the case of
   //       a rectangle, that means 5 points (last == first)
-  foo
-      << mXmin << ' ' << mYmin << ", "
-      << mXmin << ' ' << mYmax << ", "
-      << mXmax << ' ' << mYmax << ", "
-      << mXmax << ' ' << mYmin << ", "
-      << mXmin << ' ' << mYmin;
+  foo << mXmin << ' ' << mYmin << ", " << mXmin << ' ' << mYmax << ", " << mXmax << ' ' << mYmax << ", " << mXmax << ' ' << mYmin << ", " << mXmin << ' ' << mYmin;
 
   return rep;
-
 }
 
-QgsBox3d QgsRectangle::toBox3d( double zMin, double zMax ) const
+QgsBox3D QgsRectangle::toBox3d( double zMin, double zMax ) const
 {
-  return QgsBox3d( mXmin, mYmin, zMin, mXmax, mYmax, zMax );
+  return QgsBox3D( mXmin, mYmin, zMin, mXmax, mYmax, zMax );
+}
+
+std::pair<QgsRectangle, QgsRectangle> QgsRectangle::splitAtAntimeridian() const
+{
+  if ( isNull() )
+    return { QgsRectangle(), QgsRectangle() };
+
+  auto normalizeLongitude = []( double x ) {
+    double res = std::fmod( x, 360 );
+    if ( res > 180 )
+      res -= 360;
+    else if ( res < -180 )
+      res += 360;
+    return res;
+  };
+
+  if ( qgsDoubleNear( xMinimum(), xMaximum() ) )
+  {
+    // vertical slice
+    const double x = normalizeLongitude( xMinimum() );
+    return { QgsRectangle( x, yMinimum(), x, yMaximum() ), QgsRectangle() };
+  }
+  else if ( xMinimum() < xMaximum() )
+  {
+    // normalized rect
+    const double x1 = normalizeLongitude( xMinimum() );
+    const double x2 = normalizeLongitude( xMaximum() );
+    if ( x1 < x2 )
+    {
+      return { QgsRectangle( x1, yMinimum(), x2, yMaximum() ), QgsRectangle() };
+    }
+    else
+    {
+      return { QgsRectangle( x1, yMinimum(), 180, yMaximum() ), QgsRectangle( -180, yMinimum(), x2, yMaximum() ) };
+    }
+  }
+  else
+  {
+    // non-normalized
+    const double x1 = normalizeLongitude( xMinimum() );
+    const double x2 = normalizeLongitude( xMaximum() );
+    return { QgsRectangle( x1, yMinimum(), 180, yMaximum() ), QgsRectangle( -180, yMinimum(), x2, yMaximum() ) };
+  }
 }
 
 QgsRectangle QgsRectangle::snappedToGrid( double spacing ) const
 {
+  if ( isNull() )
+    return *this;
+
   // helper function
-  auto gridifyValue = []( double value, double spacing ) -> double
-  {
+  auto gridifyValue = []( double value, double spacing ) -> double {
     if ( spacing > 0 )
-      return  std::round( value / spacing ) * spacing;
+      return std::round( value / spacing ) * spacing;
     else
       return value;
   };
 
-  return QgsRectangle(
-           gridifyValue( mXmin, spacing ),
-           gridifyValue( mYmin, spacing ),
-           gridifyValue( mXmax, spacing ),
-           gridifyValue( mYmax, spacing )
-         );
+  return QgsRectangle( gridifyValue( mXmin, spacing ), gridifyValue( mYmin, spacing ), gridifyValue( mXmax, spacing ), gridifyValue( mYmax, spacing ) );
 }
 
 QDataStream &operator<<( QDataStream &out, const QgsRectangle &rectangle )

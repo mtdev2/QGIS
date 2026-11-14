@@ -13,19 +13,21 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsfontutils.h"
+#include "qgsmapsettings.h"
+#include "qgstest.h"
+#include "qgsvectorlayer.h"
+
+#include <QApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QIODevice>
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QApplication>
-#include <QFileInfo>
-#include <QDir>
-#include <QFile>
-#include <QIODevice>
 
-#include "qgstest.h"
-#include "qgsvectorlayer.h"
-#include "qgsfontutils.h"
-#include "qgsmapsettings.h"
+using namespace Qt::StringLiterals;
 
 //qgis unit test includes
 #include <qgsrenderchecker.h>
@@ -34,11 +36,12 @@
  * \ingroup UnitTests
  * This is a unit test for the map rotation feature
  */
-class TestQgsMapDevicePixelRatio : public QObject
+class TestQgsMapDevicePixelRatio : public QgsTest
 {
     Q_OBJECT
   public:
     TestQgsMapDevicePixelRatio()
+      : QgsTest( u"Map Device Pixel Ratio Tests"_s )
     {
       mTestDataDir = QStringLiteral( TEST_DATA_DIR ) + '/';
     }
@@ -46,10 +49,8 @@ class TestQgsMapDevicePixelRatio : public QObject
     ~TestQgsMapDevicePixelRatio() override;
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init() {} // will be called before each testfunction is executed.
-    void cleanup() {} // will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     void pointsLayer();
 
@@ -59,7 +60,6 @@ class TestQgsMapDevicePixelRatio : public QObject
     QString mTestDataDir;
     QgsVectorLayer *mPointsLayer = nullptr;
     QgsMapSettings *mMapSettings = nullptr;
-    QString mReport;
 };
 
 //runs before all tests
@@ -72,14 +72,11 @@ void TestQgsMapDevicePixelRatio::initTestCase()
   mMapSettings = new QgsMapSettings();
 
   //create a point layer that will be used in all tests...
-  QString myPointsFileName = mTestDataDir + "points.shp";
-  QFileInfo myPointFileInfo( myPointsFileName );
-  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(),
-                                     myPointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QString myPointsFileName = mTestDataDir + "points.shp";
+  const QFileInfo myPointFileInfo( myPointsFileName );
+  mPointsLayer = new QgsVectorLayer( myPointFileInfo.filePath(), myPointFileInfo.completeBaseName(), u"ogr"_s );
 
-  mReport += QLatin1String( "<h1>Map Device Pixel Ratio Tests</h1>\n" );
-
-  QgsFontUtils::loadStandardTestFonts( QStringList() << QStringLiteral( "Bold" ) );
+  QgsFontUtils::loadStandardTestFonts( QStringList() << u"Bold"_s );
 }
 
 TestQgsMapDevicePixelRatio::~TestQgsMapDevicePixelRatio() = default;
@@ -90,22 +87,13 @@ void TestQgsMapDevicePixelRatio::cleanupTestCase()
   delete mMapSettings;
   delete mPointsLayer;
   QgsApplication::exitQgis();
-
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
 }
 
 void TestQgsMapDevicePixelRatio::pointsLayer()
 {
   mMapSettings->setLayers( QList<QgsMapLayer *>() << mPointsLayer );
 
-  QString qml = mTestDataDir + "points.qml";
+  const QString qml = mTestDataDir + "points.qml";
   bool success = false;
   mPointsLayer->loadNamedStyle( qml, success );
   QVERIFY( success );
@@ -117,18 +105,17 @@ void TestQgsMapDevicePixelRatio::pointsLayer()
 
 bool TestQgsMapDevicePixelRatio::render( const QString &testType, float dpr )
 {
-  mReport += "<h2>" + testType + "</h2>\n";
   mMapSettings->setOutputSize( QSize( 256, 256 ) );
   mMapSettings->setOutputDpi( 96 );
   mMapSettings->setDevicePixelRatio( dpr );
   mMapSettings->setExtent( QgsRectangle( -105.5, 37, -97.5, 45 ) );
   qDebug() << "scale" << QString::number( mMapSettings->scale(), 'f' );
   QgsRenderChecker checker;
-  checker.setControlPathPrefix( QStringLiteral( "mapdevicepixelratio" ) );
+  checker.setControlPathPrefix( u"mapdevicepixelratio"_s );
   checker.setControlName( "expected_" + testType );
   checker.setMapSettings( *mMapSettings );
-  bool result = checker.runTest( testType );
-  mReport += "\n\n\n" + checker.report();
+  const bool result = checker.runTest( testType );
+  mReport += checker.report();
   return result;
 }
 

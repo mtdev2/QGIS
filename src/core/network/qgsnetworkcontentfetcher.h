@@ -20,30 +20,36 @@
 #ifndef QGSNETWORKCONTENTFETCHER_H
 #define QGSNETWORKCONTENTFETCHER_H
 
+#include "qgis_core.h"
+#include "qgshttpheaders.h"
+
 #include <QNetworkReply>
 #include <QUrl>
 
-#include "qgis_core.h"
+class QTextCodec;
 
 /**
  * \class QgsNetworkContentFetcher
  * \ingroup core
- * \brief HTTP network content fetcher. A simple method for fetching remote HTTP content
- * and converting the content to standard formats. Url redirects are automatically
- * handled.
+ * \brief HTTP network content fetcher.
+ *
+ * A simple method for fetching remote HTTP content
+ * and converting the content to standard formats.
+ *
+ * URL redirects are automatically handled.
  * \see QgsNetworkContentFetcherTask
- * \since QGIS 2.5
 */
 class CORE_EXPORT QgsNetworkContentFetcher : public QObject
 {
     Q_OBJECT
 
   public:
-
     /**
-     * Constructor for QgsNetworkContentFetcher.
+     * Constructor for QgsNetworkContentFetcher, with the specified \a parent object.
+     *
+     * The \a parent argument was added in QGIS 4.4
      */
-    QgsNetworkContentFetcher() = default;
+    QgsNetworkContentFetcher( QObject *parent = nullptr );
 
     ~QgsNetworkContentFetcher() override;
 
@@ -52,8 +58,10 @@ class CORE_EXPORT QgsNetworkContentFetcher : public QObject
      * signal will be emitted when content has been fetched.
      * \param url URL to fetch
      * \param authcfg optional authentication configuration
+     * \param headers optional HTTP headers to add to the request (since QGIS 3.44.8)
+     *
      */
-    void fetchContent( const QUrl &url, const QString &authcfg = QString() );
+    void fetchContent( const QUrl &url, const QString &authcfg = QString(), const QgsHttpHeaders &headers = QgsHttpHeaders() );
 
     /**
      * Fetches content using a network \a request and handles redirects. The finished()
@@ -70,6 +78,13 @@ class CORE_EXPORT QgsNetworkContentFetcher : public QObject
      * \returns QNetworkReply for fetched URL content
      */
     QNetworkReply *reply();
+
+    /**
+     * Returns the associated filename from the reply's content disposition header, if present.
+     *
+     * \since QGIS 3.28
+     */
+    QString contentDispositionFilename() const;
 
     /**
      * Returns the fetched content as a string
@@ -103,10 +118,16 @@ class CORE_EXPORT QgsNetworkContentFetcher : public QObject
      */
     void downloadProgress( qint64 bytesReceived, qint64 bytesTotal );
 
-  private:
+    /**
+     * Emitted when an error with \a code error occurred while processing the request
+     * \a errorMsg is a textual description of the error
+     * \since QGIS 3.22
+     */
+    void errorOccurred( QNetworkReply::NetworkError code, const QString &errorMsg );
 
+  private:
     QString mAuthCfg;
-    QNetworkReply *mReply = nullptr;
+    std::unique_ptr<QNetworkReply> mReply;
 
     bool mContentLoaded = false;
 
@@ -126,7 +147,6 @@ class CORE_EXPORT QgsNetworkContentFetcher : public QObject
      * result is a redirect then the redirect is fetched automatically.
      */
     void contentLoaded( bool ok = true );
-
 };
 
 #endif

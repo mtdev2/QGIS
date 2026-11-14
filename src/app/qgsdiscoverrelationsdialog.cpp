@@ -13,11 +13,17 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsdiscoverrelationsdialog.h"
-#include "qgsvectorlayer.h"
-#include "qgsrelationmanager.h"
+
 #include "qgshelp.h"
+#include "qgsrelationmanager.h"
+#include "qgsvectorlayer.h"
 
 #include <QPushButton>
+#include <QString>
+
+#include "moc_qgsdiscoverrelationsdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsDiscoverRelationsDialog::QgsDiscoverRelationsDialog( const QList<QgsRelation> &existingRelations, const QList<QgsVectorLayer *> &layers, QWidget *parent )
   : QDialog( parent )
@@ -27,14 +33,11 @@ QgsDiscoverRelationsDialog::QgsDiscoverRelationsDialog( const QList<QgsRelation>
 
   mButtonBox->button( QDialogButtonBox::Ok )->setEnabled( false );
   mButtonBox->addButton( QDialogButtonBox::Help );
-  connect( mButtonBox, &QDialogButtonBox::helpRequested, this, [ = ]
-  {
-    QgsHelp::openHelp( QStringLiteral( "working_with_vector/attribute_table.html#defining-1-n-relation" ) );
-  } );
+  connect( mButtonBox, &QDialogButtonBox::helpRequested, this, [] { QgsHelp::openHelp( u"working_with_vector/attribute_table.html#defining-1-n-relation"_s ); } );
   connect( mRelationsTable->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsDiscoverRelationsDialog::onSelectionChanged );
 
   mFoundRelations = QgsRelationManager::discoverRelations( existingRelations, layers );
-  for ( const QgsRelation &relation : qgis::as_const( mFoundRelations ) )
+  for ( const QgsRelation &relation : std::as_const( mFoundRelations ) )
     addRelation( relation );
 
   mRelationsTable->resizeColumnsToContents();
@@ -45,8 +48,8 @@ void QgsDiscoverRelationsDialog::addRelation( const QgsRelation &rel )
   QString referencingFields, referencedFields;
   for ( int i = 0; i < rel.fieldPairs().count(); i++ )
   {
-    referencingFields.append( QStringLiteral( "%1%2" ).arg( referencingFields.isEmpty() ? "" : ", " ).arg( rel.fieldPairs().at( i ).referencingField() ) );
-    referencedFields.append( QStringLiteral( "%1%2" ).arg( referencedFields.isEmpty() ? "" : ", " ).arg( rel.fieldPairs().at( i ).referencedField() ) );
+    referencingFields.append( u"%1%2"_s.arg( ( referencingFields.isEmpty() ? "" : ", " ), rel.fieldPairs().at( i ).referencingField() ) );
+    referencedFields.append( u"%1%2"_s.arg( ( referencedFields.isEmpty() ? "" : ", " ), rel.fieldPairs().at( i ).referencedField() ) );
   }
 
   const int row = mRelationsTable->rowCount();
@@ -56,16 +59,21 @@ void QgsDiscoverRelationsDialog::addRelation( const QgsRelation &rel )
   mRelationsTable->setItem( row, 2, new QTableWidgetItem( referencingFields ) );
   mRelationsTable->setItem( row, 3, new QTableWidgetItem( rel.referencedLayer()->name() ) );
   mRelationsTable->setItem( row, 4, new QTableWidgetItem( referencedFields ) );
-  if ( rel.strength() == QgsRelation::RelationStrength::Composition )
+  switch ( rel.strength() )
   {
-    mRelationsTable->setItem( row, 5, new QTableWidgetItem( QStringLiteral( "Composition" ) ) );
-  }
-  else
-  {
-    mRelationsTable->setItem( row, 5, new QTableWidgetItem( QStringLiteral( "Association" ) ) );
+    case Qgis::RelationshipStrength::Composition:
+    {
+      mRelationsTable->setItem( row, 5, new QTableWidgetItem( u"Composition"_s ) );
+      break;
+    }
+    case Qgis::RelationshipStrength::Association:
+    {
+      mRelationsTable->setItem( row, 5, new QTableWidgetItem( u"Association"_s ) );
+      break;
+    }
   }
 
-  mRelationsTable->item( row, 5 )->setToolTip( QStringLiteral( "Composition (child features will be copied too) or Association" ) );
+  mRelationsTable->item( row, 5 )->setToolTip( u"Composition (child features will also be copied and deleted) or Association"_s );
 }
 
 QList<QgsRelation> QgsDiscoverRelationsDialog::relations() const

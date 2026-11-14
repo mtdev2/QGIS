@@ -28,16 +28,17 @@ class QgsFeatureIterator;
 class QgsSingleSymbolRenderer;
 class QgsMapClippingRegion;
 
-#define SIP_NO_FILE
 
+#include <QElapsedTimer>
 #include <QList>
 #include <QPainter>
-#include <QElapsedTimer>
+
+#define SIP_NO_FILE
 
 typedef QList<int> QgsAttributeList;
 
 #include "qgis_sip.h"
-#include "qgsfields.h"  // QgsFields
+#include "qgsfields.h" // QgsFields
 #include "qgsfeatureiterator.h"
 #include "qgsvectorsimplifymethod.h"
 #include "qgsfeedback.h"
@@ -50,28 +51,9 @@ class QgsVectorLayerDiagramProvider;
 
 /**
  * \ingroup core
- * Interruption checker used by QgsVectorLayerRenderer::render()
- * \note not available in Python bindings
- */
-class QgsVectorLayerRendererInterruptionChecker: public QgsFeedback
-{
-    Q_OBJECT
-
-  public:
-    //! Constructor
-    explicit QgsVectorLayerRendererInterruptionChecker( const QgsRenderContext &context );
-
-  private:
-    const QgsRenderContext &mContext;
-    QTimer *mTimer = nullptr;
-};
-
-/**
- * \ingroup core
- * Implementation of threaded rendering for vector layers.
+ * \brief Implementation of threaded rendering for vector layers.
  *
  * \note not available in Python bindings
- * \since QGIS 2.4
  */
 class QgsVectorLayerRenderer : public QgsMapLayerRenderer
 {
@@ -80,6 +62,7 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
     ~QgsVectorLayerRenderer() override;
     QgsFeedback *feedback() const override;
     bool forceRasterRender() const override;
+    Qgis::MapLayerRendererFlags flags() const override;
 
     /**
      * Returns the feature renderer.
@@ -93,7 +76,6 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
     void setLayerRenderingTimeHint( int time ) override;
 
   private:
-
     /**
      * Registers label and diagram layer
      * \param layer diagram layer
@@ -116,13 +98,14 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
     void stopRenderer( QgsFeatureRenderer *renderer, QgsSingleSymbolRenderer *selRenderer );
 
 
-    bool renderInternal( QgsFeatureRenderer *renderer );
-  protected:
+    bool renderInternal( QgsFeatureRenderer *renderer, int rendererIndex );
 
-    std::unique_ptr< QgsVectorLayerRendererInterruptionChecker > mInterruptionChecker;
+  private:
+    std::unique_ptr<QgsFeedback> mFeedback = nullptr;
 
     //! The rendered layer
     QgsVectorLayer *mLayer = nullptr;
+    QString mLayerName;
 
     QgsFields mFields; // TODO: use fields from mSource
 
@@ -135,19 +118,14 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
     QgsFeatureRenderer *mRenderer = nullptr;
     std::vector< std::unique_ptr< QgsFeatureRenderer> > mRenderers;
 
-    bool mDrawVertexMarkers;
-    bool mVertexMarkerOnlyForSelection;
-    int mVertexMarkerStyle = 0;
+    bool mDrawVertexMarkers = false;
+    bool mVertexMarkerOnlyForSelection = false;
+    Qgis::VertexMarkerType mVertexMarkerStyle = Qgis::VertexMarkerType::SemiTransparentCircle;
     double mVertexMarkerSize = 2.0;
 
-    QgsWkbTypes::GeometryType mGeometryType;
+    Qgis::GeometryType mGeometryType = Qgis::GeometryType::Unknown;
 
     QSet<QString> mAttrNames;
-
-    //! used with old labeling engine (QgsPalLabeling): whether labeling is enabled
-    bool mLabeling;
-    //! used with new labeling engine (QgsPalLabeling): whether diagrams are enabled
-    bool mDiagrams;
 
     /**
      * used with new labeling engine (QgsLabelingEngine): provider for labels.
@@ -161,10 +139,10 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
      */
     QgsVectorLayerDiagramProvider *mDiagramProvider = nullptr;
 
-    QPainter::CompositionMode mFeatureBlendMode;
+    QPainter::CompositionMode mFeatureBlendMode = QPainter::CompositionMode::CompositionMode_SourceOver;
 
     QgsVectorSimplifyMethod mSimplifyMethod;
-    bool mSimplifyGeometry;
+    bool mSimplifyGeometry = true;
 
     QList< QgsMapClippingRegion > mClippingRegions;
     QgsGeometry mClipFilterGeom;
@@ -179,6 +157,12 @@ class QgsVectorLayerRenderer : public QgsMapLayerRenderer
     bool mBlockRenderUpdates = false;
     QElapsedTimer mElapsedTimer;
 
+    bool mNoSetLayerExpressionContext = false;
+
+    bool mEnableProfile = false;
+    quint64 mPreparationTime = 0;
+
+    std::unique_ptr< QgsSymbol > mSelectionSymbol;
 };
 
 

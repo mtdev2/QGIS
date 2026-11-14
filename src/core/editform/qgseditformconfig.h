@@ -20,85 +20,53 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include <QMap>
-#include <QDomElement>
-#include <QDomDocument>
-
-#include "qgsattributeeditorelement.h"
+#include "qgspropertycollection.h"
 #include "qgsreadwritecontext.h"
+
+#include <QDomDocument>
+#include <QDomElement>
+#include <QMap>
 
 class QgsRelationManager;
 class QgsEditFormConfigPrivate;
 class QgsAttributeEditorContainer;
+class QgsAttributeEditorElement;
 
 /**
  * \ingroup core
  * \class QgsEditFormConfig
+ * \brief Contains configuration settings for an editor form.
  */
 class CORE_EXPORT QgsEditFormConfig
 {
-
     Q_GADGET
 
   public:
-
-    //! The different types to layout the attribute editor.
-    enum EditorLayout
-    {
-      GeneratedLayout = 0, //!< Autogenerate a simple tabular layout for the form
-      TabLayout = 1,       //!< Use a layout with tabs and group boxes. Needs to be configured.
-      UiFileLayout = 2     //!< Load a .ui file for the layout. Needs to be configured.
-    };
-    Q_ENUM( EditorLayout )
-
     struct GroupData
     {
-      //! Constructor for GroupData
-      GroupData() = default;
-      GroupData( const QString &name, const QList<QString> &fields )
-        : mName( name )
-        , mFields( fields )
-      {}
-      QString mName;
-      QList<QString> mFields;
+        GroupData() = default;
+        GroupData( const QString &name, const QList<QString> &fields )
+          : mName( name )
+          , mFields( fields )
+        {}
+        QString mName;
+        QList<QString> mFields;
     };
 
     struct TabData
     {
-      //! Constructor for TabData
-      TabData() = default;
-      TabData( const QString &name, const QList<QString> &fields, const QList<QgsEditFormConfig::GroupData> &groups )
-        : mName( name )
-        , mFields( fields )
-        , mGroups( groups )
-      {}
-      QString mName;
-      QList<QString> mFields;
-      QList<QgsEditFormConfig::GroupData> mGroups;
+        TabData() = default;
+        TabData( const QString &name, const QList<QString> &fields, const QList<QgsEditFormConfig::GroupData> &groups )
+          : mName( name )
+          , mFields( fields )
+          , mGroups( groups )
+        {}
+        QString mName;
+        QList<QString> mFields;
+        QList<QgsEditFormConfig::GroupData> mGroups;
     };
 
-    /**
-     * Types of feature form suppression after feature creation
-     */
-    enum FeatureFormSuppress
-    {
-      SuppressDefault = 0, //!< Use the application-wide setting
-      SuppressOn = 1,      //!< Suppress feature form
-      SuppressOff = 2      //!< Do not suppress feature form
-    };
-    Q_ENUM( FeatureFormSuppress )
-
-    /**
-     * The Python init code source options.
-     */
-    enum PythonInitCodeSource
-    {
-      CodeSourceNone = 0,             //!< Do not use Python code at all
-      CodeSourceFile = 1,             //!< Load the Python code from an external file
-      CodeSourceDialog = 2,           //!< Use the Python code provided in the dialog
-      CodeSourceEnvironment = 3       //!< Use the Python code available in the Python environment
-    };
-    Q_ENUM( PythonInitCodeSource )
+    // *INDENT-OFF*
 
     /**
      * Data defined properties.
@@ -107,24 +75,22 @@ class CORE_EXPORT QgsEditFormConfig
      * enum.
      * \since QGIS 3.14
      */
-    enum DataDefinedProperty
+    enum class DataDefinedProperty SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsEditFormConfig, DataDefinedProperty ) : int
     {
-      NoProperty = 0, //!< No property
+      NoProperty = 0,    //!< No property
       AllProperties = 1, //!< All properties for item
-      Alias = 2, //!< Alias
+      Alias = 2,         //!< Alias
+      Editable = 3,      //!< Editable state \since QGIS 3.30
+      CustomComment = 4, //!< Custom comment \since QGIS 4.2
     };
+    // *INDENT-ON*
 
-    /**
-     * Copy constructor
-     *
-     * \since QGIS 3.0
-     */
     QgsEditFormConfig( const QgsEditFormConfig &o );
     ~QgsEditFormConfig();
 
     QgsEditFormConfig &operator=( const QgsEditFormConfig &o );
-
-    bool operator==( const QgsEditFormConfig &o );
+    // TODO c++20 - replace with = default
+    bool operator==( const QgsEditFormConfig &o ) const;
 
     /**
      * Adds a new element to the invisible root container in the layout.
@@ -151,10 +117,10 @@ class CORE_EXPORT QgsEditFormConfig
     QgsAttributeEditorContainer *invisibleRootContainer();
 
     //! Gets the active layout style for the attribute editor for this layer
-    EditorLayout layout() const;
+    Qgis::AttributeFormLayout layout() const;
 
     //! Sets the active layout style for the attribute editor for this layer
-    void setLayout( EditorLayout editorLayout );
+    void setLayout( Qgis::AttributeFormLayout editorLayout );
 
     /**
      * Returns the path or URL to the .ui form. Only meaningful with EditorLayout::UiFileLayout
@@ -235,6 +201,41 @@ class CORE_EXPORT QgsEditFormConfig
      */
     void setLabelOnTop( int idx, bool onTop );
 
+    /**
+     * If this returns TRUE, the widget at the given \a index will reuse the last
+     * value within a QGIS session when creating new features.
+     *
+     * \see setReuseLastValue()
+     * \since QGIS 3.20
+     * \deprecated QGIS 4.0. Use reuseLastValuePolicy instead.
+     */
+    Q_DECL_DEPRECATED bool reuseLastValue( int index ) const;
+
+    /**
+     * Sets whether the widget at the given \a index will reuse the last value
+     * within a QGIS session when creating new features.
+     *
+     * \see reuseLastValue()
+     * \since QGIS 3.20
+     * \deprecated QGIS 4.0. Use setReuseLastValuePolicy instead.
+     */
+    Q_DECL_DEPRECATED void setReuseLastValue( int index, bool reuse );
+
+    /**
+     * Returns the reuse of last value policy for an attribute \a index.
+     *
+     * \see setReuseLastValuePolicy()
+     * \since QGIS 4.0
+     */
+    Qgis::AttributeFormReuseLastValuePolicy reuseLastValuePolicy( int index ) const;
+
+    /**
+     * Sets the reuse of last value policy for an attribute \a index.
+     *
+     * \see reuseLastValuePolicy()
+     * \since QGIS 4.0
+     */
+    void setReuseLastValuePolicy( int index, Qgis::AttributeFormReuseLastValuePolicy policy );
 
     // Python form init function stuff
 
@@ -283,15 +284,15 @@ class CORE_EXPORT QgsEditFormConfig
      *  (if it shall be loaded from a file, read from the
      *  provided dialog editor or inherited from the environment)
      */
-    PythonInitCodeSource initCodeSource() const;
+    Qgis::AttributeFormPythonInitCodeSource initCodeSource() const;
 
     //! Sets if Python code shall be used for edit form initialization and its origin
-    void setInitCodeSource( PythonInitCodeSource initCodeSource );
+    void setInitCodeSource( Qgis::AttributeFormPythonInitCodeSource initCodeSource );
 
     //! Type of feature form pop-up suppression after feature creation (overrides app setting)
-    FeatureFormSuppress suppress() const;
+    Qgis::AttributeFormSuppression suppress() const;
     //! Sets type of feature form pop-up suppression after feature creation (overrides app setting)
-    void setSuppress( FeatureFormSuppress s );
+    void setSuppress( Qgis::AttributeFormSuppression s );
 
     // Serialization
 
@@ -309,9 +310,11 @@ class CORE_EXPORT QgsEditFormConfig
 
     /**
      * Deserialize drag and drop designer elements.
-     * \deprecated since QGIS 3.18 use QgsAttributeEditorElement::create instead
+     * \deprecated QGIS 3.18. Use QgsAttributeEditorElement::create instead.
      */
-    Q_DECL_DEPRECATED QgsAttributeEditorElement *attributeEditorElementFromDomElement( QDomElement &elem, QgsAttributeEditorElement *parent, const QString &layerId = QString(), const QgsReadWriteContext &context = QgsReadWriteContext() ) SIP_DEPRECATED;
+    Q_DECL_DEPRECATED QgsAttributeEditorElement *attributeEditorElementFromDomElement(
+      QDomElement &elem, QgsAttributeEditorElement *parent, const QString &layerId = QString(), const QgsReadWriteContext &context = QgsReadWriteContext()
+    ) SIP_DEPRECATED;
 
     /**
      * Create a new edit form config. Normally invoked by QgsVectorLayer
@@ -330,7 +333,6 @@ class CORE_EXPORT QgsEditFormConfig
      */
     QgsPropertyCollection dataDefinedFieldProperties( const QString &fieldName ) const;
 
-
     /**
      * Returns data defined property definitions.
      * \since QGIS 3.14
@@ -338,7 +340,6 @@ class CORE_EXPORT QgsEditFormConfig
     static const QgsPropertiesDefinition &propertyDefinitions();
 
   private:
-
     /**
      * Used internally to set the fields when they change.
      * This should only be called from QgsVectorLayer for synchronization reasons
@@ -348,16 +349,16 @@ class CORE_EXPORT QgsEditFormConfig
     /**
      * Will be called by friend class QgsVectorLayer
      */
-    void onRelationsLoaded();
+    void onRelationsLoaded(); // cppcheck-suppress functionConst
 
     /**
      * Used for the backwards compatibility of the api, on setting nmrel or force-suppress-popup for relations.
      * Returns TRUE when a relation instance (the first one found) has been updated.
      */
-    bool legacyUpdateRelationWidgetInTabs( QgsAttributeEditorContainer *container,  const QString &widgetName, const QVariantMap &config );
+    bool legacyUpdateRelationWidgetInTabs( QgsAttributeEditorContainer *container, const QString &widgetName, const QVariantMap &config );
 
   private:
-    void fixLegacyConfig( QDomElement &el );
+    void fixLegacyConfig( QDomElement &el ) const;
 
     QExplicitlySharedDataPointer<QgsEditFormConfigPrivate> d;
 

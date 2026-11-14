@@ -23,18 +23,17 @@ class QgsFeedback;
 
 /**
  * \ingroup core
- * Internal feature iterator to be implemented within data providers
+ * \brief Internal feature iterator to be implemented within data providers.
  */
 class CORE_EXPORT QgsAbstractFeatureIterator
 {
   public:
-
     //! Status of expression compilation for filter expression requests
     enum CompileStatus
     {
-      NoCompilation, //!< Expression could not be compiled or not attempt was made to compile expression
+      NoCompilation,     //!< Expression could not be compiled or not attempt was made to compile expression
       PartiallyCompiled, //!< Expression was partially compiled, but extra checks need to be applied to features
-      Compiled, //!< Expression was fully compiled and delegated to data provider source
+      Compiled,          //!< Expression was fully compiled and delegated to data provider source
     };
 
     //! base class constructor - stores the iteration parameters
@@ -43,12 +42,19 @@ class CORE_EXPORT QgsAbstractFeatureIterator
     //! destructor makes sure that the iterator is closed properly
     virtual ~QgsAbstractFeatureIterator() = default;
 
-    //! fetch next feature, return TRUE on success
+    /**
+     * Fetch next feature and stores in \a f, returns TRUE on success.
+     */
     virtual bool nextFeature( QgsFeature &f );
 
-    //! reset the iterator to the starting position
+    /**
+     * Resets the iterator to the starting position.
+     */
     virtual bool rewind() = 0;
-    //! end of iterating: free the resources / lock
+
+    /**
+     * Call to end the iteration. This frees any resources used by the iterator.
+     */
     virtual bool close() = 0;
 
     /**
@@ -58,13 +64,11 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      * WFS provider. When nextFeature()/fetchFeature() is reasonably fast, it is not necessary
      * to implement this method. The default implementation does nothing.
      * \note not available in Python bindings
-     * \since QGIS 2.16
      */
     virtual void setInterruptionChecker( QgsFeedback *interruptionChecker ) SIP_SKIP;
 
     /**
      * Returns the status of expression compilation for filter expression requests.
-     * \since QGIS 2.16
      */
     CompileStatus compileStatus() const { return mCompileStatus; }
 
@@ -76,12 +80,8 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      *
      * If you want to check if the iterator successfully completed, better use QgsFeatureIterator::isClosed().
      *
-     * \since QGIS 3.0
      */
-    virtual bool isValid() const
-    {
-      return mValid;
-    }
+    virtual bool isValid() const { return mValid; }
 
     /**
      * Indicator if there was an error when sending the compiled query to the server.
@@ -91,8 +91,18 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      */
     bool compileFailed() const;
 
-  protected:
+    /**
+     * Possible results from the updateRequestToSourceCrs() method.
+     *
+     * \since QGIS 3.22
+     */
+    enum class RequestToSourceCrsResult : int
+    {
+      Success,                             //!< Request was successfully updated to the source CRS, or no changes were required
+      DistanceWithinMustBeCheckedManually, //!< The distance within request cannot be losslessly updated to the source CRS, and callers will need to take appropriate steps to handle the distance within requirement manually during feature iteration
+    };
 
+  protected:
     /**
      * If you write a feature iterator for your provider, this is the method you
      * need to implement!!
@@ -133,7 +143,6 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      * has no effect and will be shortcut.
      * Iterators should call this method before returning features to ensure that any
      * QgsFeatureRequest::destinationCrs() set on the request is respected.
-     * \since QGIS 3.0
      */
     void geometryToDestinationCrs( QgsFeature &feature, const QgsCoordinateTransform &transform ) const;
 
@@ -145,9 +154,22 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      * Iterators should call this method and use the returned rectangle for filtering
      * features to ensure that any QgsFeatureRequest::destinationCrs() set on the request is respected.
      * Will throw a QgsCsException if the rect cannot be transformed from the destination CRS.
-     * \since QGIS 3.0
      */
     QgsRectangle filterRectToSourceCrs( const QgsCoordinateTransform &transform ) const SIP_THROW( QgsCsException );
+
+    /**
+     * Update a QgsFeatureRequest so that spatial filters are
+     * transformed to the source's coordinate reference system.
+     * Iterators should call this method against the request used for filtering
+     * features to ensure that any QgsFeatureRequest::destinationCrs() set on the request is respected.
+     *
+     * \returns result of operation. See QgsAbstractFeatureIterator::RequestToSourceCrsResult for interpretation.
+     *
+     * \throws QgsCsException if the rect cannot be transformed from the destination CRS.
+     *
+     * \since QGIS 3.22
+     */
+    RequestToSourceCrsResult updateRequestToSourceCrs( QgsFeatureRequest &request, const QgsCoordinateTransform &transform ) const SIP_THROW( QgsCsException );
 
     //! A copy of the feature request.
     QgsFeatureRequest mRequest;
@@ -164,7 +186,7 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      */
     bool mZombie = false;
 
-    // TODO QGIS 4: make this private
+    // TODO QGIS 5: make this private
 
     /**
      * reference counting (to allow seamless copying of QgsFeatureIterator instances)
@@ -177,7 +199,7 @@ class CORE_EXPORT QgsAbstractFeatureIterator
     friend class QgsFeatureIterator;
 
     //! Number of features already fetched by iterator
-    long mFetchedCount = 0;
+    long long mFetchedCount = 0;
 
     //! Status of compilation of filter expression
     CompileStatus mCompileStatus = NoCompilation;
@@ -211,7 +233,6 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      * and a local order by will be triggered instead.
      * By default returns FALSE
      *
-     * \since QGIS 2.14
      */
     virtual bool prepareOrderBy( const QList<QgsFeatureRequest::OrderByClause> &orderBys );
 
@@ -219,7 +240,6 @@ class CORE_EXPORT QgsAbstractFeatureIterator
      * Setup the orderby. Internally calls prepareOrderBy and if FALSE is returned will
      * cache all features and order them with local expression evaluation.
      *
-     * \since QGIS 2.14
      */
     void setupOrderBy( const QList<QgsFeatureRequest::OrderByClause> &orderBys );
 };
@@ -227,11 +247,10 @@ class CORE_EXPORT QgsAbstractFeatureIterator
 
 /**
  * \ingroup core
- * Helper template that cares of two things: 1. automatic deletion of source if owned by iterator, 2. notification of open/closed iterator.
+ * \brief Helper template that cares of two things: 1. automatic deletion of source if owned by iterator, 2. notification of open/closed iterator.
  * \note not available in Python bindings (although present in SIP file)
 */
-template<typename T>
-class QgsAbstractFeatureIteratorFromSource : public QgsAbstractFeatureIterator
+template<typename T> class QgsAbstractFeatureIteratorFromSource : public QgsAbstractFeatureIterator
 {
   public:
     QgsAbstractFeatureIteratorFromSource( T *source, bool ownSource, const QgsFeatureRequest &request )
@@ -259,13 +278,13 @@ class QgsAbstractFeatureIteratorFromSource : public QgsAbstractFeatureIterator
 
 /**
  * \ingroup core
- * Wrapper for iterator of features from vector data provider or vector layer
+ * \brief Wrapper for iterator of features from vector data provider or vector layer.
  */
 class CORE_EXPORT QgsFeatureIterator
 {
   public:
-
 #ifdef SIP_RUN
+    // clang-format off
     QgsFeatureIterator *__iter__();
     % MethodCode
     sipRes = sipCpp;
@@ -273,7 +292,7 @@ class CORE_EXPORT QgsFeatureIterator
 
     SIP_PYOBJECT __next__() SIP_TYPEHINT( QgsFeature );
     % MethodCode
-    std::unique_ptr< QgsFeature > f = qgis::make_unique< QgsFeature >();
+    auto f = std::make_unique< QgsFeature >();
     bool result = false;
     Py_BEGIN_ALLOW_THREADS
     result = ( sipCpp->nextFeature( *f ) );
@@ -285,10 +304,12 @@ class CORE_EXPORT QgsFeatureIterator
       PyErr_SetString( PyExc_StopIteration, "" );
     }
     % End
+// clang-format on
 #endif
 
-    //! Construct invalid iterator
-    QgsFeatureIterator() = default;
+      //! Construct invalid iterator
+      QgsFeatureIterator()
+      = default;
     //! Construct a valid iterator
     QgsFeatureIterator( QgsAbstractFeatureIterator *iter SIP_TRANSFER );
     //! Copy constructor copies the iterator, increases ref.count
@@ -298,8 +319,19 @@ class CORE_EXPORT QgsFeatureIterator
 
     QgsFeatureIterator &operator=( const QgsFeatureIterator &other );
 
+    /**
+     * Fetch next feature and stores in \a f, returns TRUE on success.
+     */
     bool nextFeature( QgsFeature &f );
+
+    /**
+     * Resets the iterator to the starting position.
+     */
     bool rewind();
+
+    /**
+     * Call to end the iteration. This frees any resources used by the iterator.
+     */
     bool close();
 
     /**
@@ -309,7 +341,6 @@ class CORE_EXPORT QgsFeatureIterator
      *
      * \see isClosed to check if the iterator successfully completed and returned all the features.
      *
-     * \since QGIS 3.0
      */
     bool isValid() const;
 
@@ -322,13 +353,11 @@ class CORE_EXPORT QgsFeatureIterator
      * nextFeature()/fetchFeature() iteration might be very long. A typical use case is the
      * WFS provider.
      * \note not available in Python bindings
-     * \since QGIS 2.16
      */
     void setInterruptionChecker( QgsFeedback *interruptionChecker ) SIP_SKIP;
 
     /**
      * Returns the status of expression compilation for filter expression requests.
-     * \since QGIS 2.16
      */
     QgsAbstractFeatureIterator::CompileStatus compileStatus() const { return mIter->compileStatus(); }
 
@@ -340,13 +369,11 @@ class CORE_EXPORT QgsFeatureIterator
      */
     bool compileFailed() const { return mIter->compileFailed(); }
 
-    friend bool operator== ( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 ) SIP_SKIP;
-    friend bool operator!= ( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 ) SIP_SKIP;
+    friend bool operator==( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 ) SIP_SKIP;
+    friend bool operator!=( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 ) SIP_SKIP;
 
   protected:
     QgsAbstractFeatureIterator *mIter = nullptr;
-
-
 };
 
 #ifndef SIP_RUN
@@ -397,12 +424,12 @@ inline bool QgsFeatureIterator::isClosed() const
   return mIter ? mIter->mClosed && !mIter->mZombie : true;
 }
 
-inline bool operator== ( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 )
+inline bool operator==( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 )
 {
   return fi1.mIter == fi2.mIter;
 }
 
-inline bool operator!= ( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 )
+inline bool operator!=( const QgsFeatureIterator &fi1, const QgsFeatureIterator &fi2 )
 {
   return !( fi1 == fi2 );
 }

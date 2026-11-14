@@ -12,12 +12,17 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgsapplication.h"
 #include "qgswcsdataitems.h"
-#include "qgswcsprovider.h"
-#include "qgslogger.h"
+
 #include "qgsdatasourceuri.h"
+#include "qgslogger.h"
 #include "qgsowsconnection.h"
+
+#include <QString>
+
+#include "moc_qgswcsdataitems.cpp"
+
+using namespace Qt::StringLiterals;
 
 #ifdef HAVE_GUI
 #include "qgswcssourceselect.h"
@@ -27,11 +32,11 @@
 #include <QSettings>
 
 QgsWCSConnectionItem::QgsWCSConnectionItem( QgsDataItem *parent, QString name, QString path, QString uri )
-  : QgsDataCollectionItem( parent, name, path, QStringLiteral( "WCS" ) )
+  : QgsDataCollectionItem( parent, name, path, u"WCS"_s )
   , mUri( uri )
 {
-  mIconName = QStringLiteral( "mIconConnect.svg" );
-  mCapabilities |= Collapse;
+  mIconName = u"mIconConnect.svg"_s;
+  mCapabilities |= Qgis::BrowserItemCapability::Collapse;
 }
 
 QVector<QgsDataItem *> QgsWCSConnectionItem::createChildren()
@@ -52,7 +57,8 @@ QVector<QgsDataItem *> QgsWCSConnectionItem::createChildren()
     return children;
   }
 
-  Q_FOREACH ( const QgsWcsCoverageSummary &coverageSummary, mWcsCapabilities.capabilities().contents.coverageSummary )
+  const QVector<QgsWcsCoverageSummary> summaries = mWcsCapabilities.capabilities().contents.coverageSummary;
+  for ( const QgsWcsCoverageSummary &coverageSummary : summaries )
   {
     // Attention, the name may be empty
     QgsDebugMsgLevel( QString::number( coverageSummary.orderId ) + ' ' + coverageSummary.identifier + ' ' + coverageSummary.title, 2 );
@@ -83,8 +89,10 @@ bool QgsWCSConnectionItem::equal( const QgsDataItem *other )
 
 // ---------------------------------------------------------------------------
 
-QgsWCSLayerItem::QgsWCSLayerItem( QgsDataItem *parent, QString name, QString path, const QgsWcsCapabilitiesProperty &capabilitiesProperty, const QgsDataSourceUri &dataSourceUri, const QgsWcsCoverageSummary &coverageSummary )
-  : QgsLayerItem( parent, name, path, QString(), QgsLayerItem::Raster, QStringLiteral( "wcs" ) )
+QgsWCSLayerItem::QgsWCSLayerItem(
+  QgsDataItem *parent, QString name, QString path, const QgsWcsCapabilitiesProperty &capabilitiesProperty, const QgsDataSourceUri &dataSourceUri, const QgsWcsCoverageSummary &coverageSummary
+)
+  : QgsLayerItem( parent, name, path, QString(), Qgis::BrowserLayerType::Raster, u"wcs"_s )
   , mCapabilities( capabilitiesProperty )
   , mDataSourceUri( dataSourceUri )
   , mCoverageSummary( coverageSummary )
@@ -93,7 +101,7 @@ QgsWCSLayerItem::QgsWCSLayerItem( QgsDataItem *parent, QString name, QString pat
   QgsDebugMsgLevel( "uri = " + mDataSourceUri.encodedUri(), 2 );
   mUri = createUri();
   // Populate everything, it costs nothing, all info about layers is collected
-  Q_FOREACH ( const QgsWcsCoverageSummary &coverageSummary, mCoverageSummary.coverageSummary )
+  for ( const QgsWcsCoverageSummary &coverageSummary : std::as_const( mCoverageSummary.coverageSummary ) )
   {
     // Attention, the name may be empty
     QgsDebugMsgLevel( QString::number( coverageSummary.orderId ) + ' ' + coverageSummary.identifier + ' ' + coverageSummary.title, 2 );
@@ -104,9 +112,9 @@ QgsWCSLayerItem::QgsWCSLayerItem( QgsDataItem *parent, QString name, QString pat
 
   if ( mChildren.isEmpty() )
   {
-    mIconName = QStringLiteral( "mIconWcs.svg" );
+    mIconName = u"mIconWcs.svg"_s;
   }
-  setState( Populated );
+  setState( Qgis::BrowserItemState::Populated );
 }
 
 QString QgsWCSLayerItem::createUri()
@@ -115,7 +123,7 @@ QString QgsWCSLayerItem::createUri()
     return QString(); // layer collection
 
   // Number of styles must match number of layers
-  mDataSourceUri.setParam( QStringLiteral( "identifier" ), mCoverageSummary.identifier );
+  mDataSourceUri.setParam( u"identifier"_s, mCoverageSummary.identifier );
 
   // TODO(?): with WCS 1.0 GetCapabilities does not contain CRS and formats,
   // to get them we would need to call QgsWcsCapabilities::describeCoverage
@@ -129,9 +137,9 @@ QString QgsWCSLayerItem::createUri()
   //QStringList mimes = QgsGdalProvider::supportedMimes().keys();
   QStringList mimes;
   // prefer tiff
-  if ( mimes.contains( QStringLiteral( "image/tiff" ) ) && mCoverageSummary.supportedFormat.contains( QStringLiteral( "image/tiff" ) ) )
+  if ( mimes.contains( u"image/tiff"_s ) && mCoverageSummary.supportedFormat.contains( u"image/tiff"_s ) )
   {
-    format = QStringLiteral( "image/tiff" );
+    format = u"image/tiff"_s;
   }
   else
   {
@@ -147,7 +155,7 @@ QString QgsWCSLayerItem::createUri()
   }
   if ( !format.isEmpty() )
   {
-    mDataSourceUri.setParam( QStringLiteral( "format" ), format );
+    mDataSourceUri.setParam( u"format"_s, format );
   }
 
   QString crs;
@@ -155,7 +163,7 @@ QString QgsWCSLayerItem::createUri()
   // TODO: prefer project CRS
   // get first known if possible
   QgsCoordinateReferenceSystem testCrs;
-  Q_FOREACH ( const QString &c, mCoverageSummary.supportedCrs )
+  for ( const QString &c : std::as_const( mCoverageSummary.supportedCrs ) )
   {
     testCrs = QgsCoordinateReferenceSystem::fromOgcWmsCrs( c );
     if ( testCrs.isValid() )
@@ -170,7 +178,7 @@ QString QgsWCSLayerItem::createUri()
   }
   if ( !crs.isEmpty() )
   {
-    mDataSourceUri.setParam( QStringLiteral( "crs" ), crs );
+    mDataSourceUri.setParam( u"crs"_s, crs );
   }
 
   return mDataSourceUri.encodedUri();
@@ -179,19 +187,20 @@ QString QgsWCSLayerItem::createUri()
 // ---------------------------------------------------------------------------
 
 QgsWCSRootItem::QgsWCSRootItem( QgsDataItem *parent, QString name, QString path )
-  : QgsConnectionsRootItem( parent, name, path, QStringLiteral( "WCS" ) )
+  : QgsConnectionsRootItem( parent, name, path, u"WCS"_s )
 {
-  mCapabilities |= Fast;
-  mIconName = QStringLiteral( "mIconWcs.svg" );
+  mCapabilities |= Qgis::BrowserItemCapability::Fast;
+  mIconName = u"mIconWcs.svg"_s;
   populate();
 }
 
-QVector<QgsDataItem *>QgsWCSRootItem::createChildren()
+QVector<QgsDataItem *> QgsWCSRootItem::createChildren()
 {
   QVector<QgsDataItem *> connections;
-  Q_FOREACH ( const QString &connName, QgsOwsConnection::connectionList( "WCS" ) )
+  const QStringList list = QgsOwsConnection::connectionList( "WCS" );
+  for ( const QString &connName : list )
   {
-    QgsOwsConnection connection( QStringLiteral( "WCS" ), connName );
+    QgsOwsConnection connection( u"WCS"_s, connName );
     QgsDataItem *conn = new QgsWCSConnectionItem( this, connName, mPath + '/' + connName, connection.uri().encodedUri() );
     connections.append( conn );
   }
@@ -217,17 +226,17 @@ void QgsWCSRootItem::onConnectionsChanged()
 // ---------------------------------------------------------------------------
 QString QgsWcsDataItemProvider::name()
 {
-  return QStringLiteral( "WCS" );
+  return u"WCS"_s;
 }
 
 QString QgsWcsDataItemProvider::dataProviderKey() const
 {
-  return QStringLiteral( "wcs" );
+  return u"wcs"_s;
 }
 
-int QgsWcsDataItemProvider::capabilities() const
+Qgis::DataItemProviderCapabilities QgsWcsDataItemProvider::capabilities() const
 {
-  return QgsDataProvider::Net;
+  return Qgis::DataItemProviderCapability::NetworkSources;
 }
 
 QgsDataItem *QgsWcsDataItemProvider::createDataItem( const QString &path, QgsDataItem *parentItem )
@@ -236,17 +245,17 @@ QgsDataItem *QgsWcsDataItemProvider::createDataItem( const QString &path, QgsDat
   if ( path.isEmpty() )
   {
     // Top level WCS
-    return new QgsWCSRootItem( parentItem, QStringLiteral( "WCS" ), QStringLiteral( "wcs:" ) );
+    return new QgsWCSRootItem( parentItem, u"WCS"_s, u"wcs:"_s );
   }
 
   // path schema: wcs:/connection name (used by OWS)
-  if ( path.startsWith( QLatin1String( "wcs:/" ) ) )
+  if ( path.startsWith( "wcs:/"_L1 ) )
   {
     QString connectionName = path.split( '/' ).last();
-    if ( QgsOwsConnection::connectionList( QStringLiteral( "WCS" ) ).contains( connectionName ) )
+    if ( QgsOwsConnection::connectionList( u"WCS"_s ).contains( connectionName ) )
     {
-      QgsOwsConnection connection( QStringLiteral( "WCS" ), connectionName );
-      return new QgsWCSConnectionItem( parentItem, QStringLiteral( "WCS" ), path, connection.uri().encodedUri() );
+      QgsOwsConnection connection( u"WCS"_s, connectionName );
+      return new QgsWCSConnectionItem( parentItem, u"WCS"_s, path, connection.uri().encodedUri() );
     }
   }
 

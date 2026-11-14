@@ -18,10 +18,10 @@
 #ifndef QGSMAPTOOLCHANGELABELPROPERTIES_H
 #define QGSMAPTOOLCHANGELABELPROPERTIES_H
 
-#include "qgsmaptoollabel.h"
 #include "qgis_app.h"
+#include "qgsmaptoollabel.h"
 
-class APP_EXPORT QgsMapToolChangeLabelProperties: public QgsMapToolLabel
+class APP_EXPORT QgsMapToolChangeLabelProperties : public QgsMapToolLabel
 {
     Q_OBJECT
 
@@ -30,20 +30,18 @@ class APP_EXPORT QgsMapToolChangeLabelProperties: public QgsMapToolLabel
 
     void canvasPressEvent( QgsMapMouseEvent *e ) override;
     void canvasReleaseEvent( QgsMapMouseEvent *e ) override;
+    void cadCanvasMoveEvent( QgsMapMouseEvent *e ) override;
 
   protected:
-
     /**
      * Applies the label property changes
      * \param changes attribute map of changes
-     * \since QGIS 2.9
      */
     void applyChanges( const QgsAttributeMap &changes );
 
   private slots:
 
     void dialogPropertiesApplied();
-
 };
 
 #endif // QGSMAPTOOLCHANGELABEL_H

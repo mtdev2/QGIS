@@ -19,10 +19,11 @@
 #define QGSMAPCANVASANNOTATIONITEM_H
 
 #ifdef SIP_RUN
-% ModuleHeaderCode
+//%ModuleHeaderCode
 // For ConvertToSubClassCode.
-#include <qgsmapcanvasannotationitem.h>
-% End
+#include "qgsmapcanvasannotationitem.h"
+
+//%End
 #endif
 
 #include "qgsmapcanvasitem.h"
@@ -33,36 +34,37 @@ class QgsAnnotation;
 /**
  * \class QgsMapCanvasAnnotationItem
  * \ingroup gui
- * An interactive map canvas item which displays a QgsAnnotation.
- * \since QGIS 3.0
+ * \brief An interactive map canvas item which displays a QgsAnnotation.
  */
-class GUI_EXPORT QgsMapCanvasAnnotationItem: public QObject, public QgsMapCanvasItem
+class GUI_EXPORT QgsMapCanvasAnnotationItem : public QObject, public QgsMapCanvasItem
 {
     Q_OBJECT
 
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( dynamic_cast<QgsMapCanvasAnnotationItem *>( sipCpp ) )
+    {
       sipType = sipType_QgsMapCanvasAnnotationItem;
+      *sipCppRet = dynamic_cast<QgsMapCanvasAnnotationItem *>( sipCpp );
+    }
     else
       sipType = nullptr;
-    SIP_END
+  SIP_END
 #endif
 
   public:
-
     //! Mouse actions for interacting with item
     enum MouseMoveAction
     {
-      NoAction, //!< No action
-      MoveMapPosition, //!< Moving annotation map position
-      MoveFramePosition, //!< Moving position of frame relative to annotation
-      ResizeFrameUp, //!< Resize frame up
-      ResizeFrameDown, //!< Resize frame down
-      ResizeFrameLeft, //!< Resize frame left
-      ResizeFrameRight, //!< Resize frame right
-      ResizeFrameLeftUp, //!< Resize frame left up
-      ResizeFrameRightUp, //!< Resize frame right up
+      NoAction,            //!< No action
+      MoveMapPosition,     //!< Moving annotation map position
+      MoveFramePosition,   //!< Moving position of frame relative to annotation
+      ResizeFrameUp,       //!< Resize frame up
+      ResizeFrameDown,     //!< Resize frame down
+      ResizeFrameLeft,     //!< Resize frame left
+      ResizeFrameRight,    //!< Resize frame right
+      ResizeFrameLeftUp,   //!< Resize frame left up
+      ResizeFrameRightUp,  //!< Resize frame right up
       ResizeFrameLeftDown, //!< Resize frame left down
       ResizeFrameRightDown //!< Resize frame right down
     };
@@ -76,7 +78,7 @@ class GUI_EXPORT QgsMapCanvasAnnotationItem: public QObject, public QgsMapCanvas
      * Returns the item's annotation.
      * \note not available in Python bindings
      */
-    const QgsAnnotation *annotation() const { return mAnnotation; } SIP_SKIP
+    const QgsAnnotation *annotation() const SIP_SKIP { return mAnnotation; }
 
     /**
      * Returns the item's annotation.
@@ -87,6 +89,7 @@ class GUI_EXPORT QgsMapCanvasAnnotationItem: public QObject, public QgsMapCanvas
 
     QRectF boundingRect() const override;
 
+    using QgsMapCanvasItem::paint;
     void paint( QPainter *painter ) override;
 
     /**
@@ -111,7 +114,6 @@ class GUI_EXPORT QgsMapCanvasAnnotationItem: public QObject, public QgsMapCanvas
     void annotationDeleted();
 
   private:
-
     //! Draws selection handles around the item
     void drawSelectionBoxes( QPainter *p ) const;
 
@@ -122,7 +124,6 @@ class GUI_EXPORT QgsMapCanvasAnnotationItem: public QObject, public QgsMapCanvas
 
     //! Bounding rect (including item frame and balloon)
     QRectF mBoundingRect;
-
 };
 
 #endif // QGSMAPCANVASANNOTATIONITEM_H

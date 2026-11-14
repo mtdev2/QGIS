@@ -16,13 +16,13 @@
 #ifndef QGSLAYOUTNEWITEMPROPERTIESDIALOG_H
 #define QGSLAYOUTNEWITEMPROPERTIESDIALOG_H
 
-#include "qgis_sip.h"
-#include "qgis_gui.h"
 #include "ui_qgslayoutnewitemproperties.h"
 
-#include "qgslayoutsize.h"
-#include "qgslayoutpoint.h"
+#include "qgis_gui.h"
+#include "qgis_sip.h"
 #include "qgslayoutitem.h"
+#include "qgslayoutpoint.h"
+#include "qgslayoutsize.h"
 
 /**
  * \ingroup gui
@@ -31,14 +31,12 @@
  * This is usually used only when constructing new layout items, allowing users to precisely
  * enter their sizes and positions.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsLayoutItemPropertiesDialog : public QDialog, private Ui::QgsLayoutNewItemPropertiesDialog
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutNewItemPropertiesDialog.
      */
@@ -93,12 +91,10 @@ class GUI_EXPORT QgsLayoutItemPropertiesDialog : public QDialog, private Ui::Qgs
     void setLayout( QgsLayout *layout );
 
   private:
-
     QgsLayout *mLayout = nullptr;
 
   private slots:
     void showHelp();
-
 };
 
 #endif // QGSLAYOUTNEWITEMPROPERTIESDIALOG_H

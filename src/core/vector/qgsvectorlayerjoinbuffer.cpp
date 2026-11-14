@@ -17,18 +17,22 @@
 
 #include "qgsvectorlayerjoinbuffer.h"
 
+#include "qgsauxiliarystorage.h"
 #include "qgsfeatureiterator.h"
 #include "qgslogger.h"
 #include "qgsproject.h"
 #include "qgsvectordataprovider.h"
-#include "qgsauxiliarystorage.h"
 
 #include <QDomElement>
+#include <QString>
+
+#include "moc_qgsvectorlayerjoinbuffer.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsVectorLayerJoinBuffer::QgsVectorLayerJoinBuffer( QgsVectorLayer *layer )
   : mLayer( layer )
-{
-}
+{}
 
 static QList<QgsVectorLayer *> _outEdges( QgsVectorLayer *vl )
 {
@@ -76,12 +80,6 @@ bool QgsVectorLayerJoinBuffer::addJoin( const QgsVectorLayerJoinInfo &joinInfo )
     return false;
   }
 
-  //cache joined layer to virtual memory if specified by user
-  if ( joinInfo.isUsingMemoryCache() )
-  {
-    cacheJoinLayer( mVectorJoins.last() );
-  }
-
   // Wait for notifications about changed fields in joined layer to propagate them.
   // During project load the joined layers possibly do not exist yet so the connection will not be created,
   // but then QgsProject makes sure to call createJoinCaches() which will do the connection.
@@ -91,28 +89,42 @@ bool QgsVectorLayerJoinBuffer::addJoin( const QgsVectorLayerJoinInfo &joinInfo )
     connectJoinedLayer( vl );
   }
 
+  if ( mLayer )
+  {
+    locker.unlock();
+    mLayer->updateFields();
+    locker.relock();
+  }
+
+  //cache joined layer to virtual memory if specified by user
+  if ( mLayer && joinInfo.isUsingMemoryCache() )
+  {
+    cacheJoinLayer( mVectorJoins.last() );
+  }
+
   locker.unlock();
 
-  emit joinedFieldsChanged();
   return true;
 }
 
 
 bool QgsVectorLayerJoinBuffer::removeJoin( const QString &joinLayerId )
 {
-  QMutexLocker locker( &mMutex );
   bool res = false;
-  for ( int i = 0; i < mVectorJoins.size(); ++i )
   {
-    if ( mVectorJoins.at( i ).joinLayerId() == joinLayerId )
+    QMutexLocker locker( &mMutex );
+    for ( int i = 0; i < mVectorJoins.size(); ++i )
     {
-      if ( QgsVectorLayer *vl = mVectorJoins.at( i ).joinLayer() )
+      if ( mVectorJoins.at( i ).joinLayerId() == joinLayerId )
       {
-        disconnect( vl, &QgsVectorLayer::updatedFields, this, &QgsVectorLayerJoinBuffer::joinedLayerUpdatedFields );
-      }
+        if ( QgsVectorLayer *vl = mVectorJoins.at( i ).joinLayer() )
+        {
+          disconnect( vl, &QgsVectorLayer::updatedFields, this, &QgsVectorLayerJoinBuffer::joinedLayerUpdatedFields );
+        }
 
-      mVectorJoins.removeAt( i );
-      res = true;
+        mVectorJoins.removeAt( i );
+        res = true;
+      }
     }
   }
 
@@ -139,7 +151,7 @@ void QgsVectorLayerJoinBuffer::cacheJoinLayer( QgsVectorLayerJoinInfo &joinInfo 
     joinInfo.cachedAttributes.clear();
 
     QgsFeatureRequest request;
-    request.setFlags( QgsFeatureRequest::NoGeometry );
+    request.setFlags( Qgis::FeatureRequestFlag::NoGeometry );
     // maybe user requested just a subset of layer's attributes
     // so we do not have to cache everything
     QVector<int> subsetIndices;
@@ -170,9 +182,27 @@ void QgsVectorLayerJoinBuffer::cacheJoinLayer( QgsVectorLayerJoinInfo &joinInfo 
       }
       else
       {
-        QgsAttributes attrs2 = attrs;
-        attrs2.remove( joinFieldIndex );  // skip the join field to avoid double field names (fields often have the same name)
-        joinInfo.cachedAttributes.insert( key, attrs2 );
+        QgsAttributes attributesCache;
+        for ( int i = 0; i < attrs.size(); i++ )
+        {
+          if ( i == joinFieldIndex )
+            continue;
+
+          QString joinInfoPrefix = joinInfo.prefix();
+          if ( joinInfoPrefix.isNull() ) // Default prefix 'layerName_' used
+            joinInfoPrefix = QString( "%1_" ).arg( cacheLayer->name() );
+
+          // Joined field name
+          const QString joinFieldName = joinInfoPrefix + cacheLayer->fields().names().at( i );
+
+          // Check for name collisions
+          int fieldIndex = mLayer->fields().indexFromName( joinFieldName );
+          if ( fieldIndex >= 0 && mLayer->fields().fieldOrigin( fieldIndex ) != Qgis::FieldOrigin::Join )
+            continue;
+
+          attributesCache.append( attrs.at( i ) );
+        }
+        joinInfo.cachedAttributes.insert( key, attributesCache );
       }
     }
     joinInfo.cacheDirty = false;
@@ -182,19 +212,23 @@ void QgsVectorLayerJoinBuffer::cacheJoinLayer( QgsVectorLayerJoinInfo &joinInfo 
 
 QVector<int> QgsVectorLayerJoinBuffer::joinSubsetIndices( QgsVectorLayer *joinLayer, const QStringList &joinFieldsSubset )
 {
+  return joinSubsetIndices( joinLayer->fields(), joinFieldsSubset );
+}
+
+QVector<int> QgsVectorLayerJoinBuffer::joinSubsetIndices( const QgsFields &joinLayerFields, const QStringList &joinFieldsSubset )
+{
   QVector<int> subsetIndices;
-  const QgsFields &fields = joinLayer->fields();
   for ( int i = 0; i < joinFieldsSubset.count(); ++i )
   {
     QString joinedFieldName = joinFieldsSubset.at( i );
-    int index = fields.lookupField( joinedFieldName );
+    int index = joinLayerFields.lookupField( joinedFieldName );
     if ( index != -1 )
     {
       subsetIndices.append( index );
     }
     else
     {
-      QgsDebugMsg( "Join layer subset field not found: " + joinedFieldName );
+      QgsDebugError( "Join layer subset field not found: " + joinedFieldName );
     }
   }
 
@@ -245,7 +279,7 @@ void QgsVectorLayerJoinBuffer::updateFields( QgsFields &fields )
       {
         QgsField f = joinFields.at( idx );
         f.setName( prefix + f.name() );
-        fields.append( f, QgsFields::OriginJoin, idx + ( joinIdx * 1000 ) );
+        fields.append( f, Qgis::FieldOrigin::Join, idx + ( joinIdx * 1000 ) );
       }
     }
   }
@@ -265,7 +299,7 @@ void QgsVectorLayerJoinBuffer::createJoinCaches()
 
 void QgsVectorLayerJoinBuffer::writeXml( QDomNode &layer_node, QDomDocument &document ) const
 {
-  QDomElement vectorJoinsElem = document.createElement( QStringLiteral( "vectorjoins" ) );
+  QDomElement vectorJoinsElem = document.createElement( u"vectorjoins"_s );
   layer_node.appendChild( vectorJoinsElem );
   QList< QgsVectorLayerJoinInfo >::const_iterator joinIt = mVectorJoins.constBegin();
   for ( ; joinIt != mVectorJoins.constEnd(); ++joinIt )
@@ -273,29 +307,29 @@ void QgsVectorLayerJoinBuffer::writeXml( QDomNode &layer_node, QDomDocument &doc
     if ( isAuxiliaryJoin( *joinIt ) )
       continue;
 
-    QDomElement joinElem = document.createElement( QStringLiteral( "join" ) );
+    QDomElement joinElem = document.createElement( u"join"_s );
 
-    joinElem.setAttribute( QStringLiteral( "targetFieldName" ), joinIt->targetFieldName() );
+    joinElem.setAttribute( u"targetFieldName"_s, joinIt->targetFieldName() );
 
-    joinElem.setAttribute( QStringLiteral( "joinLayerId" ), joinIt->joinLayerId() );
-    joinElem.setAttribute( QStringLiteral( "joinFieldName" ), joinIt->joinFieldName() );
+    joinElem.setAttribute( u"joinLayerId"_s, joinIt->joinLayerId() );
+    joinElem.setAttribute( u"joinFieldName"_s, joinIt->joinFieldName() );
 
-    joinElem.setAttribute( QStringLiteral( "memoryCache" ), joinIt->isUsingMemoryCache() );
-    joinElem.setAttribute( QStringLiteral( "dynamicForm" ), joinIt->isDynamicFormEnabled() );
-    joinElem.setAttribute( QStringLiteral( "editable" ), joinIt->isEditable() );
-    joinElem.setAttribute( QStringLiteral( "upsertOnEdit" ), joinIt->hasUpsertOnEdit() );
-    joinElem.setAttribute( QStringLiteral( "cascadedDelete" ), joinIt->hasCascadedDelete() );
+    joinElem.setAttribute( u"memoryCache"_s, joinIt->isUsingMemoryCache() );
+    joinElem.setAttribute( u"dynamicForm"_s, joinIt->isDynamicFormEnabled() );
+    joinElem.setAttribute( u"editable"_s, joinIt->isEditable() );
+    joinElem.setAttribute( u"upsertOnEdit"_s, joinIt->hasUpsertOnEdit() );
+    joinElem.setAttribute( u"cascadedDelete"_s, joinIt->hasCascadedDelete() );
 
     if ( joinIt->hasSubset() )
     {
-      QDomElement subsetElem = document.createElement( QStringLiteral( "joinFieldsSubset" ) );
+      QDomElement subsetElem = document.createElement( u"joinFieldsSubset"_s );
       const QStringList subsetNames = QgsVectorLayerJoinInfo::joinFieldNamesSubset( *joinIt );
 
       const auto constSubsetNames = subsetNames;
       for ( const QString &fieldName : constSubsetNames )
       {
-        QDomElement fieldElem = document.createElement( QStringLiteral( "field" ) );
-        fieldElem.setAttribute( QStringLiteral( "name" ), fieldName );
+        QDomElement fieldElem = document.createElement( u"field"_s );
+        fieldElem.setAttribute( u"name"_s, fieldName );
         subsetElem.appendChild( fieldElem );
       }
 
@@ -304,8 +338,8 @@ void QgsVectorLayerJoinBuffer::writeXml( QDomNode &layer_node, QDomDocument &doc
 
     if ( !joinIt->prefix().isNull() )
     {
-      joinElem.setAttribute( QStringLiteral( "customPrefix" ), joinIt->prefix() );
-      joinElem.setAttribute( QStringLiteral( "hasCustomPrefix" ), 1 );
+      joinElem.setAttribute( u"customPrefix"_s, joinIt->prefix() );
+      joinElem.setAttribute( u"hasCustomPrefix"_s, 1 );
     }
 
     vectorJoinsElem.appendChild( joinElem );
@@ -315,37 +349,37 @@ void QgsVectorLayerJoinBuffer::writeXml( QDomNode &layer_node, QDomDocument &doc
 void QgsVectorLayerJoinBuffer::readXml( const QDomNode &layer_node )
 {
   mVectorJoins.clear();
-  QDomElement vectorJoinsElem = layer_node.firstChildElement( QStringLiteral( "vectorjoins" ) );
+  QDomElement vectorJoinsElem = layer_node.firstChildElement( u"vectorjoins"_s );
   if ( !vectorJoinsElem.isNull() )
   {
-    QDomNodeList joinList = vectorJoinsElem.elementsByTagName( QStringLiteral( "join" ) );
+    QDomNodeList joinList = vectorJoinsElem.elementsByTagName( u"join"_s );
     for ( int i = 0; i < joinList.size(); ++i )
     {
       QDomElement infoElem = joinList.at( i ).toElement();
       QgsVectorLayerJoinInfo info;
-      info.setJoinFieldName( infoElem.attribute( QStringLiteral( "joinFieldName" ) ) );
+      info.setJoinFieldName( infoElem.attribute( u"joinFieldName"_s ) );
       // read layer ID - to turn it into layer object, caller will need to call resolveReferences() later
-      info.setJoinLayerId( infoElem.attribute( QStringLiteral( "joinLayerId" ) ) );
-      info.setTargetFieldName( infoElem.attribute( QStringLiteral( "targetFieldName" ) ) );
-      info.setUsingMemoryCache( infoElem.attribute( QStringLiteral( "memoryCache" ) ).toInt() );
-      info.setDynamicFormEnabled( infoElem.attribute( QStringLiteral( "dynamicForm" ) ).toInt() );
-      info.setEditable( infoElem.attribute( QStringLiteral( "editable" ) ).toInt() );
-      info.setUpsertOnEdit( infoElem.attribute( QStringLiteral( "upsertOnEdit" ) ).toInt() );
-      info.setCascadedDelete( infoElem.attribute( QStringLiteral( "cascadedDelete" ) ).toInt() );
+      info.setJoinLayerId( infoElem.attribute( u"joinLayerId"_s ) );
+      info.setTargetFieldName( infoElem.attribute( u"targetFieldName"_s ) );
+      info.setUsingMemoryCache( infoElem.attribute( u"memoryCache"_s ).toInt() );
+      info.setDynamicFormEnabled( infoElem.attribute( u"dynamicForm"_s ).toInt() );
+      info.setEditable( infoElem.attribute( u"editable"_s ).toInt() );
+      info.setUpsertOnEdit( infoElem.attribute( u"upsertOnEdit"_s ).toInt() );
+      info.setCascadedDelete( infoElem.attribute( u"cascadedDelete"_s ).toInt() );
 
-      QDomElement subsetElem = infoElem.firstChildElement( QStringLiteral( "joinFieldsSubset" ) );
+      QDomElement subsetElem = infoElem.firstChildElement( u"joinFieldsSubset"_s );
       if ( !subsetElem.isNull() )
       {
         QStringList *fieldNames = new QStringList;
-        QDomNodeList fieldNodes = infoElem.elementsByTagName( QStringLiteral( "field" ) );
+        QDomNodeList fieldNodes = infoElem.elementsByTagName( u"field"_s );
         fieldNames->reserve( fieldNodes.count() );
         for ( int i = 0; i < fieldNodes.count(); ++i )
-          *fieldNames << fieldNodes.at( i ).toElement().attribute( QStringLiteral( "name" ) );
+          *fieldNames << fieldNodes.at( i ).toElement().attribute( u"name"_s );
         info.setJoinFieldNamesSubset( fieldNames );
       }
 
-      if ( infoElem.attribute( QStringLiteral( "hasCustomPrefix" ) ).toInt() )
-        info.setPrefix( infoElem.attribute( QStringLiteral( "customPrefix" ) ) );
+      if ( infoElem.attribute( u"hasCustomPrefix"_s ).toInt() )
+        info.setPrefix( infoElem.attribute( u"customPrefix"_s ) );
       else
         info.setPrefix( QString() );
 
@@ -360,7 +394,7 @@ void QgsVectorLayerJoinBuffer::resolveReferences( QgsProject *project )
   for ( QgsVectorJoinList::iterator it = mVectorJoins.begin(); it != mVectorJoins.end(); ++it )
   {
     if ( it->joinLayer() )
-      continue;  // already resolved
+      continue; // already resolved
 
     if ( QgsVectorLayer *joinedLayer = qobject_cast<QgsVectorLayer *>( project->mapLayer( it->joinLayerId() ) ) )
     {
@@ -385,7 +419,7 @@ int QgsVectorLayerJoinBuffer::joinedFieldsOffset( const QgsVectorLayerJoinInfo *
 
   for ( int i = 0; i < fields.count(); ++i )
   {
-    if ( fields.fieldOrigin( i ) != QgsFields::OriginJoin )
+    if ( fields.fieldOrigin( i ) != Qgis::FieldOrigin::Join )
       continue;
 
     if ( fields.fieldOriginIndex( i ) / 1000 == joinIndex )
@@ -396,7 +430,7 @@ int QgsVectorLayerJoinBuffer::joinedFieldsOffset( const QgsVectorLayerJoinInfo *
 
 const QgsVectorLayerJoinInfo *QgsVectorLayerJoinBuffer::joinForFieldIndex( int index, const QgsFields &fields, int &sourceFieldIndex ) const
 {
-  if ( fields.fieldOrigin( index ) != QgsFields::OriginJoin )
+  if ( fields.fieldOrigin( index ) != Qgis::FieldOrigin::Join )
     return nullptr;
 
   int originIndex = fields.fieldOriginIndex( index );
@@ -491,6 +525,7 @@ void QgsVectorLayerJoinBuffer::joinedLayerUpdatedFields()
     if ( joinedLayer == it->joinLayer() )
     {
       it->cachedAttributes.clear();
+      it->cacheDirty = true;
       cacheJoinLayer( *it );
     }
   }
@@ -543,7 +578,7 @@ bool QgsVectorLayerJoinBuffer::addFeatures( QgsFeatureList &features, QgsFeature
     {
       QgsFeatureList joinFeatures;
 
-      for ( const QgsFeature &feature : qgis::as_const( features ) )
+      for ( const QgsFeature &feature : std::as_const( features ) )
       {
         const QgsFeature joinFeature = info.extractJoinedFeature( feature );
 
@@ -553,7 +588,7 @@ bool QgsVectorLayerJoinBuffer::addFeatures( QgsFeatureList &features, QgsFeature
         const QString filter = QgsExpression::createFieldEqualityExpression( info.joinFieldName(), idFieldValue.toString() );
 
         QgsFeatureRequest request;
-        request.setFlags( QgsFeatureRequest::NoGeometry );
+        request.setFlags( Qgis::FeatureRequestFlag::NoGeometry );
         request.setNoAttributes();
         request.setFilterExpression( filter );
         request.setLimit( 1 );
@@ -596,7 +631,7 @@ bool QgsVectorLayerJoinBuffer::addFeatures( QgsFeatureList &features, QgsFeature
             if ( field.name() == info.joinFieldName() )
               continue;
 
-            if ( !joinFeature.attribute( field.name() ).isNull() )
+            if ( !QgsVariantUtils::isNull( joinFeature.attribute( field.name() ) ) )
             {
               notNullFields = true;
               break;
@@ -617,7 +652,7 @@ bool QgsVectorLayerJoinBuffer::addFeatures( QgsFeatureList &features, QgsFeature
 
 bool QgsVectorLayerJoinBuffer::changeAttributeValue( QgsFeatureId fid, int field, const QVariant &newValue, const QVariant &oldValue )
 {
-  if ( mLayer->fields().fieldOrigin( field ) != QgsFields::OriginJoin )
+  if ( mLayer->fields().fieldOrigin( field ) != Qgis::FieldOrigin::Join )
     return false;
 
   int srcFieldIndex;

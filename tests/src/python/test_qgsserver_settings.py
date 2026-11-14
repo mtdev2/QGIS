@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for QgsServerSettings.
 
 From build dir, run: ctest -R PyQgsServerSettings -V
@@ -9,21 +8,23 @@ the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 
 """
-__author__ = 'Paul Blottiere'
-__date__ = '20/12/2016'
-__copyright__ = 'Copyright 2016, The QGIS Project'
+
+__author__ = "Paul Blottiere"
+__date__ = "20/12/2016"
+__copyright__ = "Copyright 2016, The QGIS Project"
 
 import os
 
-from qgis.PyQt.QtCore import QCoreApplication
-
-from utilities import unitTestDataPath
+from qgis.core import QgsApplication
+from qgis.PyQt.QtCore import QCoreApplication, QTemporaryDir
+from qgis.server import QgsServer, QgsServerSettings, QgsServerSettingsEnv
 from qgis.testing import unittest
-from qgis.server import QgsServerSettings, QgsServerSettingsEnv
+from utilities import unitTestDataPath
+
+DEFAULT_CACHE_SIZE = 0  # Smart cache size
 
 
 class TestQgsServerSettings(unittest.TestCase):
-
     def setUp(self):
         self.settings = QgsServerSettings()
         self.testdata_path = unitTestDataPath("qgis_server_settings")
@@ -104,7 +105,7 @@ class TestQgsServerSettings(unittest.TestCase):
     def test_env_cache_size(self):
         env = "QGIS_SERVER_CACHE_SIZE"
 
-        self.assertEqual(self.settings.cacheSize(), 50 * 1024 * 1024)
+        self.assertEqual(self.settings.cacheSize(), DEFAULT_CACHE_SIZE)
 
         os.environ[env] = "1024"
         self.settings.load()
@@ -181,7 +182,7 @@ class TestQgsServerSettings(unittest.TestCase):
     def test_options_path_conf0(self):
         env = "QGIS_OPTIONS_PATH"
         dpath = "conf0"
-        ini = "{0}.ini".format(os.path.join(self.testdata_path, dpath))
+        ini = f"{os.path.join(self.testdata_path, dpath)}.ini"
         QCoreApplication.setOrganizationName(dpath)
 
         # load settings
@@ -205,7 +206,7 @@ class TestQgsServerSettings(unittest.TestCase):
     def test_options_path_conf1(self):
         env = "QGIS_OPTIONS_PATH"
         dpath = "conf1"
-        ini = "{0}.ini".format(os.path.join(self.testdata_path, dpath))
+        ini = f"{os.path.join(self.testdata_path, dpath)}.ini"
         QCoreApplication.setOrganizationName(dpath)
 
         # load settings
@@ -258,5 +259,37 @@ class TestQgsServerSettings(unittest.TestCase):
         self.assertEqual(name, "QGIS_SERVER_LANDING_PAGE_PROJECTS_DIRECTORIES")
 
 
-if __name__ == '__main__':
+class TestQgsServerSettingsCache(unittest.TestCase):
+    def test_env_cache_settings(self):
+        env_cache_size = "QGIS_SERVER_CACHE_SIZE"
+        env_cache_directory = "QGIS_SERVER_CACHE_DIRECTORY"
+
+        temp_dir = QTemporaryDir()
+        temp_path = temp_dir.path()
+        log_path = os.path.join(temp_path, "qgisserv.log")
+
+        # set environment variables for cache settings
+        os.environ[env_cache_size] = "4096"
+        os.environ[env_cache_directory] = os.path.join(temp_path, "cache")
+        os.environ["QGIS_SERVER_LOG_LEVEL"] = "0"
+        os.environ["QGIS_SERVER_LOG_FILE"] = log_path
+
+        app = QgsApplication([], False, "server")
+        server = QgsServer()
+        # Note: QgsNetworkDiskCache is not in the bindings
+        #        so we cannot access it from nam
+        # Check the logs for maximumCacheSize and cacheDirectory
+        with open(log_path) as log_file:
+            logs = log_file.read()
+            self.assertIn("maximumCacheSize: 4096", logs)
+            self.assertIn("cacheDirectory: " + os.path.join(temp_path, "cache"), logs)
+
+        # clear environment variables
+        os.environ.pop(env_cache_size)
+        os.environ.pop(env_cache_directory)
+        os.environ.pop("QGIS_SERVER_LOG_LEVEL")
+        os.environ.pop("QGIS_SERVER_LOG_FILE")
+
+
+if __name__ == "__main__":
     unittest.main()

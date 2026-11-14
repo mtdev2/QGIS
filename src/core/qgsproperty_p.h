@@ -26,18 +26,18 @@
 // version without notice, or even be removed.
 //
 
-#define SIP_NO_FILE
 
-#include "qgis_core.h"
-#include <QSharedData>
-#include <QVariant>
 #include "qgsexpression.h"
 #include "qgspropertytransformer.h"
+
+#include <QSharedData>
+#include <QVariant>
+
+#define SIP_NO_FILE
 
 class QgsPropertyPrivate : public QSharedData
 {
   public:
-
     QgsPropertyPrivate() = default;
 
     QgsPropertyPrivate( const QgsPropertyPrivate &other )
@@ -55,18 +55,15 @@ class QgsPropertyPrivate : public QSharedData
       , expressionReferencedCols( other.expressionReferencedCols )
     {}
 
-    ~QgsPropertyPrivate()
-    {
-      delete transformer;
-    }
+    ~QgsPropertyPrivate() {}
 
-    int type = 0;
+    Qgis::PropertyType type = Qgis::PropertyType::Invalid;
 
     //! Stores whether the property is currently active
     bool active = true;
 
     //! Optional transformer
-    QgsPropertyTransformer *transformer = nullptr;
+    std::unique_ptr<QgsPropertyTransformer> transformer;
 
     // StaticData
     QVariant staticValue;

@@ -16,57 +16,61 @@
  ***************************************************************************/
 
 #include "qgsapplication.h"
+#include "qgsfontutils.h"
 #include "qgslayout.h"
-#include "qgsmultirenderchecker.h"
 #include "qgslayoutitemmap.h"
 #include "qgslayoutitemmapgrid.h"
+#include "qgsmarkersymbol.h"
 #include "qgsmarkersymbollayer.h"
-#include "qgsfontutils.h"
 #include "qgsproject.h"
-#include <QObject>
 #include "qgstest.h"
 
-class TestQgsLayoutMapGrid : public QObject
+#include <QObject>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+class TestQgsLayoutMapGrid : public QgsTest
 {
     Q_OBJECT
 
   public:
+    TestQgsLayoutMapGrid()
+      : QgsTest( u"Layout Map Grid Tests"_s, u"composer_mapgrid"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
-    void grid(); //test if grid and grid annotation works
-    void reprojected(); //test if reprojected grid works
-    void crossGrid(); //test if grid "cross" mode works
-    void markerGrid(); //test if grid "marker" mode works
-    void frameOnly(); //test if grid "frame/annotation" mode works
-    void zebraStyle(); //test zebra map border style
-    void zebraStyleSides(); //test zebra border on certain sides
-    void zebraStyleMargin(); //test zebra map border style
-    void zebraStyleNautical(); //test zebra map border style
-    void frameDivisions(); //test filtering frame divisions
-    void annotationFilter(); //test filtering annotations
-    void interiorTicks(); //test interior tick mode
-    void interiorTicksMargin(); //test interior tick mode
-    void interiorTicksAnnotated(); //test interior tick mode with annotations
-    void exteriorTicks(); //test exterior tick mode
-    void exteriorTicksMargin(); //test exterior tick mode
-    void exteriorTicksAnnotated(); //test exterior tick mode with annotations
-    void interiorExteriorTicks(); //test interior & exterior tick mode
-    void interiorExteriorTicksMargin(); //test interior & exterior tick mode
+    void grid();                           //test if grid and grid annotation works
+    void reprojected();                    //test if reprojected grid works
+    void crossGrid();                      //test if grid "cross" mode works
+    void markerGrid();                     //test if grid "marker" mode works
+    void frameOnly();                      //test if grid "frame/annotation" mode works
+    void zebraStyle();                     //test zebra map border style
+    void zebraStyleSides();                //test zebra border on certain sides
+    void zebraStyleMargin();               //test zebra map border style
+    void zebraStyleNautical();             //test zebra map border style
+    void frameDivisions();                 //test filtering frame divisions
+    void annotationFilter();               //test filtering annotations
+    void interiorTicks();                  //test interior tick mode
+    void interiorTicksMargin();            //test interior tick mode
+    void interiorTicksAnnotated();         //test interior tick mode with annotations
+    void exteriorTicks();                  //test exterior tick mode
+    void exteriorTicksMargin();            //test exterior tick mode
+    void exteriorTicksAnnotated();         //test exterior tick mode with annotations
+    void interiorExteriorTicks();          //test interior & exterior tick mode
+    void interiorExteriorTicksMargin();    //test interior & exterior tick mode
     void interiorExteriorTicksAnnotated(); //test interior & exterior tick mode with annotations
-    void lineBorder(); //test line border frame mode
-    void lineBorderMargin(); //test line border frame mode
-    void lineBorderNautical(); //test line border frame mode
-    void lineBorderAnnotated(); //test line border frame with annotations
-    void annotationFormats(); //various tests for annotation formats
-    void descendingAnnotations(); //test descending annotation direction
-
-  private:
-    QString mReport;
+    void lineBorder();                     //test line border frame mode
+    void lineBorderMargin();               //test line border frame mode
+    void lineBorderNautical();             //test line border frame mode
+    void lineBorderAnnotated();            //test line border frame with annotations
+    void annotationFormats();              //various tests for annotation formats
+    void descendingAnnotations();          //test descending annotation direction
+    void dataDefinedDrawAnnotation();
+    void dataDefinedDrawAnnotationCountAndIndex();
 };
 
 void TestQgsLayoutMapGrid::initTestCase()
@@ -74,36 +78,17 @@ void TestQgsLayoutMapGrid::initTestCase()
   QgsApplication::init();
   QgsApplication::initQgis();
 
-  QgsFontUtils::loadStandardTestFonts( QStringList() << QStringLiteral( "Bold" ) );
-
-  mReport = QStringLiteral( "<h1>Composer Map Grid Tests</h1>\n" );
+  QgsFontUtils::loadStandardTestFonts( QStringList() << u"Bold"_s );
 }
 
 void TestQgsLayoutMapGrid::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
-
   QgsApplication::exitQgis();
-}
-
-void TestQgsLayoutMapGrid::init()
-{
-}
-
-void TestQgsLayoutMapGrid::cleanup()
-{
 }
 
 void TestQgsLayoutMapGrid::grid()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -113,7 +98,7 @@ void TestQgsLayoutMapGrid::grid()
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
 
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 255, 0, 0 ) );
   format.setOpacity( 150.0 / 255.0 );
   map->grid()->setAnnotationTextFormat( format );
@@ -130,18 +115,15 @@ void TestQgsLayoutMapGrid::grid()
 
   map->grid()->setAnnotationEnabled( true );
   map->grid()->setGridLineColor( QColor( 0, 255, 0 ) );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::HideAll, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::HideAll, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::Horizontal, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::Horizontal, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::HideAll, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::HideAll, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::Horizontal, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::Horizontal, Qgis::MapGridBorderSide::Bottom );
   map->grid()->setBlendMode( QPainter::CompositionMode_Overlay );
   map->updateBoundingRect();
-  QgsLayoutChecker checker( QStringLiteral( "composermap_grid" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_grid"_s, &l );
   map->grid()->setEnabled( false );
   map->grid()->setAnnotationEnabled( false );
   QVERIFY( testResult );
@@ -149,7 +131,7 @@ void TestQgsLayoutMapGrid::grid()
 
 void TestQgsLayoutMapGrid::reprojected()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -158,7 +140,7 @@ void TestQgsLayoutMapGrid::reprojected()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -168,31 +150,29 @@ void TestQgsLayoutMapGrid::reprojected()
   l.addLayoutItem( map );
 
   map->setExtent( QgsRectangle( -243577.565, 2939084.773, 1215622.435, 3668684.773 ) );
-  QgsCoordinateReferenceSystem geographic = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:4326" ) );
+  const QgsCoordinateReferenceSystem geographic = QgsCoordinateReferenceSystem( u"EPSG:4326"_s );
   map->grid()->setCrs( geographic );
   map->grid()->setEnabled( true );
   map->grid()->setIntervalX( 1 );
   map->grid()->setIntervalY( 1 );
   map->grid()->setAnnotationEnabled( false );
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::ExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::ExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->setFrameEnabled( false );
   map->updateBoundingRect();
-  QgsLayoutChecker checker( QStringLiteral( "composermap_gridreprojected" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_gridreprojected"_s, &l );
 
-  bool testResult = checker.testLayout( mReport, 0, 0 );
   map->grid()->setEnabled( false );
   map->grid()->setCrs( crs );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->setFrameEnabled( true );
   QVERIFY( testResult );
 }
 
 void TestQgsLayoutMapGrid::crossGrid()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -201,7 +181,7 @@ void TestQgsLayoutMapGrid::crossGrid()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -212,17 +192,14 @@ void TestQgsLayoutMapGrid::crossGrid()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::Cross );
+  map->grid()->setStyle( Qgis::MapGridStyle::LineCrosses );
   map->grid()->setCrossLength( 2.0 );
   map->grid()->setAnnotationEnabled( false );
   map->grid()->setGridLineColor( QColor( 0, 255, 0 ) );
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
   map->updateBoundingRect();
-  QgsLayoutChecker checker( QStringLiteral( "composermap_crossgrid" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::Solid );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_crossgrid"_s, &l );
+  map->grid()->setStyle( Qgis::MapGridStyle::Lines );
   map->grid()->setEnabled( false );
   map->grid()->setAnnotationEnabled( false );
   QVERIFY( testResult );
@@ -230,7 +207,7 @@ void TestQgsLayoutMapGrid::crossGrid()
 
 void TestQgsLayoutMapGrid::markerGrid()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -239,27 +216,24 @@ void TestQgsLayoutMapGrid::markerGrid()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
   map->grid()->setGridLineWidth( 0.5 );
   map->grid()->setGridLineColor( QColor( 0, 0, 0 ) );
-  static_cast< QgsSimpleMarkerSymbolLayer * >( map->grid()->markerSymbol()->symbolLayer( 0 ) )->setStrokeColor( Qt::black );
+  static_cast<QgsSimpleMarkerSymbolLayer *>( map->grid()->markerSymbol()->symbolLayer( 0 ) )->setStrokeColor( Qt::black );
   map->updateBoundingRect();
   l.addLayoutItem( map );
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::Markers );
+  map->grid()->setStyle( Qgis::MapGridStyle::Markers );
   map->grid()->setAnnotationEnabled( false );
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
   map->updateBoundingRect();
-  QgsLayoutChecker checker( QStringLiteral( "composermap_markergrid" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::Solid );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_markergrid"_s, &l );
+  map->grid()->setStyle( Qgis::MapGridStyle::Lines );
   map->grid()->setEnabled( false );
   map->grid()->setAnnotationEnabled( false );
   QVERIFY( testResult );
@@ -267,7 +241,7 @@ void TestQgsLayoutMapGrid::markerGrid()
 
 void TestQgsLayoutMapGrid::frameOnly()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -276,7 +250,7 @@ void TestQgsLayoutMapGrid::frameOnly()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -287,28 +261,25 @@ void TestQgsLayoutMapGrid::frameOnly()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( false );
   //set a frame for testing
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::Zebra );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::Zebra );
   map->grid()->setFrameWidth( 2.0 );
   map->grid()->setFramePenSize( 0.5 );
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
   map->updateBoundingRect();
-  QgsLayoutChecker checker( QStringLiteral( "composermap_gridframeonly" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::Solid );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_gridframeonly"_s, &l );
+  map->grid()->setStyle( Qgis::MapGridStyle::Lines );
   map->grid()->setEnabled( false );
   map->grid()->setAnnotationEnabled( false );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   QVERIFY( testResult );
 }
 
 void TestQgsLayoutMapGrid::zebraStyle()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -317,7 +288,7 @@ void TestQgsLayoutMapGrid::zebraStyle()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -331,7 +302,7 @@ void TestQgsLayoutMapGrid::zebraStyle()
   map->setExtent( QgsRectangle( 785462.375, 3341423.125, 789262.375, 3343323.125 ) ); //zoom in
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::Zebra );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::Zebra );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( QColor( 255, 100, 0, 200 ) );
@@ -340,16 +311,12 @@ void TestQgsLayoutMapGrid::zebraStyle()
   map->grid()->setEnabled( true );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_zebrastyle" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_zebrastyle"_s, &l );
 }
 
 void TestQgsLayoutMapGrid::zebraStyleSides()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -358,7 +325,7 @@ void TestQgsLayoutMapGrid::zebraStyleSides()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -372,7 +339,7 @@ void TestQgsLayoutMapGrid::zebraStyleSides()
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::Zebra );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::Zebra );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
@@ -380,39 +347,32 @@ void TestQgsLayoutMapGrid::zebraStyleSides()
   map->grid()->setFrameFillColor2( Qt::white );
   map->grid()->setEnabled( true );
 
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameLeft, true );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameRight, false );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameTop, false );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameBottom, false );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Left, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Right, false );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Top, false );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Bottom, false );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_zebrastyle_left" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
+  const bool testResult = QGSLAYOUTCHECK( u"composermap_zebrastyle_left"_s, &l );
   QVERIFY( testResult );
 
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameTop, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Top, true );
   map->updateBoundingRect();
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_zebrastyle_lefttop" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
+  const bool testResult2 = QGSLAYOUTCHECK( u"composermap_zebrastyle_lefttop"_s, &l );
   QVERIFY( testResult2 );
 
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameRight, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Right, true );
   map->updateBoundingRect();
-  QgsLayoutChecker checker3( QStringLiteral( "composermap_zebrastyle_lefttopright" ), &l );
-  checker3.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult3 = checker3.testLayout( mReport, 0, 0 );
+  const bool testResult3 = QGSLAYOUTCHECK( u"composermap_zebrastyle_lefttopright"_s, &l );
   QVERIFY( testResult3 );
 
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameBottom, true );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
-
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Bottom, true );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::zebraStyleMargin()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -421,7 +381,7 @@ void TestQgsLayoutMapGrid::zebraStyleMargin()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -435,7 +395,7 @@ void TestQgsLayoutMapGrid::zebraStyleMargin()
   map->setExtent( QgsRectangle( 785462.375, 3341423.125, 789262.375, 3343323.125 ) ); //zoom in
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::Zebra );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::Zebra );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
@@ -445,16 +405,12 @@ void TestQgsLayoutMapGrid::zebraStyleMargin()
   map->grid()->setEnabled( true );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_marginzebrastyle" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_marginzebrastyle"_s, &l );
 }
 
 void TestQgsLayoutMapGrid::zebraStyleNautical()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -463,7 +419,7 @@ void TestQgsLayoutMapGrid::zebraStyleNautical()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -477,7 +433,7 @@ void TestQgsLayoutMapGrid::zebraStyleNautical()
   map->setExtent( QgsRectangle( 785462.375, 3341423.125, 789262.375, 3343323.125 ) ); //zoom in
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::ZebraNautical );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::ZebraNautical );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
@@ -487,16 +443,12 @@ void TestQgsLayoutMapGrid::zebraStyleNautical()
   map->grid()->setEnabled( true );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_zebranauticalstyle" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_zebranauticalstyle"_s, &l );
 }
 
 void TestQgsLayoutMapGrid::frameDivisions()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -505,7 +457,7 @@ void TestQgsLayoutMapGrid::frameDivisions()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -522,46 +474,42 @@ void TestQgsLayoutMapGrid::frameDivisions()
 
   //setup defaults
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::Zebra );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::Zebra );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setFrameFillColor1( Qt::black );
   map->grid()->setFrameFillColor2( Qt::white );
   map->grid()->setEnabled( true );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameLeft, true );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameRight, true );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameTop, true );
-  map->grid()->setFrameSideFlag( QgsLayoutItemMapGrid::FrameBottom, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Left, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Right, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Top, true );
+  map->grid()->setFrameSideFlag( Qgis::MapGridFrameSideFlag::Bottom, true );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_rotatedframe" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
+  bool testResult = QGSLAYOUTCHECK( u"composermap_rotatedframe"_s, &l );
   QVERIFY( testResult );
 
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::LatitudeOnly, QgsLayoutItemMapGrid::Left );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::LongitudeOnly, QgsLayoutItemMapGrid::Right );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::LatitudeOnly, QgsLayoutItemMapGrid::Top );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::LongitudeOnly, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::LatitudeOnly, Qgis::MapGridBorderSide::Left );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::LongitudeOnly, Qgis::MapGridBorderSide::Right );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::LatitudeOnly, Qgis::MapGridBorderSide::Top );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::LongitudeOnly, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_framedivisions" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  testResult = checker2.testLayout( mReport, 0, 0 );
+  testResult = QGSLAYOUTCHECK( u"composermap_framedivisions"_s, &l );
   QVERIFY( testResult );
 
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Left );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Right );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Top );
-  map->grid()->setFrameDivisions( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Bottom );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Left );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Right );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Top );
+  map->grid()->setFrameDivisions( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Bottom );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->setMapRotation( 0.0 );
 }
 
 void TestQgsLayoutMapGrid::annotationFilter()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -570,7 +518,7 @@ void TestQgsLayoutMapGrid::annotationFilter()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  QgsTextFormat format = QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
   format.setColor( QColor( 0, 0, 0, 0 ) );
   map->grid()->setAnnotationTextFormat( format );
   map->grid()->setAnnotationPrecision( 0 );
@@ -587,42 +535,36 @@ void TestQgsLayoutMapGrid::annotationFilter()
 
   //setup defaults
   map->grid()->setBlendMode( QPainter::CompositionMode_SourceOver );
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setEnabled( true );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_rotatedannotations" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_rotatedannotations"_s, &l );
 
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::HideAll, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::LongitudeOnly, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::LatitudeOnly, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::LongitudeOnly, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::HideAll, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::LongitudeOnly, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::LatitudeOnly, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::LongitudeOnly, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_filteredannotations" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  testResult = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_filteredannotations"_s, &l );
 
   map->grid()->setAnnotationEnabled( false );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationDisplay( QgsLayoutItemMapGrid::ShowAll, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationDisplay( Qgis::MapGridComponentVisibility::ShowAll, Qgis::MapGridBorderSide::Bottom );
   map->setMapRotation( 0.0 );
 }
 
 void TestQgsLayoutMapGrid::interiorTicks()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -631,7 +573,7 @@ void TestQgsLayoutMapGrid::interiorTicks()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -642,25 +584,22 @@ void TestQgsLayoutMapGrid::interiorTicks()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_interiorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::interiorTicksMargin()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -669,7 +608,7 @@ void TestQgsLayoutMapGrid::interiorTicksMargin()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -680,26 +619,23 @@ void TestQgsLayoutMapGrid::interiorTicksMargin()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_margininteriorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_margininteriorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::interiorTicksAnnotated()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -708,7 +644,7 @@ void TestQgsLayoutMapGrid::interiorTicksAnnotated()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -719,42 +655,36 @@ void TestQgsLayoutMapGrid::interiorTicksAnnotated()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_interiorticks_annotated" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorticks_annotated"_s, &l );
 
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_interiorticks_annotated2" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult2 );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorticks_annotated2"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setAnnotationEnabled( false );
 }
 
 void TestQgsLayoutMapGrid::exteriorTicks()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -763,7 +693,7 @@ void TestQgsLayoutMapGrid::exteriorTicks()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -774,25 +704,22 @@ void TestQgsLayoutMapGrid::exteriorTicks()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::ExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::ExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_exteriorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_exteriorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::exteriorTicksMargin()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -801,7 +728,7 @@ void TestQgsLayoutMapGrid::exteriorTicksMargin()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -812,26 +739,23 @@ void TestQgsLayoutMapGrid::exteriorTicksMargin()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::ExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::ExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_marginexteriorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_marginexteriorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::exteriorTicksAnnotated()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -840,7 +764,7 @@ void TestQgsLayoutMapGrid::exteriorTicksAnnotated()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -851,42 +775,36 @@ void TestQgsLayoutMapGrid::exteriorTicksAnnotated()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::ExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::ExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_exteriorticks_annotated" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_exteriorticks_annotated"_s, &l );
 
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_exteriorticks_annotated2" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult2 );
+  QGSVERIFYLAYOUTCHECK( u"composermap_exteriorticks_annotated2"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setAnnotationEnabled( false );
 }
 
 void TestQgsLayoutMapGrid::interiorExteriorTicks()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -895,7 +813,7 @@ void TestQgsLayoutMapGrid::interiorExteriorTicks()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -906,25 +824,22 @@ void TestQgsLayoutMapGrid::interiorExteriorTicks()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_interiorexteriorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorexteriorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::interiorExteriorTicksMargin()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -933,7 +848,7 @@ void TestQgsLayoutMapGrid::interiorExteriorTicksMargin()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -944,26 +859,23 @@ void TestQgsLayoutMapGrid::interiorExteriorTicksMargin()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_margininteriorexteriorticks" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_margininteriorexteriorticks"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::interiorExteriorTicksAnnotated()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -972,7 +884,7 @@ void TestQgsLayoutMapGrid::interiorExteriorTicksAnnotated()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -983,42 +895,36 @@ void TestQgsLayoutMapGrid::interiorExteriorTicksAnnotated()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::InteriorExteriorTicks );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::InteriorExteriorTicks );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_interiorexteriorticks_annotated" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorexteriorticks_annotated"_s, &l );
 
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_interiorexteriorticks_annotated2" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult2 );
+  QGSVERIFYLAYOUTCHECK( u"composermap_interiorexteriorticks_annotated2"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setAnnotationEnabled( false );
 }
 
 void TestQgsLayoutMapGrid::lineBorder()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1027,7 +933,7 @@ void TestQgsLayoutMapGrid::lineBorder()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1038,25 +944,22 @@ void TestQgsLayoutMapGrid::lineBorder()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::LineBorder );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::LineBorder );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_lineborder" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_lineborder"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::lineBorderMargin()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1065,7 +968,7 @@ void TestQgsLayoutMapGrid::lineBorderMargin()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1076,26 +979,23 @@ void TestQgsLayoutMapGrid::lineBorderMargin()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::LineBorder );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::LineBorder );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_marginlineborder" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_marginlineborder"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::lineBorderNautical()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1104,7 +1004,7 @@ void TestQgsLayoutMapGrid::lineBorderNautical()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1115,26 +1015,23 @@ void TestQgsLayoutMapGrid::lineBorderNautical()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::LineBorderNautical );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::LineBorderNautical );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFrameMargin( 5 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_linebordernautical" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_linebordernautical"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
 }
 
 void TestQgsLayoutMapGrid::lineBorderAnnotated()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1143,7 +1040,7 @@ void TestQgsLayoutMapGrid::lineBorderAnnotated()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1154,42 +1051,36 @@ void TestQgsLayoutMapGrid::lineBorderAnnotated()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::LineBorder );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::LineBorder );
   map->grid()->setFrameWidth( 10 );
   map->grid()->setFramePenSize( 1 );
   map->grid()->setFramePenColor( Qt::black );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_lineborder_annotated" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_lineborder_annotated"_s, &l );
 
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_lineborder_annotated2" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult2 );
+  QGSVERIFYLAYOUTCHECK( u"composermap_lineborder_annotated2"_s, &l );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setAnnotationEnabled( false );
 }
 
 void TestQgsLayoutMapGrid::annotationFormats()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1198,7 +1089,7 @@ void TestQgsLayoutMapGrid::annotationFormats()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1208,52 +1099,56 @@ void TestQgsLayoutMapGrid::annotationFormats()
   l.addLayoutItem( map );
 
   //create grids in geographic and projected coordinates
-  QgsCoordinateReferenceSystem projectedCrs( QStringLiteral( "EPSG:3994" ) );
-  QgsCoordinateReferenceSystem geographicCrs( QStringLiteral( "EPSG:4326" ) );
+  const QgsCoordinateReferenceSystem projectedCrs( u"EPSG:3994"_s );
+  const QgsCoordinateReferenceSystem geographicCrs( u"EPSG:4326"_s );
 
-  QgsLayoutItemMapGrid gridGeographic( QStringLiteral( "geographic grid" ), map );
+  QgsLayoutItemMapGrid gridGeographic( u"geographic grid"_s, map );
   gridGeographic.setCrs( geographicCrs );
-  QgsLayoutItemMapGrid gridProjected( QStringLiteral( "projected grid" ), map );
+  QgsLayoutItemMapGrid gridProjected( u"projected grid"_s, map );
   gridProjected.setCrs( projectedCrs );
 
   //decimal degrees format
-  gridGeographic.setAnnotationFormat( QgsLayoutItemMapGrid::DecimalWithSuffix );
+  gridGeographic.setAnnotationFormat( Qgis::MapGridAnnotationFormat::DecimalWithSuffix );
   gridGeographic.setAnnotationPrecision( 1 );
-  gridProjected.setAnnotationFormat( QgsLayoutItemMapGrid::DecimalWithSuffix );
+  gridProjected.setAnnotationFormat( Qgis::MapGridAnnotationFormat::DecimalWithSuffix );
   gridProjected.setAnnotationPrecision( 1 );
 
   QgsExpressionContext expressionContext = gridGeographic.createExpressionContext();
 
   //normal e/w
-  QCOMPARE( gridGeographic.gridAnnotationString( 90, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "90.0°E" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 90, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "90.0E" ) );
+  QCOMPARE( gridGeographic.gridAnnotationString( 90, Qgis::MapGridAnnotationType::Longitude, expressionContext, true ), QString( "90.0°E" ) );
+  QCOMPARE( gridProjected.gridAnnotationString( 90, Qgis::MapGridAnnotationType::Longitude, expressionContext, false ), QString( "90.0E" ) );
 
   //0 degrees
-  QCOMPARE( gridGeographic.gridAnnotationString( 0, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "0.0°" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 0, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "0.0E" ) );
+  QCOMPARE( gridGeographic.gridAnnotationString( 0, Qgis::MapGridAnnotationType::Longitude, expressionContext, true ), QString( "0.0°" ) );
+  QCOMPARE( gridProjected.gridAnnotationString( 0, Qgis::MapGridAnnotationType::Longitude, expressionContext, false ), QString( "0.0E" ) );
 
   //180 degrees
-  QCOMPARE( gridGeographic.gridAnnotationString( 180, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "180.0°" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 180, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "180.0E" ) );
+  QCOMPARE( gridGeographic.gridAnnotationString( 180, Qgis::MapGridAnnotationType::Longitude, expressionContext, true ), QString( "180.0°" ) );
+  QCOMPARE( gridProjected.gridAnnotationString( 180, Qgis::MapGridAnnotationType::Longitude, expressionContext, false ), QString( "180.0E" ) );
 
   //normal n/s
-  QCOMPARE( gridGeographic.gridAnnotationString( 45, QgsLayoutItemMapGrid::Latitude, expressionContext ), QString( "45.0°N" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 45, QgsLayoutItemMapGrid::Latitude, expressionContext ), QString( "45.0N" ) );
+  QCOMPARE( gridGeographic.gridAnnotationString( 45, Qgis::MapGridAnnotationType::Latitude, expressionContext, true ), QString( "45.0°N" ) );
+  QCOMPARE( gridProjected.gridAnnotationString( 45, Qgis::MapGridAnnotationType::Latitude, expressionContext, false ), QString( "45.0N" ) );
 
   //0 north/south
-  QCOMPARE( gridGeographic.gridAnnotationString( 0, QgsLayoutItemMapGrid::Latitude, expressionContext ), QString( "0.0°" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 0, QgsLayoutItemMapGrid::Latitude, expressionContext ), QString( "0.0N" ) );
+  QCOMPARE( gridGeographic.gridAnnotationString( 0, Qgis::MapGridAnnotationType::Latitude, expressionContext, true ), QString( "0.0°" ) );
+  QCOMPARE( gridProjected.gridAnnotationString( 0, Qgis::MapGridAnnotationType::Latitude, expressionContext, false ), QString( "0.0N" ) );
 
   //Custom format annotations
-  gridProjected.setAnnotationFormat( QgsLayoutItemMapGrid::CustomFormat );
-  gridProjected.setAnnotationExpression( QStringLiteral( "(@grid_number/10) || case when @grid_axis ='x' then 'a' else 'b' end" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 45, QgsLayoutItemMapGrid::Latitude, expressionContext ), QString( "4.5b" ) );
-  QCOMPARE( gridProjected.gridAnnotationString( 35, QgsLayoutItemMapGrid::Longitude, expressionContext ), QString( "3.5a" ) );
+  gridProjected.setAnnotationFormat( Qgis::MapGridAnnotationFormat::CustomFormat );
+  gridProjected.setAnnotationExpression( u"(@grid_number/10) || case when @grid_axis ='x' then 'a' else 'b' end"_s );
+  expressionContext.lastScope()->setVariable( u"grid_number"_s, 45 );
+  expressionContext.lastScope()->setVariable( u"grid_axis"_s, u"y"_s );
+  QCOMPARE( gridProjected.gridAnnotationString( 45, Qgis::MapGridAnnotationType::Latitude, expressionContext, false ), QString( "4.5b" ) );
+  expressionContext.lastScope()->setVariable( u"grid_number"_s, 35 );
+  expressionContext.lastScope()->setVariable( u"grid_axis"_s, u"x"_s );
+  QCOMPARE( gridProjected.gridAnnotationString( 35, Qgis::MapGridAnnotationType::Longitude, expressionContext, false ), QString( "3.5a" ) );
 }
 
 void TestQgsLayoutMapGrid::descendingAnnotations()
 {
-  QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( QStringLiteral( "EPSG:32633" ) );
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
   QgsProject::instance()->setCrs( crs );
   QgsLayout l( QgsProject::instance() );
   l.initializeDefaults();
@@ -1262,7 +1157,7 @@ void TestQgsLayoutMapGrid::descendingAnnotations()
   map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
   map->setFrameEnabled( true );
   map->setBackgroundColor( QColor( 150, 100, 100 ) );
-  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
   map->grid()->setAnnotationPrecision( 0 );
   map->grid()->setIntervalX( 2000 );
   map->grid()->setIntervalY( 2000 );
@@ -1273,37 +1168,121 @@ void TestQgsLayoutMapGrid::descendingAnnotations()
 
   map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
 
-  map->grid()->setFrameStyle( QgsLayoutItemMapGrid::NoFrame );
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
   map->grid()->setEnabled( true );
-  map->grid()->setStyle( QgsLayoutItemMapGrid::FrameAnnotationsOnly );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
   map->grid()->setAnnotationEnabled( true );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::InsideMapFrame, QgsLayoutItemMapGrid::Bottom );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::VerticalDescending, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::VerticalDescending, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::VerticalDescending, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationDirection( QgsLayoutItemMapGrid::VerticalDescending, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::InsideMapFrame, Qgis::MapGridBorderSide::Bottom );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker( QStringLiteral( "composermap_verticaldescending_inside" ), &l );
-  checker.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult = checker.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult );
+  QGSVERIFYLAYOUTCHECK( u"composermap_verticaldescending_inside"_s, &l );
 
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Left );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Right );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Top );
-  map->grid()->setAnnotationPosition( QgsLayoutItemMapGrid::OutsideMapFrame, QgsLayoutItemMapGrid::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
   map->updateBoundingRect();
 
-  QgsLayoutChecker checker2( QStringLiteral( "composermap_verticaldescending_outside" ), &l );
-  checker2.setControlPathPrefix( QStringLiteral( "composer_mapgrid" ) );
-  bool testResult2 = checker2.testLayout( mReport, 0, 0 );
-  QVERIFY( testResult2 );
+  QGSVERIFYLAYOUTCHECK( u"composermap_verticaldescending_outside"_s, &l );
 
   map->grid()->setAnnotationEnabled( false );
 }
+
+void TestQgsLayoutMapGrid::dataDefinedDrawAnnotation()
+{
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
+  QgsProject::instance()->setCrs( crs );
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+
+  QgsLayoutItemMap *map = new QgsLayoutItemMap( &l );
+  map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
+  map->setFrameEnabled( true );
+  map->setBackgroundColor( QColor( 150, 100, 100 ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  map->grid()->setAnnotationPrecision( 0 );
+  map->grid()->setIntervalX( 2000 );
+  map->grid()->setIntervalY( 2000 );
+  map->grid()->setGridLineWidth( 0.5 );
+  map->grid()->setGridLineColor( QColor( 0, 0, 0 ) );
+  map->updateBoundingRect();
+  l.addLayoutItem( map );
+
+  map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
+
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
+  map->grid()->setEnabled( true );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
+  map->grid()->setAnnotationEnabled( true );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
+
+  map->grid()
+    ->dataDefinedProperties()
+    .setProperty( QgsLayoutObject::DataDefinedProperty::MapGridDrawAnnotation, QgsProperty::fromExpression( u"case when @grid_axis = 'x' then @grid_number < 787000 when @grid_axis ='y' then @grid_number >= 3342000 end"_s ) );
+  map->grid()->refresh();
+  map->updateBoundingRect();
+
+  QGSVERIFYLAYOUTCHECK( u"composermap_dd_draw_annotation"_s, &l );
+}
+
+void TestQgsLayoutMapGrid::dataDefinedDrawAnnotationCountAndIndex()
+{
+  const QgsCoordinateReferenceSystem crs = QgsCoordinateReferenceSystem( u"EPSG:32633"_s );
+  QgsProject::instance()->setCrs( crs );
+  QgsLayout l( QgsProject::instance() );
+  l.initializeDefaults();
+
+  QgsLayoutItemMap *map = new QgsLayoutItemMap( &l );
+  map->attemptSetSceneRect( QRectF( 20, 20, 200, 100 ) );
+  map->setFrameEnabled( true );
+  map->setBackgroundColor( QColor( 150, 100, 100 ) );
+  map->grid()->setAnnotationTextFormat( QgsTextFormat::fromQFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) ) );
+  map->grid()->setAnnotationPrecision( 0 );
+  map->grid()->setIntervalX( 2000 );
+  map->grid()->setIntervalY( 2000 );
+  map->grid()->setGridLineWidth( 0.5 );
+  map->grid()->setGridLineColor( QColor( 0, 0, 0 ) );
+  map->updateBoundingRect();
+  l.addLayoutItem( map );
+
+  map->setExtent( QgsRectangle( 781662.375, 3339523.125, 793062.375, 3345223.125 ) );
+
+  map->grid()->setFrameStyle( Qgis::MapGridFrameStyle::NoFrame );
+  map->grid()->setEnabled( true );
+  map->grid()->setStyle( Qgis::MapGridStyle::FrameAndAnnotationsOnly );
+  map->grid()->setAnnotationEnabled( true );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationDirection( Qgis::MapGridAnnotationDirection::VerticalDescending, Qgis::MapGridBorderSide::Bottom );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Left );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Right );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Top );
+  map->grid()->setAnnotationPosition( Qgis::MapGridAnnotationPosition::OutsideMapFrame, Qgis::MapGridBorderSide::Bottom );
+
+  map->grid()->setAnnotationFormat( Qgis::MapGridAnnotationFormat::CustomFormat );
+  map->grid()->setAnnotationExpression( u"@grid_index || '/' || @grid_count"_s );
+
+  map->grid()->dataDefinedProperties().setProperty( QgsLayoutObject::DataDefinedProperty::MapGridDrawAnnotation, QgsProperty::fromExpression( u"@grid_index > 1 and @grid_index < @grid_count"_s ) );
+  map->grid()->refresh();
+  map->updateBoundingRect();
+
+  QGSVERIFYLAYOUTCHECK( u"composermap_grid_variables"_s, &l );
+}
+
 QGSTEST_MAIN( TestQgsLayoutMapGrid )
 #include "testqgslayoutmapgrid.moc"

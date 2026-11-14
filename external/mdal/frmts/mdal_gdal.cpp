@@ -111,9 +111,10 @@ bool MDAL::DriverGdal::initVertices( Vertices &vertices )
   return is_longitude_shifted;
 }
 
-void MDAL::DriverGdal::initFaces( Vertices &Vertexs, Faces &Faces, bool is_longitude_shifted )
+void MDAL::DriverGdal::initFaces( const Vertices &Vertexs, Faces &Faces, bool is_longitude_shifted )
 {
   int reconnected = 0;
+  ( void ) reconnected; //avoid warning for unused variable
   unsigned int mXSize = meshGDALDataset()->mXSize;
   unsigned int mYSize = meshGDALDataset()->mYSize;
 
@@ -174,8 +175,7 @@ double MDAL::DriverGdal::parseMetadataTime( const std::string &time_s )
 MDAL::DriverGdal::metadata_hash MDAL::DriverGdal::parseMetadata( GDALMajorObjectH gdalObject, const char *pszDomain /* = 0 */ )
 {
   MDAL::DriverGdal::metadata_hash meta;
-  char **GDALmetadata = nullptr;
-  GDALmetadata = GDALGetMetadata( gdalObject, pszDomain );
+  CSLConstList GDALmetadata = GDALGetMetadata( gdalObject, pszDomain );
 
   if ( GDALmetadata )
   {
@@ -188,7 +188,7 @@ MDAL::DriverGdal::metadata_hash MDAL::DriverGdal::parseMetadata( GDALMajorObject
         std::string key = MDAL::toLower( metadata[0] );
         metadata.erase( metadata.begin() ); // remove key
         std::string value = MDAL::join( metadata, "=" );
-        meta[key] = value;
+        meta[key] = std::move( value );
       }
     }
   }
@@ -234,8 +234,8 @@ void MDAL::DriverGdal::parseRasterBands( const MDAL::GdalDataset *cfGDALDataset 
       std::vector<GDALRasterBandH> raster_bands( data_count );
 
       raster_bands[data_index] = gdalBand;
-      qMap[time] = raster_bands;
-      mBands[band_name] = qMap;
+      qMap[time] = std::move( raster_bands );
+      mBands[band_name] = std::move( qMap );
     }
     else
     {
@@ -245,8 +245,8 @@ void MDAL::DriverGdal::parseRasterBands( const MDAL::GdalDataset *cfGDALDataset 
         // Face is there, but new timestep
         // => create just new map entry
         std::vector<GDALRasterBandH> raster_bands( data_count );
-        raster_bands[data_index] = gdalBand;
-        mBands[band_name][time] = raster_bands;
+        raster_bands[data_index] = std::move( gdalBand );
+        mBands[band_name][time] = std::move( raster_bands );
       }
       else
       {
@@ -434,7 +434,7 @@ void MDAL::DriverGdal::addDatasetGroups()
     // TODO use GDALComputeRasterMinMax
     group->setStatistics( MDAL::calculateStatistics( group ) );
     group->setReferenceTime( referenceTime() );
-    mMesh->datasetGroups.push_back( group );
+    mMesh->datasetGroups.emplace_back( std::move( group ) );
   }
 }
 
@@ -497,7 +497,7 @@ std::vector<std::string> MDAL::DriverGdal::parseDatasetNames( const std::string 
   // there are no GDAL subdatasets
   if ( ret.empty() )
   {
-    ret.push_back( gdal_name );
+    ret.emplace_back( std::move( gdal_name ) );
   }
 
   GDALClose( hDataset );
@@ -542,7 +542,7 @@ bool MDAL::DriverGdal::canReadMesh( const std::string &uri )
   {
     return false;
   }
-  catch ( MDAL::Error )
+  catch ( MDAL::Error & )
   {
     return false;
   }
@@ -564,9 +564,11 @@ std::unique_ptr<MDAL::Mesh> MDAL::DriverGdal::load( const std::string &fileName,
 
     // some formats like NETCFD has data stored in subdatasets
     std::vector<std::string> subdatasets = parseDatasetNames( mFileName );
-
-    // First parse ALL datasets/bands to gather vector quantities
-    // if case they are splitted in different subdatasets
+    // Parse all the dataset
+    // For consistency, search the first dataset with a projection and store it first to use it as reference for the mesh
+    // store other dataset in a std::vector
+    std::vector<std::shared_ptr<MDAL::GdalDataset>> datasets;
+    bool firstProjFound = false;
     for ( auto iter = subdatasets.begin(); iter != subdatasets.end(); ++iter )
     {
       std::string gdal_dataset_name = *iter;
@@ -574,27 +576,36 @@ std::unique_ptr<MDAL::Mesh> MDAL::DriverGdal::load( const std::string &fileName,
       std::shared_ptr<MDAL::GdalDataset> cfGDALDataset = std::make_shared<MDAL::GdalDataset>();
       cfGDALDataset->init( gdal_dataset_name );
 
-      if ( !mMesh )
+      if ( !firstProjFound && !cfGDALDataset->mProj.empty() )
       {
-        // If it is first dataset, create mesh from it
-        gdal_datasets.push_back( cfGDALDataset );
-
-        // Init memory for data reader
-        mPafScanline = new double [cfGDALDataset->mXSize];
-
-        // Create mMesh
-        createMesh();
-
-        // Parse bands
-        parseRasterBands( cfGDALDataset.get() );
-
+        firstProjFound = true;
+        gdal_datasets.emplace_back( std::move( cfGDALDataset ) );
       }
-      else if ( meshes_equals( meshGDALDataset(), cfGDALDataset.get() ) )
+      else
       {
-        gdal_datasets.push_back( cfGDALDataset );
-        // Parse bands
-        parseRasterBands( cfGDALDataset.get() );
+        datasets.emplace_back( std::move( cfGDALDataset ) );
       }
+    }
+
+    for ( std::shared_ptr<MDAL::GdalDataset> &ds : datasets )
+      if ( gdal_datasets.empty() || meshes_equals( meshGDALDataset(), ds.get() ) )
+        gdal_datasets.push_back( ds );
+
+    // Construct the mesh with the first dataset
+    if ( !gdal_datasets.empty() )
+    {
+      std::shared_ptr<MDAL::GdalDataset> meshDataset = gdal_datasets.at( 0 );
+      // Init memory for data reader
+      mPafScanline = new double [meshDataset->mXSize];
+      // Create mMesh
+      createMesh();
+    }
+
+    // parse all datasets
+    for ( auto iter = gdal_datasets.begin(); iter != gdal_datasets.end(); ++iter )
+    {
+      std::shared_ptr<MDAL::GdalDataset> cfGDALDataset = std::make_shared<MDAL::GdalDataset>();
+      parseRasterBands( iter->get() );
     }
 
     // Fix consistency of groups
@@ -611,7 +622,7 @@ std::unique_ptr<MDAL::Mesh> MDAL::DriverGdal::load( const std::string &fileName,
     MDAL::Log::error( error, name(), "error occurred while loading " + fileName );
     mMesh.reset();
   }
-  catch ( MDAL::Error err )
+  catch ( MDAL::Error &err )
   {
     MDAL::Log::error( err, name() );
     mMesh.reset();
@@ -621,7 +632,7 @@ std::unique_ptr<MDAL::Mesh> MDAL::DriverGdal::load( const std::string &fileName,
 
   if ( mPafScanline ) delete[] mPafScanline;
 
-  // do not allow mesh without any valid datasets
+// do not allow mesh without any valid datasets
   if ( mMesh && ( mMesh->datasetGroups.empty() ) )
   {
     MDAL::Log::error( MDAL_Status::Err_InvalidData, name(), "Mesh does not have any valid dataset" );
@@ -634,26 +645,28 @@ void MDAL::DriverGdal::parseBandIsVector( std::string &band_name, bool *is_vecto
 {
   band_name = MDAL::trim( band_name );
 
-  if ( MDAL::startsWith( band_name, "u-", MDAL::CaseInsensitive ) ||
-       MDAL::startsWith( band_name, "x-", MDAL::CaseInsensitive ) ||
+  if ( MDAL::contains( band_name, "U wind component", MDAL::CaseInsensitive ) ||
        MDAL::contains( band_name, "u-component", MDAL::CaseInsensitive ) ||
        MDAL::contains( band_name, "u component", MDAL::CaseInsensitive ) ||
-       MDAL::contains( band_name, "U wind component", MDAL::CaseInsensitive ) ||
-       MDAL::startsWith( band_name, "Northward", MDAL::CaseInsensitive ) ||
+       MDAL::startsWith( band_name, "u-", MDAL::CaseInsensitive ) ||
        MDAL::contains( band_name, "x-component", MDAL::CaseInsensitive ) ||
-       MDAL::contains( band_name, "x component", MDAL::CaseInsensitive ) )
+       MDAL::contains( band_name, "x component", MDAL::CaseInsensitive ) ||
+       MDAL::startsWith( band_name, "x-", MDAL::CaseInsensitive ) ||
+       MDAL::contains( band_name, "eastward", MDAL::CaseInsensitive ) ||
+       MDAL::contains( band_name, "zonal", MDAL::CaseInsensitive ) )
   {
     *is_vector = true; // vector
     *is_x =  true; //X-Axis
   }
-  else if ( MDAL::startsWith( band_name, "v-", MDAL::CaseInsensitive ) ||
-            MDAL::startsWith( band_name, "y-", MDAL::CaseInsensitive ) ||
+  else if ( MDAL::contains( band_name, "V wind component", MDAL::CaseInsensitive ) ||
             MDAL::contains( band_name, "v-component", MDAL::CaseInsensitive ) ||
             MDAL::contains( band_name, "v component", MDAL::CaseInsensitive ) ||
-            MDAL::contains( band_name, "V wind component", MDAL::CaseInsensitive ) ||
-            MDAL::startsWith( band_name, "Eastward", MDAL::CaseInsensitive ) ||
+            MDAL::startsWith( band_name, "v-", MDAL::CaseInsensitive ) ||
             MDAL::contains( band_name, "y-component", MDAL::CaseInsensitive ) ||
-            MDAL::contains( band_name, "y component", MDAL::CaseInsensitive ) )
+            MDAL::contains( band_name, "y component", MDAL::CaseInsensitive ) ||
+            MDAL::startsWith( band_name, "y-", MDAL::CaseInsensitive ) ||
+            MDAL::contains( band_name, "northward", MDAL::CaseInsensitive ) ||
+            MDAL::contains( band_name, "meridional", MDAL::CaseInsensitive ) )
   {
     *is_vector = true; // vector
     *is_x =  false; //Y-Axis
@@ -666,30 +679,48 @@ void MDAL::DriverGdal::parseBandIsVector( std::string &band_name, bool *is_vecto
 
   if ( *is_vector )
   {
-    band_name = MDAL::replace( band_name, "u-component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "v-component of", "", MDAL::CaseInsensitive );
+
     band_name = MDAL::replace( band_name, "U wind component", "wind", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "V wind component", "wind", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "Northward", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "Eastward", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "x-component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "y-component of", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "u-component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "v-component of", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "u-component", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "v-component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "x-component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "y-component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "u component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "v component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "x component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "y component of", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "u component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "v component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "x component", "", MDAL::CaseInsensitive );
-    band_name = MDAL::replace( band_name, "y component", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "u-", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "v-", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "u component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "v component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "u component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "v component", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "x-component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "y-component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "x-component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "y-component", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "x-", "", MDAL::CaseInsensitive );
     band_name = MDAL::replace( band_name, "y-", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "x component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "y component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "x component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "y component", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "eastward component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "northward component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "eastward component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "northward component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "eastward", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "northward", "", MDAL::CaseInsensitive );
+
+    band_name = MDAL::replace( band_name, "zonal component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "meridional component of", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "zonal component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "meridional component", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "zonal", "", MDAL::CaseInsensitive );
+    band_name = MDAL::replace( band_name, "meridional", "", MDAL::CaseInsensitive );
+
     band_name = MDAL::trim( band_name );
   }
 }

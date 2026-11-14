@@ -16,21 +16,23 @@
 #ifndef QGSNEWVECTORTABLEDIALOG_H
 #define QGSNEWVECTORTABLEDIALOG_H
 
-#include <QStyledItemDelegate>
-
-#include "qgis_sip.h"
-#include "qgis_gui.h"
-#include "qgsfields.h"
-#include "qgswkbtypes.h"
-#include "qgsvectordataprovider.h"
-#include "qgsfieldmodel.h"
-#include "qgsabstractdatabaseproviderconnection.h"
-
 #include "ui_qgsnewvectortabledialogbase.h"
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsabstractdatabaseproviderconnection.h"
+#include "qgsfieldmodel.h"
+#include "qgsfields.h"
+#include "qgsvectordataprovider.h"
+#include "qgswkbtypes.h"
+
+#include <QStyledItemDelegate>
 
 class QgsNewVectorTableFieldModel;
 
 /**
+ * \brief A dialog for customising new tables created on a database.
+ *
  * The QgsNewVectorTableDialog class is a provider-agnostic database vector
  * and aspatial table designer dialog based on the connections API.
  *
@@ -46,8 +48,8 @@ class QgsNewVectorTableFieldModel;
  */
 class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVectorTableDialogBase
 {
+    Q_OBJECT
   public:
-
     /**
      * QgsNewVectorTableDialog constructor
      * \param conn DB connection, ownership is NOT transferred
@@ -68,7 +70,7 @@ class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVect
     /**
      * Sets the geometry \a type
      */
-    void setGeometryType( QgsWkbTypes::Type type );
+    void setGeometryType( Qgis::WkbType type );
 
     /**
      * Sets the CRS to \a crs
@@ -103,7 +105,7 @@ class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVect
     /**
      * Returns the geometry type
      */
-    QgsWkbTypes::Type geometryType() const;
+    Qgis::WkbType geometryType() const;
 
     /**
      * Sets the fields to \a fields
@@ -111,8 +113,7 @@ class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVect
     void setFields( const QgsFields &fields );
 
     /**
-     * Returns TRUE if spatialindex checkbox is cheched
-     * @return
+     * Returns TRUE if spatialindex checkbox is checked.
      */
     bool createSpatialIndex();
 
@@ -122,13 +123,14 @@ class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVect
     QStringList validationErrors() const;
 
   private:
-
     QgsAbstractDatabaseProviderConnection *mConnection = nullptr;
     QgsNewVectorTableFieldModel *mFieldModel = nullptr;
     int mCurrentRow = -1;
     // Used by validator
     QStringList mTableNames;
     QStringList mValidationErrors;
+
+    QSet<QString> mIllegalFieldNames;
 
     void updateButtons();
     void selectRow( int row );
@@ -140,15 +142,14 @@ class GUI_EXPORT QgsNewVectorTableDialog : public QDialog, private Ui_QgsNewVect
 };
 
 
-
 /// @cond private
 
 #ifndef SIP_RUN
-class QgsNewVectorTableDialogFieldsDelegate: public QStyledItemDelegate
+class QgsNewVectorTableDialogFieldsDelegate : public QStyledItemDelegate
 {
+    Q_OBJECT
   public:
-
-    QgsNewVectorTableDialogFieldsDelegate( const QList< QgsVectorDataProvider::NativeType> &typeList, QObject *parent = nullptr );
+    QgsNewVectorTableDialogFieldsDelegate( const QList<QgsVectorDataProvider::NativeType> &typeList, QObject *parent = nullptr );
 
     // QAbstractItemDelegate interface
     QWidget *createEditor( QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index ) const override;
@@ -160,17 +161,15 @@ class QgsNewVectorTableDialogFieldsDelegate: public QStyledItemDelegate
     void onFieldTypeChanged( int index );
 
   private:
-
-    const QList< QgsVectorDataProvider::NativeType> mTypeList;
-
+    const QList<QgsVectorDataProvider::NativeType> mTypeList;
 };
 
 
-class QgsNewVectorTableFieldModel: public QgsFieldModel
+class QgsNewVectorTableFieldModel : public QgsFieldModel
 {
+    Q_OBJECT
 
   public:
-
     enum ColumnHeaders
     {
       Name,
@@ -181,7 +180,7 @@ class QgsNewVectorTableFieldModel: public QgsFieldModel
       Comment
     };
 
-    QgsNewVectorTableFieldModel( const QList< QgsVectorDataProvider::NativeType> &nativeTypes,  QObject *parent = nullptr );
+    QgsNewVectorTableFieldModel( const QList<QgsVectorDataProvider::NativeType> &nativeTypes, QObject *parent = nullptr );
 
     // QAbstractItemModel interface
     int columnCount( const QModelIndex & ) const override;
@@ -195,11 +194,9 @@ class QgsNewVectorTableFieldModel: public QgsFieldModel
     QgsVectorDataProvider::NativeType nativeType( int row ) const;
 
   private:
-
-    const QList< QgsVectorDataProvider::NativeType> mNativeTypes;
+    const QList<QgsVectorDataProvider::NativeType> mNativeTypes;
     QString typeDesc( const QString &typeName ) const;
-    QVariant::Type type( const QString &typeName ) const;
-
+    QMetaType::Type type( const QString &typeName ) const;
 };
 
 

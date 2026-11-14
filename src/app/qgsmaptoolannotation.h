@@ -18,27 +18,29 @@
 #ifndef QGSMAPTOOLANNOTATION_H
 #define QGSMAPTOOLANNOTATION_H
 
-#include "qgsmaptool.h"
 #include "qgis_app.h"
 #include "qgsmapcanvasannotationitem.h"
+#include "qgsmaptool.h"
 
 class QgsAnnotation;
 
-class APP_EXPORT QgsMapToolAnnotation: public QgsMapTool
+class APP_EXPORT QgsMapToolAnnotation : public QgsMapTool
 {
     Q_OBJECT
 
   public:
     QgsMapToolAnnotation( QgsMapCanvas *canvas );
 
+    Flags flags() const override;
+
     void canvasPressEvent( QgsMapMouseEvent *e ) override;
     void canvasReleaseEvent( QgsMapMouseEvent *e ) override;
     void canvasMoveEvent( QgsMapMouseEvent *e ) override;
     void canvasDoubleClickEvent( QgsMapMouseEvent *e ) override;
     void keyPressEvent( QKeyEvent *e ) override;
+    bool populateContextMenuWithEvent( QMenu *menu, QgsMapMouseEvent *event ) override;
 
   protected:
-
     /**
      * Creates a new item. To be implemented by subclasses.
      */
@@ -53,8 +55,6 @@ class APP_EXPORT QgsMapToolAnnotation: public QgsMapTool
     QgsMapCanvasAnnotationItem *selectedItem() const;
     //! Returns a list of all annotationitems in the canvas
     QList<QgsMapCanvasAnnotationItem *> annotationItems() const;
-    //! Switches visibility states of text items
-    void toggleTextItemVisibilities();
 
     QgsPointXY transformCanvasToAnnotation( QgsPointXY p, QgsAnnotation *annotation ) const;
 

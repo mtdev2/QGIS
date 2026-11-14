@@ -16,8 +16,13 @@
  ***************************************************************************/
 
 #include "qgsalgorithmvectorize.h"
+
 #include "qgis.h"
 #include "qgsprocessing.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
@@ -28,32 +33,28 @@ QString QgsVectorizeAlgorithmBase::group() const
 
 QString QgsVectorizeAlgorithmBase::groupId() const
 {
-  return QStringLiteral( "vectorcreation" );
+  return u"vectorcreation"_s;
 }
 
 void QgsVectorizeAlgorithmBase::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterRasterLayer( QStringLiteral( "INPUT_RASTER" ),
-                QObject::tr( "Raster layer" ) ) );
-  addParameter( new QgsProcessingParameterBand( QStringLiteral( "RASTER_BAND" ),
-                QObject::tr( "Band number" ), 1, QStringLiteral( "INPUT_RASTER" ) ) );
-  addParameter( new QgsProcessingParameterString( QStringLiteral( "FIELD_NAME" ),
-                QObject::tr( "Field name" ), QStringLiteral( "VALUE" ) ) );
+  addParameter( new QgsProcessingParameterRasterLayer( u"INPUT_RASTER"_s, QObject::tr( "Raster layer" ) ) );
+  addParameter( new QgsProcessingParameterBand( u"RASTER_BAND"_s, QObject::tr( "Band number" ), 1, u"INPUT_RASTER"_s ) );
+  addParameter( new QgsProcessingParameterString( u"FIELD_NAME"_s, QObject::tr( "Field name" ), u"VALUE"_s ) );
 
-  addParameter( new QgsProcessingParameterFeatureSink( QStringLiteral( "OUTPUT" ), outputName(), outputType() ) );
+  addParameter( new QgsProcessingParameterFeatureSink( u"OUTPUT"_s, outputName(), outputType() ) );
 }
 
 bool QgsVectorizeAlgorithmBase::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  QgsRasterLayer *layer = parameterAsRasterLayer( parameters, QStringLiteral( "INPUT_RASTER" ), context );
+  QgsRasterLayer *layer = parameterAsRasterLayer( parameters, u"INPUT_RASTER"_s, context );
 
   if ( !layer )
-    throw QgsProcessingException( invalidRasterError( parameters, QStringLiteral( "INPUT_RASTER" ) ) );
+    throw QgsProcessingException( invalidRasterError( parameters, u"INPUT_RASTER"_s ) );
 
-  mBand = parameterAsInt( parameters, QStringLiteral( "RASTER_BAND" ), context );
+  mBand = parameterAsInt( parameters, u"RASTER_BAND"_s, context );
   if ( mBand < 1 || mBand > layer->bandCount() )
-    throw QgsProcessingException( QObject::tr( "Invalid band number for RASTER_BAND (%1): Valid values for input raster are 1 to %2" ).arg( mBand )
-                                  .arg( layer->bandCount() ) );
+    throw QgsProcessingException( QObject::tr( "Invalid band number for RASTER_BAND (%1): Valid values for input raster are 1 to %2" ).arg( mBand ).arg( layer->bandCount() ) );
 
   mInterface.reset( layer->dataProvider()->clone() );
   mExtent = layer->extent();
@@ -67,37 +68,29 @@ bool QgsVectorizeAlgorithmBase::prepareAlgorithm( const QVariantMap &parameters,
 
 QVariantMap QgsVectorizeAlgorithmBase::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  const QString fieldName = parameterAsString( parameters, QStringLiteral( "FIELD_NAME" ), context );
+  const QString fieldName = parameterAsString( parameters, u"FIELD_NAME"_s, context );
   QgsFields fields;
-  fields.append( QgsField( fieldName, QVariant::Double, QString(), 20, 8 ) );
+  fields.append( QgsField( fieldName, QMetaType::Type::Double, QString(), 20, 8 ) );
 
   QString dest;
-  std::unique_ptr< QgsFeatureSink > sink( parameterAsSink( parameters, QStringLiteral( "OUTPUT" ), context, dest, fields, sinkType(), mCrs ) );
+  std::unique_ptr<QgsFeatureSink> sink( parameterAsSink( parameters, u"OUTPUT"_s, context, dest, fields, sinkType(), mCrs ) );
   if ( !sink )
-    throw QgsProcessingException( invalidSinkError( parameters, QStringLiteral( "OUTPUT" ) ) );
-
-
-  int maxWidth = QgsRasterIterator::DEFAULT_MAXIMUM_TILE_WIDTH;
-  int maxHeight = QgsRasterIterator::DEFAULT_MAXIMUM_TILE_HEIGHT;
+    throw QgsProcessingException( invalidSinkError( parameters, u"OUTPUT"_s ) );
 
   QgsRasterIterator iter( mInterface.get() );
   iter.startRasterRead( mBand, mNbCellsXProvider, mNbCellsYProvider, mExtent );
-
-  int nbBlocksWidth = static_cast< int >( std::ceil( 1.0 * mNbCellsXProvider / maxWidth ) );
-  int nbBlocksHeight = static_cast< int >( std::ceil( 1.0 * mNbCellsYProvider / maxHeight ) );
-  int nbBlocks = nbBlocksWidth * nbBlocksHeight;
 
   int iterLeft = 0;
   int iterTop = 0;
   int iterCols = 0;
   int iterRows = 0;
-  std::unique_ptr< QgsRasterBlock > rasterBlock;
+  std::unique_ptr<QgsRasterBlock> rasterBlock;
   QgsRectangle blockExtent;
   bool isNoData = false;
   while ( iter.readNextRasterPart( mBand, iterCols, iterRows, rasterBlock, iterLeft, iterTop, &blockExtent ) )
   {
     if ( feedback )
-      feedback->setProgress( 100 * ( ( iterTop / maxHeight * nbBlocksWidth ) + iterLeft / maxWidth ) / nbBlocks );
+      feedback->setProgress( 100 * iter.progress( mBand ) );
     if ( feedback && feedback->isCanceled() )
       break;
 
@@ -115,12 +108,15 @@ QVariantMap QgsVectorizeAlgorithmBase::processAlgorithm( const QVariantMap &para
         const double value = rasterBlock->valueAndNoData( row, column, isNoData );
         if ( !isNoData )
         {
-          QgsGeometry pixelRectGeometry = createGeometryForPixel( currentX, currentY, mRasterUnitsPerPixelX, mRasterUnitsPerPixelY );
+          const QgsGeometry pixelRectGeometry = createGeometryForPixel( currentX, currentY, mRasterUnitsPerPixelX, mRasterUnitsPerPixelY );
 
           QgsFeature f;
           f.setGeometry( pixelRectGeometry );
           f.setAttributes( QgsAttributes() << value );
-          sink->addFeature( f, QgsFeatureSink::FastInsert );
+          if ( !sink->addFeature( f, QgsFeatureSink::FastInsert ) )
+            throw QgsProcessingException( writeFeatureError( sink.get(), parameters, u"OUTPUT"_s ) );
+          else
+            feedback->featureAddedToSink( u"OUTPUT"_s );
         }
         currentX += mRasterUnitsPerPixelX;
       }
@@ -128,8 +124,11 @@ QVariantMap QgsVectorizeAlgorithmBase::processAlgorithm( const QVariantMap &para
     }
   }
 
+  sink->finalize();
+  feedback->featureSinkFinalized( u"OUTPUT"_s );
+
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OUTPUT" ), dest );
+  outputs.insert( u"OUTPUT"_s, dest );
   return outputs;
 }
 
@@ -139,7 +138,7 @@ QVariantMap QgsVectorizeAlgorithmBase::processAlgorithm( const QVariantMap &para
 
 QString QgsRasterPixelsToPolygonsAlgorithm::name() const
 {
-  return QStringLiteral( "pixelstopolygons" );
+  return u"pixelstopolygons"_s;
 }
 
 QString QgsRasterPixelsToPolygonsAlgorithm::displayName() const
@@ -154,9 +153,11 @@ QStringList QgsRasterPixelsToPolygonsAlgorithm::tags() const
 
 QString QgsRasterPixelsToPolygonsAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm converts a raster layer to a vector layer, by creating polygon features "
-                      "for each individual pixel's extent in the raster layer.\n\n"
-                      "Any nodata pixels are skipped in the output." );
+  return QObject::tr(
+    "This algorithm converts a raster layer to a vector layer, by creating polygon features "
+    "for each individual pixel's extent in the raster layer.\n\n"
+    "Any NoData pixels are skipped in the output."
+  );
 }
 
 QString QgsRasterPixelsToPolygonsAlgorithm::shortDescription() const
@@ -174,18 +175,20 @@ QString QgsRasterPixelsToPolygonsAlgorithm::outputName() const
   return QObject::tr( "Vector polygons" );
 }
 
-QgsProcessing::SourceType QgsRasterPixelsToPolygonsAlgorithm::outputType() const
+Qgis::ProcessingSourceType QgsRasterPixelsToPolygonsAlgorithm::outputType() const
 {
-  return QgsProcessing::TypeVectorPolygon;
+  return Qgis::ProcessingSourceType::VectorPolygon;
 }
 
-QgsWkbTypes::Type QgsRasterPixelsToPolygonsAlgorithm::sinkType() const
+Qgis::WkbType QgsRasterPixelsToPolygonsAlgorithm::sinkType() const
 {
-  return QgsWkbTypes::Polygon;
+  return Qgis::WkbType::Polygon;
 }
 
 QgsGeometry QgsRasterPixelsToPolygonsAlgorithm::createGeometryForPixel( double centerX, double centerY, double pixelWidthX, double pixelWidthY ) const
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   const double hCellSizeX = pixelWidthX / 2.0;
   const double hCellSizeY = pixelWidthY / 2.0;
   return QgsGeometry::fromRect( QgsRectangle( centerX - hCellSizeX, centerY - hCellSizeY, centerX + hCellSizeX, centerY + hCellSizeY ) );
@@ -198,7 +201,7 @@ QgsGeometry QgsRasterPixelsToPolygonsAlgorithm::createGeometryForPixel( double c
 
 QString QgsRasterPixelsToPointsAlgorithm::name() const
 {
-  return QStringLiteral( "pixelstopoints" );
+  return u"pixelstopoints"_s;
 }
 
 QString QgsRasterPixelsToPointsAlgorithm::displayName() const
@@ -213,9 +216,11 @@ QStringList QgsRasterPixelsToPointsAlgorithm::tags() const
 
 QString QgsRasterPixelsToPointsAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm converts a raster layer to a vector layer, by creating point features "
-                      "for each individual pixel's center in the raster layer.\n\n"
-                      "Any nodata pixels are skipped in the output." );
+  return QObject::tr(
+    "This algorithm converts a raster layer to a vector layer, by creating point features "
+    "for each individual pixel's center in the raster layer.\n\n"
+    "Any NoData pixels are skipped in the output."
+  );
 }
 
 QString QgsRasterPixelsToPointsAlgorithm::shortDescription() const
@@ -233,21 +238,21 @@ QString QgsRasterPixelsToPointsAlgorithm::outputName() const
   return QObject::tr( "Vector points" );
 }
 
-QgsProcessing::SourceType QgsRasterPixelsToPointsAlgorithm::outputType() const
+Qgis::ProcessingSourceType QgsRasterPixelsToPointsAlgorithm::outputType() const
 {
-  return QgsProcessing::TypeVectorPoint;
+  return Qgis::ProcessingSourceType::VectorPoint;
 }
 
-QgsWkbTypes::Type QgsRasterPixelsToPointsAlgorithm::sinkType() const
+Qgis::WkbType QgsRasterPixelsToPointsAlgorithm::sinkType() const
 {
-  return QgsWkbTypes::Point;
+  return Qgis::WkbType::Point;
 }
 
 QgsGeometry QgsRasterPixelsToPointsAlgorithm::createGeometryForPixel( double centerX, double centerY, double, double ) const
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   return QgsGeometry( new QgsPoint( centerX, centerY ) );
 }
 
 ///@endcond
-
-

@@ -15,13 +15,19 @@
 
 
 #include "qgsrelationaggregatesearchwidgetwrapper.h"
-#include "qgsattributeform.h"
-#include "qgsrelationwidgetwrapper.h"
-#include "qgslogger.h"
-#include "qgscollapsiblegroupbox.h"
 
-#include <QLabel>
+#include "qgsattributeform.h"
+#include "qgscollapsiblegroupbox.h"
+#include "qgslogger.h"
+#include "qgsrelationwidgetwrapper.h"
+
 #include <QGridLayout>
+#include <QLabel>
+#include <QString>
+
+#include "moc_qgsrelationaggregatesearchwidgetwrapper.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsRelationAggregateSearchWidgetWrapper::QgsRelationAggregateSearchWidgetWrapper( QgsVectorLayer *vl, QgsRelationWidgetWrapper *wrapper, QWidget *parent )
   : QgsSearchWidgetWrapper( vl, -1, parent )
@@ -38,7 +44,7 @@ QString QgsRelationAggregateSearchWidgetWrapper::expression() const
     aggregateFilter = mAttributeForm->aggregateFilter();
 
   if ( aggregateFilter.isEmpty() )
-    return QStringLiteral( "TRUE" );
+    return u"TRUE"_s;
   else
     return aggregateFilter;
 }
@@ -51,7 +57,7 @@ bool QgsRelationAggregateSearchWidgetWrapper::valid() const
 QWidget *QgsRelationAggregateSearchWidgetWrapper::createWidget( QWidget *parent )
 {
   QWidget *widget;
-  QgsRelation relation = mWrapper->relation();
+  const QgsRelation relation = mWrapper->relation();
 
   QgsCollapsibleGroupBox *groupBox = new QgsCollapsibleGroupBox( relation.name() );
 
@@ -80,15 +86,15 @@ bool QgsRelationAggregateSearchWidgetWrapper::applyDirectly()
 void QgsRelationAggregateSearchWidgetWrapper::setExpression( const QString &value )
 {
   Q_UNUSED( value )
-  QgsDebugMsg( QStringLiteral( "Not supported" ) );
+  QgsDebugError( u"Not supported"_s );
 }
 
 bool QgsRelationAggregateSearchWidgetWrapper::eventFilter( QObject *watched, QEvent *event )
 {
-  bool rv = QgsSearchWidgetWrapper::eventFilter( watched, event );
+  const bool rv = QgsSearchWidgetWrapper::eventFilter( watched, event );
   if ( event->type() == QEvent::Show && !mAttributeForm )
   {
-    QgsAttributeEditorContext subContext = QgsAttributeEditorContext( context(), mWrapper->relation(), QgsAttributeEditorContext::Multiple, QgsAttributeEditorContext::Embed );
+    const QgsAttributeEditorContext subContext = QgsAttributeEditorContext( context(), mWrapper->relation(), QgsAttributeEditorContext::Multiple, QgsAttributeEditorContext::Embed );
     mAttributeForm = new QgsAttributeForm( mWrapper->relation().referencingLayer(), QgsFeature(), subContext, mContainerWidget );
     mAttributeForm->setMode( QgsAttributeEditorContext::AggregateSearchMode );
     QGridLayout *glayout = new QGridLayout();

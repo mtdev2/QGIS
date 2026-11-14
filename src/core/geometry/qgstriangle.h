@@ -3,7 +3,7 @@
                          -------------------
     begin                : January 2017
     copyright            : (C) 2017 by Loïc Bartoletti
-    email                : lbartoletti at tuxfamily dot org
+    email                : lituus at free dot fr
  ***************************************************************************/
 
 /***************************************************************************
@@ -20,24 +20,24 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgspolygon.h"
 #include "qgscircle.h"
 #include "qgslinestring.h"
+#include "qgspolygon.h"
 
 /**
  * \ingroup core
  * \class QgsTriangle
  * \brief Triangle geometry type.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsTriangle : public QgsPolygon
 {
   public:
-
+    // clang-format off
     /**
      * Constructor for an empty triangle geometry.
      */
     QgsTriangle() SIP_HOLDGIL;
+    // clang-format on
 
     /**
      * Construct a QgsTriangle from three QgsPoint.
@@ -63,8 +63,8 @@ class CORE_EXPORT QgsTriangle : public QgsPolygon
      */
     explicit QgsTriangle( QPointF p1, QPointF p2, QPointF p3 ) SIP_HOLDGIL;
 
-    bool operator==( const QgsTriangle &other ) const SIP_HOLDGIL;
-    bool operator!=( const QgsTriangle &other ) const SIP_HOLDGIL;
+    bool operator==( const QgsAbstractGeometry &other ) const override SIP_HOLDGIL;
+    bool operator!=( const QgsAbstractGeometry &other ) const override SIP_HOLDGIL;
 
     QString geometryType() const override SIP_HOLDGIL;
     QgsTriangle *clone() const override SIP_FACTORY;
@@ -89,9 +89,9 @@ class CORE_EXPORT QgsTriangle : public QgsPolygon
      * Inherited method not used. You cannot add an interior ring into a triangle.
      * \note not available in Python bindings
      */
-    void setInteriorRings( const QVector< QgsCurve *> &rings ) = delete;
+    void setInteriorRings( const QVector< QgsCurve *> &rings ) = delete; // cppcheck-suppress duplInheritedMember
     //! Inherited method not used. You cannot delete or insert a vertex directly. Returns always FALSE.
-    bool deleteVertex( QgsVertexId position ) override;
+    bool deleteVertices( const QSet<QgsVertexId> &positions ) override;
     //! Inherited method not used. You cannot delete or insert a vertex directly. Returns always FALSE.
     bool insertVertex( QgsVertexId position, const QgsPoint &vertex ) override;
     bool moveVertex( QgsVertexId vId, const QgsPoint &newPos ) override;
@@ -101,6 +101,9 @@ class CORE_EXPORT QgsTriangle : public QgsPolygon
     QgsCurve *boundary() const override SIP_FACTORY;
 
     // inherited: double pointDistanceToBoundary( double x, double y ) const;
+
+    // override QgsPolygon method to avoid unwanted overloaded-virtual warning caused by int variant of vertexAt defined below
+    QgsPoint vertexAt( QgsVertexId id ) const override;
 
     /**
      *  Returns coordinates of a vertex.
@@ -164,7 +167,7 @@ class CORE_EXPORT QgsTriangle : public QgsPolygon
      *   # True
      *  \endcode
      */
-    bool isDegenerate() SIP_HOLDGIL;
+    bool isDegenerate() const SIP_HOLDGIL;
 
     /**
      * Is the triangle isocele (two sides with the same length)?
@@ -442,13 +445,29 @@ class CORE_EXPORT QgsTriangle : public QgsPolygon
      * Cast the \a geom to a QgsTriangle.
      * Should be used by qgsgeometry_cast<QgsTriangle *>( geometry ).
      *
-     * \note Not available in Python. Objects will be automatically be converted to the appropriate target type.
-     * \since QGIS 3.0
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
      */
-    inline static const QgsTriangle *cast( const QgsAbstractGeometry *geom )
+    inline static const QgsTriangle *cast( const QgsAbstractGeometry *geom ) // cppcheck-suppress duplInheritedMember
     {
-      if ( geom && QgsWkbTypes::flatType( geom->wkbType() ) == QgsWkbTypes::Triangle )
+      if ( geom && QgsWkbTypes::flatType( geom->wkbType() ) == Qgis::WkbType::Triangle )
         return static_cast<const QgsTriangle *>( geom );
+      return nullptr;
+    }
+
+    /**
+     * Cast the \a geom to a QgsTriangle.
+     * Should be used by qgsgeometry_cast<QgsTriangle *>( geometry ).
+     *
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
+     */
+    inline static QgsTriangle *cast( QgsAbstractGeometry *geom ) // cppcheck-suppress duplInheritedMember
+    {
+      if ( geom && QgsWkbTypes::flatType( geom->wkbType() ) == Qgis::WkbType::Triangle )
+        return static_cast<QgsTriangle *>( geom );
       return nullptr;
     }
 #endif

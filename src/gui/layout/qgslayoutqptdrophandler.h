@@ -17,14 +17,15 @@
 #define QGSLAYOUTQPTDROPHANDLER_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
 
 #include "qgis_gui.h"
 #include "qgslayoutcustomdrophandler.h"
 
+#define SIP_NO_FILE
+
 /**
  * \ingroup gui
- * Layout drop handler for handling QPT files
+ * \brief Layout drop handler for handling QPT files
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
@@ -34,10 +35,10 @@ class GUI_EXPORT QgsLayoutQptDropHandler : public QgsLayoutCustomDropHandler
     Q_OBJECT
 
   public:
-
     //! constructor
     QgsLayoutQptDropHandler( QObject *parent = nullptr );
 
+    using QgsLayoutCustomDropHandler::handleFileDrop;
     bool handleFileDrop( QgsLayoutDesignerInterface *iface, QPointF point, const QString &file ) override;
 };
 

@@ -14,8 +14,15 @@
  ***************************************************************************/
 
 #include "qgssearchwidgettoolbutton.h"
+
 #include "qgsapplication.h"
+
 #include <QMenu>
+#include <QString>
+
+#include "moc_qgssearchwidgettoolbutton.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsSearchWidgetToolButton::QgsSearchWidgetToolButton( QWidget *parent )
   : QToolButton( parent )
@@ -55,7 +62,7 @@ void QgsSearchWidgetToolButton::setActiveFlags( QgsSearchWidgetWrapper::FilterFl
 
   // only accept a single exclusive flag
   const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
   {
     if ( !( mAvailableFilterFlags & flag ) )
     {
@@ -69,7 +76,7 @@ void QgsSearchWidgetToolButton::setActiveFlags( QgsSearchWidgetWrapper::FilterFl
     }
   }
   const auto nonExclusiveFilterFlags { QgsSearchWidgetWrapper::nonExclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
   {
     if ( !( mAvailableFilterFlags & flag ) )
     {
@@ -102,7 +109,7 @@ void QgsSearchWidgetToolButton::toggleFlag( QgsSearchWidgetWrapper::FilterFlag f
   {
     // clear other exclusive flags
     const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-    for ( QgsSearchWidgetWrapper::FilterFlag exclusiveFlag : exclusiveFilterFlags )
+    for ( const QgsSearchWidgetWrapper::FilterFlag exclusiveFlag : exclusiveFilterFlags )
     {
       mFilterFlags &= ~exclusiveFlag;
     }
@@ -116,7 +123,7 @@ void QgsSearchWidgetToolButton::toggleFlag( QgsSearchWidgetWrapper::FilterFlag f
 bool QgsSearchWidgetToolButton::isActive() const
 {
   const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
   {
     if ( mFilterFlags & flag )
       return true;
@@ -129,7 +136,7 @@ void QgsSearchWidgetToolButton::aboutToShowMenu()
   mMenu->clear();
   bool fieldActive = false;
   const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
   {
     if ( !( mAvailableFilterFlags & flag ) )
     {
@@ -163,7 +170,7 @@ void QgsSearchWidgetToolButton::aboutToShowMenu()
   mMenu->addSeparator();
 
   const auto nonExclusiveFilterFlags { QgsSearchWidgetWrapper::nonExclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
   {
     if ( !( mAvailableFilterFlags & flag ) )
     {
@@ -182,7 +189,7 @@ void QgsSearchWidgetToolButton::aboutToShowMenu()
 
 void QgsSearchWidgetToolButton::actionSelected()
 {
-  QgsSearchWidgetWrapper::FilterFlag flag = static_cast< QgsSearchWidgetWrapper::FilterFlag >( qobject_cast< QAction * >( sender() )->data().toInt() );
+  const QgsSearchWidgetWrapper::FilterFlag flag = static_cast<QgsSearchWidgetWrapper::FilterFlag>( qobject_cast<QAction *>( sender() )->data().toInt() );
   toggleFlag( flag );
 }
 
@@ -198,7 +205,7 @@ void QgsSearchWidgetToolButton::setInactive()
 
   QgsSearchWidgetWrapper::FilterFlags newFlags;
   const auto nonExclusiveFilterFlags { QgsSearchWidgetWrapper::nonExclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
   {
     if ( !( mAvailableFilterFlags & flag ) || !( mFilterFlags & flag ) )
       continue;
@@ -214,7 +221,7 @@ void QgsSearchWidgetToolButton::setActive()
     return;
 
   const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
   {
     if ( mDefaultFilterFlags & flag )
     {
@@ -229,7 +236,7 @@ void QgsSearchWidgetToolButton::updateState()
   bool active = false;
   QStringList toolTips;
   const auto exclusiveFilterFlags { QgsSearchWidgetWrapper::exclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : exclusiveFilterFlags )
   {
     if ( mFilterFlags & flag )
     {
@@ -238,7 +245,7 @@ void QgsSearchWidgetToolButton::updateState()
     }
   }
   const auto nonExclusiveFilterFlags { QgsSearchWidgetWrapper::nonExclusiveFilterFlags() };
-  for ( QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
+  for ( const QgsSearchWidgetWrapper::FilterFlag flag : nonExclusiveFilterFlags )
   {
     if ( mFilterFlags & flag )
     {
@@ -248,7 +255,7 @@ void QgsSearchWidgetToolButton::updateState()
 
   if ( active )
   {
-    QString text = toolTips.join( QLatin1String( ", " ) );
+    const QString text = toolTips.join( ", "_L1 );
     setText( text );
     setToolTip( text );
   }

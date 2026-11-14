@@ -19,17 +19,15 @@
 #include "qgis_core.h"
 #include "qgsfieldformatter.h"
 
-
 /**
  * \ingroup core
- * Field formatter for a checkbox field.
+ * \brief Field formatter for a checkbox field.
  *
  * \since QGIS 3.10
  */
 class CORE_EXPORT QgsCheckBoxFieldFormatter : public QgsFieldFormatter
 {
   public:
-
     /**
      * Method to use when displaying the checkbox values as plain text.
      *
@@ -37,13 +35,10 @@ class CORE_EXPORT QgsCheckBoxFieldFormatter : public QgsFieldFormatter
      */
     enum TextDisplayMethod
     {
-      ShowTrueFalse, //!< Shows "True" or "False" strings
+      ShowTrueFalse,    //!< Shows "True" or "False" strings
       ShowStoredValues, //!< Shows actual stored field value
     };
 
-    /**
-     * Constructor for QgsCheckBoxFieldFormatter.
-     */
     QgsCheckBoxFieldFormatter() = default;
 
     QString id() const override;

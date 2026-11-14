@@ -18,43 +18,46 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgswmsconnection.h"
+
 #include "../providers/wms/qgswmsprovider.h"
-#include "qgis.h" // GEO_EPSG_CRS_ID
+#include "qgis.h"
 #include "qgsdatasourceuri.h"
+#include "qgsnetworkaccessmanager.h"
+#include "qgsowsconnection.h"
 #include "qgsproject.h"
 #include "qgsproviderregistry.h"
-#include "qgswmsconnection.h"
-#include "qgsnetworkaccessmanager.h"
 #include "qgssettings.h"
-#include "qgsowsconnection.h"
+
+#include <QString>
+
+#include "moc_qgswmsconnection.cpp"
+
+using namespace Qt::StringLiterals;
+
+static const QString SERVICE_WMS = u"WMS"_s;
+
 
 QgsWMSConnection::QgsWMSConnection( const QString &connName )
-  : QgsOwsConnection( QStringLiteral( "WMS" ), connName )
-{
-}
+  : QgsOwsConnection( SERVICE_WMS, connName )
+{}
 
 QStringList QgsWMSConnection::connectionList()
 {
-  QgsSettings settings;
-  settings.beginGroup( QStringLiteral( "qgis/connections-wms" ) );
-  return settings.childGroups();
+  return QgsOwsConnection::connectionList( SERVICE_WMS );
 }
 
 QString QgsWMSConnection::selectedConnection()
 {
-  QgsSettings settings;
-  return settings.value( QStringLiteral( "qgis/connections-wms/selected" ) ).toString();
+  return QgsOwsConnection::selectedConnection( SERVICE_WMS );
 }
 
 void QgsWMSConnection::setSelectedConnection( const QString &name )
 {
-  QgsSettings settings;
-  settings.setValue( QStringLiteral( "qgis/connections-wms/selected" ), name );
+  QgsOwsConnection::setSelectedConnection( SERVICE_WMS, name );
 }
 
 void QgsWMSConnection::deleteConnection( const QString &name )
 {
-  QgsSettings settings;
-  settings.remove( "qgis/connections-wms/" + name );
-  settings.remove( "qgis/WMS/" + name );
+  QgsOwsConnection::deleteConnection( SERVICE_WMS, name );
 }

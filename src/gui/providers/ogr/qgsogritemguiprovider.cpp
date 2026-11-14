@@ -16,6 +16,13 @@
  ***************************************************************************/
 
 #include "qgsogritemguiprovider.h"
+
+#include <QString>
+
+#include "moc_qgsogritemguiprovider.cpp"
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
 #include <QAction>
@@ -24,44 +31,67 @@
 #include <QMessageBox>
 
 #include "qgsproject.h"
-#include "qgsogrdataitems.h"
 #include "qgsogrutils.h"
 #include "qgsproviderregistry.h"
+#include "qgslayeritem.h"
+#include "qgsdatacollectionitem.h"
+#include "qgsogrproviderutils.h"
+#include "qgsgeopackagedataitems.h"
 
-void QgsOgrItemGuiProvider::populateContextMenu(
-  QgsDataItem *item,
-  QMenu *menu,
-  const QList<QgsDataItem *> &,
-  QgsDataItemGuiContext context )
+void QgsOgrItemGuiProvider::populateContextMenu( QgsDataItem *item, QMenu *menu, const QList<QgsDataItem *> &, QgsDataItemGuiContext context )
 {
-  if ( QgsOgrLayerItem *layerItem = qobject_cast< QgsOgrLayerItem * >( item ) )
+  if ( QgsLayerItem *layerItem = qobject_cast<QgsLayerItem *>( item ) )
   {
-    // Messages are different for files and tables
-    QString message = layerItem->isSubLayer() ? QObject::tr( "Delete Layer “%1”…" ).arg( layerItem->name() ) : QObject::tr( "Delete File “%1”…" ).arg( layerItem->name() );
-    QAction *actionDeleteLayer = new QAction( message, layerItem->parent() );
-    QVariantMap data;
-    data.insert( QStringLiteral( "isSubLayer" ), layerItem->isSubLayer() );
-    data.insert( QStringLiteral( "uri" ), layerItem->uri() );
-    data.insert( QStringLiteral( "name" ), layerItem->name() );
-    data.insert( QStringLiteral( "parent" ), QVariant::fromValue( QPointer< QgsDataItem >( layerItem->parent() ) ) );
-    actionDeleteLayer->setData( data );
-    connect( actionDeleteLayer, &QAction::triggered, this, [ = ] { onDeleteLayer( context ); } );
-    menu->addAction( actionDeleteLayer );
+    if ( layerItem->providerKey() == "ogr"_L1 && !qobject_cast<QgsGeoPackageAbstractLayerItem *>( item ) )
+    {
+      if ( !layerItem->capabilities2().testFlag( Qgis::BrowserItemCapability::ReadOnly ) && !layerItem->capabilities2().testFlag( Qgis::BrowserItemCapability::ItemRepresentsFile ) )
+      {
+        // item is a layer which sits inside a collection.
+
+        QMenu *manageLayerMenu = new QMenu( tr( "Manage" ), menu );
+
+        // test if GDAL supports deleting this layer
+        const QVariantMap parts = QgsProviderRegistry::instance()->decodeUri( layerItem->providerKey(), layerItem->uri() );
+        const QString path = parts.value( u"path"_s ).toString();
+        bool canDeleteLayers = false;
+        if ( !path.isEmpty() )
+        {
+          OGRSFDriverH hDriver = nullptr;
+          const gdal::ogr_datasource_unique_ptr hDS( OGROpen( path.toUtf8().constData(), TRUE, &hDriver ) );
+          canDeleteLayers = hDS && OGR_DS_TestCapability( hDS.get(), ODsCDeleteLayer );
+        }
+
+        QAction *actionDeleteLayer = new QAction( QObject::tr( "Delete Layer “%1”…" ).arg( layerItem->name() ), menu );
+        QVariantMap data;
+        data.insert( u"uri"_s, layerItem->uri() );
+        data.insert( u"name"_s, layerItem->name() );
+        data.insert( u"parent"_s, QVariant::fromValue( QPointer<QgsDataItem>( layerItem->parent() ) ) );
+        actionDeleteLayer->setData( data );
+        connect( actionDeleteLayer, &QAction::triggered, this, [this, context] { onDeleteLayer( context ); } );
+        actionDeleteLayer->setEnabled( canDeleteLayers );
+        manageLayerMenu->addAction( actionDeleteLayer );
+
+        menu->addMenu( manageLayerMenu );
+      }
+    }
   }
 
-  if ( QgsOgrDataCollectionItem *collectionItem = qobject_cast< QgsOgrDataCollectionItem * >( item ) )
+  if ( QgsDataCollectionItem *collectionItem = qobject_cast<QgsDataCollectionItem *>( item ) )
   {
-    const bool isFolder = QFileInfo( collectionItem->path() ).isDir();
-    // Messages are different for files and tables
-    QString message = QObject::tr( "Delete %1 “%2”…" ).arg( isFolder ? tr( "Folder" ) : tr( "File" ), collectionItem->name() );
-    QAction *actionDeleteCollection = new QAction( message, collectionItem->parent() );
+    if ( !collectionItem->capabilities2().testFlag( Qgis::BrowserItemCapability::ReadOnly ) && collectionItem->providerKey() == "ogr"_L1 && !qobject_cast<QgsGeoPackageCollectionItem *>( item ) )
+    {
+      const bool isFolder = QFileInfo( collectionItem->path() ).isDir();
+      // Messages are different for files and tables
+      const QString message = QObject::tr( "Delete %1 “%2”…" ).arg( isFolder ? tr( "Folder" ) : tr( "File" ), collectionItem->name() );
+      QAction *actionDeleteCollection = new QAction( message, menu );
 
-    QVariantMap data;
-    data.insert( QStringLiteral( "path" ), collectionItem->path() );
-    data.insert( QStringLiteral( "parent" ), QVariant::fromValue( QPointer< QgsDataItem >( collectionItem->parent() ) ) );
-    actionDeleteCollection->setData( data );
-    connect( actionDeleteCollection, &QAction::triggered, this, [ = ] { deleteCollection( context ); } );
-    menu->addAction( actionDeleteCollection );
+      QVariantMap data;
+      data.insert( u"path"_s, collectionItem->path() );
+      data.insert( u"parent"_s, QVariant::fromValue( QPointer<QgsDataItem>( collectionItem->parent() ) ) );
+      actionDeleteCollection->setData( data );
+      connect( actionDeleteCollection, &QAction::triggered, this, [this, context] { deleteCollection( context ); } );
+      menu->addAction( actionDeleteCollection );
+    }
   }
 }
 
@@ -69,13 +99,11 @@ void QgsOgrItemGuiProvider::onDeleteLayer( QgsDataItemGuiContext context )
 {
   QAction *s = qobject_cast<QAction *>( sender() );
   QVariantMap data = s->data().toMap();
-  bool isSubLayer = data[QStringLiteral( "isSublayer" )].toBool();
-  const QString uri = data[QStringLiteral( "uri" )].toString();
-  const QString name = data[QStringLiteral( "name" )].toString();
-  QPointer< QgsDataItem > parent = data[QStringLiteral( "parent" )].value<QPointer< QgsDataItem >>();
+  const QString uri = data[u"uri"_s].toString();
+  const QString name = data[u"name"_s].toString();
+  const QPointer<QgsDataItem> parent = data[u"parent"_s].value<QPointer<QgsDataItem>>();
 
-  // Messages are different for files and tables
-  QString title = isSubLayer ? QObject::tr( "Delete Layer" ) : QObject::tr( "Delete File" );
+  const QString title = QObject::tr( "Delete Layer" );
   // Check if the layer is in the registry
   const QgsMapLayer *projectLayer = nullptr;
   const auto constMapLayers = QgsProject::instance()->mapLayers();
@@ -86,39 +114,37 @@ void QgsOgrItemGuiProvider::onDeleteLayer( QgsDataItemGuiContext context )
       projectLayer = layer;
     }
   }
-  if ( ! projectLayer )
+  if ( !projectLayer )
   {
-    QString confirmMessage;
-    if ( isSubLayer )
-    {
-      confirmMessage = QObject::tr( "Are you sure you want to delete layer '%1' from datasource?" ).arg( name );
-    }
-    else
-    {
-      confirmMessage = QObject::tr( "Are you sure you want to delete file '%1'?" ).arg( uri );
-    }
-    if ( QMessageBox::question( nullptr, title,
-                                confirmMessage,
-                                QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
+    const QString confirmMessage = QObject::tr( "Are you sure you want to delete layer '%1' from datasource?" ).arg( name );
+    if ( QMessageBox::question( nullptr, title, confirmMessage, QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
       return;
 
     QString errCause;
-    bool res = QgsOgrProviderUtils::deleteLayer( uri, errCause );
+    const bool res = QgsOgrProviderUtils::deleteLayer( uri, errCause );
     if ( !res )
     {
       notify( title, errCause, context, Qgis::MessageLevel::Critical );
     }
     else
     {
-      notify( title, isSubLayer ? tr( "Layer deleted successfully." ) :  tr( "File deleted successfully." ), context, Qgis::MessageLevel::Success );
+      notify( title, tr( "Layer deleted successfully." ), context, Qgis::MessageLevel::Success );
       if ( parent )
         parent->refresh();
     }
   }
   else
   {
-    notify( title, QObject::tr( "The layer '%1' cannot be deleted because it is in the current project as '%2',"
-                                " remove it from the project and retry." ).arg( name, projectLayer->name() ), context, Qgis::MessageLevel::Warning );
+    notify(
+      title,
+      QObject::tr(
+        "The layer '%1' cannot be deleted because it is in the current project as '%2',"
+        " remove it from the project and retry."
+      )
+        .arg( name, projectLayer->name() ),
+      context,
+      Qgis::MessageLevel::Warning
+    );
   }
 }
 
@@ -126,8 +152,8 @@ void QgsOgrItemGuiProvider::deleteCollection( QgsDataItemGuiContext context )
 {
   QAction *s = qobject_cast<QAction *>( sender() );
   QVariantMap data = s->data().toMap();
-  const QString path = data[QStringLiteral( "path" )].toString();
-  QPointer< QgsDataItem > parent = data[QStringLiteral( "parent" )].value<QPointer< QgsDataItem >>();
+  const QString path = data[u"path"_s].toString();
+  const QPointer<QgsDataItem> parent = data[u"parent"_s].value<QPointer<QgsDataItem>>();
 
   const bool isFolder = QFileInfo( path ).isDir();
   const QString type = isFolder ? tr( "folder" ) : tr( "file" );
@@ -139,18 +165,16 @@ void QgsOgrItemGuiProvider::deleteCollection( QgsDataItemGuiContext context )
   for ( auto it = mapLayers.constBegin(); it != mapLayers.constEnd(); ++it )
   {
     const QVariantMap parts = QgsProviderRegistry::instance()->decodeUri( it.value()->providerType(), it.value()->source() );
-    if ( parts.value( QStringLiteral( "path" ) ).toString() == path )
+    if ( parts.value( u"path"_s ).toString() == path )
     {
       projectLayer = it.value();
     }
   }
-  if ( ! projectLayer )
+  if ( !projectLayer )
   {
     const QString confirmMessage = QObject::tr( "Are you sure you want to delete '%1'?" ).arg( path );
 
-    if ( QMessageBox::question( nullptr, title,
-                                confirmMessage,
-                                QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
+    if ( QMessageBox::question( nullptr, title, confirmMessage, QMessageBox::Yes | QMessageBox::No, QMessageBox::No ) != QMessageBox::Yes )
       return;
 
     bool res = false;
@@ -177,8 +201,16 @@ void QgsOgrItemGuiProvider::deleteCollection( QgsDataItemGuiContext context )
   }
   else
   {
-    notify( title, tr( "The %1 '%2' cannot be deleted because it is in the current project as '%3',"
-                       " remove it from the project and retry." ).arg( type, path, projectLayer->name() ), context, Qgis::MessageLevel::Warning );
+    notify(
+      title,
+      tr(
+        "The %1 '%2' cannot be deleted because it is in the current project as '%3',"
+        " remove it from the project and retry."
+      )
+        .arg( type, path, projectLayer->name() ),
+      context,
+      Qgis::MessageLevel::Warning
+    );
   }
 }
 ///@endcond

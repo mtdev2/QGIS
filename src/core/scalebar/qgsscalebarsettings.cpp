@@ -15,22 +15,24 @@
  ***************************************************************************/
 
 #include "qgsscalebarsettings.h"
-#include "qgsapplication.h"
-#include "qgsnumericformat.h"
+
 #include "qgsbasicnumericformat.h"
-#include "qgslinesymbollayer.h"
-#include "qgssymbol.h"
+#include "qgsfillsymbol.h"
 #include "qgsfillsymbollayer.h"
+#include "qgslinesymbol.h"
+#include "qgslinesymbollayer.h"
+#include "qgsnumericformat.h"
+#include "qgssymbol.h"
 
 QgsScaleBarSettings::QgsScaleBarSettings()
 {
   mTextFormat.setSize( 12.0 );
-  mTextFormat.setSizeUnit( QgsUnitTypes::RenderPoints );
+  mTextFormat.setSizeUnit( Qgis::RenderUnit::Points );
   mTextFormat.setColor( QColor( 0, 0, 0 ) );
 
-  mNumericFormat = qgis::make_unique< QgsBasicNumericFormat >();
+  mNumericFormat = std::make_unique< QgsBasicNumericFormat >();
 
-  mLineSymbol = qgis::make_unique< QgsLineSymbol >();
+  mLineSymbol = std::make_unique< QgsLineSymbol >();
   mLineSymbol->setColor( QColor( 0, 0, 0 ) );
   mLineSymbol->setWidth( 0.3 );
   if ( QgsSimpleLineSymbolLayer *line = dynamic_cast< QgsSimpleLineSymbolLayer * >( mLineSymbol->symbolLayer( 0 ) ) )
@@ -38,17 +40,17 @@ QgsScaleBarSettings::QgsScaleBarSettings()
     line->setPenJoinStyle( Qt::MiterJoin );
     line->setPenCapStyle( Qt::SquareCap );
   }
-  mLineSymbol->setOutputUnit( QgsUnitTypes::RenderMillimeters );
+  mLineSymbol->setOutputUnit( Qgis::RenderUnit::Millimeters );
   mDivisionLineSymbol.reset( mLineSymbol->clone() );
   mSubdivisionLineSymbol.reset( mLineSymbol->clone() );
 
-  mFillSymbol = qgis::make_unique< QgsFillSymbol >();
+  mFillSymbol = std::make_unique< QgsFillSymbol >();
   mFillSymbol->setColor( QColor( 0, 0, 0 ) );
   if ( QgsSimpleFillSymbolLayer *fill = dynamic_cast< QgsSimpleFillSymbolLayer * >( mFillSymbol->symbolLayer( 0 ) ) )
   {
     fill->setStrokeStyle( Qt::NoPen );
   }
-  mAlternateFillSymbol = qgis::make_unique< QgsFillSymbol >();
+  mAlternateFillSymbol = std::make_unique< QgsFillSymbol >();
   mAlternateFillSymbol->setColor( QColor( 255, 255, 255 ) );
   if ( QgsSimpleFillSymbolLayer *fill = dynamic_cast< QgsSimpleFillSymbolLayer * >( mAlternateFillSymbol->symbolLayer( 0 ) ) )
   {
@@ -77,16 +79,18 @@ QgsScaleBarSettings::QgsScaleBarSettings( const QgsScaleBarSettings &other )
   , mLabelBarSpace( other.mLabelBarSpace )
   , mLabelVerticalPlacement( other.mLabelVerticalPlacement )
   , mLabelHorizontalPlacement( other.mLabelHorizontalPlacement )
+  , mUnitLabelPlacements( other.mUnitLabelPlacements )
   , mBoxContentSpace( other.mBoxContentSpace )
   , mAlignment( other.mAlignment )
   , mUnits( other.mUnits )
   , mNumericFormat( other.mNumericFormat->clone() )
-{
-
-}
+{}
 
 QgsScaleBarSettings &QgsScaleBarSettings::operator=( const QgsScaleBarSettings &other )
 {
+  if ( &other == this )
+    return *this;
+
   mNumSegments = other.mNumSegments;
   mNumSegmentsLeft = other.mNumSegmentsLeft;
   mNumSubdivisions = other.mNumSubdivisions;
@@ -107,6 +111,7 @@ QgsScaleBarSettings &QgsScaleBarSettings::operator=( const QgsScaleBarSettings &
   mLabelBarSpace = other.mLabelBarSpace;
   mLabelVerticalPlacement = other.mLabelVerticalPlacement;
   mLabelHorizontalPlacement = other.mLabelHorizontalPlacement;
+  mUnitLabelPlacements = other.mUnitLabelPlacements;
   mBoxContentSpace = other.mBoxContentSpace;
   mAlignment = other.mAlignment;
   mUnits = other.mUnits;
@@ -157,7 +162,7 @@ void QgsScaleBarSettings::setLineWidth( double width )
   for ( QgsLineSymbol *symbol : { mLineSymbol.get(), mDivisionLineSymbol.get(), mSubdivisionLineSymbol.get() } )
   {
     symbol->setWidth( width );
-    symbol->setOutputUnit( QgsUnitTypes::RenderMillimeters );
+    symbol->setOutputUnit( Qgis::RenderUnit::Millimeters );
   }
 }
 
@@ -179,7 +184,7 @@ void QgsScaleBarSettings::setPen( const QPen &pen )
   {
     symbol->setColor( pen.color() );
     symbol->setWidth( pen.widthF() );
-    symbol->setOutputUnit( QgsUnitTypes::RenderMillimeters );
+    symbol->setOutputUnit( Qgis::RenderUnit::Millimeters );
     if ( QgsSimpleLineSymbolLayer *line = dynamic_cast< QgsSimpleLineSymbolLayer * >( symbol->symbolLayer( 0 ) ) )
     {
       line->setPenJoinStyle( pen.joinStyle() );
@@ -331,4 +336,3 @@ void QgsScaleBarSettings::setNumericFormat( QgsNumericFormat *format )
 }
 
 QgsScaleBarSettings::~QgsScaleBarSettings() = default;
-

@@ -17,16 +17,21 @@
 #define QGSVECTORLAYERLEGENDWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "qgis_gui.h"
+#include "qgstextformat.h"
 
 #include <QWidget>
 
-#include "qgstextformat.h"
-#include "qgis_gui.h"
+#define SIP_NO_FILE
 
+class QgsImageSourceLineEdit;
 class QLabel;
 class QPushButton;
 class QTreeView;
+class QTreeWidget;
+class QTreeWidgetItem;
+class QCheckBox;
 
 class QgsFontButton;
 class QgsCollapsibleGroupBox;
@@ -34,7 +39,10 @@ class QgsMapCanvas;
 class QgsVectorLayer;
 
 /**
- * A widget for configuration of options specific to vector layer's legend.
+ * \ingroup gui
+ * \class QgsVectorLayerLegendWidget
+ *
+ * \brief A widget for configuration of options specific to a vector layer's legend.
  */
 class GUI_EXPORT QgsVectorLayerLegendWidget : public QWidget
 {
@@ -56,16 +64,23 @@ class GUI_EXPORT QgsVectorLayerLegendWidget : public QWidget
 
   private slots:
     void labelsFromExpression();
+    void labelLegendTreeWidgetItemDoubleClicked( QTreeWidgetItem *item, int column );
 
   private:
     void populateLegendTreeView( const QHash<QString, QString> &content );
+    void populateLabelLegendTreeWidget();
+    void applyLabelLegend();
 
   private:
+    QCheckBox *mIncludeByDefaultInLayoutLegendsCheck = nullptr;
     QTreeView *mLegendTreeView = nullptr;
     QgsFontButton *mTextOnSymbolFormatButton = nullptr;
     QPushButton *mTextOnSymbolFromExpressionButton = nullptr;
     QgsCollapsibleGroupBox *mTextOnSymbolGroupBox = nullptr;
-    QLabel *mTextOnSymbolLabel = nullptr;
+    QgsCollapsibleGroupBox *mLabelLegendGroupBox = nullptr;
+    QTreeWidget *mLabelLegendTreeWidget = nullptr;
+    QLabel *mPlaceholderImageLabel = nullptr;
+    QgsImageSourceLineEdit *mImageSourceLineEdit = nullptr;
 
     QgsMapCanvas *mCanvas = nullptr;
     QgsVectorLayer *mLayer = nullptr;

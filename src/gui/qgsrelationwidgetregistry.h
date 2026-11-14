@@ -15,16 +15,17 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsabstractrelationeditorwidget.h"
-#include "qgis_gui.h"
-
-
 #ifndef QGSRELATIONWIDGETREGISTRY_H
 #define QGSRELATIONWIDGETREGISTRY_H
 
+#include "qgis_gui.h"
+#include "qgsabstractrelationeditorwidget.h"
 
 /**
- * Keeps track of the registered relations widgets. New widgets can be registered, old ones deleted.
+ * Keeps track of the registered relations widgets.
+ *
+ * New widgets can be registered, old ones deleted.
+ *
  * The default {\see QgsRelationEditorWidget} is protected from removing.
  * \ingroup gui
  * \class QgsRelationWidgetRegistry
@@ -33,7 +34,6 @@
 class GUI_EXPORT QgsRelationWidgetRegistry
 {
   public:
-
     /**
      * Constructor
      */
@@ -54,7 +54,7 @@ class GUI_EXPORT QgsRelationWidgetRegistry
     /**
      * Returns a list of names of registered relation widgets
      */
-    QStringList relationWidgetNames();
+    QStringList relationWidgetNames() const;
 
     /**
      * Gets access to all registered factories
@@ -79,9 +79,24 @@ class GUI_EXPORT QgsRelationWidgetRegistry
      */
     QgsAbstractRelationEditorConfigWidget *createConfigWidget( const QString &widgetType, const QgsRelation &relation, QWidget *parent = nullptr ) const SIP_TRANSFERBACK;
 
-  private:
 
+    /**
+     * Sets the default editor widget type. Does nothing if the provided widget type is not present.
+     * \param widgetType The widget type to be used by default.
+     * \since QGIS 3.20
+     */
+    void setDefaultWidgetType( const QString &widgetType );
+
+    /**
+     * Returns the default editor widget type.
+     * \since QGIS 3.20
+     */
+    QString defaultWidgetType() const;
+
+  private:
     QMap<QString, QgsAbstractRelationEditorWidgetFactory *> mRelationWidgetFactories;
+
+    QString mDefaultWidgetType;
 };
 
 #endif // QGSRELATIONWIDGETREGISTRY_H

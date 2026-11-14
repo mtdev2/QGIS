@@ -15,10 +15,17 @@
  ***************************************************************************/
 
 #include "qgswfssubsetstringeditor.h"
+
+#include "qgssqlstatement.h"
 #include "qgswfsprovider.h"
 #include "qgswfsshareddata.h"
 #include "qgswfsutils.h"
-#include "qgssqlstatement.h"
+
+#include <QString>
+
+#include "moc_qgswfssubsetstringeditor.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer *layer, QgsWFSProvider *provider, QWidget *parent, Qt::WindowFlags fl )
 {
@@ -43,13 +50,12 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
   const bool bSupportJoins = caps.featureTypes.size() > 1 && caps.supportsJoins;
   d->setSupportMultipleTables( bSupportJoins, QgsSQLStatement::quotedIdentifierIfNeeded( displayedTypeName ) );
 
-  QMap< QString, QString > mapTypenameToTitle;
-  Q_FOREACH ( const QgsWfsCapabilities::FeatureType f, caps.featureTypes )
+  QMap<QString, QString> mapTypenameToTitle;
+  for ( const QgsWfsCapabilities::FeatureType &f : std::as_const( caps.featureTypes ) )
     mapTypenameToTitle[f.name] = f.title;
 
-  QList< QgsSQLComposerDialog::PairNameTitle > tablenames;
-  tablenames << QgsSQLComposerDialog::PairNameTitle(
-               QgsSQLStatement::quotedIdentifierIfNeeded( displayedTypeName ), mapTypenameToTitle[typeName] );
+  QList<QgsSQLComposerDialog::PairNameTitle> tablenames;
+  tablenames << QgsSQLComposerDialog::PairNameTitle( QgsSQLStatement::quotedIdentifierIfNeeded( displayedTypeName ), mapTypenameToTitle[typeName] );
   if ( bSupportJoins )
   {
     for ( const auto &featureType : caps.featureTypes )
@@ -62,22 +68,21 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
         if ( !caps.setAmbiguousUnprefixedTypename.contains( unprefixedIterTypename ) )
           displayedIterTypename = unprefixedIterTypename;
 
-        tablenames << QgsSQLComposerDialog::PairNameTitle(
-                     QgsSQLStatement::quotedIdentifierIfNeeded( displayedIterTypename ), mapTypenameToTitle[iterTypename] );
+        tablenames << QgsSQLComposerDialog::PairNameTitle( QgsSQLStatement::quotedIdentifierIfNeeded( displayedIterTypename ), mapTypenameToTitle[iterTypename] );
       }
     }
   }
   d->addTableNames( tablenames );
 
-  QList< QgsSQLComposerDialog::Function> functionList;
-  Q_FOREACH ( const QgsWfsCapabilities::Function &f, caps.functionList )
+  QList<QgsSQLComposerDialog::Function> functionList;
+  for ( const QgsWfsCapabilities::Function &f : std::as_const( caps.functionList ) )
   {
     QgsSQLComposerDialog::Function dialogF;
     dialogF.name = f.name;
     dialogF.returnType = f.returnType;
     dialogF.minArgs = f.minArgs;
     dialogF.maxArgs = f.maxArgs;
-    Q_FOREACH ( const QgsWfsCapabilities::Argument &arg, f.argumentList )
+    for ( const QgsWfsCapabilities::Argument &arg : std::as_const( f.argumentList ) )
     {
       dialogF.argumentList << QgsSQLComposerDialog::Argument( arg.name, arg.type );
     }
@@ -85,15 +90,15 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
   }
   d->addFunctions( functionList );
 
-  QList< QgsSQLComposerDialog::Function> spatialPredicateList;
-  Q_FOREACH ( const QgsWfsCapabilities::Function &f, caps.spatialPredicatesList )
+  QList<QgsSQLComposerDialog::Function> spatialPredicateList;
+  for ( const QgsWfsCapabilities::Function &f : std::as_const( caps.spatialPredicatesList ) )
   {
     QgsSQLComposerDialog::Function dialogF;
     dialogF.name = f.name;
     dialogF.returnType = f.returnType;
     dialogF.minArgs = f.minArgs;
     dialogF.maxArgs = f.maxArgs;
-    Q_FOREACH ( const QgsWfsCapabilities::Argument &arg, f.argumentList )
+    for ( const QgsWfsCapabilities::Argument &arg : std::as_const( f.argumentList ) )
     {
       dialogF.argumentList << QgsSQLComposerDialog::Argument( arg.name, arg.type );
     }
@@ -101,7 +106,7 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
   }
   d->addSpatialPredicates( spatialPredicateList );
 
-  QList< QgsSQLComposerDialog::PairNameType> fieldList;
+  QList<QgsSQLComposerDialog::PairNameType> fieldList;
   QString fieldNamePrefix;
   if ( bSupportJoins )
   {
@@ -113,10 +118,10 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
     QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( field.name() ) );
     fieldList << QgsSQLComposerDialog::PairNameType( fieldName, field.typeName() );
   }
-  if ( !provider->geometryAttribute().isEmpty() )
+  if ( !provider->geometryColumnName().isEmpty() )
   {
-    QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( provider->geometryAttribute() ) );
-    fieldList << QgsSQLComposerDialog::PairNameType( fieldName, QStringLiteral( "geometry" ) );
+    QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( provider->geometryColumnName() ) );
+    fieldList << QgsSQLComposerDialog::PairNameType( fieldName, u"geometry"_s );
   }
   fieldList << QgsSQLComposerDialog::PairNameType( fieldNamePrefix + "*", QString() );
 
@@ -125,16 +130,12 @@ QgsSubsetStringEditorInterface *QgsWfsSubsetStringEditor::create( QgsVectorLayer
   return d;
 }
 
-QgsWFSValidatorCallback::QgsWFSValidatorCallback( QObject *parent,
-    const QgsWFSDataSourceURI &uri,
-    const QString &allSql,
-    const QgsWfsCapabilities::Capabilities &caps )
+QgsWFSValidatorCallback::QgsWFSValidatorCallback( QObject *parent, const QgsWFSDataSourceURI &uri, const QString &allSql, const QgsWfsCapabilities &caps )
   : QObject( parent )
   , mURI( uri )
   , mAllSql( allSql )
   , mCaps( caps )
-{
-}
+{}
 
 bool QgsWFSValidatorCallback::isValid( const QString &sqlStr, QString &errorReason, QString &warningMsg )
 {
@@ -157,15 +158,12 @@ bool QgsWFSValidatorCallback::isValid( const QString &sqlStr, QString &errorReas
   return true;
 }
 
-QgsWFSTableSelectedCallback::QgsWFSTableSelectedCallback( QgsSQLComposerDialog *dialog,
-    const QgsWFSDataSourceURI &uri,
-    const QgsWfsCapabilities::Capabilities &caps )
+QgsWFSTableSelectedCallback::QgsWFSTableSelectedCallback( QgsSQLComposerDialog *dialog, const QgsWFSDataSourceURI &uri, const QgsWfsCapabilities &caps )
   : QObject( dialog )
   , mDialog( dialog )
   , mURI( uri )
   , mCaps( caps )
-{
-}
+{}
 
 void QgsWFSTableSelectedCallback::tableSelected( const QString &name )
 {
@@ -183,7 +181,7 @@ void QgsWFSTableSelectedCallback::tableSelected( const QString &name )
     return;
   }
 
-  QList< QgsSQLComposerDialog::PairNameType> fieldList;
+  QList<QgsSQLComposerDialog::PairNameType> fieldList;
   QString fieldNamePrefix( QgsSQLStatement::quotedIdentifierIfNeeded( typeName ) + "." );
   const auto constToList = p.fields().toList();
   for ( const QgsField &field : constToList )
@@ -191,10 +189,10 @@ void QgsWFSTableSelectedCallback::tableSelected( const QString &name )
     QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( field.name() ) );
     fieldList << QgsSQLComposerDialog::PairNameType( fieldName, field.typeName() );
   }
-  if ( !p.geometryAttribute().isEmpty() )
+  if ( !p.geometryColumnName().isEmpty() )
   {
-    QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( p.geometryAttribute() ) );
-    fieldList << QgsSQLComposerDialog::PairNameType( fieldName, QStringLiteral( "geometry" ) );
+    QString fieldName( fieldNamePrefix + QgsSQLStatement::quotedIdentifierIfNeeded( p.geometryColumnName() ) );
+    fieldList << QgsSQLComposerDialog::PairNameType( fieldName, u"geometry"_s );
   }
   fieldList << QgsSQLComposerDialog::PairNameType( fieldNamePrefix + "*", QString() );
 

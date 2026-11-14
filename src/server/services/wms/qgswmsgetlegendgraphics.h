@@ -19,18 +19,22 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgslayertreemodel.h"
-
 #include "qgswmsrendercontext.h"
+
+class QgsServerInterface;
+class QgsProject;
+class QgsServerRequest;
+class QgsServerSettings;
+class QgsServerResponse;
 
 namespace QgsWms
 {
+  class QgsWmsRequest;
 
   /**
    * Output GetLegendGRaphics response
    */
-  void writeGetLegendGraphics( QgsServerInterface *serverIface, const QgsProject *project,
-                               const QString &version, const QgsServerRequest &request,
-                               QgsServerResponse &response );
+  void writeGetLegendGraphics( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response );
 
   /**
    * checkParameters checks request \a parameters and sets SRCHEIGHT and SRCWIDTH to default values
@@ -41,6 +45,8 @@ namespace QgsWms
   QgsLayerTreeModel *legendModel( const QgsWmsRenderContext &context, QgsLayerTree &tree );
 
   QgsLayerTree *layerTree( const QgsWmsRenderContext &context );
+
+  QgsLayerTree *layerTreeWithGroups( const QgsWmsRenderContext &context, QgsLayerTree *projectRoot );
 
   QgsLayerTreeModelLegendNode *legendNode( const QString &rule, QgsLayerTreeModel &model );
 } // namespace QgsWms

@@ -14,20 +14,26 @@
  * (at your option) any later version.
  *
  ***************************************************************************/
+#include "qgshanafeatureiterator.h"
+
 #include "qgsexception.h"
 #include "qgsgeometry.h"
+#include "qgsgeometryengine.h"
 #include "qgsgeometryfactory.h"
 #include "qgshanaconnection.h"
+#include "qgshanacrsutils.h"
 #include "qgshanaexception.h"
 #include "qgshanaexpressioncompiler.h"
-#include "qgshanafeatureiterator.h"
 #include "qgshanaprimarykeys.h"
 #include "qgshanaprovider.h"
-#include "qgshanacrsutils.h"
 #include "qgshanautils.h"
 #include "qgslogger.h"
 #include "qgsmessagelog.h"
 #include "qgssettings.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 namespace
 {
@@ -57,12 +63,18 @@ namespace
 
     return bbox.intersect( QgsRectangle( minx, miny, maxx, maxy ) );
   }
-}
 
-QgsHanaFeatureIterator::QgsHanaFeatureIterator(
-  QgsHanaFeatureSource *source,
-  bool ownSource,
-  const QgsFeatureRequest &request )
+  QString fieldExpression( const QgsField &field )
+  {
+    QString typeName = field.typeName();
+    QString fieldName = QgsHanaUtils::quotedIdentifier( field.name() );
+    if ( field.type() == QMetaType::Type::QString && ( typeName == "ST_GEOMETRY"_L1 || typeName == "ST_POINT"_L1 ) )
+      return u"%1.ST_ASWKT()"_s.arg( fieldName );
+    return fieldName;
+  }
+} // namespace
+
+QgsHanaFeatureIterator::QgsHanaFeatureIterator( QgsHanaFeatureSource *source, bool ownSource, const QgsFeatureRequest &request )
   : QgsAbstractFeatureIteratorFromSource<QgsHanaFeatureSource>( source, ownSource, request )
   , mDatabaseVersion( source->mDatabaseVersion )
   , mConnection( source->mUri )
@@ -74,8 +86,7 @@ QgsHanaFeatureIterator::QgsHanaFeatureIterator(
     return;
   }
 
-  if ( mRequest.destinationCrs().isValid() && mRequest.destinationCrs() != mSource->mCrs )
-    mTransform = QgsCoordinateTransform( mSource->mCrs, mRequest.destinationCrs(), mRequest.transformContext() );
+  mTransform = mRequest.calculateTransform( mSource->mCrs );
 
   try
   {
@@ -85,6 +96,23 @@ QgsHanaFeatureIterator::QgsHanaFeatureIterator(
   {
     close();
     return;
+  }
+
+  // prepare spatial filter geometries for optimal speed
+  switch ( mRequest.spatialFilterType() )
+  {
+    case Qgis::SpatialFilterType::NoFilter:
+    case Qgis::SpatialFilterType::BoundingBox:
+      break;
+
+    case Qgis::SpatialFilterType::DistanceWithin:
+      if ( !mRequest.referenceGeometry().isEmpty() )
+      {
+        mDistanceWithinGeom = mRequest.referenceGeometry();
+        mDistanceWithinEngine = QgsGeometry::createGeometryEngine( mDistanceWithinGeom.constGet() );
+        mDistanceWithinEngine->prepareGeometry();
+      }
+      break;
   }
 
   try
@@ -118,13 +146,20 @@ bool QgsHanaFeatureIterator::rewind()
 
 bool QgsHanaFeatureIterator::close()
 {
-
   if ( mClosed )
     return false;
 
   if ( mResultSet )
   {
-    mResultSet->close();
+    try
+    {
+      mResultSet->close();
+    }
+    catch ( QgsHanaException &e )
+    {
+      QgsDebugError( u"An error occurred while closing the HANA result set: %1"_s.arg( e.what() ) );
+    }
+
     mResultSet.reset();
   }
 
@@ -141,92 +176,97 @@ bool QgsHanaFeatureIterator::fetchFeature( QgsFeature &feature )
   if ( mClosed || !mResultSet )
     return false;
 
-  if ( !mResultSet->next() )
-    return false;
-
-  feature.initAttributes( mSource->mFields.count() );
-  unsigned short paramIndex = 1;
-
-  // Read feature id
-  QgsFeatureId fid = FID_NULL;
-  bool subsetOfAttributes = mRequest.flags() & QgsFeatureRequest::SubsetOfAttributes;
-  QgsAttributeList fetchAttributes = mRequest.subsetOfAttributes();
-
-  if ( !mSource->mPrimaryKeyAttrs.isEmpty() )
+  while ( mResultSet->next() )
   {
-    switch ( mSource->mPrimaryKeyType )
+    feature.initAttributes( mSource->mFields.count() );
+    unsigned short paramIndex = 1;
+
+    // Read feature id
+    QgsFeatureId fid = FID_NULL;
+    bool subsetOfAttributes = mRequest.flags() & Qgis::FeatureRequestFlag::SubsetOfAttributes;
+    QgsAttributeList fetchAttributes = mRequest.subsetOfAttributes();
+
+    if ( !mSource->mPrimaryKeyAttrs.isEmpty() )
     {
-      case QgsHanaPrimaryKeyType::PktInt:
+      switch ( mSource->mPrimaryKeyType )
       {
-        int idx = mSource->mPrimaryKeyAttrs.at( 0 );
-        QVariant v = mResultSet->getValue( paramIndex );
-        if ( !subsetOfAttributes || fetchAttributes.contains( idx ) )
-          feature.setAttribute( idx, v );
-        fid = QgsHanaPrimaryKeyUtils::intToFid( v.toInt() );
-        ++paramIndex;
-      }
-      break;
-      case QgsHanaPrimaryKeyType::PktInt64:
-      {
-        int idx = mSource->mPrimaryKeyAttrs.at( 0 );
-        QVariant v = mResultSet->getValue( paramIndex );
-        if ( !subsetOfAttributes || fetchAttributes.contains( idx ) )
-          feature.setAttribute( idx, v );
-        fid = mSource->mPrimaryKeyCntx->lookupFid( QVariantList( { v} ) );
-        ++paramIndex;
-      }
-      break;
-      case QgsHanaPrimaryKeyType::PktFidMap:
-      {
-        QVariantList pkValues;
-        pkValues.reserve( mSource->mPrimaryKeyAttrs.size() );
-        for ( int idx : qgis::as_const( mSource->mPrimaryKeyAttrs ) )
+        case QgsHanaPrimaryKeyType::PktInt:
         {
+          int idx = mSource->mPrimaryKeyAttrs.at( 0 );
           QVariant v = mResultSet->getValue( paramIndex );
-          pkValues << v;
           if ( !subsetOfAttributes || fetchAttributes.contains( idx ) )
             feature.setAttribute( idx, v );
-          paramIndex++;
+          fid = QgsHanaPrimaryKeyUtils::intToFid( v.toInt() );
+          ++paramIndex;
         }
-        fid = mSource->mPrimaryKeyCntx->lookupFid( pkValues );
-      }
-      break;
-      case QgsHanaPrimaryKeyType::PktUnknown:
         break;
+        case QgsHanaPrimaryKeyType::PktInt64:
+        {
+          int idx = mSource->mPrimaryKeyAttrs.at( 0 );
+          QVariant v = mResultSet->getValue( paramIndex );
+          if ( !subsetOfAttributes || fetchAttributes.contains( idx ) )
+            feature.setAttribute( idx, v );
+          fid = mSource->mPrimaryKeyCntx->lookupFid( QVariantList( { v } ) );
+          ++paramIndex;
+        }
+        break;
+        case QgsHanaPrimaryKeyType::PktFidMap:
+        {
+          QVariantList pkValues;
+          pkValues.reserve( mSource->mPrimaryKeyAttrs.size() );
+          for ( int idx : std::as_const( mSource->mPrimaryKeyAttrs ) )
+          {
+            QVariant v = mResultSet->getValue( paramIndex );
+            pkValues << v;
+            if ( !subsetOfAttributes || fetchAttributes.contains( idx ) )
+              feature.setAttribute( idx, v );
+            paramIndex++;
+          }
+          fid = mSource->mPrimaryKeyCntx->lookupFid( pkValues );
+        }
+        break;
+        case QgsHanaPrimaryKeyType::PktUnknown:
+          break;
+      }
     }
-  }
 
-  feature.setId( fid );
+    feature.setId( fid );
 
-  // Read attributes
-  if ( mHasAttributes )
-  {
-    for ( int idx : qgis::as_const( mAttributesToFetch ) )
+    // Read attributes
+    if ( mHasAttributes )
     {
-      feature.setAttribute( idx, mResultSet->getValue( paramIndex ) );
-      ++paramIndex;
+      for ( int idx : std::as_const( mAttributesToFetch ) )
+      {
+        feature.setAttribute( idx, mResultSet->getValue( paramIndex ) );
+        ++paramIndex;
+      }
     }
-  }
 
-  // Read geometry
-  if ( mHasGeometryColumn )
-  {
-    QgsGeometry geom = mResultSet->getGeometry( paramIndex );
-    if ( !geom.isNull() )
-      feature.setGeometry( geom );
+    // Read geometry
+    if ( mHasGeometryColumn )
+    {
+      QgsGeometry geom = mResultSet->getGeometry( paramIndex );
+      if ( !geom.isNull() )
+        feature.setGeometry( geom );
+      else
+        feature.clearGeometry();
+    }
     else
+    {
       feature.clearGeometry();
-  }
-  else
-  {
-    feature.clearGeometry();
-  }
+    }
 
-  feature.setValid( true );
-  feature.setFields( mSource->mFields ); // allow name-based attribute lookups
-  geometryToDestinationCrs( feature, mTransform );
+    geometryToDestinationCrs( feature, mTransform );
+    if ( mDistanceWithinEngine && mDistanceWithinEngine->distance( feature.geometry().constGet() ) > mRequest.distanceWithin() )
+    {
+      continue;
+    }
 
-  return true;
+    feature.setValid( true );
+    feature.setFields( mSource->mFields ); // allow name-based attribute lookups
+    return true;
+  }
+  return false;
 }
 
 bool QgsHanaFeatureIterator::nextFeatureFilterExpression( QgsFeature &feature )
@@ -237,14 +277,12 @@ bool QgsHanaFeatureIterator::nextFeatureFilterExpression( QgsFeature &feature )
     return fetchFeature( feature );
 }
 
-QString QgsHanaFeatureIterator::getBBOXFilter( ) const
+QString QgsHanaFeatureIterator::getBBOXFilter() const
 {
   if ( mDatabaseVersion.majorVersion() == 1 )
-    return QStringLiteral( "%1.ST_SRID(%2).ST_IntersectsRect(ST_GeomFromText(?, ?), ST_GeomFromText(?, ?)) = 1" )
-           .arg( QgsHanaUtils::quotedIdentifier( mSource->mGeometryColumn ), QString::number( mSource->mSrid ) );
+    return u"%1.ST_SRID(%2).ST_IntersectsRect(ST_GeomFromText(?, ?), ST_GeomFromText(?, ?)) = 1"_s.arg( QgsHanaUtils::quotedIdentifier( mSource->mGeometryColumn ), QString::number( mSource->mSrid ) );
   else
-    return QStringLiteral( "%1.ST_IntersectsRectPlanar(ST_GeomFromText(?, ?), ST_GeomFromText(?, ?)) = 1" )
-           .arg( QgsHanaUtils::quotedIdentifier( mSource->mGeometryColumn ) );
+    return u"%1.ST_IntersectsRectPlanar(ST_GeomFromText(?, ?), ST_GeomFromText(?, ?)) = 1"_s.arg( QgsHanaUtils::quotedIdentifier( mSource->mGeometryColumn ) );
 }
 
 QgsRectangle QgsHanaFeatureIterator::getFilterRect() const
@@ -271,12 +309,10 @@ bool QgsHanaFeatureIterator::prepareOrderBy( const QList<QgsFeatureRequest::Orde
 
 QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request )
 {
-  const bool geometryRequested = ( request.flags() & QgsFeatureRequest::NoGeometry ) == 0;
-  bool limitAtProvider = ( request.limit() >= 0 );
+  const bool geometryRequested = ( request.flags() & Qgis::FeatureRequestFlag::NoGeometry ) == 0 || !mFilterRect.isNull() || request.spatialFilterType() == Qgis::SpatialFilterType::DistanceWithin;
+  bool limitAtProvider = ( request.limit() >= 0 ) && mRequest.spatialFilterType() != Qgis::SpatialFilterType::DistanceWithin;
 
   QgsRectangle filterRect = mFilterRect;
-  if ( !mSource->mSrsExtent.isEmpty() )
-    filterRect = mSource->mSrsExtent.intersect( filterRect );
 
   if ( !filterRect.isFinite() )
     QgsMessageLog::logMessage( QObject::tr( "Infinite filter rectangle specified" ), QObject::tr( "SAP HANA" ) );
@@ -285,7 +321,7 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
 #if 0
   mOrderByCompiled = true;
 
-  if ( QgsSettings().value( QStringLiteral( "qgis/compileExpressions" ), true ).toBool() )
+  if ( QgsSettings().value( u"qgis/compileExpressions"_s, true ).toBool() )
   {
     const auto constOrderBy = request.orderBy();
     for ( const QgsFeatureRequest::OrderByClause &clause : constOrderBy )
@@ -296,8 +332,8 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
       {
         QString part;
         part = compiler.result();
-        part += clause.ascending() ? QStringLiteral( " ASC" ) : QStringLiteral( " DESC" );
-        part += clause.nullsFirst() ? QStringLiteral( " NULLS FIRST" ) : QStringLiteral( " NULLS LAST" );
+        part += clause.ascending() ? u" ASC"_s : u" DESC"_s;
+        part += clause.nullsFirst() ? u" NULLS FIRST"_s : u" NULLS LAST"_s;
         orderByParts << part;
       }
       else
@@ -320,13 +356,12 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
   if ( !mOrderByCompiled )
     limitAtProvider = false;
 
-  bool subsetOfAttributes = mRequest.flags() & QgsFeatureRequest::SubsetOfAttributes;
-  QgsAttributeIds attrIds = qgis::listToSet( subsetOfAttributes ?
-                            request.subsetOfAttributes() : mSource->mFields.allAttributesList() );
+  bool subsetOfAttributes = mRequest.flags() & Qgis::FeatureRequestFlag::SubsetOfAttributes;
+  QgsAttributeIds attrIds = qgis::listToSet( subsetOfAttributes ? request.subsetOfAttributes() : mSource->mFields.allAttributesList() );
 
   if ( subsetOfAttributes )
   {
-    if ( mRequest.filterType() == QgsFeatureRequest::FilterExpression )
+    if ( mRequest.filterType() == Qgis::FeatureRequestFilterType::Expression )
       // Ensure that all attributes required for expression filter are fetched
       attrIds.unite( request.filterExpression()->referencedAttributeIndexes( mSource->mFields ) );
 
@@ -337,28 +372,26 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
 
   QStringList sqlFields;
   // Add feature id column
-  for ( int idx : qgis::as_const( mSource->mPrimaryKeyAttrs ) )
+  for ( int idx : std::as_const( mSource->mPrimaryKeyAttrs ) )
   {
-    QString fieldName = mSource->mFields.at( idx ).name();
-    sqlFields.push_back( QgsHanaUtils::quotedIdentifier( fieldName ) );
+    const QgsField &field = mSource->mFields.at( idx );
+    sqlFields.push_back( fieldExpression( field ) );
   }
 
-  for ( int idx : qgis::as_const( attrIds ) )
+  for ( int idx : std::as_const( attrIds ) )
   {
     if ( mSource->mPrimaryKeyAttrs.contains( idx ) )
       continue;
 
-    QString fieldName = mSource->mFields.at( idx ).name();
     mAttributesToFetch.append( idx );
-    sqlFields.push_back( QgsHanaUtils::quotedIdentifier( fieldName ) );
+    const QgsField &field = mSource->mFields.at( idx );
+    sqlFields.push_back( fieldExpression( field ) );
   }
 
   mHasAttributes = !mAttributesToFetch.isEmpty();
 
   // Add geometry column
-  if ( mSource->isSpatial() &&
-       ( geometryRequested || ( request.filterType() == QgsFeatureRequest::FilterExpression &&
-                                request.filterExpression()->needsGeometry() ) ) )
+  if ( mSource->isSpatial() && ( geometryRequested || ( request.filterType() == Qgis::FeatureRequestFilterType::Expression && request.filterExpression()->needsGeometry() ) ) )
   {
     sqlFields += QgsHanaUtils::quotedIdentifier( mSource->mGeometryColumn );
     mHasGeometryColumn = true;
@@ -375,18 +408,18 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
   // Set fid filter
   if ( !mSource->mPrimaryKeyAttrs.isEmpty() )
   {
-    if ( request.filterType() == QgsFeatureRequest::FilterFid )
+    if ( request.filterType() == Qgis::FeatureRequestFilterType::Fid )
     {
       QString fidWhereClause = QgsHanaPrimaryKeyUtils::buildWhereClause( request.filterFid(), mSource->mFields, mSource->mPrimaryKeyType, mSource->mPrimaryKeyAttrs, *mSource->mPrimaryKeyCntx );
       if ( fidWhereClause.isEmpty() )
-        throw QgsHanaException( QStringLiteral( "Key values for feature %1 not found." ).arg( request.filterFid() ) );
+        throw QgsHanaException( u"Key values for feature %1 not found."_s.arg( request.filterFid() ) );
       sqlFilter.push_back( fidWhereClause );
     }
-    else if ( request.filterType() == QgsFeatureRequest::FilterFids && !mRequest.filterFids().isEmpty() )
+    else if ( request.filterType() == Qgis::FeatureRequestFilterType::Fids && !mRequest.filterFids().isEmpty() )
     {
       QString fidsWhereClause = QgsHanaPrimaryKeyUtils::buildWhereClause( request.filterFids(), mSource->mFields, mSource->mPrimaryKeyType, mSource->mPrimaryKeyAttrs, *mSource->mPrimaryKeyCntx );
       if ( fidsWhereClause.isEmpty() )
-        throw QgsHanaException( QStringLiteral( "Key values for features not found." ) );
+        throw QgsHanaException( u"Key values for features not found."_s );
       sqlFilter.push_back( fidsWhereClause );
     }
   }
@@ -394,11 +427,11 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
   //IMPORTANT - this MUST be the last clause added
   mExpressionCompiled = false;
   mCompileStatus = NoCompilation;
-  if ( request.filterType() == QgsFeatureRequest::FilterExpression )
+  if ( request.filterType() == Qgis::FeatureRequestFilterType::Expression )
   {
-    if ( QgsSettings().value( QStringLiteral( "qgis/compileExpressions" ), true ).toBool() )
+    if ( QgsSettings().value( u"qgis/compileExpressions"_s, true ).toBool() )
     {
-      QgsHanaExpressionCompiler compiler = QgsHanaExpressionCompiler( mSource, request.flags() & QgsFeatureRequest::IgnoreStaticNodesDuringExpressionCompilation );
+      QgsHanaExpressionCompiler compiler = QgsHanaExpressionCompiler( mSource, request.flags() & Qgis::FeatureRequestFlag::IgnoreStaticNodesDuringExpressionCompilation );
       QgsSqlExpressionCompiler::Result result = compiler.compile( request.filterExpression() );
       switch ( result )
       {
@@ -417,8 +450,7 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
         }
         break;
         case QgsSqlExpressionCompiler::Result::Fail:
-          QgsDebugMsg( QStringLiteral( "Unable to compile filter expression: '%1'" )
-                       .arg( request.filterExpression()->expression() ).toStdString().c_str() );
+          QgsDebugError( u"Unable to compile filter expression: '%1'"_s.arg( request.filterExpression()->expression() ).toStdString().c_str() );
           break;
         case QgsSqlExpressionCompiler::Result::None:
           break;
@@ -435,32 +467,29 @@ QString QgsHanaFeatureIterator::buildSqlQuery( const QgsFeatureRequest &request 
     }
   }
 
-  QString sql = QStringLiteral( "SELECT %1 FROM %2.%3" ).arg(
-                  sqlFields.isEmpty() ? QStringLiteral( "*" ) : sqlFields.join( ',' ),
-                  QgsHanaUtils::quotedIdentifier( mSource->mSchemaName ),
-                  QgsHanaUtils::quotedIdentifier( mSource->mTableName ) );
+  QString sql = u"SELECT %1 FROM %2"_s.arg( sqlFields.isEmpty() ? u"*"_s : sqlFields.join( ',' ), mSource->mQuery );
 
   if ( !sqlFilter.isEmpty() )
-    sql += QStringLiteral( " WHERE (%1)" ).arg( sqlFilter.join( QLatin1String( ") AND (" ) ) );
+    sql += u" WHERE (%1)"_s.arg( sqlFilter.join( ") AND ("_L1 ) );
 
   if ( !orderByParts.isEmpty() )
-    sql += QStringLiteral( " ORDER BY %1 " ).arg( orderByParts.join( ',' ) );
+    sql += u" ORDER BY %1 "_s.arg( orderByParts.join( ',' ) );
 
   if ( limitAtProvider )
-    sql += QStringLiteral( " LIMIT %1" ).arg( mRequest.limit() );
+    sql += u" LIMIT %1"_s.arg( mRequest.limit() );
 
   QgsDebugMsgLevel( "Query: " + sql, 4 );
 
   return sql;
 }
 
-QVariantList QgsHanaFeatureIterator::buildSqlQueryParameters( ) const
+QVariantList QgsHanaFeatureIterator::buildSqlQueryParameters() const
 {
   if ( !( mFilterRect.isNull() || mFilterRect.isEmpty() ) && mSource->isSpatial() && mHasGeometryColumn )
   {
     QgsRectangle filterRect = getFilterRect();
-    QString ll = QStringLiteral( "POINT(%1 %2)" ).arg( QString::number( filterRect.xMinimum() ),  QString::number( filterRect.yMinimum() ) );
-    QString ur = QStringLiteral( "POINT(%1 %2)" ).arg( QString::number( filterRect.xMaximum() ),  QString::number( filterRect.yMaximum() ) );
+    QString ll = u"POINT(%1 %2)"_s.arg( QString::number( filterRect.xMinimum() ), QString::number( filterRect.yMinimum() ) );
+    QString ur = u"POINT(%1 %2)"_s.arg( QString::number( filterRect.xMaximum() ), QString::number( filterRect.yMaximum() ) );
     return { ll, mSource->mSrid, ur, mSource->mSrid };
   }
   return QVariantList();
@@ -469,19 +498,16 @@ QVariantList QgsHanaFeatureIterator::buildSqlQueryParameters( ) const
 QgsHanaFeatureSource::QgsHanaFeatureSource( const QgsHanaProvider *p )
   : mDatabaseVersion( p->mDatabaseVersion )
   , mUri( p->mUri )
-  , mSchemaName( p->mSchemaName )
-  , mTableName( p->mTableName )
+  , mQuery( p->mQuerySource )
+  , mQueryWhereClause( p->mQueryWhereClause )
   , mPrimaryKeyType( p->mPrimaryKeyType )
   , mPrimaryKeyAttrs( p->mPrimaryKeyAttrs )
   , mPrimaryKeyCntx( p->mPrimaryKeyCntx )
-  , mFields( p->mAttributeFields )
-  , mFieldInfos( p->mFieldInfos )
+  , mFields( p->mFields )
   , mGeometryColumn( p->mGeometryColumn )
   , mGeometryType( p->wkbType() )
   , mSrid( p->mSrid )
-  , mSrsExtent( p->mSrsExtent )
   , mCrs( p->crs() )
-  , mQueryWhereClause( p->mQueryWhereClause )
 {
   if ( p->mHasSrsPlanarEquivalent && p->mDatabaseVersion.majorVersion() <= 1 )
     mSrid = QgsHanaUtils::toPlanarSRID( p->mSrid );

@@ -16,16 +16,21 @@
 #ifndef QGSLAYOUTGUIDECOLLECTION_H
 #define QGSLAYOUTGUIDECOLLECTION_H
 
+#include <memory>
+
 #include "qgis_core.h"
+#include "qgslayoutitempage.h"
 #include "qgslayoutmeasurement.h"
 #include "qgslayoutpoint.h"
-#include "qgslayoutitempage.h"
 #include "qgslayoutserializableobject.h"
-#include <QPen>
+
 #include <QAbstractListModel>
-#include <QSortFilterProxyModel>
 #include <QGraphicsLineItem>
-#include <memory>
+#include <QPen>
+#include <QSortFilterProxyModel>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsLayout;
 class QgsLayoutPageCollection;
@@ -37,15 +42,12 @@ class QgsReadWriteContext;
  * \ingroup core
  * \class QgsLayoutGuide
  * \brief Contains the configuration for a single snap guide used by a layout.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutGuide : public QObject
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for a new guide with the specified \a orientation and
      * initial \a position.
@@ -143,7 +145,6 @@ class CORE_EXPORT QgsLayoutGuide : public QObject
     void positionChanged();
 
   private:
-
     Qt::Orientation mOrientation = Qt::Vertical;
 
     //! Horizontal/vertical position of guide on page
@@ -156,31 +157,38 @@ class CORE_EXPORT QgsLayoutGuide : public QObject
 
     //! Line item used in scene for guide
     QGraphicsLineItem *mLineItem = nullptr;
-
 };
 
 /**
  * \ingroup core
  * \class QgsLayoutGuideCollection
  * \brief Stores and manages the snap guides used by a layout.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public QgsLayoutSerializableObject
 {
-
     Q_OBJECT
 
   public:
-
     //! Model roles
-    enum Roles
+
+    // *INDENT-OFF*
+
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsLayoutGuideCollection::Roles
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsLayoutGuideCollection, Roles ) : int
     {
-      OrientationRole = Qt::UserRole, //!< Guide orientation role
-      PositionRole, //!< Guide position role
-      UnitsRole, //!< Guide position units role
-      PageRole, //!< Guide page role
-      LayoutPositionRole, //!< Guide position in layout coordinates
+      Orientation SIP_MONKEYPATCH_COMPAT_NAME( OrientationRole ) = Qt::UserRole, //!< Guide orientation role
+      Position SIP_MONKEYPATCH_COMPAT_NAME( PositionRole ),                      //!< Guide position role
+      Units SIP_MONKEYPATCH_COMPAT_NAME( UnitsRole ),                            //!< Guide position units role
+      Page SIP_MONKEYPATCH_COMPAT_NAME( PageRole ),                              //!< Guide page role
+      LayoutPosition SIP_MONKEYPATCH_COMPAT_NAME( LayoutPositionRole ),          //!< Guide position in layout coordinates
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsLayoutGuideCollection belonging to the specified layout,
@@ -189,7 +197,7 @@ class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public 
     QgsLayoutGuideCollection( QgsLayout *layout, QgsLayoutPageCollection *pageCollection );
     ~QgsLayoutGuideCollection() override;
 
-    QString stringType() const override { return QStringLiteral( "LayoutGuideCollection" ); }
+    QString stringType() const override { return u"LayoutGuideCollection"_s; }
     QgsLayout *layout() override;
 
     int rowCount( const QModelIndex & ) const override;
@@ -197,8 +205,7 @@ class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public 
     QVariant data( const QModelIndex &index, int role ) const override;
     bool setData( const QModelIndex &index, const QVariant &value, int role ) override;
     Qt::ItemFlags flags( const QModelIndex &index ) const override;
-    QVariant headerData( int section, Qt::Orientation orientation,
-                         int role = Qt::DisplayRole ) const override;
+    QVariant headerData( int section, Qt::Orientation orientation, int role = Qt::DisplayRole ) const override;
     bool removeRows( int row, int count, const QModelIndex &parent = QModelIndex() ) override;
 
     /**
@@ -283,7 +290,6 @@ class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public 
     void pageAboutToBeRemoved( int pageNumber );
 
   private:
-
     enum UndoRoles
     {
       Move = 10000,
@@ -300,7 +306,6 @@ class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public 
     bool mBlockUndoCommands = false;
 
     friend class QgsLayoutGuideCollectionUndoCommand;
-
 };
 
 
@@ -308,14 +313,12 @@ class CORE_EXPORT QgsLayoutGuideCollection : public QAbstractTableModel, public 
  * \ingroup core
  * \class QgsLayoutGuideProxyModel
  * \brief Filters QgsLayoutGuideCollection models to guides of a single orientation (horizontal or vertical).
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLayoutGuideProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayoutGuideProxyModel, filtered to guides of the specified \a orientation and \a page only.
      *
@@ -334,7 +337,6 @@ class CORE_EXPORT QgsLayoutGuideProxyModel : public QSortFilterProxyModel
   private:
     Qt::Orientation mOrientation = Qt::Horizontal;
     int mPage = 0;
-
 };
 
 #endif //QGSLAYOUTGUIDECOLLECTION_H

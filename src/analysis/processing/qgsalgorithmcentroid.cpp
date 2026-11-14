@@ -16,13 +16,18 @@
  ***************************************************************************/
 
 #include "qgsalgorithmcentroid.h"
+
 #include "qgsgeometrycollection.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsCentroidAlgorithm::name() const
 {
-  return QStringLiteral( "centroids" );
+  return u"centroids"_s;
 }
 
 QString QgsCentroidAlgorithm::displayName() const
@@ -42,7 +47,7 @@ QString QgsCentroidAlgorithm::group() const
 
 QString QgsCentroidAlgorithm::groupId() const
 {
-  return QStringLiteral( "vectorgeometry" );
+  return u"vectorgeometry"_s;
 }
 
 QString QgsCentroidAlgorithm::outputName() const
@@ -50,10 +55,30 @@ QString QgsCentroidAlgorithm::outputName() const
   return QObject::tr( "Centroids" );
 }
 
+QgsFeatureSink::SinkFlags QgsCentroidAlgorithm::sinkFlags() const
+{
+  if ( mAllParts )
+    return QgsProcessingFeatureBasedAlgorithm::sinkFlags() | QgsFeatureSink::RegeneratePrimaryKey;
+  else
+    return QgsProcessingFeatureBasedAlgorithm::sinkFlags();
+}
+
 QString QgsCentroidAlgorithm::shortHelpString() const
 {
-  return QObject::tr( "This algorithm creates a new point layer, with points representing the centroid of the geometries in an input layer.\n\n"
-                      "The attributes associated to each point in the output layer are the same ones associated to the original features." );
+  return QObject::tr(
+    "This algorithm creates a new point layer with points representing the centroid of the geometries in an input layer.\n\n"
+    "The attributes associated to each point in the output layer are the same ones associated to the original features."
+  );
+}
+
+QString QgsCentroidAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Creates a new point layer with points representing the centroid of the geometries in an input layer." );
+}
+
+Qgis::ProcessingAlgorithmDocumentationFlags QgsCentroidAlgorithm::documentationFlags() const
+{
+  return Qgis::ProcessingAlgorithmDocumentationFlag::RegeneratesPrimaryKeyInSomeScenarios;
 }
 
 QgsCentroidAlgorithm *QgsCentroidAlgorithm::createInstance() const
@@ -63,33 +88,32 @@ QgsCentroidAlgorithm *QgsCentroidAlgorithm::createInstance() const
 
 void QgsCentroidAlgorithm::initParameters( const QVariantMap & )
 {
-  std::unique_ptr< QgsProcessingParameterBoolean> allParts = qgis::make_unique< QgsProcessingParameterBoolean >(
-        QStringLiteral( "ALL_PARTS" ),
-        QObject::tr( "Create centroid for each part" ),
-        false );
+  auto allParts = std::make_unique<QgsProcessingParameterBoolean>( u"ALL_PARTS"_s, QObject::tr( "Create centroid for each part" ), false );
   allParts->setIsDynamic( true );
-  allParts->setDynamicPropertyDefinition( QgsPropertyDefinition( QStringLiteral( "All parts" ), QObject::tr( "Create centroid for each part" ), QgsPropertyDefinition::Boolean ) );
-  allParts->setDynamicLayerParameterName( QStringLiteral( "INPUT" ) );
+  allParts->setDynamicPropertyDefinition( QgsPropertyDefinition( u"All parts"_s, QObject::tr( "Create centroid for each part" ), QgsPropertyDefinition::Boolean ) );
+  allParts->setDynamicLayerParameterName( u"INPUT"_s );
   addParameter( allParts.release() );
 }
 
 bool QgsCentroidAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * )
 {
-  mAllParts = parameterAsBoolean( parameters, QStringLiteral( "ALL_PARTS" ), context );
-  mDynamicAllParts = QgsProcessingParameters::isDynamic( parameters, QStringLiteral( "ALL_PARTS" ) );
+  mAllParts = parameterAsBoolean( parameters, u"ALL_PARTS"_s, context );
+  mDynamicAllParts = QgsProcessingParameters::isDynamic( parameters, u"ALL_PARTS"_s );
   if ( mDynamicAllParts )
-    mAllPartsProperty = parameters.value( QStringLiteral( "ALL_PARTS" ) ).value< QgsProperty >();
+    mAllPartsProperty = parameters.value( u"ALL_PARTS"_s ).value<QgsProperty>();
 
   return true;
 }
 
 QgsFeatureList QgsCentroidAlgorithm::processFeature( const QgsFeature &f, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
+  QGS_MARK_ALGORITHM_SOURCE
+
   QgsFeatureList list;
   QgsFeature feature = f;
-  if ( feature.hasGeometry() )
+  if ( feature.hasGeometry() && !feature.geometry().isEmpty() )
   {
-    QgsGeometry geom = feature.geometry();
+    const QgsGeometry geom = feature.geometry();
 
     bool allParts = mAllParts;
     if ( mDynamicAllParts )
@@ -99,14 +123,15 @@ QgsFeatureList QgsCentroidAlgorithm::processFeature( const QgsFeature &f, QgsPro
     {
       const QgsGeometryCollection *geomCollection = static_cast<const QgsGeometryCollection *>( geom.constGet() );
 
-      list.reserve( geomCollection->partCount() );
-      for ( int i = 0; i < geomCollection->partCount(); ++i )
+      const int partCount = geomCollection->partCount();
+      list.reserve( partCount );
+      for ( int i = 0; i < partCount; ++i )
       {
-        QgsGeometry partGeometry( geomCollection->geometryN( i )->clone() );
-        QgsGeometry outputGeometry = partGeometry.centroid();
+        const QgsGeometry partGeometry( geomCollection->geometryN( i )->clone() );
+        const QgsGeometry outputGeometry = partGeometry.centroid();
         if ( outputGeometry.isNull() )
         {
-          feedback->pushInfo( QObject::tr( "Error calculating centroid for feature %1 part %2: %3" ).arg( feature.id() ).arg( i ).arg( outputGeometry.lastError() ) );
+          feedback->reportError( QObject::tr( "Error calculating centroid for feature %1 part %2: %3" ).arg( feature.id() ).arg( i ).arg( outputGeometry.lastError() ) );
         }
         feature.setGeometry( outputGeometry );
         list << feature;
@@ -114,10 +139,10 @@ QgsFeatureList QgsCentroidAlgorithm::processFeature( const QgsFeature &f, QgsPro
     }
     else
     {
-      QgsGeometry outputGeometry = feature.geometry().centroid();
+      const QgsGeometry outputGeometry = feature.geometry().centroid();
       if ( outputGeometry.isNull() )
       {
-        feedback->pushInfo( QObject::tr( "Error calculating centroid for feature %1: %2" ).arg( feature.id() ).arg( outputGeometry.lastError() ) );
+        feedback->reportError( QObject::tr( "Error calculating centroid for feature %1: %2" ).arg( feature.id() ).arg( outputGeometry.lastError() ) );
       }
       feature.setGeometry( outputGeometry );
       list << feature;

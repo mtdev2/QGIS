@@ -16,12 +16,15 @@
 #ifndef QGSMODELDESIGNERDIALOG_H
 #define QGSMODELDESIGNERDIALOG_H
 
-#include "qgis.h"
-#include "qgis_gui.h"
 #include "ui_qgsmodeldesignerdialogbase.h"
 
-#include "qgsprocessingtoolboxmodel.h"
+#include "qgis.h"
+#include "qgis_gui.h"
+#include "qgsmodelundocommand.h"
+#include "qgsprocessingalgorithmwidgetbase.h"
 #include "qgsprocessingmodelchilddependency.h"
+#include "qgsprocessingtoolboxmodel.h"
+#include "qobjectuniqueptr.h"
 
 class QgsMessageBar;
 class QgsProcessingModelAlgorithm;
@@ -29,6 +32,11 @@ class QgsModelUndoCommand;
 class QUndoView;
 class QgsModelViewToolPan;
 class QgsModelViewToolSelect;
+class QgsScreenHelper;
+class QgsProcessingAlgorithmWidgetBase;
+class QgsModelDesignerConfigDockWidget;
+class QgsProcessingParameterWidgetContext;
+class QgsProcessingContextGenerator;
 
 ///@cond NOT_STABLE
 
@@ -41,36 +49,28 @@ class GUI_EXPORT QgsModelerToolboxModel : public QgsProcessingToolboxProxyModel
     explicit QgsModelerToolboxModel( QObject *parent = nullptr );
     Qt::ItemFlags flags( const QModelIndex &index ) const override;
     Qt::DropActions supportedDragActions() const override;
-
 };
 
 #endif
 
 /**
  * \ingroup gui
- * \brief Model designer dialog base class
+ * \brief Model designer dialog base class.
  * \warning Not stable API
  * \since QGIS 3.14
  */
-class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow, public Ui::QgsModelDesignerDialogBase
+class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow,
+                                          public QgsProcessingFeedbackGenerator,
+                                          public QgsProcessingContextGenerator,
+                                          public QgsProcessingWidgetContextGenerator,
+                                          public Ui::QgsModelDesignerDialogBase
 {
     Q_OBJECT
   public:
-
     QgsModelDesignerDialog( QWidget *parent SIP_TRANSFERTHIS = nullptr, Qt::WindowFlags flags = Qt::WindowFlags() );
     ~QgsModelDesignerDialog() override;
 
     void closeEvent( QCloseEvent *event ) override;
-
-    /**
-     * Starts an undo command. This should be called before any changes are made to the model.
-     */
-    void beginUndoCommand( const QString &text, int id = 0 );
-
-    /**
-     * Ends the current undo command. This should be called after changes are made to the model.
-     */
-    void endUndoCommand();
 
     /**
      * Returns the model shown in the dialog.
@@ -90,34 +90,133 @@ class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow, public Ui::QgsMode
     void loadModel( const QString &path );
 
     /**
+     * Handles a version mismatch between the model file \a modelVersion and the current QGIS version.
+     *
+     * \since QGIS 4.4
+     */
+    void handleVersionMismatch( const QString &modelVersion ) const SIP_SKIP;
+
+#ifndef SIP_RUN
+    /**
      * Sets the related \a scene.
+     *
+     * \see modelScene()
      */
     void setModelScene( QgsModelGraphicsScene *scene SIP_TRANSFER );
 
+    /**
+     * Returns the related model scene.
+     *
+     * \see setModelScene()
+     * \since QGIS 4.0
+     */
+    QgsModelGraphicsScene *modelScene();
+#endif
+
+    QgsProcessingFeedback *createFeedback() override SIP_FACTORY;
+    QgsProcessingParameterWidgetContext createWidgetContext() override;
+
+  public slots:
+
+    /**
+     * Raise, unminimize and activate this window.
+     *
+     * \since QGIS 3.24
+     */
+    void activate();
+
+    /**
+     * Saves the model to the current project.
+     *
+     * \since QGIS 4.4
+     */
+    void saveInProject();
+
+  signals:
+
+    /**
+     * Emitted when the dialog is about to close.
+     *
+     * \since QGIS 4.4
+     */
+    void aboutToClose();
+
+    /**
+     * Emitted when the model is updated.
+     *
+     * \warning DO NOT USE -- this is bad API, here for compatibility with Python code only.
+     */
+    void modelUpdated();
+
   protected:
+    QgsProcessingContext *processingContext() const override;
 
-    // cppcheck-suppress pureVirtualCall
-    virtual void repaintModel( bool showControls = true ) = 0;
-    virtual void addAlgorithm( const QString &algorithmId, const QPointF &pos ) = 0;
-    virtual void addInput( const QString &inputId, const QPointF &pos ) = 0;
-    virtual void exportAsScriptAlgorithm() = 0;
-    // cppcheck-suppress pureVirtualCall
-    virtual void saveModel( bool saveAs = false ) = 0;
+  private slots:
+    void zoomIn();
+    void zoomOut();
+    void zoomActual();
+    void zoomFull();
+    void newModel();
+    void openModel();
+    void exportToImage();
+    void exportToPdf();
+    void exportToSvg();
+    void exportAsPython();
+    void toggleComments( bool show );
+    void toggleFeatureCount( bool show );
+    void updateWindowTitle();
+    void deleteSelected();
+    void populateZoomToMenu();
+    void validate();
+    void reorderInputs();
+    void reorderOutputs();
+    void setPanelVisibility( bool hidden );
+    void editHelp();
+    void runSelectedSteps();
+    void runFromChild( const QString &id );
+    void run( const QSet<QString> &childAlgorithmSubset = QSet<QString>() );
+    void showChildAlgorithmOutputs( const QString &childId );
+    void showChildAlgorithmLog( const QString &childId );
+    void onItemFocused( QgsModelComponentGraphicItem *item );
 
-    QToolBar *toolbar() { return mToolbar; }
-    QAction *actionOpen() { return mActionOpen; }
-    QAction *actionSaveInProject() { return mActionSaveInProject; }
-    QAction *actionEditHelp() { return mActionEditHelp; }
-    QAction *actionRun() { return mActionRun; }
-    QgsMessageBar *messageBar() { return mMessageBar; }
-    QGraphicsView *view() { return mView; }
+    void cancelRunningModel();
+
+  private:
+    /**
+     * Save action.
+     *
+     * \since QGIS 3.24
+     */
+    enum class SaveAction
+    {
+      SaveAsFile,    //!< Save model as a file
+      SaveInProject, //!< Save model into project
+    };
+
+    /**
+     * Starts an undo command. This should be called before any changes are made to the model.
+     */
+    void beginUndoCommand( const QString &text, const QString &id = QString(), QgsModelUndoCommand::CommandOperation operation = QgsModelUndoCommand::CommandOperation::Unknown );
+
+    /**
+     * Ends the current undo command. This should be called after changes are made to the model.
+     */
+    void endUndoCommand();
+
+    /**
+     * Aborts pending undo command, turning last call to beginUndoCommand obsolete
+     * \since QGIS 4.0
+     */
+    void abortUndoCommand();
+
+    void repaintModel( bool showControls = true );
 
     void setDirty( bool dirty );
 
     /**
      * Checks if the model can current be saved, and returns TRUE if it can.
      */
-    bool validateSave();
+    bool validateSave( SaveAction action );
 
     /**
      * Checks if there are unsaved changes in the model, and if so, prompts the user to save them.
@@ -127,54 +226,59 @@ class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow, public Ui::QgsMode
     bool checkForUnsavedChanges();
 
     /**
-     * Sets the results of child algorithms for the last run of the model through the designer window.
+     * Sets the \a result of the last run of the model through the designer window.
      */
-    void setLastRunChildAlgorithmResults( const QVariantMap &results );
+    void setLastRunResult( const QgsProcessingModelResult &result );
 
     /**
-     * Sets the inputs for child algorithms for the last run of the model through the designer window.
+     * Sets the model \a name.
+     *
+     * Updates both the name text edit and the model name itself.
+     *
+     * \since QGIS 3.24
      */
-    void setLastRunChildAlgorithmInputs( const QVariantMap &inputs );
+    void setModelName( const QString &name );
 
-  private slots:
-    void zoomIn();
-    void zoomOut();
-    void zoomActual();
-    void zoomFull();
-    void exportToImage();
-    void exportToPdf();
-    void exportToSvg();
-    void exportAsPython();
-    void toggleComments( bool show );
-    void updateWindowTitle();
-    void deleteSelected();
-    void populateZoomToMenu();
-    void validate();
-    void reorderInputs();
-    void setPanelVisibility( bool hidden );
+    bool saveModel( bool saveAs = false );
 
-  private:
+    QPointF getPositionForParameterItem() const;
+    QPointF getPositionForAlgorithmItem() const;
 
-    enum UndoCommand
-    {
-      NameChanged = 1,
-      GroupChanged
-    };
+    /**
+     * Automatically generates and sets a new parameter's name, based on the parameter's
+     * description and ensuring that it is unique for the model.
+     */
+    void autoGenerateParameterName( QgsProcessingParameterDefinition *parameter ) const;
 
-    std::unique_ptr< QgsProcessingModelAlgorithm > mModel;
+    void addAlgorithm( const QString &algorithmId, const QPointF &pos );
+    void addInput( const QString &parameterType, const QPointF &pos );
+
+    QgsProcessingAlgorithmWidget *createExecutionWidget();
+
+    void exportAsScriptAlgorithm();
+
+    std::unique_ptr< QgsProcessingContext > mContext;
+
+    std::unique_ptr<QgsProcessingModelAlgorithm> mModel;
+
+    QgsScreenHelper *mScreenHelper = nullptr;
 
     QgsMessageBar *mMessageBar = nullptr;
     QgsModelerToolboxModel *mAlgorithmsModel = nullptr;
 
+    QPointer<QgsProcessingAlgorithmWidget> mAlgorithmWidget;
+
+    QVector<QPointer<QgsProcessingAlgorithmWidget>> mAlgorithmWidgetsToCleanUp;
+
     QActionGroup *mToolsActionGroup = nullptr;
 
     QgsModelViewToolPan *mPanTool = nullptr;
-    QgsModelViewToolSelect *mSelectTool = nullptr;
+    QObjectUniquePtr<QgsModelViewToolSelect> mSelectTool;
     QgsModelGraphicsScene *mScene = nullptr;
 
     bool mHasChanged = false;
     QUndoStack *mUndoStack = nullptr;
-    std::unique_ptr< QgsModelUndoCommand > mActiveCommand;
+    std::unique_ptr<QgsModelUndoCommand> mActiveCommand;
 
     QAction *mUndoAction = nullptr;
     QAction *mRedoAction = nullptr;
@@ -189,12 +293,15 @@ class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow, public Ui::QgsMode
     int mBlockUndoCommands = 0;
     int mIgnoreUndoStackChanges = 0;
 
+    QgsDockWidget *mConfigWidgetDock = nullptr;
+    QgsModelDesignerConfigDockWidget *mConfigWidget = nullptr;
+
     QString mTitle;
 
     int mBlockRepaints = 0;
 
-    QVariantMap mChildResults;
-    QVariantMap mChildInputs;
+    QgsProcessingModelResult mLastResult;
+    QSet< QString > mOutdatedChildResults;
 
     bool isDirty() const;
 
@@ -203,33 +310,43 @@ class GUI_EXPORT QgsModelDesignerDialog : public QMainWindow, public Ui::QgsMode
 
     struct PanelStatus
     {
-      PanelStatus( bool visible = true, bool active = false )
-        : isVisible( visible )
-        , isActive( active )
-      {}
-      bool isVisible;
-      bool isActive;
+        PanelStatus( bool visible = true, bool active = false )
+          : isVisible( visible )
+          , isActive( active )
+        {}
+        bool isVisible;
+        bool isActive;
     };
-    QMap< QString, PanelStatus > mPanelStatus;
+    QMap<QString, PanelStatus> mPanelStatus;
+
+    QgsProcessingContext mLayerStore;
 };
 
-
+#ifndef SIP_RUN
 
 class GUI_EXPORT QgsModelChildDependenciesWidget : public QWidget
 {
     Q_OBJECT
 
   public:
-
     QgsModelChildDependenciesWidget( QWidget *parent, QgsProcessingModelAlgorithm *model, const QString &childId );
-    QList< QgsProcessingModelChildDependency > value() const { return mValue; }
-    void setValue( const QList< QgsProcessingModelChildDependency >  &value );
+    QList<QgsProcessingModelChildDependency> value() const { return mValue; }
+    void setValue( const QList<QgsProcessingModelChildDependency> &value );
+
+  signals:
+
+    /**
+     * Emitted when the dependencies are changed in the widget.
+     *
+     * \since QGIS 4.4
+     */
+    void changed();
+
   private slots:
 
     void showDialog();
 
   private:
-
     void updateSummaryText();
 
     QLineEdit *mLineEdit = nullptr;
@@ -238,10 +355,11 @@ class GUI_EXPORT QgsModelChildDependenciesWidget : public QWidget
     QgsProcessingModelAlgorithm *mModel = nullptr;
     QString mChildId;
 
-    QList< QgsProcessingModelChildDependency >  mValue;
+    QList<QgsProcessingModelChildDependency> mValue;
 
     friend class TestProcessingGui;
 };
+#endif
 ///@endcond
 
 #endif // QGSMODELDESIGNERDIALOG_H

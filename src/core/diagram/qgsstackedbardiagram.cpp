@@ -14,12 +14,19 @@
  ***************************************************************************/
 
 #include "qgsstackedbardiagram.h"
+
 #include "qgsdiagramrenderer.h"
-#include "qgsrendercontext.h"
 #include "qgsexpression.h"
+#include "qgslinesymbol.h"
+#include "qgsrendercontext.h"
 #include "qgssymbollayerutils.h"
 
 #include <QPainter>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+const QString QgsStackedBarDiagram::DIAGRAM_NAME_STACKED_BAR = u"Stacked"_s;
 
 QgsStackedBarDiagram::QgsStackedBarDiagram()
 {
@@ -64,7 +71,7 @@ QSizeF QgsStackedBarDiagram::diagramSize( const QgsFeature &feature, const QgsRe
 
   // eh - this method returns size in unknown units ...! We'll have to fake it and use a rough estimation of
   // a conversion factor to painter units...
-  // TODO QGIS 4.0 -- these methods should all use painter units, dependent on the render context scaling...
+  // TODO QGIS 5.0 -- these methods should all use painter units, dependent on the render context scaling...
   double painterUnitConversionScale = c.convertToPainterUnits( 1, s.sizeType );
 
   const double spacing = c.convertToPainterUnits( s.spacing(), s.spacingUnit(), s.spacingMapUnitScale() ) / painterUnitConversionScale;
@@ -75,7 +82,7 @@ QSizeF QgsStackedBarDiagram::diagramSize( const QgsFeature &feature, const QgsRe
     case QgsDiagramSettings::Up:
     case QgsDiagramSettings::Down:
     {
-      const double totalBarLength = size.height() + spacing * std::max( 0, s.categoryAttributes.size() - 1 );
+      const double totalBarLength = size.height() + spacing * std::max( 0, static_cast<int>( s.categoryAttributes.size() ) - 1 );
       size = QSizeF( s.barWidth, totalBarLength );
       break;
     }
@@ -83,7 +90,7 @@ QSizeF QgsStackedBarDiagram::diagramSize( const QgsFeature &feature, const QgsRe
     case QgsDiagramSettings::Right:
     case QgsDiagramSettings::Left:
     {
-      const double totalBarLength = size.width() + spacing * std::max( 0, s.categoryAttributes.size() - 1 );
+      const double totalBarLength = size.width() + spacing * std::max( 0, static_cast<int>( s.categoryAttributes.size() ) - 1 );
       size = QSizeF( totalBarLength, s.barWidth );
       break;
     }
@@ -116,7 +123,7 @@ double QgsStackedBarDiagram::legendSize( double value, const QgsDiagramSettings 
 
 QString QgsStackedBarDiagram::diagramName() const
 {
-  return DIAGRAM_NAME_STACKED;
+  return QgsStackedBarDiagram::DIAGRAM_NAME_STACKED_BAR;
 }
 
 QSizeF QgsStackedBarDiagram::diagramSize( const QgsAttributes &attributes, const QgsRenderContext &c, const QgsDiagramSettings &s )
@@ -131,7 +138,7 @@ QSizeF QgsStackedBarDiagram::diagramSize( const QgsAttributes &attributes, const
 
   // eh - this method returns size in unknown units ...! We'll have to fake it and use a rough estimation of
   // a conversion factor to painter units...
-  // TODO QGIS 4.0 -- these methods should all use painter units, dependent on the render context scaling...
+  // TODO QGIS 5.0 -- these methods should all use painter units, dependent on the render context scaling...
   double painterUnitConversionScale = c.convertToPainterUnits( 1, s.sizeType );
 
   const double spacing = c.convertToPainterUnits( s.spacing(), s.spacingUnit(), s.spacingMapUnitScale() ) / painterUnitConversionScale;
@@ -140,12 +147,12 @@ QSizeF QgsStackedBarDiagram::diagramSize( const QgsAttributes &attributes, const
   {
     case QgsDiagramSettings::Up:
     case QgsDiagramSettings::Down:
-      size.scale( s.barWidth, s.size.height() + spacing * std::max( 0, s.categoryAttributes.size() - 1 ), Qt::IgnoreAspectRatio );
+      size.scale( s.barWidth, s.size.height() + spacing * std::max( 0, static_cast<int>( s.categoryAttributes.size() ) - 1 ), Qt::IgnoreAspectRatio );
       break;
 
     case QgsDiagramSettings::Right:
     case QgsDiagramSettings::Left:
-      size.scale( s.size.width() + spacing * std::max( 0, s.categoryAttributes.size() - 1 ), s.barWidth, Qt::IgnoreAspectRatio );
+      size.scale( s.size.width() + spacing * std::max( 0, static_cast<int>( s.categoryAttributes.size() ) - 1 ), s.barWidth, Qt::IgnoreAspectRatio );
       break;
   }
 
@@ -173,7 +180,7 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
   double negativeTotal = 0;
 
   QList< QColor >::const_iterator colIt = s.categoryColors.constBegin();
-  for ( const QString &cat : qgis::as_const( s.categoryAttributes ) )
+  for ( const QString &cat : std::as_const( s.categoryAttributes ) )
   {
     QgsExpression *expression = getExpression( cat, expressionContext );
     double currentVal = expression->evaluate( &expressionContext ).toDouble();
@@ -192,7 +199,7 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
 
 
   const double spacing = c.convertToPainterUnits( s.spacing(), s.spacingUnit(), s.spacingMapUnitScale() );
-  const double totalSpacing = std::max( 0, s.categoryAttributes.size() - 1 ) * spacing;
+  const double totalSpacing = std::max( 0, static_cast<int>( s.categoryAttributes.size() ) - 1 ) * spacing;
 
   double scaledMaxVal = 0;
   switch ( s.diagramOrientation )
@@ -244,7 +251,9 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
   {
     double length = valIt->first / total * scaledMaxVal;
 
-    mCategoryBrush.setColor( valIt->second );
+    QColor brushColor( valIt->second );
+    brushColor.setAlphaF( brushColor.alphaF() * s.opacity );
+    mCategoryBrush.setColor( brushColor );
     p->setBrush( mCategoryBrush );
 
     switch ( s.diagramOrientation )
@@ -254,7 +263,7 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
         break;
 
       case QgsDiagramSettings::Down:
-        p->drawRect( QRectF( baseX, baseY + currentOffset - scaledMaxVal - spacing * std::max( 0, values.size() - 1 ), scaledWidth, length ) );
+        p->drawRect( QRectF( baseX, baseY + currentOffset - scaledMaxVal - spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ), scaledWidth, length ) );
         break;
 
       case QgsDiagramSettings::Right:
@@ -262,7 +271,7 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
         break;
 
       case QgsDiagramSettings::Left:
-        p->drawRect( QRectF( baseX + scaledMaxVal - currentOffset + spacing * std::max( 0, values.size() - 1 ), baseY - scaledWidth, 0 - length, scaledWidth ) );
+        p->drawRect( QRectF( baseX + scaledMaxVal - currentOffset + spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ), baseY - scaledWidth, 0 - length, scaledWidth ) );
         break;
     }
 
@@ -276,27 +285,31 @@ void QgsStackedBarDiagram::renderDiagram( const QgsFeature &feature, QgsRenderCo
     switch ( s.diagramOrientation )
     {
       case QgsDiagramSettings::Up:
-        axisPoints << QPointF( baseX, baseY - scaledMaxVal - spacing * std::max( 0, values.size() - 1 ) )
-                   << QPointF( baseX, baseY - axisOffset )
-                   << QPointF( baseX + scaledWidth, baseY - axisOffset );
+        axisPoints
+          << QPointF( baseX, baseY - scaledMaxVal - spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ) )
+          << QPointF( baseX, baseY - axisOffset )
+          << QPointF( baseX + scaledWidth, baseY - axisOffset );
         break;
 
       case QgsDiagramSettings::Down:
-        axisPoints << QPointF( baseX, baseY )
-                   << QPointF( baseX, baseY - scaledMaxVal - spacing * std::max( 0, values.size() - 1 ) + axisOffset )
-                   << QPointF( baseX + scaledWidth, baseY - scaledMaxVal - spacing * std::max( 0, values.size() - 1 ) + axisOffset );
+        axisPoints
+          << QPointF( baseX, baseY )
+          << QPointF( baseX, baseY - scaledMaxVal - spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ) + axisOffset )
+          << QPointF( baseX + scaledWidth, baseY - scaledMaxVal - spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ) + axisOffset );
         break;
 
       case QgsDiagramSettings::Right:
-        axisPoints << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, values.size() - 1 ), baseY - scaledWidth )
-                   << QPointF( baseX + axisOffset, baseY - scaledWidth )
-                   << QPointF( baseX + axisOffset, baseY );
+        axisPoints
+          << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ), baseY - scaledWidth )
+          << QPointF( baseX + axisOffset, baseY - scaledWidth )
+          << QPointF( baseX + axisOffset, baseY );
         break;
 
       case QgsDiagramSettings::Left:
-        axisPoints << QPointF( baseX, baseY - scaledWidth )
-                   << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, values.size() - 1 ) - axisOffset, baseY - scaledWidth )
-                   << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, values.size() - 1 ) - axisOffset, baseY );
+        axisPoints
+          << QPointF( baseX, baseY - scaledWidth )
+          << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ) - axisOffset, baseY - scaledWidth )
+          << QPointF( baseX + scaledMaxVal + spacing * std::max( 0, static_cast<int>( values.size() ) - 1 ) - axisOffset, baseY );
         break;
     }
 

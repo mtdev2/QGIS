@@ -14,21 +14,28 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsautheditorwidgets.h"
 #include "ui_qgsauthmethodplugins.h"
+#include "qgsautheditorwidgets.h"
+
+#include "qgsapplication.h"
+#include "qgsauthcertificatemanager.h"
+#include "qgsauthconfigurationstoragedb.h"
+#include "qgsauthguiutils.h"
+#include "qgsauthmanager.h"
+#include "qgsauthmethodmetadata.h"
+#include "qgshelp.h"
+#include "qgsnetworkaccessmanager.h"
+#include "qgssettings.h"
 
 #include <QAction>
 #include <QMenu>
-#include <QWidget>
+#include <QString>
 #include <QTableWidget>
+#include <QWidget>
 
-#include "qgssettings.h"
-#include "qgsauthcertificatemanager.h"
-#include "qgsauthguiutils.h"
-#include "qgsauthmanager.h"
-#include "qgsapplication.h"
-#include "qgsnetworkaccessmanager.h"
+#include "moc_qgsautheditorwidgets.cpp"
 
+using namespace Qt::StringLiterals;
 
 QgsAuthMethodPlugins::QgsAuthMethodPlugins( QWidget *parent )
   : QDialog( parent )
@@ -45,6 +52,7 @@ QgsAuthMethodPlugins::QgsAuthMethodPlugins( QWidget *parent )
   {
     setupUi( this );
     connect( buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject );
+    connect( buttonBox, &QDialogButtonBox::helpRequested, this, [] { QgsHelp::openHelp( u"auth_system/auth_overview.html#authentication-methods"_s ); } );
 
     setupTable();
     populateTable();
@@ -71,32 +79,36 @@ void QgsAuthMethodPlugins::setupTable()
 
 void QgsAuthMethodPlugins::populateTable()
 {
-  QgsAuthMethodsMap authmethods( QgsApplication::authManager()->authMethodsMap() );
+  const QStringList authMethodKeys = QgsApplication::authManager()->authMethodsKeys();
 
   int i = 0;
-  for ( QgsAuthMethodsMap::const_iterator it = authmethods.constBegin(); it != authmethods.constEnd(); ++it, i++ )
+  const auto constAuthMethodKeys = authMethodKeys;
+  for ( const QString &authMethodKey : constAuthMethodKeys )
   {
-    QgsAuthMethod *authmethod( it.value() );
-    if ( !authmethod )
+    const QgsAuthMethodMetadata *meta = QgsApplication::authManager()->authMethodMetadata( authMethodKey );
+    const QgsAuthMethod *method = QgsApplication::authManager()->authMethod( authMethodKey );
+    if ( !meta || !method )
     {
+      QgsDebugError( u"Load auth method instance FAILED for auth method key (%1)"_s.arg( authMethodKey ) );
       continue;
     }
 
-    QTableWidgetItem *twi = new QTableWidgetItem( authmethod->key() );
+    QTableWidgetItem *twi = new QTableWidgetItem( meta->key() );
     twi->setFlags( twi->flags() & ~Qt::ItemIsEditable );
     tblAuthPlugins->setItem( i, 0, twi );
 
-    twi = new QTableWidgetItem( authmethod->displayDescription() );
+    twi = new QTableWidgetItem( meta->description() );
     twi->setFlags( twi->flags() & ~Qt::ItemIsEditable );
     tblAuthPlugins->setItem( i, 1, twi );
 
-    twi = new QTableWidgetItem( authmethod->supportedDataProviders().join( QLatin1String( ", " ) ) );
+    twi = new QTableWidgetItem( method->supportedDataProviders().join( ", "_L1 ) );
     twi->setFlags( twi->flags() & ~Qt::ItemIsEditable );
     tblAuthPlugins->setItem( i, 2, twi );
+
+    i++;
   }
   tblAuthPlugins->sortItems( 0 );
 }
-
 
 
 QgsAuthEditorWidgets::QgsAuthEditorWidgets( QWidget *parent )
@@ -138,29 +150,28 @@ void QgsAuthEditorWidgets::btnAuthPlugins_clicked()
 
 void QgsAuthEditorWidgets::setupUtilitiesMenu()
 {
-  connect( QgsApplication::authManager(), &QgsAuthManager::messageOut,
-           this, &QgsAuthEditorWidgets::authMessageOut );
+  connect( QgsApplication::authManager(), &QgsAuthManager::messageLog, this, &QgsAuthEditorWidgets::authMessageLog );
+
+  const bool isReadOnly { !QgsApplication::authManager()->defaultDbStorage() || QgsApplication::authManager()->defaultDbStorage()->isReadOnly() };
 
   // set up utility actions menu
-  mActionSetMasterPassword = new QAction( tr( "Input master password" ), this );
-  mActionClearCachedMasterPassword = new QAction( tr( "Clear cached master password" ), this );
-  mActionResetMasterPassword = new QAction( tr( "Reset master password" ), this );
-  mActionClearCachedAuthConfigs = new QAction( tr( "Clear cached authentication configurations" ), this );
-  mActionRemoveAuthConfigs = new QAction( tr( "Remove all authentication configurations" ), this );
-  mActionEraseAuthDatabase = new QAction( tr( "Erase authentication database" ), this );
+  mActionImportAuthenticationConfigs = new QAction( tr( "Import Authentication Configurations from File…" ), this );
+  mActionExportSelectedAuthenticationConfigs = new QAction( tr( "Export Selected Authentication Configurations to File…" ), this );
+  mActionSetMasterPassword = new QAction( tr( "Input Master Password…" ), this );
+  mActionClearCachedMasterPassword = new QAction( tr( "Clear Cached Master Password" ), this );
+  mActionResetMasterPassword = new QAction( tr( "Reset Master Password…" ), this );
+  mActionClearCachedAuthConfigs = new QAction( tr( "Clear Cached Authentication Configurations" ), this );
+  mActionRemoveAuthConfigs = new QAction( tr( "Remove all Authentication Configurations…" ), this );
+  mActionEraseAuthDatabase = new QAction( tr( "Erase Authentication Database…" ), this );
 
-  mActionClearAccessCacheNow = new QAction( tr( "Clear network authentication access cache" ), this );
-  mActionAutoClearAccessCache = new QAction( tr( "Automatically clear network authentication access cache on SSL errors" ), this );
+  mActionClearAccessCacheNow = new QAction( tr( "Clear Network Authentication Access Cache" ), this );
+  mActionAutoClearAccessCache = new QAction( tr( "Automatically Clear Network Authentication Access Cache on SSL Errors" ), this );
   mActionAutoClearAccessCache->setCheckable( true );
-  mActionAutoClearAccessCache->setChecked( QgsSettings().value( QStringLiteral( "clear_auth_cache_on_errors" ), true, QgsSettings::Section::Auth ).toBool( ) );
+  mActionAutoClearAccessCache->setChecked( QgsSettings().value( u"clear_auth_cache_on_errors"_s, true, QgsSettings::Section::Auth ).toBool() );
 
-  mActionPasswordHelperSync = new QAction( tr( "Store/update the master password in your %1" )
-      .arg( QgsAuthManager::AUTH_PASSWORD_HELPER_DISPLAY_NAME ), this );
-  mActionPasswordHelperDelete = new QAction( tr( "Clear the master password from your %1" )
-      .arg( QgsAuthManager::AUTH_PASSWORD_HELPER_DISPLAY_NAME ), this );
-  mActionPasswordHelperEnable = new QAction( tr( "Integrate master password with your %1" )
-      .arg( QgsAuthManager::AUTH_PASSWORD_HELPER_DISPLAY_NAME ), this );
-  mActionPasswordHelperLoggingEnable = new QAction( tr( "Enable password helper debug log" ), this );
+  mActionPasswordHelperDelete = new QAction( tr( "Clear the Master Password from the %1…" ).arg( QgsAuthManager::passwordHelperDisplayName( true ) ), this );
+  mActionPasswordHelperEnable = new QAction( tr( "Integrate Master Password with the %1" ).arg( QgsAuthManager::passwordHelperDisplayName( true ) ), this );
+  mActionPasswordHelperLoggingEnable = new QAction( tr( "Enable Password Helper Debug Log" ), this );
 
   mActionPasswordHelperEnable->setCheckable( true );
   mActionPasswordHelperEnable->setChecked( QgsApplication::authManager()->passwordHelperEnabled() );
@@ -168,27 +179,36 @@ void QgsAuthEditorWidgets::setupUtilitiesMenu()
   mActionPasswordHelperLoggingEnable->setCheckable( true );
   mActionPasswordHelperLoggingEnable->setChecked( QgsApplication::authManager()->passwordHelperLoggingEnabled() );
 
+  if ( !isReadOnly )
+  {
+    connect( mActionImportAuthenticationConfigs, &QAction::triggered, this, &QgsAuthEditorWidgets::importAuthenticationConfigs );
+    connect( mActionResetMasterPassword, &QAction::triggered, this, &QgsAuthEditorWidgets::resetMasterPassword );
+    connect( mActionRemoveAuthConfigs, &QAction::triggered, this, &QgsAuthEditorWidgets::removeAuthenticationConfigs );
+    connect( mActionEraseAuthDatabase, &QAction::triggered, this, &QgsAuthEditorWidgets::eraseAuthenticationDatabase );
+  }
+  else
+  {
+    mActionImportAuthenticationConfigs->setEnabled( false );
+    mActionResetMasterPassword->setEnabled( false );
+    mActionRemoveAuthConfigs->setEnabled( false );
+    mActionEraseAuthDatabase->setEnabled( false );
+  }
+
+  connect( mActionExportSelectedAuthenticationConfigs, &QAction::triggered, this, &QgsAuthEditorWidgets::exportSelectedAuthenticationConfigs );
   connect( mActionSetMasterPassword, &QAction::triggered, this, &QgsAuthEditorWidgets::setMasterPassword );
   connect( mActionClearCachedMasterPassword, &QAction::triggered, this, &QgsAuthEditorWidgets::clearCachedMasterPassword );
-  connect( mActionResetMasterPassword, &QAction::triggered, this, &QgsAuthEditorWidgets::resetMasterPassword );
   connect( mActionClearCachedAuthConfigs, &QAction::triggered, this, &QgsAuthEditorWidgets::clearCachedAuthenticationConfigs );
-  connect( mActionRemoveAuthConfigs, &QAction::triggered, this, &QgsAuthEditorWidgets::removeAuthenticationConfigs );
-  connect( mActionEraseAuthDatabase, &QAction::triggered, this, &QgsAuthEditorWidgets::eraseAuthenticationDatabase );
 
-  connect( mActionPasswordHelperSync, &QAction::triggered, this, &QgsAuthEditorWidgets::passwordHelperSync );
   connect( mActionPasswordHelperDelete, &QAction::triggered, this, &QgsAuthEditorWidgets::passwordHelperDelete );
   connect( mActionPasswordHelperEnable, &QAction::triggered, this, &QgsAuthEditorWidgets::passwordHelperEnableTriggered );
   connect( mActionPasswordHelperLoggingEnable, &QAction::triggered, this, &QgsAuthEditorWidgets::passwordHelperLoggingEnableTriggered );
 
-  connect( mActionClearAccessCacheNow, &QAction::triggered, this, [ = ]
-  {
+  connect( mActionClearAccessCacheNow, &QAction::triggered, this, [this] {
     QgsNetworkAccessManager::instance()->clearAccessCache();
+    messageBar()->clearWidgets();
     messageBar()->pushSuccess( tr( "Auth cache cleared" ), tr( "Network authentication cache has been cleared" ) );
   } );
-  connect( mActionAutoClearAccessCache, &QAction::triggered, this, [ ]( bool checked )
-  {
-    QgsSettings().setValue( QStringLiteral( "clear_auth_cache_on_errors" ), checked, QgsSettings::Section::Auth );
-  } );
+  connect( mActionAutoClearAccessCache, &QAction::triggered, this, []( bool checked ) { QgsSettings().setValue( u"clear_auth_cache_on_errors"_s, checked, QgsSettings::Section::Auth ); } );
 
   mAuthUtilitiesMenu = new QMenu( this );
   mAuthUtilitiesMenu->addAction( mActionSetMasterPassword );
@@ -199,16 +219,31 @@ void QgsAuthEditorWidgets::setupUtilitiesMenu()
   mAuthUtilitiesMenu->addAction( mActionAutoClearAccessCache );
   mAuthUtilitiesMenu->addSeparator();
   mAuthUtilitiesMenu->addAction( mActionPasswordHelperEnable );
-  mAuthUtilitiesMenu->addAction( mActionPasswordHelperSync );
   mAuthUtilitiesMenu->addAction( mActionPasswordHelperDelete );
   mAuthUtilitiesMenu->addAction( mActionPasswordHelperLoggingEnable );
   mAuthUtilitiesMenu->addSeparator();
   mAuthUtilitiesMenu->addAction( mActionClearCachedAuthConfigs );
   mAuthUtilitiesMenu->addAction( mActionRemoveAuthConfigs );
   mAuthUtilitiesMenu->addSeparator();
+  mAuthUtilitiesMenu->addAction( mActionImportAuthenticationConfigs );
+  mAuthUtilitiesMenu->addAction( mActionExportSelectedAuthenticationConfigs );
+  mAuthUtilitiesMenu->addSeparator();
   mAuthUtilitiesMenu->addAction( mActionEraseAuthDatabase );
 
   btnAuthUtilities->setMenu( mAuthUtilitiesMenu );
+}
+
+void QgsAuthEditorWidgets::importAuthenticationConfigs()
+{
+  QgsAuthGuiUtils::importAuthenticationConfigs( messageBar() );
+}
+
+void QgsAuthEditorWidgets::exportSelectedAuthenticationConfigs()
+{
+  if ( !wdgtConfigEditor )
+    return;
+
+  QgsAuthGuiUtils::exportSelectedAuthenticationConfigs( wdgtConfigEditor->selectedAuthenticationConfigIds(), messageBar() );
 }
 
 void QgsAuthEditorWidgets::setMasterPassword()
@@ -241,20 +276,15 @@ void QgsAuthEditorWidgets::eraseAuthenticationDatabase()
   QgsAuthGuiUtils::eraseAuthenticationDatabase( messageBar(), this );
 }
 
-void QgsAuthEditorWidgets::authMessageOut( const QString &message, const QString &authtag, QgsAuthManager::MessageLevel level )
+void QgsAuthEditorWidgets::authMessageLog( const QString &message, const QString &authtag, Qgis::MessageLevel level )
 {
-  int levelint = static_cast<int>( level );
-  messageBar()->pushMessage( authtag, message, ( Qgis::MessageLevel )levelint );
+  messageBar()->clearWidgets();
+  messageBar()->pushMessage( authtag, message, level );
 }
 
 void QgsAuthEditorWidgets::passwordHelperDelete()
 {
   QgsAuthGuiUtils::passwordHelperDelete( messageBar(), this );
-}
-
-void QgsAuthEditorWidgets::passwordHelperSync()
-{
-  QgsAuthGuiUtils::passwordHelperSync( messageBar() );
 }
 
 void QgsAuthEditorWidgets::passwordHelperEnableTriggered()
@@ -272,4 +302,3 @@ QgsMessageBar *QgsAuthEditorWidgets::messageBar()
 {
   return mMsgBar;
 }
-

@@ -16,26 +16,34 @@
  ***************************************************************************/
 
 #include "qgshtmlannotation.h"
+
+#include "qgsexpression.h"
+#include "qgsexpressioncontextutils.h"
 #include "qgsfeature.h"
 #include "qgsfeatureiterator.h"
 #include "qgslogger.h"
-#include "qgsproject.h"
-#include "qgsvectorlayer.h"
-#include "qgsexpression.h"
 #include "qgsnetworkaccessmanager.h"
-#include "qgswebpage.h"
+#include "qgspainting.h"
+#include "qgsproject.h"
+#include "qgsrendercontext.h"
+#include "qgsvectorlayer.h"
 #include "qgswebframe.h"
-#include "qgsexpressioncontextutils.h"
+#include "qgswebpage.h"
 
-#include <QDomElement>
 #include <QDir>
+#include <QDomElement>
 #include <QFile>
 #include <QFileInfo>
 #include <QGraphicsProxyWidget>
 #include <QPainter>
 #include <QSettings>
+#include <QString>
+#include <QTextStream>
 #include <QWidget>
 
+#include "moc_qgshtmlannotation.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsHtmlAnnotation::QgsHtmlAnnotation( QObject *parent )
   : QgsAnnotation( parent )
@@ -45,12 +53,17 @@ QgsHtmlAnnotation::QgsHtmlAnnotation( QObject *parent )
   mWebPage->mainFrame()->setScrollBarPolicy( Qt::Vertical, Qt::ScrollBarAlwaysOff );
   mWebPage->setNetworkAccessManager( QgsNetworkAccessManager::instance() );
 
+  // Make QWebPage transparent so that the background color of the annotation frame is used
+  QPalette palette = mWebPage->palette();
+  palette.setBrush( QPalette::Base, Qt::transparent );
+  mWebPage->setPalette( palette );
+
   connect( mWebPage->mainFrame(), &QWebFrame::javaScriptWindowObjectCleared, this, &QgsHtmlAnnotation::javascript );
 }
 
 QgsHtmlAnnotation *QgsHtmlAnnotation::clone() const
 {
-  std::unique_ptr< QgsHtmlAnnotation > c( new QgsHtmlAnnotation() );
+  auto c = std::make_unique<QgsHtmlAnnotation>();
   copyCommonProperties( c.get() );
   c->setSourceFile( mHtmlFile );
   return c.release();
@@ -67,7 +80,6 @@ void QgsHtmlAnnotation::setSourceFile( const QString &htmlFile )
   else
   {
     QTextStream in( &file );
-    in.setCodec( "UTF-8" );
     mHtmlSource = in.readAll();
   }
 
@@ -76,15 +88,23 @@ void QgsHtmlAnnotation::setSourceFile( const QString &htmlFile )
   emit appearanceChanged();
 }
 
+void QgsHtmlAnnotation::setHtmlSource( const QString &htmlSource )
+{
+  mHtmlFile.clear();
+  mHtmlSource = htmlSource;
+  setAssociatedFeature( associatedFeature() );
+  emit appearanceChanged();
+}
+
 void QgsHtmlAnnotation::renderAnnotation( QgsRenderContext &context, QSizeF size ) const
 {
-  if ( !context.painter() )
+  if ( !context.painter() || ( context.feedback() && context.feedback()->isCanceled() ) )
   {
     return;
   }
 
   // scale painter back to 96 dpi, so layout prints match screen rendering
-  QgsScopedQPainterState painterState( context.painter() );
+  const QgsScopedQPainterState painterState( context.painter() );
   const double scaleFactor = context.painter()->device()->logicalDpiX() / 96.0;
   context.painter()->scale( scaleFactor, scaleFactor );
   size /= scaleFactor;
@@ -97,9 +117,8 @@ QSizeF QgsHtmlAnnotation::minimumFrameSize() const
 {
   if ( mWebPage )
   {
-    QSizeF widgetMinSize = QSizeF( 0, 0 ); // mWebPage->minimumSize();
-    return QSizeF( contentsMargin().left() + contentsMargin().right() + widgetMinSize.width(),
-                   contentsMargin().top() + contentsMargin().bottom() + widgetMinSize.height() );
+    const QSizeF widgetMinSize = QSizeF( 0, 0 ); // mWebPage->minimumSize();
+    return QSizeF( contentsMargin().left() + contentsMargin().right() + widgetMinSize.width(), contentsMargin().top() + contentsMargin().bottom() + widgetMinSize.height() );
   }
   else
   {
@@ -109,8 +128,15 @@ QSizeF QgsHtmlAnnotation::minimumFrameSize() const
 
 void QgsHtmlAnnotation::writeXml( QDomElement &elem, QDomDocument &doc, const QgsReadWriteContext &context ) const
 {
-  QDomElement formAnnotationElem = doc.createElement( QStringLiteral( "HtmlAnnotationItem" ) );
-  formAnnotationElem.setAttribute( QStringLiteral( "htmlfile" ), sourceFile() );
+  QDomElement formAnnotationElem = doc.createElement( u"HtmlAnnotationItem"_s );
+  if ( !mHtmlFile.isEmpty() )
+  {
+    formAnnotationElem.setAttribute( u"htmlfile"_s, sourceFile() );
+  }
+  else
+  {
+    formAnnotationElem.setAttribute( u"htmlsource"_s, mHtmlSource );
+  }
 
   _writeXml( formAnnotationElem, doc, context );
   elem.appendChild( formAnnotationElem );
@@ -118,22 +144,29 @@ void QgsHtmlAnnotation::writeXml( QDomElement &elem, QDomDocument &doc, const Qg
 
 void QgsHtmlAnnotation::readXml( const QDomElement &itemElem, const QgsReadWriteContext &context )
 {
-  mHtmlFile = itemElem.attribute( QStringLiteral( "htmlfile" ), QString() );
-  QDomElement annotationElem = itemElem.firstChildElement( QStringLiteral( "AnnotationItem" ) );
+  const QDomElement annotationElem = itemElem.firstChildElement( u"AnnotationItem"_s );
   if ( !annotationElem.isNull() )
   {
     _readXml( annotationElem, context );
   }
 
   // upgrade old layer
-  if ( !mapLayer() && itemElem.hasAttribute( QStringLiteral( "vectorLayer" ) ) )
+  if ( !mapLayer() && itemElem.hasAttribute( u"vectorLayer"_s ) )
   {
-    setMapLayer( QgsProject::instance()->mapLayer( itemElem.attribute( QStringLiteral( "vectorLayer" ) ) ) );
+    setMapLayer( QgsProject::instance()->mapLayer( itemElem.attribute( u"vectorLayer"_s ) ) ); // skip-keyword-check
   }
 
   if ( mWebPage )
   {
-    setSourceFile( mHtmlFile );
+    mHtmlFile = itemElem.attribute( u"htmlfile"_s, QString() );
+    if ( !mHtmlFile.isEmpty() )
+    {
+      setSourceFile( mHtmlFile );
+    }
+    else
+    {
+      setHtmlSource( itemElem.attribute( u"htmlsource"_s, QString() ) );
+    }
   }
 }
 
@@ -159,8 +192,5 @@ void QgsHtmlAnnotation::setAssociatedFeature( const QgsFeature &feature )
 void QgsHtmlAnnotation::javascript()
 {
   QWebFrame *frame = mWebPage->mainFrame();
-  frame->addToJavaScriptWindowObject( QStringLiteral( "layer" ), mapLayer() );
+  frame->addToJavaScriptWindowObject( u"layer"_s, mapLayer() );
 }
-
-
-

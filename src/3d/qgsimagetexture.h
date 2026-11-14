@@ -16,43 +16,39 @@
 #ifndef QGSIMAGETEXTURE_H
 #define QGSIMAGETEXTURE_H
 
+#include "qgis_3d.h"
+
 #include <QImage>
 #include <QPainter>
 #include <Qt3DCore/QNode>
 #include <Qt3DRender/QPaintedTextureImage>
 
-#include "qgis_3d.h"
-
 #define SIP_NO_FILE
 
 /**
- * \brief The QgsImageTexture class
- * Holds an image that can be used as a texture in the 3D view
+ * \brief Holds an image that can be used as a texture in the 3D view
  *
  * \note Not available in Python bindings
  *
- * \ingroup 3d
+ * \ingroup qgis_3d
  * \since QGIS 3.16
  */
 class _3D_EXPORT QgsImageTexture : public Qt3DRender::QPaintedTextureImage
 {
+    Q_OBJECT
+
   public:
     //! Constructor
     QgsImageTexture( const QImage &image, Qt3DCore::QNode *parent = nullptr );
 
     //! paints on the current QImage using painter
-    void paint( QPainter *painter ) override
-    {
-      painter->drawImage( mImage.rect(), mImage, mImage.rect() );
-    }
+    void paint( QPainter *painter ) override { painter->drawImage( mImage.rect(), mImage, mImage.rect() ); }
 
     //! Returns the image
     QImage getImage() const { return mImage; }
 
   private:
-
     QImage mImage;
-
 };
 
 #endif // QGSIMAGETEXTURE_H

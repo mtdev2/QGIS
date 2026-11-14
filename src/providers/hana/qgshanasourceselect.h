@@ -17,25 +17,21 @@
 #ifndef QGSHANASOURCESELECT_H
 #define QGSHANASOURCESELECT_H
 
-#include "qgsabstractdatasourcewidget.h"
+#include "qgsabstractdbsourceselect.h"
 #include "qgsdatasourceuri.h"
-#include "qgsdbfilterproxymodel.h"
-#include "qgshanatablemodel.h"
+#include "qgsguiutils.h"
 #include "qgshanacolumntypethread.h"
 #include "qgshelp.h"
 #include "qgsproviderregistry.h"
-#include "qgsguiutils.h"
-#include "ui_qgsdbsourceselectbase.h"
 
-#include <QMap>
-#include <QPair>
 #include <QIcon>
 #include <QItemDelegate>
+#include <QMap>
+#include <QPair>
+#include <QPointer>
 #include <QString>
 
-class QPushButton;
 class QgsProxyProgressTask;
-class QStringList;
 class QgisApp;
 
 class QgsHanaSourceSelectDelegate : public QItemDelegate
@@ -47,14 +43,8 @@ class QgsHanaSourceSelectDelegate : public QItemDelegate
       : QItemDelegate( parent )
     {}
 
-    QWidget *createEditor(
-      QWidget *parent,
-      const QStyleOptionViewItem &option,
-      const QModelIndex &index ) const override;
-    void setModelData(
-      QWidget *editor,
-      QAbstractItemModel *model,
-      const QModelIndex &index ) const override;
+    QWidget *createEditor( QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index ) const override;
+    void setModelData( QWidget *editor, QAbstractItemModel *model, const QModelIndex &index ) const override;
     void setEditorData( QWidget *editor, const QModelIndex &index ) const override;
 };
 
@@ -66,28 +56,24 @@ class QgsHanaSourceSelectDelegate : public QItemDelegate
  * for SAP HANA databases. The user can then connect and add
  * tables from the database to the map canvas.
  */
-class QgsHanaSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsDbSourceSelectBase
+class QgsHanaSourceSelect : public QgsAbstractDbSourceSelect
 {
     Q_OBJECT
 
   public:
-
     //! static function to delete a connection
     static void deleteConnection( const QString &key );
 
     //! Constructor
-    QgsHanaSourceSelect(
-      QWidget *parent = nullptr,
-      Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags,
-      QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::None );
+    QgsHanaSourceSelect( QWidget *parent = nullptr, Qt::WindowFlags fl = QgsGuiUtils::ModalDialogFlags, QgsProviderRegistry::WidgetMode widgetMode = QgsProviderRegistry::WidgetMode::Standalone );
 
     ~QgsHanaSourceSelect() override;
     //! Populate the connection list combo box
     void populateConnectionList();
     //! String list containing the selected tables
-    QStringList selectedTables();
+    QStringList selectedTables() const;
     //! Connection info (database, host, user, password)
-    QString connectionInfo();
+    QString connectionInfo() const;
 
   public slots:
 
@@ -96,7 +82,6 @@ class QgsHanaSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsD
 
     //! Determines the tables the user selected and closes the dialog
     void addButtonClicked() override;
-    void buildQuery();
 
     /**
      * Connects to the database using the stored connection parameters.
@@ -114,21 +99,16 @@ class QgsHanaSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsD
     void btnSave_clicked();
     //! Loads the selected connections from file
     void btnLoad_clicked();
-    void mSearchGroupBox_toggled( bool );
-    void mSearchTableEdit_textChanged( const QString &text );
-    void mSearchColumnComboBox_currentTextChanged( const QString &text );
-    void mSearchModeComboBox_currentTextChanged( const QString &text );
-    void setSql( const QModelIndex &index );
     //! Store the selected database
     void cmbConnections_activated( int );
     void setLayerType( const QgsHanaLayerProperty &layerProperty );
-    void mTablesTreeView_clicked( const QModelIndex &index );
-    void mTablesTreeView_doubleClicked( const QModelIndex &index );
     void treeWidgetSelectionChanged( const QItemSelection &selected, const QItemSelection &deselected );
-    //!Sets a new regular expression to the model
-    void setSearchExpression( const QString &regexp );
 
     void columnThreadFinished();
+
+  protected slots:
+    void setSql( const QModelIndex &index ) override;
+    void treeviewDoubleClicked( const QModelIndex &index ) override;
 
   private:
     // Set the position of the database connection list to the last
@@ -136,11 +116,7 @@ class QgsHanaSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsD
     void setConnectionListPosition();
     // Combine the schema, table and column data into a single string
     // useful for display to the user
-    QString fullDescription(
-      const QString &schema,
-      const QString &table,
-      const QString &column,
-      const QString &type );
+    QString fullDescription( const QString &schema, const QString &table, const QString &column, const QString &type );
     void finishList();
     void showHelp();
 
@@ -148,13 +124,10 @@ class QgsHanaSourceSelect : public QgsAbstractDataSourceWidget, private Ui::QgsD
     QString mConnectionInfo;
     // A thread for detecting geometry types
     std::unique_ptr<QgsHanaColumnTypeThread> mColumnTypeThread;
-    std::unique_ptr<QgsProxyProgressTask> mColumnTypeTask;
+    QPointer<QgsProxyProgressTask> mColumnTypeTask;
     QStringList mSelectedTables;
     //! Model that acts as datasource for mTableTreeWidget
-    QgsHanaTableModel mTableModel;
-    QgsDatabaseFilterProxyModel mProxyModel;
-
-    QPushButton *mBuildQueryButton = nullptr;
+    QgsHanaTableModel *mTableModel = nullptr;
 };
 
 #endif // QGSHANASOURCESELECT_H

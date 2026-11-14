@@ -16,24 +16,22 @@
 #ifndef QGSMODELVIEWTOOLTEMPORARYKEYPAN_H
 #define QGSMODELVIEWTOOLTEMPORARYKEYPAN_H
 
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
 #include "qgsmodelviewtool.h"
 
 #define SIP_NO_FILE
 
 /**
  * \ingroup gui
- * Model designer view tool for temporarily panning a layout while a key is depressed.
+ * \brief Model designer view tool for temporarily panning a layout while a key is depressed.
  * \since QGIS 3.14
  */
 class GUI_EXPORT QgsModelViewToolTemporaryKeyPan : public QgsModelViewTool
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsModelViewToolTemporaryKeyPan.
      */
@@ -44,9 +42,7 @@ class GUI_EXPORT QgsModelViewToolTemporaryKeyPan : public QgsModelViewTool
     void activate() override;
 
   private:
-
     QPoint mLastMousePos;
-    QPointer< QgsModelViewTool > mPreviousViewTool;
-
+    QPointer<QgsModelViewTool> mPreviousViewTool;
 };
 #endif // QGSMODELVIEWTOOLTEMPORARYKEYPAN_H

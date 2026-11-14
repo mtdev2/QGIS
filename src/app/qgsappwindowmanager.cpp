@@ -14,11 +14,15 @@
  ***************************************************************************/
 
 #include "qgsappwindowmanager.h"
-#include "qgsstylemanagerdialog.h"
-#include "qgsstyle.h"
+
+#include "elevation/qgselevationprofilemanagerdialog.h"
 #include "qgisapp.h"
 #include "qgslayoutmanagerdialog.h"
-#include "qgsrasterlayer.h"
+#include "qgsstylemanagerdialog.h"
+
+#ifdef HAVE_3D
+#include "qgs3dviewsmanagerdialog.h"
+#endif
 
 QgsAppWindowManager::~QgsAppWindowManager()
 {
@@ -26,6 +30,8 @@ QgsAppWindowManager::~QgsAppWindowManager()
     delete mStyleManagerDialog;
   if ( mLayoutManagerDialog )
     delete mLayoutManagerDialog;
+  if ( mElevationProfileManagerDialog )
+    delete mElevationProfileManagerDialog;
 }
 
 QWidget *QgsAppWindowManager::openStandardDialog( QgsWindowManagerInterface::StandardDialog dialog )
@@ -36,7 +42,7 @@ QWidget *QgsAppWindowManager::openStandardDialog( QgsWindowManagerInterface::Sta
     {
       if ( !mStyleManagerDialog )
       {
-        mStyleManagerDialog = new QgsStyleManagerDialog( QgsStyle::defaultStyle(), QgisApp::instance(), Qt::Window );
+        mStyleManagerDialog = new QgsStyleManagerDialog( QgisApp::instance(), Qt::Window );
         mStyleManagerDialog->setAttribute( Qt::WA_DeleteOnClose );
       }
       mStyleManagerDialog->show();
@@ -51,7 +57,7 @@ QWidget *QgsAppWindowManager::openApplicationDialog( QgsAppWindowManager::Applic
 {
   switch ( dialog )
   {
-    case DialogLayoutManager:
+    case ApplicationDialog::LayoutManager:
     {
       if ( !mLayoutManagerDialog )
       {
@@ -61,6 +67,35 @@ QWidget *QgsAppWindowManager::openApplicationDialog( QgsAppWindowManager::Applic
       mLayoutManagerDialog->show();
       mLayoutManagerDialog->activate();
       return mLayoutManagerDialog;
+    }
+    case ApplicationDialog::Dialog3DMapViewsManager:
+    {
+#ifdef HAVE_3D
+      if ( !m3DMapViewsManagerDialog )
+      {
+        m3DMapViewsManagerDialog = new Qgs3DViewsManagerDialog( QgisApp::instance(), Qt::Window );
+        m3DMapViewsManagerDialog->setAttribute( Qt::WA_DeleteOnClose );
+      }
+      m3DMapViewsManagerDialog->show();
+      m3DMapViewsManagerDialog->reload();
+      m3DMapViewsManagerDialog->raise();
+      m3DMapViewsManagerDialog->setWindowState( m3DMapViewsManagerDialog->windowState() & ~Qt::WindowMinimized );
+      m3DMapViewsManagerDialog->activateWindow();
+      return m3DMapViewsManagerDialog;
+#else
+      break;
+#endif
+    }
+    case ApplicationDialog::ElevationProfileManager:
+    {
+      if ( !mElevationProfileManagerDialog )
+      {
+        mElevationProfileManagerDialog = new QgsElevationProfileManagerDialog( QgisApp::instance(), Qt::Window );
+        mElevationProfileManagerDialog->setAttribute( Qt::WA_DeleteOnClose );
+      }
+      mElevationProfileManagerDialog->show();
+      mElevationProfileManagerDialog->activate();
+      return mElevationProfileManagerDialog;
     }
   }
   return nullptr;

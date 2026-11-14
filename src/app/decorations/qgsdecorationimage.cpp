@@ -14,36 +14,40 @@
  ***************************************************************************/
 
 #include "qgsdecorationimage.h"
-#include "qgsdecorationimagedialog.h"
+
+#include <cassert>
+#include <cmath>
 
 #include "qgisapp.h"
-#include "qgscoordinatetransform.h"
-#include "qgsexception.h"
+#include "qgscolorutils.h"
+#include "qgsdecorationimagedialog.h"
 #include "qgsimagecache.h"
 #include "qgslogger.h"
-#include "qgsmaplayer.h"
+#include "qgsmapsettings.h"
+#include "qgspainting.h"
 #include "qgsproject.h"
-#include "qgssymbollayerutils.h"
 #include "qgssvgcache.h"
+#include "qgssymbollayerutils.h"
 
-#include <QPainter>
-#include <QMenu>
 #include <QDir>
 #include <QFile>
+#include <QMenu>
+#include <QPainter>
+#include <QString>
 #include <QSvgRenderer>
 
-#include <cmath>
-#include <cassert>
+#include "moc_qgsdecorationimage.cpp"
 
+using namespace Qt::StringLiterals;
 
 QgsDecorationImage::QgsDecorationImage( QObject *parent )
   : QgsDecorationItem( parent )
 {
   mPlacement = BottomLeft;
-  mMarginUnit = QgsUnitTypes::RenderMillimeters;
+  mMarginUnit = Qgis::RenderUnit::Millimeters;
 
   setDisplayName( tr( "Image" ) );
-  mConfigurationName = QStringLiteral( "Image" );
+  mConfigurationName = u"Image"_s;
 
   projectRead();
 }
@@ -51,23 +55,23 @@ QgsDecorationImage::QgsDecorationImage( QObject *parent )
 void QgsDecorationImage::projectRead()
 {
   QgsDecorationItem::projectRead();
-  mColor = QgsSymbolLayerUtils::decodeColor( QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/Color" ), QStringLiteral( "#000000" ) ) );
-  mOutlineColor = QgsSymbolLayerUtils::decodeColor( QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/OutlineColor" ), QStringLiteral( "#FFFFFF" ) ) );
-  mSize = QgsProject::instance()->readDoubleEntry( mConfigurationName, QStringLiteral( "/Size" ), 16.0 );
-  setImagePath( QgsProject::instance()->readEntry( mConfigurationName, QStringLiteral( "/ImagePath" ), QString() ) );
-  mMarginHorizontal = QgsProject::instance()->readNumEntry( mConfigurationName, QStringLiteral( "/MarginH" ), 0 );
-  mMarginVertical = QgsProject::instance()->readNumEntry( mConfigurationName, QStringLiteral( "/MarginV" ), 0 );
+  mColor = QgsColorUtils::colorFromString( QgsProject::instance()->readEntry( mConfigurationName, u"/Color"_s, u"#000000"_s ) );
+  mOutlineColor = QgsColorUtils::colorFromString( QgsProject::instance()->readEntry( mConfigurationName, u"/OutlineColor"_s, u"#FFFFFF"_s ) );
+  mSize = QgsProject::instance()->readDoubleEntry( mConfigurationName, u"/Size"_s, 16.0 );
+  setImagePath( QgsProject::instance()->readEntry( mConfigurationName, u"/ImagePath"_s, QString() ) );
+  mMarginHorizontal = QgsProject::instance()->readNumEntry( mConfigurationName, u"/MarginH"_s, 0 );
+  mMarginVertical = QgsProject::instance()->readNumEntry( mConfigurationName, u"/MarginV"_s, 0 );
 }
 
 void QgsDecorationImage::saveToProject()
 {
   QgsDecorationItem::saveToProject();
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/Color" ), QgsSymbolLayerUtils::encodeColor( mColor ) );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/OutlineColor" ), QgsSymbolLayerUtils::encodeColor( mOutlineColor ) );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/Size" ), mSize );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/ImagePath" ), QgsProject::instance()->pathResolver().writePath( mImagePath ) );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/MarginH" ), mMarginHorizontal );
-  QgsProject::instance()->writeEntry( mConfigurationName, QStringLiteral( "/MarginV" ), mMarginVertical );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/Color"_s, QgsColorUtils::colorToString( mColor ) );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/OutlineColor"_s, QgsColorUtils::colorToString( mOutlineColor ) );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/Size"_s, mSize );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/ImagePath"_s, QgsProject::instance()->pathResolver().writePath( mImagePath ) );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/MarginH"_s, mMarginHorizontal );
+  QgsProject::instance()->writeEntry( mConfigurationName, u"/MarginV"_s, mMarginVertical );
 }
 
 // Slot called when the buffer menu item is activated
@@ -82,12 +86,12 @@ void QgsDecorationImage::setImagePath( const QString &imagePath )
   mImagePath = imagePath;
   mImageFormat = FormatUnknown;
 
-  QString resolvedPath = QgsSymbolLayerUtils::svgSymbolNameToPath( mImagePath, QgsProject::instance()->pathResolver() );
-  QFileInfo fileInfo( resolvedPath );
+  const QString resolvedPath = QgsSymbolLayerUtils::svgSymbolNameToPath( mImagePath, QgsProject::instance()->pathResolver() );
+  const QFileInfo fileInfo( resolvedPath );
   if ( fileInfo.exists() )
   {
-    QString suffix = fileInfo.suffix();
-    if ( suffix.compare( QLatin1String( "svg" ), Qt::CaseInsensitive ) == 0 )
+    const QString suffix = fileInfo.suffix();
+    if ( suffix.compare( "svg"_L1, Qt::CaseInsensitive ) == 0 )
     {
       mImageFormat = FormatSVG;
     }
@@ -108,7 +112,7 @@ void QgsDecorationImage::setImagePath( const QString &imagePath )
       return;
     }
     bool cached;
-    QImage img = QgsApplication::imageCache()->pathAsImage( mImagePath, QSize( 1, 0 ), true, 1.0, cached );
+    const QImage img = QgsApplication::imageCache()->pathAsImage( mImagePath, QSize( 1, 0 ), true, 1.0, cached );
     if ( !img.isNull() )
     {
       mImageFormat = FormatRaster;
@@ -121,14 +125,14 @@ QString QgsDecorationImage::imagePath()
   if ( !mImagePath.isEmpty() )
   {
     QString resolvedPath = QgsSymbolLayerUtils::svgSymbolNameToPath( mImagePath, QgsProject::instance()->pathResolver() );
-    bool validSvg = QFileInfo::exists( resolvedPath );
+    const bool validSvg = QFileInfo::exists( resolvedPath );
     if ( validSvg )
     {
       return resolvedPath;
     }
   }
 
-  return QStringLiteral( ":/images/icons/qgis-icon-minimal-black.svg" );
+  return u":/images/icons/qgis-icon-minimal-black.svg"_s;
 }
 
 void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderContext &context )
@@ -136,7 +140,7 @@ void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderCon
   if ( !enabled() )
     return;
 
-  double maxLength = mSize * mapSettings.outputDpi() / 25.4;
+  const double maxLength = mSize * mapSettings.outputDpi() / 25.4;
   QSize size( maxLength, maxLength );
 
   QSvgRenderer svg;
@@ -150,7 +154,7 @@ void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderCon
 
       if ( svg.isValid() )
       {
-        QRectF viewBox = svg.viewBoxF();
+        const QRectF viewBox = svg.viewBoxF();
         if ( viewBox.height() > viewBox.width() )
         {
           size.setWidth( maxLength * viewBox.width() / viewBox.height() );
@@ -170,7 +174,7 @@ void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderCon
 
     case FormatRaster:
     {
-      QSize originalSize = QgsApplication::imageCache()->originalSize( imagePath() );
+      const QSize originalSize = QgsApplication::imageCache()->originalSize( imagePath() );
       if ( originalSize.isValid() )
       {
         if ( originalSize.height() > originalSize.width() )
@@ -199,41 +203,41 @@ void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderCon
       return;
   }
 
-  QgsScopedQPainterState painterState( context.painter() );
+  const QgsScopedQPainterState painterState( context.painter() );
 
   // need width/height of paint device
   QPaintDevice *device = context.painter()->device();
-  int deviceHeight = device->height() / device->devicePixelRatioF();
-  int deviceWidth = device->width() / device->devicePixelRatioF();
+  const float deviceHeight = static_cast<float>( device->height() ) / context.devicePixelRatio();
+  const float deviceWidth = static_cast<float>( device->width() ) / context.devicePixelRatio();
 
   // Set  margin according to selected units
   int xOffset = 0;
   int yOffset = 0;
   switch ( mMarginUnit )
   {
-    case QgsUnitTypes::RenderMillimeters:
+    case Qgis::RenderUnit::Millimeters:
     {
-      int pixelsInchX = context.painter()->device()->logicalDpiX();
-      int pixelsInchY = context.painter()->device()->logicalDpiY();
+      const int pixelsInchX = context.painter()->device()->logicalDpiX();
+      const int pixelsInchY = context.painter()->device()->logicalDpiY();
       xOffset = pixelsInchX * INCHES_TO_MM * mMarginHorizontal;
       yOffset = pixelsInchY * INCHES_TO_MM * mMarginVertical;
       break;
     }
 
-    case QgsUnitTypes::RenderPixels:
+    case Qgis::RenderUnit::Pixels:
       xOffset = mMarginHorizontal - 5; // Minus 5 to shift tight into corner
       yOffset = mMarginVertical - 5;
       break;
 
-    case QgsUnitTypes::RenderPercentage:
+    case Qgis::RenderUnit::Percentage:
       xOffset = ( ( deviceWidth - size.width() ) / 100. ) * mMarginHorizontal;
       yOffset = ( ( deviceHeight - size.width() ) / 100. ) * mMarginVertical;
       break;
-    case QgsUnitTypes::RenderMapUnits:
-    case QgsUnitTypes::RenderPoints:
-    case QgsUnitTypes::RenderInches:
-    case QgsUnitTypes::RenderUnknownUnit:
-    case QgsUnitTypes::RenderMetersInMapUnits:
+    case Qgis::RenderUnit::MapUnits:
+    case Qgis::RenderUnit::Points:
+    case Qgis::RenderUnit::Inches:
+    case Qgis::RenderUnit::Unknown:
+    case Qgis::RenderUnit::MetersInMapUnits:
       break;
   }
 
@@ -250,18 +254,16 @@ void QgsDecorationImage::render( const QgsMapSettings &mapSettings, QgsRenderCon
       context.painter()->translate( deviceWidth - xOffset - size.width(), yOffset );
       break;
     case BottomRight:
-      context.painter()->translate( deviceWidth - xOffset - size.width(),
-                                    deviceHeight - yOffset - size.height() );
+      context.painter()->translate( deviceWidth - xOffset - size.width(), deviceHeight - yOffset - size.height() );
       break;
     case TopCenter:
       context.painter()->translate( deviceWidth / 2 - size.width() / 2 + xOffset, yOffset );
       break;
     case BottomCenter:
-      context.painter()->translate( deviceWidth / 2 - size.width() / 2 + xOffset,
-                                    deviceHeight - yOffset - size.height() );
+      context.painter()->translate( deviceWidth / 2 - size.width() / 2 + xOffset, deviceHeight - yOffset - size.height() );
       break;
     default:
-      QgsDebugMsg( QStringLiteral( "Unsupported placement index of %1" ).arg( static_cast<int>( mPlacement ) ) );
+      QgsDebugError( u"Unsupported placement index of %1"_s.arg( static_cast<int>( mPlacement ) ) );
   }
 
   switch ( mImageFormat )

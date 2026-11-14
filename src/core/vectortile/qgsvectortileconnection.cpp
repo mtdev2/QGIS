@@ -15,31 +15,58 @@
 
 #include "qgsvectortileconnection.h"
 
-#include "qgslogger.h"
 #include "qgsdatasourceuri.h"
-#include "qgssettings.h"
+#include "qgshttpheaders.h"
+#include "qgssettingsentryimpl.h"
+
+#include <QFileInfo>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
+
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsUrl = new QgsSettingsEntryString( u"url"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryInteger *QgsVectorTileProviderConnection::settingsZmin = new QgsSettingsEntryInteger( u"zmin"_s, sTreeConnectionVectorTile, -1 );
+const QgsSettingsEntryInteger *QgsVectorTileProviderConnection::settingsZmax = new QgsSettingsEntryInteger( u"zmax"_s, sTreeConnectionVectorTile, -1 );
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsAuthcfg = new QgsSettingsEntryString( u"authcfg"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsUsername = new QgsSettingsEntryString( u"username"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsPassword = new QgsSettingsEntryString( u"password"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsStyleUrl = new QgsSettingsEntryString( u"styleUrl"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryString *QgsVectorTileProviderConnection::settingsServiceType = new QgsSettingsEntryString( u"service-type"_s, sTreeConnectionVectorTile );
+const QgsSettingsEntryVariantMap *QgsVectorTileProviderConnection::settingsHeaders = new QgsSettingsEntryVariantMap( u"http-header"_s, sTreeConnectionVectorTile );
+
 
 QString QgsVectorTileProviderConnection::encodedUri( const QgsVectorTileProviderConnection::Data &conn )
 {
   QgsDataSourceUri uri;
-  uri.setParam( QStringLiteral( "type" ), QStringLiteral( "xyz" ) );
-  uri.setParam( QStringLiteral( "url" ), conn.url );
+
+  const QFileInfo info( conn.url );
+  QString suffix = info.suffix().toLower();
+  if ( suffix.startsWith( "mbtiles"_L1 ) )
+  {
+    uri.setParam( u"type"_s, u"mbtiles"_s );
+  }
+  else
+  {
+    uri.setParam( u"type"_s, u"xyz"_s );
+  }
+
+  uri.setParam( u"url"_s, conn.url );
   if ( conn.zMin != -1 )
-    uri.setParam( QStringLiteral( "zmin" ), QString::number( conn.zMin ) );
+    uri.setParam( u"zmin"_s, QString::number( conn.zMin ) );
   if ( conn.zMax != -1 )
-    uri.setParam( QStringLiteral( "zmax" ), QString::number( conn.zMax ) );
+    uri.setParam( u"zmax"_s, QString::number( conn.zMax ) );
   if ( !conn.authCfg.isEmpty() )
     uri.setAuthConfigId( conn.authCfg );
   if ( !conn.username.isEmpty() )
     uri.setUsername( conn.username );
   if ( !conn.password.isEmpty() )
     uri.setPassword( conn.password );
-  if ( !conn.referer.isEmpty() )
-    uri.setParam( QStringLiteral( "referer" ),  conn.referer );
   if ( !conn.styleUrl.isEmpty() )
-    uri.setParam( QStringLiteral( "styleUrl" ),  conn.styleUrl );
+    uri.setParam( u"styleUrl"_s, conn.styleUrl );
+
+  uri.setHttpHeaders( conn.httpHeaders );
 
   switch ( conn.serviceType )
   {
@@ -47,7 +74,7 @@ QString QgsVectorTileProviderConnection::encodedUri( const QgsVectorTileProvider
       break;
 
     case ArcgisVectorTileService:
-      uri.setParam( QStringLiteral( "serviceType" ), QStringLiteral( "arcgis" ) );
+      uri.setParam( u"serviceType"_s, u"arcgis"_s );
       break;
   }
 
@@ -60,18 +87,19 @@ QgsVectorTileProviderConnection::Data QgsVectorTileProviderConnection::decodedUr
   dsUri.setEncodedUri( uri );
 
   QgsVectorTileProviderConnection::Data conn;
-  conn.url = dsUri.param( QStringLiteral( "url" ) );
-  conn.zMin = dsUri.hasParam( QStringLiteral( "zmin" ) ) ? dsUri.param( QStringLiteral( "zmin" ) ).toInt() : -1;
-  conn.zMax = dsUri.hasParam( QStringLiteral( "zmax" ) ) ? dsUri.param( QStringLiteral( "zmax" ) ).toInt() : -1;
+  conn.url = dsUri.param( u"url"_s );
+  conn.zMin = dsUri.hasParam( u"zmin"_s ) ? dsUri.param( u"zmin"_s ).toInt() : -1;
+  conn.zMax = dsUri.hasParam( u"zmax"_s ) ? dsUri.param( u"zmax"_s ).toInt() : -1;
   conn.authCfg = dsUri.authConfigId();
   conn.username = dsUri.username();
   conn.password = dsUri.password();
-  conn.referer = dsUri.param( QStringLiteral( "referer" ) );
-  conn.styleUrl = dsUri.param( QStringLiteral( "styleUrl" ) );
+  conn.styleUrl = dsUri.param( u"styleUrl"_s );
 
-  if ( dsUri.hasParam( QStringLiteral( "serviceType" ) ) )
+  conn.httpHeaders = dsUri.httpHeaders();
+
+  if ( dsUri.hasParam( u"serviceType"_s ) )
   {
-    if ( dsUri.param( QStringLiteral( "serviceType" ) ) == QLatin1String( "arcgis" ) )
+    if ( dsUri.param( u"serviceType"_s ) == "arcgis"_L1 )
       conn.serviceType = ArcgisVectorTileService;
   }
   return conn;
@@ -81,22 +109,33 @@ QString QgsVectorTileProviderConnection::encodedLayerUri( const QgsVectorTilePro
 {
   // compared to encodedUri() this one also adds type=xyz to the URI
   QgsDataSourceUri uri;
-  uri.setParam( QStringLiteral( "type" ), QStringLiteral( "xyz" ) );
-  uri.setParam( QStringLiteral( "url" ), conn.url );
+
+  const QFileInfo info( conn.url );
+  QString suffix = info.suffix().toLower();
+  if ( suffix.startsWith( "mbtiles"_L1 ) )
+  {
+    uri.setParam( u"type"_s, u"mbtiles"_s );
+  }
+  else
+  {
+    uri.setParam( u"type"_s, u"xyz"_s );
+  }
+
+  uri.setParam( u"url"_s, conn.url );
   if ( conn.zMin != -1 )
-    uri.setParam( QStringLiteral( "zmin" ), QString::number( conn.zMin ) );
+    uri.setParam( u"zmin"_s, QString::number( conn.zMin ) );
   if ( conn.zMax != -1 )
-    uri.setParam( QStringLiteral( "zmax" ), QString::number( conn.zMax ) );
+    uri.setParam( u"zmax"_s, QString::number( conn.zMax ) );
   if ( !conn.authCfg.isEmpty() )
     uri.setAuthConfigId( conn.authCfg );
   if ( !conn.username.isEmpty() )
     uri.setUsername( conn.username );
   if ( !conn.password.isEmpty() )
     uri.setPassword( conn.password );
-  if ( !conn.referer.isEmpty() )
-    uri.setParam( QStringLiteral( "referer" ),  conn.referer );
   if ( !conn.styleUrl.isEmpty() )
-    uri.setParam( QStringLiteral( "styleUrl" ),  conn.styleUrl );
+    uri.setParam( u"styleUrl"_s, conn.styleUrl );
+
+  uri.setHttpHeaders( conn.httpHeaders );
 
   switch ( conn.serviceType )
   {
@@ -104,7 +143,7 @@ QString QgsVectorTileProviderConnection::encodedLayerUri( const QgsVectorTilePro
       break;
 
     case ArcgisVectorTileService:
-      uri.setParam( QStringLiteral( "serviceType" ), QStringLiteral( "arcgis" ) );
+      uri.setParam( u"serviceType"_s, u"arcgis"_s );
       break;
   }
 
@@ -113,59 +152,48 @@ QString QgsVectorTileProviderConnection::encodedLayerUri( const QgsVectorTilePro
 
 QStringList QgsVectorTileProviderConnection::connectionList()
 {
-  QgsSettings settings;
-  settings.beginGroup( QStringLiteral( "qgis/connections-vector-tile" ) );
-  QStringList connList = settings.childGroups();
-
-  return connList;
+  return QgsVectorTileProviderConnection::sTreeConnectionVectorTile->items();
 }
 
 QgsVectorTileProviderConnection::Data QgsVectorTileProviderConnection::connection( const QString &name )
 {
-  QgsSettings settings;
-  settings.beginGroup( "qgis/connections-vector-tile/" + name );
-
-  if ( settings.value( "url" ).toString().isEmpty() )
+  if ( !settingsUrl->exists( name ) && !settingsStyleUrl->exists( name ) )
     return QgsVectorTileProviderConnection::Data();
 
   QgsVectorTileProviderConnection::Data conn;
-  conn.url = settings.value( QStringLiteral( "url" ) ).toString();
-  conn.zMin = settings.value( QStringLiteral( "zmin" ), -1 ).toInt();
-  conn.zMax = settings.value( QStringLiteral( "zmax" ), -1 ).toInt();
-  conn.authCfg = settings.value( QStringLiteral( "authcfg" ) ).toString();
-  conn.username = settings.value( QStringLiteral( "username" ) ).toString();
-  conn.password = settings.value( QStringLiteral( "password" ) ).toString();
-  conn.referer = settings.value( QStringLiteral( "referer" ) ).toString();
-  conn.styleUrl = settings.value( QStringLiteral( "styleUrl" ) ).toString();
+  conn.url = settingsUrl->value( name );
+  conn.zMin = settingsZmin->value( name );
+  conn.zMax = settingsZmax->value( name );
+  conn.authCfg = settingsAuthcfg->value( name );
+  conn.username = settingsUsername->value( name );
+  conn.password = settingsPassword->value( name );
+  conn.styleUrl = settingsStyleUrl->value( name );
 
-  if ( settings.contains( QStringLiteral( "serviceType" ) ) )
-  {
-    if ( settings.value( QStringLiteral( "serviceType" ) ) == QLatin1String( "arcgis" ) )
-      conn.serviceType = ArcgisVectorTileService;
-  }
+  if ( settingsHeaders->exists( name ) )
+    conn.httpHeaders = QgsHttpHeaders( settingsHeaders->value( name ) );
+
+  if ( settingsServiceType->exists( name ) && settingsServiceType->value( name ) == "arcgis"_L1 )
+    conn.serviceType = ArcgisVectorTileService;
 
   return conn;
 }
 
 void QgsVectorTileProviderConnection::deleteConnection( const QString &name )
 {
-  QgsSettings settings;
-  settings.remove( "qgis/connections-vector-tile/" + name );
+  sTreeConnectionVectorTile->deleteItem( name );
 }
 
 void QgsVectorTileProviderConnection::addConnection( const QString &name, QgsVectorTileProviderConnection::Data conn )
 {
-  QgsSettings settings;
+  settingsUrl->setValue( conn.url, name );
+  settingsZmin->setValue( conn.zMin, name );
+  settingsZmax->setValue( conn.zMax, name );
+  settingsAuthcfg->setValue( conn.authCfg, name );
+  settingsUsername->setValue( conn.username, name );
+  settingsPassword->setValue( conn.password, name );
+  settingsStyleUrl->setValue( conn.styleUrl, name );
 
-  settings.beginGroup( "qgis/connections-vector-tile/" + name );
-  settings.setValue( QStringLiteral( "url" ), conn.url );
-  settings.setValue( QStringLiteral( "zmin" ), conn.zMin );
-  settings.setValue( QStringLiteral( "zmax" ), conn.zMax );
-  settings.setValue( QStringLiteral( "authcfg" ), conn.authCfg );
-  settings.setValue( QStringLiteral( "username" ), conn.username );
-  settings.setValue( QStringLiteral( "password" ), conn.password );
-  settings.setValue( QStringLiteral( "referer" ), conn.referer );
-  settings.setValue( QStringLiteral( "styleUrl" ), conn.styleUrl );
+  settingsHeaders->setValue( conn.httpHeaders.headers(), name );
 
   switch ( conn.serviceType )
   {
@@ -173,24 +201,21 @@ void QgsVectorTileProviderConnection::addConnection( const QString &name, QgsVec
       break;
 
     case ArcgisVectorTileService:
-      settings.setValue( QStringLiteral( "serviceType" ), QStringLiteral( "arcgis" ) );
+      settingsServiceType->setValue( u"arcgis"_s, name );
       break;
   }
 }
 
 QString QgsVectorTileProviderConnection::selectedConnection()
 {
-  QgsSettings settings;
-  return settings.value( QStringLiteral( "qgis/connections-vector-tile/selected" ) ).toString();
+  return sTreeConnectionVectorTile->selectedItem();
 }
 
 void QgsVectorTileProviderConnection::setSelectedConnection( const QString &name )
 {
-  QgsSettings settings;
-  return settings.setValue( QStringLiteral( "qgis/connections-vector-tile/selected" ), name );
+  sTreeConnectionVectorTile->setSelectedItem( name );
 }
 
-//
 
 QgsVectorTileProviderConnection::QgsVectorTileProviderConnection( const QString &name )
   : QgsAbstractProviderConnection( name )
@@ -200,8 +225,7 @@ QgsVectorTileProviderConnection::QgsVectorTileProviderConnection( const QString 
 
 QgsVectorTileProviderConnection::QgsVectorTileProviderConnection( const QString &uri, const QVariantMap &configuration )
   : QgsAbstractProviderConnection( uri, configuration )
-{
-}
+{}
 
 void QgsVectorTileProviderConnection::store( const QString &name ) const
 {

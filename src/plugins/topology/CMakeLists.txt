@@ -21,13 +21,9 @@ set (topol_RCCS  topol.qrc)
 ########################################################
 # Build
 
-QT5_WRAP_UI (topol_UIS_H  ${topol_UIS})
+qt_wrap_ui(topol_UIS_H  ${topol_UIS})
 
-add_library (topolplugin MODULE ${topol_SRCS} ${topol_RCCS} ${topol_UIS_H})
-
-include_directories(SYSTEM
-  ${GEOS_INCLUDE_DIR}
-)
+add_library (plugin_topology MODULE ${topol_SRCS} ${topol_RCCS} ${topol_UIS_H})
 
 include_directories(
   ${CMAKE_SOURCE_DIR}/src/plugins
@@ -36,7 +32,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-target_link_libraries(topolplugin
+target_link_libraries(plugin_topology
   qgis_core
   qgis_gui
 )
@@ -45,7 +41,7 @@ target_link_libraries(topolplugin
 ########################################################
 # Install
 
-install(TARGETS topolplugin
+install(TARGETS plugin_topology
   RUNTIME DESTINATION ${QGIS_PLUGIN_DIR}
   LIBRARY DESTINATION ${QGIS_PLUGIN_DIR})
 

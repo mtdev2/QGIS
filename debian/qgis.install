@@ -1,9 +1,6 @@
-usr/lib/qgis/plugins/libgeometrycheckerplugin.so
-usr/lib/qgis/plugins/libgpsimporterplugin.so
-usr/lib/qgis/plugins/liboauth2authmethod.so
-usr/lib/qgis/plugins/libofflineeditingplugin.so
-usr/lib/qgis/plugins/libtopolplugin.so
-usr/share/applications/
-usr/share/metainfo/
-usr/share/mime/packages/
-usr/share/icons/hicolor/
+usr/lib/qgis/plugins/libplugin_geometrychecker.so
+usr/lib/qgis/plugins/libplugin_offlineediting.so
+usr/lib/qgis/plugins/libplugin_topology.so
+usr/lib/qgis/qgiscrashhandler
+usr/share/applications/org.qgis.qgis.desktop
+usr/share/metainfo/org.qgis.qgis.appdata.xml

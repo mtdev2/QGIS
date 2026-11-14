@@ -14,21 +14,21 @@
  ***************************************************************************/
 
 #include "qgsmaplayerstyle.h"
-#include "qgsmaplayerstylemanager.h"
-#include "qgsreadwritecontext.h"
-#include "qgsmaplayer.h"
-
 
 #include "qgslogger.h"
+#include "qgsmaplayer.h"
+#include "qgsmaplayerstylemanager.h"
+#include "qgsreadwritecontext.h"
 
 #include <QDomElement>
+#include <QString>
 #include <QTextStream>
 
+using namespace Qt::StringLiterals;
 
 QgsMapLayerStyle::QgsMapLayerStyle( const QString &xmlData )
   : mXmlData( xmlData )
-{
-}
+{}
 
 bool QgsMapLayerStyle::isValid() const
 {
@@ -49,11 +49,11 @@ void QgsMapLayerStyle::readFromLayer( QgsMapLayer *layer )
 {
   QString errorMsg;
   QDomDocument doc;
-  QgsReadWriteContext context;
+  const QgsReadWriteContext context;
   layer->exportNamedStyle( doc, errorMsg, context );
   if ( !errorMsg.isEmpty() )
   {
-    QgsDebugMsg( "Failed to export style from layer: " + errorMsg );
+    QgsDebugError( "Failed to export style from layer: " + errorMsg );
     return;
   }
 
@@ -69,17 +69,17 @@ void QgsMapLayerStyle::writeToLayer( QgsMapLayer *layer ) const
     return;
   }
 
-  QDomDocument doc( QStringLiteral( "qgis" ) );
+  QDomDocument doc( u"qgis"_s );
   if ( !doc.setContent( mXmlData ) )
   {
-    QgsDebugMsg( QStringLiteral( "Failed to parse XML of previously stored XML data - this should not happen!" ) );
+    QgsDebugError( u"Failed to parse XML of previously stored XML data - this should not happen!"_s );
     return;
   }
 
   QString errorMsg;
   if ( !layer->importNamedStyle( doc, errorMsg ) )
   {
-    QgsDebugMsg( "Failed to import style to layer: " + errorMsg );
+    QgsDebugError( "Failed to import style to layer: " + errorMsg );
   }
 }
 

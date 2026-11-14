@@ -15,74 +15,79 @@
  ***************************************************************************/
 
 #include "ParametricLine.h"
+
 #include "qgslogger.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 void ParametricLine::add( ParametricLine *pl )
 {
   Q_UNUSED( pl )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 void ParametricLine::calcFirstDer( float t, Vector3D *v )
 {
   Q_UNUSED( t )
   Q_UNUSED( v )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 void ParametricLine::calcSecDer( float t, Vector3D *v )
 {
   Q_UNUSED( t )
   Q_UNUSED( v )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 void ParametricLine::calcPoint( float t, QgsPoint *p )
 {
   Q_UNUSED( t )
   Q_UNUSED( p )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 ParametricLine *ParametricLine::getParent() const
 {
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
   return nullptr;
 }
 
 void ParametricLine::remove( int i )
 {
   Q_UNUSED( i )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 void ParametricLine::setControlPoly( QVector<QgsPoint *> *cp )
 {
   Q_UNUSED( cp )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 void ParametricLine::setParent( ParametricLine *paral )
 {
   Q_UNUSED( paral )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
 }
 
 int ParametricLine::getDegree() const
 {
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
   return mDegree;
 }
 
 const QgsPoint *ParametricLine::getControlPoint( int number ) const
 {
   Q_UNUSED( number )
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
   return nullptr;
 }
 
 const QVector<QgsPoint *> *ParametricLine::getControlPoly() const
 {
-  QgsDebugMsg( QStringLiteral( "warning, derive a class from ParametricLine" ) );
+  QgsDebugError( u"warning, derive a class from ParametricLine"_s );
   return nullptr;
 }

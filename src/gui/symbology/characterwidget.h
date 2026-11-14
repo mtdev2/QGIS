@@ -47,8 +47,8 @@
 #ifndef CHARACTERWIDGET_H
 #define CHARACTERWIDGET_H
 
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
 
 #include <QFont>
 #include <QPoint>
@@ -56,14 +56,13 @@
 #include <QString>
 #include <QWidget>
 
-
 class QMouseEvent;
 class QPaintEvent;
 
 /**
  * \ingroup gui
  *
- * A widget for displaying characters available in a preset font, and allowing
+ * \brief A widget for displaying characters available in a preset font, and allowing
  * users to select an individual character.
  */
 class GUI_EXPORT CharacterWidget : public QWidget
@@ -74,7 +73,6 @@ class GUI_EXPORT CharacterWidget : public QWidget
     Q_PROPERTY( QFont font READ font WRITE setFont )
 
   public:
-
     /**
      * Constructor for CharacterWidget.
      */
@@ -95,14 +93,12 @@ class GUI_EXPORT CharacterWidget : public QWidget
     /**
      * Returns the currently selected character in the widget.
      * \see setCharacter()
-     * \since QGIS 3.0
      */
     QChar character() const { return QChar( mLastKey ); }
 
     /**
      * Returns the font shown in the widget
      * \see setFont()
-     * \since QGIS 3.0
      */
     QFont font() const { return mDisplayFont; }
 
@@ -111,19 +107,16 @@ class GUI_EXPORT CharacterWidget : public QWidget
     /**
      * Sets the \a font to show in the widget.
      * \see font()
-     * \since QGIS 3.0
      */
     void setFont( const QFont &font );
 
     /**
      * Sets the font size (in points) to render in the widget.
-     * \since QGIS 3.0
      */
     void setFontSize( double fontSize );
 
     /**
      * Sets the font style to show in the widget.
-     * \since QGIS 3.0
      */
     void setFontStyle( const QString &fontStyle );
 
@@ -131,7 +124,6 @@ class GUI_EXPORT CharacterWidget : public QWidget
 
     /**
      * Sets the number of columns of characters to show in the widget.
-     * \since QGIS 3.0
      */
     void setColumns( int columns );
 

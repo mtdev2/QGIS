@@ -16,20 +16,22 @@
 #define QGSLABELENGINECONFIGDIALOG_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslabelengineconfigdialog.h"
+
+#include "qgis_gui.h"
+#include "qgslabelingenginesettings.h"
 
 #include <QDialog>
 
-#include "ui_qgslabelengineconfigdialog.h"
-#include "qgslabelingenginesettings.h"
-#include "qgis_gui.h"
+#define SIP_NO_FILE
 
 class QgsMapCanvas;
 class QgsMessageBar;
 
 /**
  * \ingroup gui
- * Widget for configuring the labeling engine
+ * \brief Widget for configuring the labeling engine
  *
  * \note This class is not a part of public API
  * \since QGIS 3.14
@@ -57,12 +59,12 @@ class GUI_EXPORT QgsLabelEngineConfigWidget : public QgsPanelWidget, private Ui:
     QgsMessageBar *mMessageBar = nullptr;
     QMenu *mWidgetMenu = nullptr;
 
-    QgsLabelingEngineSettings::PlacementEngineVersion mPreviousEngineVersion = QgsLabelingEngineSettings::PlacementEngineVersion2;
+    Qgis::LabelPlacementEngineVersion mPreviousEngineVersion = Qgis::LabelPlacementEngineVersion::Version2;
 };
 
 /**
  * \ingroup gui
- * Dialog for configuring the labeling engine
+ * \brief Dialog for configuring the labeling engine
  *
  * \note This class is not a part of public API
  * \since QGIS 3.14
@@ -76,9 +78,9 @@ class GUI_EXPORT QgsLabelEngineConfigDialog : public QDialog
     QgsLabelEngineConfigDialog( QgsMapCanvas *canvas, QWidget *parent = nullptr );
 
     void accept() override;
+
   private:
     QgsLabelEngineConfigWidget *mWidget = nullptr;
-
 };
 
 #endif // QGSLABELENGINECONFIGDIALOG_H

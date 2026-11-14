@@ -18,10 +18,11 @@
 #ifndef QGSALGORITHMFILTERBYGEOMETRY_H
 #define QGSALGORITHMFILTERBYGEOMETRY_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
 #include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -30,11 +31,8 @@
  */
 class QgsFilterByGeometryAlgorithm : public QgsProcessingAlgorithm
 {
-
   public:
-
     QgsFilterByGeometryAlgorithm() = default;
-    Flags flags() const override;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
     QString name() const override;
     QString displayName() const override;
@@ -46,10 +44,7 @@ class QgsFilterByGeometryAlgorithm : public QgsProcessingAlgorithm
     QgsFilterByGeometryAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
-
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 };
 
 
@@ -58,11 +53,9 @@ class QgsFilterByGeometryAlgorithm : public QgsProcessingAlgorithm
  */
 class QgsFilterByLayerTypeAlgorithm : public QgsProcessingAlgorithm
 {
-
   public:
-
     QgsFilterByLayerTypeAlgorithm() = default;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
     QString name() const override;
     QString displayName() const override;
@@ -74,14 +67,9 @@ class QgsFilterByLayerTypeAlgorithm : public QgsProcessingAlgorithm
     QgsFilterByLayerTypeAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
-
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback ) override;
 };
 
 ///@endcond PRIVATE
 
 #endif // QGSALGORITHMFILTERBYGEOMETRY_H
-
-

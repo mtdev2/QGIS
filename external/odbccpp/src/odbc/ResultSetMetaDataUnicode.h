@@ -6,7 +6,7 @@
 #include <odbc/ResultSetMetaDataBase.h>
 #include <odbc/Types.h>
 //------------------------------------------------------------------------------
-namespace odbc {
+NS_ODBC_START
 //------------------------------------------------------------------------------
 /**
  * Metadata on a result set.
@@ -45,6 +45,22 @@ public:
     std::u16string getTableName(unsigned short columnIndex);
 
     /**
+     * Returns the name of the base table that contains the column.
+     *
+     * @param columnIndex  The column index starting from 1.
+     * @return             Returns the base table name.
+     */
+    std::u16string getBaseTableName(unsigned short columnIndex);
+
+    /**
+     * Returns the base column name for the result set column.
+     *
+     * @param columnIndex  The column index starting from 1.
+     * @return             Returns the base column name.
+     */
+    std::u16string getBaseColumnName(unsigned short columnIndex);
+
+    /**
      * Returns a column's label.
      *
      * @param columnIndex  The column index starting from 1.
@@ -73,6 +89,6 @@ private:
         unsigned short field);
 };
 //------------------------------------------------------------------------------
-} // namespace odbc
+NS_ODBC_END
 //------------------------------------------------------------------------------
 #endif

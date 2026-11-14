@@ -13,16 +13,17 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgslabelfeature.h"
+
 #include "feature.h"
 #include "qgsgeometry.h"
 #include "qgsgeos.h"
 
-QgsLabelFeature::QgsLabelFeature( QgsFeatureId id, geos::unique_ptr geometry, QSizeF size )
+QgsLabelFeature::QgsLabelFeature( QgsFeatureId id, geos::unique_ptr geometry, QSizeF size, int subPartId )
   : mId( id )
+  , mSubPartId( subPartId )
   , mGeometry( std::move( geometry ) )
   , mSize( size )
-{
-}
+{}
 
 QgsLabelFeature::~QgsLabelFeature()
 {
@@ -31,8 +32,6 @@ QgsLabelFeature::~QgsLabelFeature()
     mPermissibleZoneGeosPrepared.reset();
     mPermissibleZoneGeos.reset();
   }
-
-  delete mInfo;
 }
 
 void QgsLabelFeature::setPermissibleZone( const QgsGeometry &geometry )
@@ -53,7 +52,7 @@ void QgsLabelFeature::setPermissibleZone( const QgsGeometry &geometry )
   if ( !mPermissibleZoneGeos )
     return;
 
-  mPermissibleZoneGeosPrepared.reset( GEOSPrepare_r( QgsGeos::getGEOSHandler(), mPermissibleZoneGeos.get() ) );
+  mPermissibleZoneGeosPrepared.reset( GEOSPrepare_r( QgsGeosContext::get(), mPermissibleZoneGeos.get() ) );
 }
 
 QgsFeature QgsLabelFeature::feature() const
@@ -100,6 +99,23 @@ void QgsLabelFeature::setOverrunSmoothDistance( double overrunSmoothDistance )
   mOverrunSmoothDistance = overrunSmoothDistance;
 }
 
+Qgis::TextAnchorPoint QgsLabelFeature::lineAnchorTextPoint() const
+{
+  if ( mAnchorTextPoint == Qgis::TextAnchorPoint::FollowPlacement )
+  {
+    if ( mLineAnchorPercent < 0.25 )
+      return Qgis::TextAnchorPoint::StartOfText;
+    else if ( mLineAnchorPercent > 0.75 )
+      return Qgis::TextAnchorPoint::EndOfText;
+    else
+      return Qgis::TextAnchorPoint::CenterOfText;
+  }
+  else
+  {
+    return mAnchorTextPoint;
+  }
+}
+
 const QgsLabelObstacleSettings &QgsLabelFeature::obstacleSettings() const
 {
   return mObstacleSettings;
@@ -108,6 +124,16 @@ const QgsLabelObstacleSettings &QgsLabelFeature::obstacleSettings() const
 void QgsLabelFeature::setObstacleSettings( const QgsLabelObstacleSettings &settings )
 {
   mObstacleSettings = settings;
+}
+
+QgsCoordinateReferenceSystem QgsLabelFeature::originalFeatureCrs() const
+{
+  return mOriginalFeatureCrs;
+}
+
+void QgsLabelFeature::setOriginalFeatureCrs( const QgsCoordinateReferenceSystem &originalFeatureCrs )
+{
+  mOriginalFeatureCrs = originalFeatureCrs;
 }
 
 void QgsLabelFeature::setAnchorPosition( const QgsPointXY &anchorPosition )

@@ -17,15 +17,16 @@
 #define QGSLABELOBSTACLESETTINGSWIDGET_H
 
 #include "ui_qgslabelobstaclesettingswidgetbase.h"
-#include "qgslabelsettingswidgetbase.h"
-#include "qgspallabeling.h"
+
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+#include "qgslabelsettingswidgetbase.h"
+#include "qgspallabeling.h"
 
 /**
  * \ingroup gui
  * \class QgsLabelObstacleSettingsWidget
- * A widget for customising label obstacle settings.
+ * \brief A widget for customising label obstacle settings.
  * \since QGIS 3.12
  */
 class GUI_EXPORT QgsLabelObstacleSettingsWidget : public QgsLabelSettingsWidgetBase, private Ui::QgsLabelObstacleSettingsWidgetBase
@@ -33,7 +34,6 @@ class GUI_EXPORT QgsLabelObstacleSettingsWidget : public QgsLabelSettingsWidgetB
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLabelObstacleSettingsWidget.
      * \param parent parent widget
@@ -55,14 +55,12 @@ class GUI_EXPORT QgsLabelObstacleSettingsWidget : public QgsLabelSettingsWidgetB
      */
     QgsLabelObstacleSettings settings() const;
 
-    void setGeometryType( QgsWkbTypes::GeometryType type ) override;
+    void setGeometryType( Qgis::GeometryType type ) override;
 
     void updateDataDefinedProperties( QgsPropertyCollection &properties ) override;
 
   private:
-
     bool mBlockSignals = false;
-
 };
 
 #endif // QGSLABELOBSTACLESETTINGSWIDGET_H

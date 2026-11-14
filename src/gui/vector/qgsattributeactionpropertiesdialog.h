@@ -17,27 +17,47 @@
 #define QGSATTRIBUTEACTIONPROPERTIESDIALOG_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
 
 #include "ui_qgsattributeactionpropertiesdialogbase.h"
-#include "qgsexpressioncontextgenerator.h"
 
-#include "qgsaction.h"
-#include "qgshelp.h"
 #include "qgis_gui.h"
+#include "qgsexpressioncontextgenerator.h"
+#include "qgshelp.h"
 
 #include <QDialog>
 
-class GUI_EXPORT QgsAttributeActionPropertiesDialog: public QDialog, private Ui::QgsAttributeActionPropertiesDialogBase, public QgsExpressionContextGenerator
+#define SIP_NO_FILE
+
+/**
+ * \ingroup gui
+ * \class QgsAttributeActionPropertiesDialog
+ * \brief A dialog for configuring a map layer action.
+ */
+class GUI_EXPORT QgsAttributeActionPropertiesDialog : public QDialog, private Ui::QgsAttributeActionPropertiesDialogBase, public QgsExpressionContextGenerator
 {
     Q_OBJECT
 
   public:
-    QgsAttributeActionPropertiesDialog( QgsAction::ActionType type, const QString &description, const QString &shortTitle, const QString &iconPath, const QString &actionText, bool capture, const QSet<QString> &actionScopes, const QString &notificationMessage, bool isEnabledOnlyWhenEditable, QgsVectorLayer *layer, QWidget *parent = nullptr );
+    /**
+     * Constructor for QgsAttributeActionPropertiesDialog.
+     */
+    QgsAttributeActionPropertiesDialog(
+      Qgis::AttributeActionType type,
+      const QString &description,
+      const QString &shortTitle,
+      const QString &iconPath,
+      const QString &actionText,
+      bool capture,
+      const QSet<QString> &actionScopes,
+      const QString &notificationMessage,
+      bool isEnabledOnlyWhenEditable,
+      QgsVectorLayer *layer,
+      QWidget *parent = nullptr
+    );
 
     QgsAttributeActionPropertiesDialog( QgsVectorLayer *layer, QWidget *parent = nullptr );
 
-    QgsAction::ActionType type() const;
+    Qgis::AttributeActionType type() const;
 
     QString description() const;
 
@@ -65,6 +85,7 @@ class GUI_EXPORT QgsAttributeActionPropertiesDialog: public QDialog, private Ui:
     void showHelp();
 
   private:
+    void populateActionTypes();
     void init( const QSet<QString> &actionScopes );
 
     QgsVectorLayer *mLayer = nullptr;

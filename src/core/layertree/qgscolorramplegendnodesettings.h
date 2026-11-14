@@ -16,12 +16,13 @@
 #ifndef QGSCOLORRAMPLEGENDNODESETTINGS_H
 #define QGSCOLORRAMPLEGENDNODESETTINGS_H
 
+#include <memory>
+
 #include "qgis_core.h"
 #include "qgis_sip.h"
-
 #include "qgstextformat.h"
+
 #include <QString>
-#include <memory>
 
 class QgsNumericFormat;
 class QgsReadWriteContext;
@@ -30,31 +31,31 @@ class QDomElement;
 
 /**
  * \ingroup core
- * Settings for a color ramp legend node.
+ * \brief Settings for a color ramp legend node.
  *
  * \since QGIS 3.18
  */
 class CORE_EXPORT QgsColorRampLegendNodeSettings
 {
   public:
-
     /**
      * Ramp directions
      */
     enum Direction
     {
       MinimumToMaximum, //!< Minimum value on bottom, maximum value on top
-      MaximumToMinimum,//!< Maximum value on bottom, minimum value on top
+      MaximumToMinimum, //!< Maximum value on bottom, minimum value on top
     };
 
     QgsColorRampLegendNodeSettings();
 
     ~QgsColorRampLegendNodeSettings();
 
-    //! Copy constructor
     QgsColorRampLegendNodeSettings( const QgsColorRampLegendNodeSettings &other );
+    SIP_SKIP QgsColorRampLegendNodeSettings( QgsColorRampLegendNodeSettings &&other );
 
     QgsColorRampLegendNodeSettings &operator=( const QgsColorRampLegendNodeSettings &other );
+    QgsColorRampLegendNodeSettings &operator=( QgsColorRampLegendNodeSettings &&other );
 
     /**
      * Returns the direction of the ramp.
@@ -202,7 +203,27 @@ class CORE_EXPORT QgsColorRampLegendNodeSettings
      */
     void setOrientation( Qt::Orientation orientation );
 
+    /**
+     * Returns TRUE if a continuous gradient legend will be used.
+     *
+     * \see setUseContinuousLegend()
+     */
+    bool useContinuousLegend() const;
+
+    /**
+     * Sets the flag to use a continuous gradient legend to \a useContinuousLegend.
+     *
+     * When this flag is set the legend will be rendered using a continuous color ramp with
+     * min and max values, when it is not set the legend will be rendered using separate
+     * items for each entry.
+     *
+     * \see setOrientation()
+     * \see direction()
+     */
+    void setUseContinuousLegend( bool useContinuousLegend );
+
   private:
+    bool mUseContinuousLegend = true;
     QString mMinimumLabel;
     QString mMaximumLabel;
     QString mPrefix;

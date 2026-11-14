@@ -17,10 +17,16 @@
 #ifndef QGSBLUREFFECT_H
 #define QGSBLUREFFECT_H
 
+#include "qgis.h"
 #include "qgis_core.h"
-#include "qgspainteffect.h"
 #include "qgis_sip.h"
+#include "qgsmapunitscale.h"
+#include "qgspainteffect.h"
+
 #include <QPainter>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
@@ -28,18 +34,15 @@
  * \brief A paint effect which blurs a source picture, using a number of different blur
  * methods.
  *
- * \since QGIS 2.9
  */
 
 class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     //! Available blur methods (algorithms)
     enum BlurMethod
     {
-      StackBlur, //!< Stack blur, a fast but low quality blur. Valid blur level values are between 0 - 16.
+      StackBlur,   //!< Stack blur, a fast but low quality blur. Valid blur level values are between 0 - 16.
       GaussianBlur //!< Gaussian blur, a slower but high quality blur. Blur level values are the distance in pixels for the blur operation.
     };
 
@@ -48,15 +51,15 @@ class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \param map encoded properties string map
      * \returns new QgsBlurEffect
      */
-    static QgsPaintEffect *create( const QVariantMap &map ) SIP_FACTORY;
+    static std::unique_ptr<QgsPaintEffect> create( const QVariantMap &map );
 
-    /**
-     * Constructor for QgsBlurEffect.
-     */
     QgsBlurEffect() = default;
 
-    QString type() const override { return QStringLiteral( "blur" ); }
+    Qgis::PaintEffectFlags flags() const override;
+    QString type() const override { return u"blur"_s; }
     QVariantMap properties() const override;
+
+    using QgsPaintEffect::readProperties;
     void readProperties( const QVariantMap &props ) override;
     QgsBlurEffect *clone() const override SIP_FACTORY;
 
@@ -90,7 +93,7 @@ class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see setBlurMapUnitScale
      * \since QGIS 3.4.9
      */
-    void setBlurUnit( const QgsUnitTypes::RenderUnit unit ) { mBlurUnit = unit; }
+    void setBlurUnit( const Qgis::RenderUnit unit ) { mBlurUnit = unit; }
 
     /**
      * Returns the units used for the blur level (radius).
@@ -100,7 +103,7 @@ class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see blurMapUnitScale
      * \since QGIS 3.4.9
      */
-    QgsUnitTypes::RenderUnit blurUnit() const { return mBlurUnit; }
+    Qgis::RenderUnit blurUnit() const { return mBlurUnit; }
 
     /**
      * Sets the map unit scale used for the blur strength (radius).
@@ -169,14 +172,12 @@ class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     QPainter::CompositionMode blendMode() const { return mBlendMode; }
 
   protected:
-
     void draw( QgsRenderContext &context ) override;
     QRectF boundingRect( const QRectF &rect, const QgsRenderContext &context ) const override;
 
   private:
-
     double mBlurLevel = 2.645;
-    QgsUnitTypes::RenderUnit mBlurUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mBlurUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mBlurMapUnitScale;
     BlurMethod mBlurMethod = StackBlur;
     double mOpacity = 1.0;
@@ -188,4 +189,3 @@ class CORE_EXPORT QgsBlurEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 };
 
 #endif // QGSBLUREFFECT_H
-

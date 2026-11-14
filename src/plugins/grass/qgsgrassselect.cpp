@@ -15,13 +15,19 @@
  ***************************************************************************/
 
 #include "qgsgrassselect.h"
-#include "qgsgrass.h"
 
+#include "qgsgrass.h"
+#include "qgshelp.h"
 #include "qgslogger.h"
 #include "qgssettings.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QString>
+
+#include "moc_qgsgrassselect.cpp"
+
+using namespace Qt::StringLiterals;
 
 extern "C"
 {
@@ -32,9 +38,8 @@ extern "C"
 QgsGrassSelect::QgsGrassSelect( QWidget *parent, int type )
   : QDialog( parent )
   , QgsGrassSelectBase()
-  , selectedType( 0 )
 {
-  QgsDebugMsg( QString( "QgsGrassSelect() type = %1" ).arg( type ) );
+  QgsDebugMsgLevel( QString( "QgsGrassSelect() type = %1" ).arg( type ), 3 );
 
   setupUi( this );
   connect( GisdbaseBrowse, &QPushButton::clicked, this, &QgsGrassSelect::GisdbaseBrowse_clicked );
@@ -44,6 +49,7 @@ QgsGrassSelect::QgsGrassSelect( QWidget *parent, int type )
   connect( emap, static_cast<void ( QComboBox::* )( int )>( &QComboBox::activated ), this, &QgsGrassSelect::emap_activated );
   connect( buttonBox, &QDialogButtonBox::accepted, this, &QgsGrassSelect::accept );
   connect( buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject );
+  connect( buttonBox, &QDialogButtonBox::helpRequested, this, [] { QgsHelp::openHelp( u"grass_integration/grass_integration.html#grass-plugin"_s ); } );
 
   if ( sFirst )
   {
@@ -56,14 +62,14 @@ QgsGrassSelect::QgsGrassSelect( QWidget *parent, int type )
     else
     {
       QgsSettings settings;
-      sLastGisdbase = settings.value( QStringLiteral( "GRASS/lastGisdbase" ) ).toString();
+      sLastGisdbase = settings.value( u"GRASS/lastGisdbase"_s ).toString();
       //check we got something from qsettings otherwise default to users home dir
       if ( sLastGisdbase.isEmpty() )
       {
         QDir home = QDir::home();
         sLastGisdbase = QString( home.path() );
       }
-      sLastMapset = settings.value( QStringLiteral( "GRASS/lastMapset" ) ).toString();
+      sLastMapset = settings.value( u"GRASS/lastMapset"_s ).toString();
     }
     sFirst = false;
   }
@@ -127,7 +133,7 @@ void QgsGrassSelect::setLocations()
   // Add all subdirs containing PERMANENT/DEFAULT_WIND
   for ( unsigned int i = 0; i < d.count(); i++ )
   {
-    if ( d[i] == QLatin1String( "." ) || d[i] == QLatin1String( ".." ) )
+    if ( d[i] == "."_L1 || d[i] == ".."_L1 )
       continue;
 
     QString ldpath = egisdbase->text() + "/" + d[i];
@@ -190,7 +196,7 @@ void QgsGrassSelect::setLocations()
 
 void QgsGrassSelect::setMapsets()
 {
-  QgsDebugMsg( "setMapsets()" );
+  QgsDebugMsgLevel( "setMapsets()", 3 );
 
   emapset->clear();
   emap->clear();
@@ -233,7 +239,7 @@ void QgsGrassSelect::setMapsets()
 
 void QgsGrassSelect::setMaps()
 {
-  QgsDebugMsg( "setMaps()" );
+  QgsDebugMsgLevel( "setMaps()", 3 );
 
   // Replaced by text box to enable wild cards
   emap->clear();
@@ -250,8 +256,7 @@ void QgsGrassSelect::setMaps()
 
   if ( type == Vector ) // vector
   {
-    QStringList list = QgsGrass::vectors( egisdbase->text(),
-                                          elocation->currentText(), emapset->currentText() );
+    QStringList list = QgsGrass::vectors( egisdbase->text(), elocation->currentText(), emapset->currentText() );
 
     for ( int j = 0; j < list.count(); j++ )
     {
@@ -260,13 +265,11 @@ void QgsGrassSelect::setMaps()
         sel = idx;
       idx++;
     }
-
   }
   else if ( type == Raster )
   {
     /* add cells */
-    QStringList list = QgsGrass::rasters( egisdbase->text(),
-                                          elocation->currentText(), emapset->currentText() );
+    QStringList list = QgsGrass::rasters( egisdbase->text(), elocation->currentText(), emapset->currentText() );
 
     for ( int j = 0; j < list.count(); j++ )
     {
@@ -283,7 +286,7 @@ void QgsGrassSelect::setMaps()
 
     for ( unsigned int j = 0; j < md.count(); j++ )
     {
-      if ( md[j] == QLatin1String( "." ) || md[j] == QLatin1String( ".." ) )
+      if ( md[j] == "."_L1 || md[j] == ".."_L1 )
         continue;
 
       QString m = QString( md[j] + " (GROUP)" );
@@ -331,7 +334,7 @@ void QgsGrassSelect::setMaps()
 
 void QgsGrassSelect::setLayers()
 {
-  QgsDebugMsg( "setLayers()" );
+  QgsDebugMsgLevel( "setLayers()", 3 );
 
   elayer->clear();
 
@@ -343,13 +346,11 @@ void QgsGrassSelect::setLayers()
   QStringList layers;
   try
   {
-    layers  = QgsGrass::vectorLayers( egisdbase->text(),
-                                      elocation->currentText(), emapset->currentText(),
-                                      emap->currentText().toUtf8() );
+    layers = QgsGrass::vectorLayers( egisdbase->text(), elocation->currentText(), emapset->currentText(), emap->currentText().toUtf8() );
   }
   catch ( QgsGrass::Exception &e )
   {
-    QgsDebugMsg( e.what() );
+    QgsDebugError( e.what() );
     return;
   }
 
@@ -398,8 +399,7 @@ void QgsGrassSelect::setLayers()
 
 void QgsGrassSelect::GisdbaseBrowse_clicked()
 {
-  QString Gisdbase = QFileDialog::getExistingDirectory( this,
-                     tr( "Choose existing GISDBASE" ), egisdbase->text() );
+  QString Gisdbase = QFileDialog::getExistingDirectory( this, tr( "Choose existing GISDBASE" ), egisdbase->text() );
 
   if ( !Gisdbase.isNull() )
   {
@@ -421,7 +421,7 @@ void QgsGrassSelect::accept()
 
   //write to qgsettings as gisdbase seems to be valid
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "GRASS/lastGisdbase" ), sLastGisdbase );
+  settings.setValue( u"GRASS/lastGisdbase"_s, sLastGisdbase );
 
   location = elocation->currentText();
   sLastLocation = location;
@@ -429,7 +429,7 @@ void QgsGrassSelect::accept()
   mapset = emapset->currentText();
   sLastMapset = mapset;
 
-  settings.setValue( QStringLiteral( "GRASS/lastMapset" ), sLastMapset );
+  settings.setValue( u"GRASS/lastMapset"_s, sLastMapset );
 
   map = emap->currentText().trimmed();
 
@@ -444,8 +444,7 @@ void QgsGrassSelect::accept()
   {
     if ( elayer->count() == 0 )
     {
-      QMessageBox::warning( nullptr, tr( "No layer" ),
-                            tr( "No layers available in this map" ) );
+      QMessageBox::warning( nullptr, tr( "No layer" ), tr( "No layers available in this map" ) );
       return;
     }
     sLastVectorMap = map;
@@ -455,9 +454,9 @@ void QgsGrassSelect::accept()
   else if ( type == QgsGrassSelect::Raster )
   {
     sLastRasterMap = map;
-    if ( map.indexOf( QLatin1String( " (GROUP)" ) ) != -1 )
+    if ( map.indexOf( " (GROUP)"_L1 ) != -1 )
     {
-      map.remove( QStringLiteral( " (GROUP)" ) );
+      map.remove( u" (GROUP)"_s );
       selectedType = QgsGrassSelect::Group;
     }
     else

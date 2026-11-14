@@ -15,15 +15,20 @@
 
 #include "qgsdatumtransformtablewidget.h"
 
+#include "qgisapp.h"
 #include "qgscoordinatetransform.h"
 #include "qgsdatumtransformdialog.h"
-#include "qgisapp.h"
 #include "qgssettings.h"
+
+#include <QString>
+
+#include "moc_qgsdatumtransformtablewidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsDatumTransformTableModel::QgsDatumTransformTableModel( QObject *parent )
   : QAbstractTableModel( parent )
-{
-}
+{}
 
 void QgsDatumTransformTableModel::setTransformContext( const QgsCoordinateTransformContext &context )
 {
@@ -60,49 +65,23 @@ void QgsDatumTransformTableModel::removeTransform( const QModelIndexList &indexe
 int QgsDatumTransformTableModel::rowCount( const QModelIndex &parent ) const
 {
   Q_UNUSED( parent )
-#if PROJ_VERSION_MAJOR>=6
   return mTransformContext.coordinateOperations().count();
-#else
-  Q_NOWARN_DEPRECATED_PUSH
-  return mTransformContext.sourceDestinationDatumTransforms().count();
-  Q_NOWARN_DEPRECATED_POP
-#endif
 }
 
 int QgsDatumTransformTableModel::columnCount( const QModelIndex &parent ) const
 {
   Q_UNUSED( parent )
-#if PROJ_VERSION_MAJOR>=6
   return 4;
-#else
-  return 4;
-#endif
 }
 
 QVariant QgsDatumTransformTableModel::data( const QModelIndex &index, int role ) const
 {
   QString sourceCrs;
   QString destinationCrs;
-#if PROJ_VERSION_MAJOR>=6
-  QPair< QString, QString> crses = mTransformContext.coordinateOperations().keys().at( index.row() );
-#else
-  int sourceTransform = -1;
-  int destinationTransform = -1;
-  Q_NOWARN_DEPRECATED_PUSH
-  QPair< QString, QString> crses = mTransformContext.sourceDestinationDatumTransforms().keys().at( index.row() );
-  Q_NOWARN_DEPRECATED_POP
-#endif
+  const QPair<QString, QString> crses = mTransformContext.coordinateOperations().keys().at( index.row() );
   sourceCrs = crses.first;
   destinationCrs = crses.second;
-#if PROJ_VERSION_MAJOR>=6
   const QString proj = mTransformContext.coordinateOperations().value( crses );
-#else
-  Q_NOWARN_DEPRECATED_PUSH
-  const QgsDatumTransform::TransformPair transforms = mTransformContext.sourceDestinationDatumTransforms().value( crses );
-  Q_NOWARN_DEPRECATED_POP
-  sourceTransform = transforms.sourceTransformId;
-  destinationTransform = transforms.destinationTransformId;
-#endif
 
   switch ( role )
   {
@@ -121,28 +100,8 @@ QVariant QgsDatumTransformTableModel::data( const QModelIndex &index, int role )
         case DestinationCrsColumn:
           return destinationCrs;
 
-#if PROJ_VERSION_MAJOR>=6
         case ProjDefinitionColumn:
           return proj;
-#else
-        case SourceTransformColumn:
-          if ( sourceTransform != -1 )
-          {
-            Q_NOWARN_DEPRECATED_PUSH
-            return QgsDatumTransform::datumTransformToProj( sourceTransform );
-            Q_NOWARN_DEPRECATED_POP
-          }
-          break;
-
-        case DestinationTransformColumn:
-          if ( destinationTransform != -1 )
-          {
-            Q_NOWARN_DEPRECATED_PUSH
-            return QgsDatumTransform::datumTransformToProj( destinationTransform );
-            Q_NOWARN_DEPRECATED_POP
-          }
-          break;
-#endif
 
         default:
           break;
@@ -150,7 +109,6 @@ QVariant QgsDatumTransformTableModel::data( const QModelIndex &index, int role )
       break;
 
     case Qt::CheckStateRole:
-#if PROJ_VERSION_MAJOR>=6
       switch ( index.column() )
       {
         case AllowFallbackColumn:
@@ -159,23 +117,10 @@ QVariant QgsDatumTransformTableModel::data( const QModelIndex &index, int role )
           break;
       }
       break;
-#endif
 
     case Qt::UserRole:
-#if PROJ_VERSION_MAJOR>=6
       return proj;
-#else
-      switch ( index.column() )
-      {
-        case SourceTransformColumn:
-          return sourceTransform;
-        case DestinationTransformColumn:
-          return destinationTransform;
-        default:
-          break;
-      }
-      break;
-#endif
+
     default:
       break;
   }
@@ -194,22 +139,14 @@ QVariant QgsDatumTransformTableModel::headerData( int section, Qt::Orientation o
     case Qt::ToolTipRole:
       switch ( section )
       {
-        case SourceCrsColumn :
+        case SourceCrsColumn:
           return tr( "Source CRS" );
         case DestinationCrsColumn:
           return tr( "Destination CRS" );
-
-#if PROJ_VERSION_MAJOR>=6
         case ProjDefinitionColumn:
           return tr( "Operation" );
         case AllowFallbackColumn:
           return tr( "Allow Fallback Transforms" );
-#else
-        case SourceTransformColumn:
-          return tr( "Source Datum Transform" );
-        case DestinationTransformColumn:
-          return tr( "Destination Datum Transform" );
-#endif
         default:
           break;
       }
@@ -237,14 +174,13 @@ QgsDatumTransformTableWidget::QgsDatumTransformTableWidget( QWidget *parent )
   mTableView->setSelectionBehavior( QAbstractItemView::SelectRows );
   mTableView->setAlternatingRowColors( true );
 
-  QgsSettings settings;
-  mTableView->horizontalHeader()->restoreState( settings.value( QStringLiteral( "Windows/DatumTransformTable/headerState" ) ).toByteArray() );
+  const QgsSettings settings;
+  mTableView->horizontalHeader()->restoreState( settings.value( u"Windows/DatumTransformTable/headerState"_s ).toByteArray() );
 
   connect( mAddButton, &QToolButton::clicked, this, &QgsDatumTransformTableWidget::addDatumTransform );
   connect( mRemoveButton, &QToolButton::clicked, this, &QgsDatumTransformTableWidget::removeDatumTransform );
-  connect( mEditButton, &QToolButton::clicked, this, [ = ]
-  {
-    QModelIndexList selectedIndexes = mTableView->selectionModel()->selectedIndexes();
+  connect( mEditButton, &QToolButton::clicked, this, [this] {
+    const QModelIndexList selectedIndexes = mTableView->selectionModel()->selectedIndexes();
     if ( selectedIndexes.count() > 0 )
     {
       editDatumTransform( selectedIndexes.at( 0 ) );
@@ -253,22 +189,20 @@ QgsDatumTransformTableWidget::QgsDatumTransformTableWidget( QWidget *parent )
 
   connect( mTableView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsDatumTransformTableWidget::selectionChanged );
 
-  connect( mTableView, &QTableView::doubleClicked, this, [ = ]( const QModelIndex & index )
-  {
-    editDatumTransform( index );
-  } );
+  connect( mTableView, &QTableView::doubleClicked, this, [this]( const QModelIndex &index ) { editDatumTransform( index ); } );
   mEditButton->setEnabled( false );
 }
 
 QgsDatumTransformTableWidget::~QgsDatumTransformTableWidget()
 {
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "Windows/DatumTransformTable/headerState" ), mTableView->horizontalHeader()->saveState() );
+  settings.setValue( u"Windows/DatumTransformTable/headerState"_s, mTableView->horizontalHeader()->saveState() );
 }
 
 void QgsDatumTransformTableWidget::addDatumTransform()
 {
-  QgsDatumTransformDialog dlg( QgsCoordinateReferenceSystem(), QgsCoordinateReferenceSystem(), true, false, false, QPair< int, int >(), nullptr, Qt::WindowFlags(), QString(), QgisApp::instance()->mapCanvas() );
+  QgsDatumTransformDialog
+    dlg( QgsCoordinateReferenceSystem(), QgsCoordinateReferenceSystem(), true, false, false, QPair<int, int>(), nullptr, Qt::WindowFlags(), QString(), QgisApp::instance()->mapCanvas() );
   if ( dlg.exec() )
   {
     const QgsDatumTransformDialog::TransformInfo dt = dlg.selectedDatumTransform();
@@ -284,7 +218,7 @@ void QgsDatumTransformTableWidget::addDatumTransform()
 
 void QgsDatumTransformTableWidget::removeDatumTransform()
 {
-  QModelIndexList selectedIndexes = mTableView->selectionModel()->selectedIndexes();
+  const QModelIndexList selectedIndexes = mTableView->selectionModel()->selectedIndexes();
   if ( selectedIndexes.count() > 0 )
   {
     mModel->removeTransform( selectedIndexes );
@@ -295,29 +229,22 @@ void QgsDatumTransformTableWidget::removeDatumTransform()
 void QgsDatumTransformTableWidget::editDatumTransform( const QModelIndex &index )
 {
   QString proj;
-  int sourceTransform = -1;
-  int destinationTransform = -1;
+  const int sourceTransform = -1;
+  const int destinationTransform = -1;
 
-  QgsCoordinateReferenceSystem sourceCrs = QgsCoordinateReferenceSystem( mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::SourceCrsColumn ), Qt::DisplayRole ).toString() );
-  QgsCoordinateReferenceSystem destinationCrs = QgsCoordinateReferenceSystem( mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::DestinationCrsColumn ), Qt::DisplayRole ).toString() );
+  const QgsCoordinateReferenceSystem sourceCrs = QgsCoordinateReferenceSystem( mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::SourceCrsColumn ), Qt::DisplayRole ).toString() );
+  const QgsCoordinateReferenceSystem destinationCrs = QgsCoordinateReferenceSystem(
+    mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::DestinationCrsColumn ), Qt::DisplayRole ).toString()
+  );
 
   bool allowFallback = true;
-#if PROJ_VERSION_MAJOR>=6
   proj = mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::ProjDefinitionColumn ), Qt::UserRole ).toString();
   allowFallback = mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::AllowFallbackColumn ), Qt::CheckStateRole ) == Qt::Checked;
-#else
-  sourceTransform = mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::SourceTransformColumn ), Qt::UserRole ).toInt();
-  destinationTransform = mModel->data( mModel->index( index.row(), QgsDatumTransformTableModel::DestinationTransformColumn ), Qt::UserRole ).toInt();
-#endif
 
-#if PROJ_VERSION_MAJOR>=6
   if ( sourceCrs.isValid() && destinationCrs.isValid() )
-#else
-  if ( sourceCrs.isValid() && destinationCrs.isValid() &&
-       ( sourceTransform != -1 || destinationTransform != -1 ) )
-#endif
   {
-    QgsDatumTransformDialog dlg( sourceCrs, destinationCrs, true, false, false, qMakePair( sourceTransform, destinationTransform ), nullptr, Qt::WindowFlags(), proj, QgisApp::instance()->mapCanvas(), allowFallback );
+    QgsDatumTransformDialog
+      dlg( sourceCrs, destinationCrs, true, false, false, qMakePair( sourceTransform, destinationTransform ), nullptr, Qt::WindowFlags(), proj, QgisApp::instance()->mapCanvas(), allowFallback );
     if ( dlg.exec() )
     {
       const QgsDatumTransformDialog::TransformInfo dt = dlg.selectedDatumTransform();

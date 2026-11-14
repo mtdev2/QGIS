@@ -16,19 +16,22 @@
 #ifndef QGS3DMAPCONFIGWIDGET_H
 #define QGS3DMAPCONFIGWIDGET_H
 
+#include "ui_map3dconfigwidget.h"
+
+#include "qgis_app.h"
+
 #include <QWidget>
 
-#include <ui_map3dconfigwidget.h>
-
+class QCheckBox;
 class Qgs3DMapSettings;
 class QgsMapCanvas;
-class QgsMesh3dSymbolWidget;
+class QgsMesh3DSymbolWidget;
 class QgsSkyboxRenderingSettingsWidget;
 class QgsShadowRenderingSettingsWidget;
 class Qgs3DMapCanvas;
 class QgsSkyboxSettings;
 
-class Qgs3DMapConfigWidget : public QWidget, private Ui::Map3DConfigWidget
+class APP_EXPORT Qgs3DMapConfigWidget : public QWidget, private Ui::Map3DConfigWidget
 {
     Q_OBJECT
   public:
@@ -48,14 +51,17 @@ class Qgs3DMapConfigWidget : public QWidget, private Ui::Map3DConfigWidget
     void onTerrainLayerChanged();
     void updateMaxZoomLevel();
     void validate();
+    void on3DAxisChanged();
 
   private:
     Qgs3DMapSettings *mMap = nullptr;
     QgsMapCanvas *mMainCanvas = nullptr;
-    Qgs3DMapCanvas *m3DMapCanvas = nullptr;
-    QgsMesh3dSymbolWidget *mMeshSymbolWidget = nullptr;
+    QgsMesh3DSymbolWidget *mMeshSymbolWidget = nullptr;
     QgsSkyboxRenderingSettingsWidget *mSkyboxSettingsWidget = nullptr;
-    QgsShadowRenderingSettingsWidget *mShadowSetiingsWidget = nullptr;
+    QgsShadowRenderingSettingsWidget *mShadowSettingsWidget = nullptr;
+    QCheckBox *mShowExtentIn2DViewCheckbox = nullptr;
+
+    void init3DAxisPage();
 };
 
 #endif // QGS3DMAPCONFIGWIDGET_H

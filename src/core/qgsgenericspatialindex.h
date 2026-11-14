@@ -16,15 +16,19 @@
 #ifndef QGSGENERICSPATIALINDEX_H
 #define QGSGENERICSPATIALINDEX_H
 
-#include "qgis_core.h"
-#include "qgsspatialindexutils.h"
-#include "qgslogger.h"
-
 #include <memory>
+
+#include "qgis_core.h"
+#include "qgslogger.h"
+#include "qgsspatialindexutils.h"
+
 #include <QMutex>
 #include <QString>
 
 #define SIP_NO_FILE
+
+using namespace Qt::StringLiterals;
+
 
 #include <functional>
 #include <spatialindex/SpatialIndex.h>
@@ -35,16 +39,14 @@ class QgsRectangle;
  * \ingroup core
  * \class QgsGenericSpatialIndex
  *
- * A generic rtree spatial index based on a libspatialindex backend.
+ * \brief A generic rtree spatial index based on a libspatialindex backend.
  *
  * \note Not available in Python bindings.
  * \since QGIS 3.12
  */
-template <typename T>
-class QgsGenericSpatialIndex
+template<typename T> class QgsGenericSpatialIndex
 {
   public:
-
     /**
      * Constructor for QgsGenericSpatialIndex.
      */
@@ -62,11 +64,11 @@ class QgsGenericSpatialIndex
      */
     bool insert( T *data, const QgsRectangle &bounds )
     {
-      SpatialIndex::Region r( QgsSpatialIndexUtils::rectangleToRegion( bounds ) );
+      const SpatialIndex::Region r( QgsSpatialIndexUtils::rectangleToRegion( bounds ) );
 
-      QMutexLocker locker( &mMutex );
+      const QMutexLocker locker( &mMutex );
 
-      qint64 id = mNextId++;
+      const qint64 id = mNextId++;
       mIdToData.insert( id, data );
       mDataToId.insert( data, id );
       try
@@ -77,16 +79,16 @@ class QgsGenericSpatialIndex
       catch ( Tools::Exception &e )
       {
         Q_UNUSED( e )
-        QgsDebugMsg( QStringLiteral( "Tools::Exception caught: " ).arg( e.what().c_str() ) );
+        QgsDebugError( u"Tools::Exception caught when inserting data to QgsGenericSpatialIndex: %1"_s.arg( e.what().c_str() ) );
       }
       catch ( const std::exception &e )
       {
         Q_UNUSED( e )
-        QgsDebugMsg( QStringLiteral( "std::exception caught: " ).arg( e.what() ) );
+        QgsDebugError( u"std::exception caught when inserting data to QgsGenericSpatialIndex: %1"_s.arg( e.what() ) );
       }
       catch ( ... )
       {
-        QgsDebugMsg( QStringLiteral( "unknown spatial index exception caught" ) );
+        QgsDebugError( u"unknown spatial index exception caught when inserting data to QgsGenericSpatialIndex"_s );
       }
 
       return false;
@@ -100,16 +102,16 @@ class QgsGenericSpatialIndex
      */
     bool remove( T *data, const QgsRectangle &bounds )
     {
-      SpatialIndex::Region r = QgsSpatialIndexUtils::rectangleToRegion( bounds );
+      const SpatialIndex::Region r = QgsSpatialIndexUtils::rectangleToRegion( bounds );
 
-      QMutexLocker locker( &mMutex );
+      const QMutexLocker locker( &mMutex );
 
       const qint64 id = mDataToId.value( data, 0 );
       if ( id == 0 )
         return false;
 
       // TODO: handle exceptions
-      bool res = mRTree->deleteData( r, id );
+      const bool res = mRTree->deleteData( r, id );
       mDataToId.remove( data );
       mIdToData.remove( id );
       return res;
@@ -123,24 +125,41 @@ class QgsGenericSpatialIndex
     bool intersects( const QgsRectangle &bounds, const std::function< bool( T *data )> &callback ) const
     {
       GenericIndexVisitor<T> visitor( callback, mIdToData );
-      SpatialIndex::Region r = QgsSpatialIndexUtils::rectangleToRegion( bounds );
+      const SpatialIndex::Region r = QgsSpatialIndexUtils::rectangleToRegion( bounds );
 
-      QMutexLocker locker( &mMutex );
-      mRTree->intersectsWithQuery( r, visitor );
+      const QMutexLocker locker( &mMutex );
+      try
+      {
+        mRTree->intersectsWithQuery( r, visitor );
+      }
+      catch ( Tools::Exception &e )
+      {
+        Q_UNUSED( e )
+        QgsDebugError( u"Tools::Exception caught in QgsGenericSpatialIndex::intersects: %1"_s.arg( e.what().c_str() ) );
+      }
+      catch ( const std::exception &e )
+      {
+        Q_UNUSED( e )
+        QgsDebugError( u"std::exception caught in QgsGenericSpatialIndex::intersects: %1"_s.arg( e.what() ) );
+      }
+      catch ( ... )
+      {
+        QgsDebugError( u"unknown spatial index exception caught in QgsGenericSpatialIndex::intersects"_s );
+      }
+
       return true;
     }
 
     /**
      * Returns TRUE if the index contains no items.
      */
-    bool isEmpty( ) const
+    bool isEmpty() const
     {
-      QMutexLocker locker( &mMutex );
+      const QMutexLocker locker( &mMutex );
       return mIdToData.isEmpty();
     }
 
   private:
-
     std::unique_ptr< SpatialIndex::ISpatialIndex > createSpatialIndex( SpatialIndex::IStorageManager &storageManager )
     {
       // R-Tree parameters
@@ -152,8 +171,7 @@ class QgsGenericSpatialIndex
 
       // create R-tree
       SpatialIndex::id_type indexId;
-      return std::unique_ptr< SpatialIndex::ISpatialIndex >( SpatialIndex::RTree::createNewRTree( storageManager, fillFactor, indexCapacity,
-             leafCapacity, dimension, variant, indexId ) );
+      return std::unique_ptr< SpatialIndex::ISpatialIndex >( SpatialIndex::RTree::createNewRTree( storageManager, fillFactor, indexCapacity, leafCapacity, dimension, variant, indexId ) );
     }
 
     std::unique_ptr< SpatialIndex::IStorageManager > mStorageManager;
@@ -165,8 +183,7 @@ class QgsGenericSpatialIndex
     QHash< qint64, T * > mIdToData;
     QHash< T *, qint64 > mDataToId;
 
-    template <typename TT>
-    class GenericIndexVisitor : public SpatialIndex::IVisitor
+    template<typename TT> class GenericIndexVisitor : public SpatialIndex::IVisitor
     {
       public:
         explicit GenericIndexVisitor( const std::function< bool( TT *data )> &callback, const QHash< qint64, TT * > &data )
@@ -174,24 +191,21 @@ class QgsGenericSpatialIndex
           , mData( data )
         {}
 
-        void visitNode( const SpatialIndex::INode &n ) override
-        { Q_UNUSED( n ) }
+        void visitNode( const SpatialIndex::INode &n ) override { Q_UNUSED( n ) }
 
         void visitData( const SpatialIndex::IData &d ) override
         {
-          qint64 id = d.getIdentifier();
+          const qint64 id = d.getIdentifier();
           T *data = mData.value( id );
           mCallback( data );
         }
 
-        void visitData( std::vector<const SpatialIndex::IData *> &v ) override
-        { Q_UNUSED( v ) }
+        void visitData( std::vector<const SpatialIndex::IData *> &v ) override { Q_UNUSED( v ) }
 
       private:
         const std::function< bool( TT *data )> &mCallback;
         QHash< qint64, TT * > mData;
     };
-
 };
 
 #endif // QGSGENERICSPATIALINDEX_H

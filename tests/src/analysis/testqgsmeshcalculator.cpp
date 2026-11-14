@@ -12,33 +12,39 @@ Email                : zilolv at gmail dot com
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgstest.h"
-#include <limits>
 #include <cmath>
+#include <limits>
+#include <memory>
 
-#include "qgsmeshcalculator.h"
+#include "qgsapplication.h"
 #include "qgsmeshcalcnode.h"
-#include "qgsmeshvirtualdatasetgroup.h"
+#include "qgsmeshcalculator.h"
 #include "qgsmeshdataprovider.h"
 #include "qgsmeshlayer.h"
-#include "qgsapplication.h"
+#include "qgsmeshvirtualdatasetgroup.h"
 #include "qgsproject.h"
-#include "qgsmeshmemorydataprovider.h"
+#include "qgstest.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE( QgsMeshCalcNode::Operator )
 
-class TestQgsMeshCalculator : public QObject
+class TestQgsMeshCalculator : public QgsTest
 {
     Q_OBJECT
 
   public:
-    TestQgsMeshCalculator() = default;
+    TestQgsMeshCalculator()
+      : QgsTest( u"Mesh Calculator Tests"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init() ;// will be called before each testfunction is executed.
-    void cleanup() ;// will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
+    void init();            // will be called before each testfunction is executed.
+    void cleanup();         // will be called after every testfunction.
 
     void dualOp_data();
     void dualOp(); //test operators which operate on a left&right node
@@ -56,11 +62,10 @@ class TestQgsMeshCalculator : public QObject
     void test_dataset_group_dependency();
 
   private:
-
     QgsMeshLayer *mpMeshLayer = nullptr;
 };
 
-void  TestQgsMeshCalculator::initTestCase()
+void TestQgsMeshCalculator::initTestCase()
 {
   //
   // Runs once before any tests are run
@@ -69,8 +74,8 @@ void  TestQgsMeshCalculator::initTestCase()
   QgsApplication::init();
   QgsApplication::initQgis();
 
-  QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + QStringLiteral( "/mesh/" );
-  QString uri( testDataDir + "/quad_and_triangle.2dm" );
+  const QString testDataDir = QStringLiteral( TEST_DATA_DIR ) + u"/mesh/"_s;
+  const QString uri( testDataDir + "/quad_and_triangle.2dm" );
   mpMeshLayer = new QgsMeshLayer( uri, "Triangle and Quad MDAL", "mdal" );
   mpMeshLayer->dataProvider()->addDataset( testDataDir + "/quad_and_triangle_vertex_scalar.dat" );
   mpMeshLayer->dataProvider()->addDataset( testDataDir + "/quad_and_triangle_vertex_scalar2.dat" );
@@ -81,25 +86,22 @@ void  TestQgsMeshCalculator::initTestCase()
   mpMeshLayer->dataProvider()->addDataset( testDataDir + "/quad_and_triangle_els_face_scalar.dat" );
   mpMeshLayer->dataProvider()->addDataset( testDataDir + "/quad_and_triangle_els_face_vector.dat" );
 
-  QgsProject::instance()->addMapLayers(
-    QList<QgsMapLayer *>() << mpMeshLayer );
+  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mpMeshLayer );
 }
 
-void  TestQgsMeshCalculator::cleanupTestCase()
+void TestQgsMeshCalculator::cleanupTestCase()
 {
   QgsApplication::exitQgis();
 }
 
-void  TestQgsMeshCalculator::init()
-{
-}
-void  TestQgsMeshCalculator::cleanup()
-{
-}
+void TestQgsMeshCalculator::init()
+{}
+void TestQgsMeshCalculator::cleanup()
+{}
 
 void TestQgsMeshCalculator::dualOp_data()
 {
-  QTest::addColumn< QgsMeshCalcNode::Operator >( "op" );
+  QTest::addColumn<QgsMeshCalcNode::Operator>( "op" );
   QTest::addColumn<double>( "left" );
   QTest::addColumn<double>( "right" );
   QTest::addColumn<double>( "expected" );
@@ -146,23 +148,20 @@ void TestQgsMeshCalculator::dualOp()
   QFETCH( double, right );
   QFETCH( double, expected );
 
-  QgsMeshCalcNode node( op, new QgsMeshCalcNode( left ), new QgsMeshCalcNode( right ) );
+  const QgsMeshCalcNode node( op, new QgsMeshCalcNode( left ), new QgsMeshCalcNode( right ) );
 
   QgsMeshMemoryDatasetGroup result( "result" );
   QStringList usedDatasetNames;
   usedDatasetNames << "VertexScalarDataset2" << "VertexScalarDataset" << "VertexScalarDatasetMax";
 
-  QgsMeshCalcUtils utils( mpMeshLayer,
-                          usedDatasetNames,
-                          0,
-                          3600 );
+  const QgsMeshCalcUtils utils( mpMeshLayer, usedDatasetNames, 0, 3600 );
 
   QVERIFY( node.calculate( utils, result ) );
   QCOMPARE( result.datasetCount(), 1 );
-  std::shared_ptr<QgsMeshMemoryDataset> ds = result.memoryDatasets[0];
+  const std::shared_ptr<QgsMeshMemoryDataset> ds = result.memoryDatasets[0];
   for ( int i = 0; i < ds->values.size(); ++i )
   {
-    double val = ds->values.at( i ).scalar();
+    const double val = ds->values.at( i ).scalar();
     if ( std::isnan( expected ) )
     {
       QVERIFY( std::isnan( val ) );
@@ -176,7 +175,7 @@ void TestQgsMeshCalculator::dualOp()
 
 void TestQgsMeshCalculator::singleOp_data()
 {
-  QTest::addColumn< QgsMeshCalcNode::Operator >( "op" );
+  QTest::addColumn<QgsMeshCalcNode::Operator>( "op" );
   QTest::addColumn<double>( "value" );
   QTest::addColumn<double>( "expected" );
 
@@ -192,24 +191,21 @@ void TestQgsMeshCalculator::singleOp()
   QFETCH( double, value );
   QFETCH( double, expected );
 
-  QgsMeshCalcNode node( op, new QgsMeshCalcNode( value ), nullptr );
+  const QgsMeshCalcNode node( op, new QgsMeshCalcNode( value ), nullptr );
 
   QgsMeshMemoryDatasetGroup result( "result" );
   QStringList usedDatasetNames;
   usedDatasetNames << "VertexScalarDataset";
 
-  QgsMeshCalcUtils utils( mpMeshLayer,
-                          usedDatasetNames,
-                          0,
-                          3600 );
+  const QgsMeshCalcUtils utils( mpMeshLayer, usedDatasetNames, 0, 3600 );
 
   QVERIFY( node.calculate( utils, result ) );
 
   QCOMPARE( result.datasetCount(), 1 );
-  std::shared_ptr<QgsMeshMemoryDataset> ds = result.memoryDatasets[0];
+  const std::shared_ptr<QgsMeshMemoryDataset> ds = result.memoryDatasets[0];
   for ( int i = 0; i < ds->values.size(); ++i )
   {
-    double val = ds->values.at( i ).scalar();
+    const double val = ds->values.at( i ).scalar();
     if ( std::isnan( expected ) )
     {
       QVERIFY( std::isnan( val ) );
@@ -223,51 +219,35 @@ void TestQgsMeshCalculator::singleOp()
 
 void TestQgsMeshCalculator::calcWithVertexLayers()
 {
-  QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
+  const QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
 
   QTemporaryFile tmpFile;
-  tmpFile.open(); // fileName is not available until open
-  QString tmpName = tmpFile.fileName();
+  QVERIFY( tmpFile.open() ); // fileName is not available until open
+  const QString tmpName = tmpFile.fileName();
   tmpFile.close();
 
-  QgsMeshCalculator rc( QStringLiteral( "\"VertexScalarDataset\" + 2" ),
-                        QStringLiteral( "BINARY_DAT" ),
-                        "NewVertexScalarDataset",
-                        tmpName,
-                        extent,
-                        0,
-                        3600,
-                        mpMeshLayer
-                      );
-  int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
-  QCOMPARE( static_cast< int >( rc.processCalculation() ), 0 );
-  int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QgsMeshCalculator rc( u"\"VertexScalarDataset\" + 2 + max_aggr(\"VertexScalarDataset\" )"_s, u"BINARY_DAT"_s, "NewVertexScalarDataset", tmpName, extent, 0, 3600, mpMeshLayer );
+  const int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QCOMPARE( static_cast<int>( rc.processCalculation() ), 0 );
+  const int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
   QCOMPARE( newGroupCount, groupCount + 1 );
   const QgsMeshDatasetValue val = mpMeshLayer->dataProvider()->datasetValue( QgsMeshDatasetIndex( newGroupCount - 1, 0 ), 0 );
-  QCOMPARE( val.scalar(), 3.0 );
+  QCOMPARE( val.scalar(), 5.0 );
 }
 
 void TestQgsMeshCalculator::calcWithFaceLayers()
 {
-  QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
+  const QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
 
   QTemporaryFile tmpFile;
-  tmpFile.open(); // fileName is not available until open
-  QString tmpName = tmpFile.fileName();
+  QVERIFY( tmpFile.open() ); // fileName is not available until open
+  const QString tmpName = tmpFile.fileName();
   tmpFile.close();
 
-  QgsMeshCalculator rc( QStringLiteral( "\"FaceScalarDataset\" + 2" ),
-                        QStringLiteral( "ASCII_DAT" ),
-                        "NewFaceScalarDataset",
-                        tmpName,
-                        extent,
-                        0,
-                        3600,
-                        mpMeshLayer
-                      );
-  int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
-  QCOMPARE( static_cast< int >( rc.processCalculation() ), 0 );
-  int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QgsMeshCalculator rc( u"\"FaceScalarDataset\" + 2"_s, u"ASCII_DAT"_s, "NewFaceScalarDataset", tmpName, extent, 0, 3600, mpMeshLayer );
+  const int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QCOMPARE( static_cast<int>( rc.processCalculation() ), 0 );
+  const int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
   QCOMPARE( newGroupCount, groupCount + 1 );
   const QgsMeshDatasetValue val = mpMeshLayer->dataProvider()->datasetValue( QgsMeshDatasetIndex( newGroupCount - 1, 0 ), 0 );
   QCOMPARE( val.scalar(), 3.0 );
@@ -275,25 +255,17 @@ void TestQgsMeshCalculator::calcWithFaceLayers()
 
 void TestQgsMeshCalculator::calcWithMixedLayers()
 {
-  QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
+  const QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
 
   QTemporaryFile tmpFile;
-  tmpFile.open(); // fileName is not available until open
-  QString tmpName = tmpFile.fileName();
+  QVERIFY( tmpFile.open() ); // fileName is not available until open
+  const QString tmpName = tmpFile.fileName();
   tmpFile.close();
 
-  QgsMeshCalculator rc( QStringLiteral( "\"VertexScalarDataset\" + \"FaceScalarDataset\"" ),
-                        QStringLiteral( "BINARY_DAT" ),
-                        "NewMixScalarDataset",
-                        tmpName,
-                        extent,
-                        0,
-                        3600,
-                        mpMeshLayer
-                      );
-  int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
-  QCOMPARE( static_cast< int >( rc.processCalculation() ), 0 );
-  int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QgsMeshCalculator rc( u"\"VertexScalarDataset\" + \"FaceScalarDataset\""_s, u"BINARY_DAT"_s, "NewMixScalarDataset", tmpName, extent, 0, 3600, mpMeshLayer );
+  const int groupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
+  QCOMPARE( static_cast<int>( rc.processCalculation() ), 0 );
+  const int newGroupCount = mpMeshLayer->dataProvider()->datasetGroupCount();
   QCOMPARE( newGroupCount, groupCount + 1 );
   const QgsMeshDatasetValue val = mpMeshLayer->dataProvider()->datasetValue( QgsMeshDatasetIndex( newGroupCount - 1, 0 ), 0 );
   QCOMPARE( val.scalar(), 2.0 );
@@ -301,28 +273,20 @@ void TestQgsMeshCalculator::calcWithMixedLayers()
 
 void TestQgsMeshCalculator::calcAndSave()
 {
-  QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
+  const QgsRectangle extent( 1000.000, 1000.000, 3000.000, 3000.000 );
 
-  QString tempFilePath = QDir::tempPath() + '/' + "meshCalculatorResult.out";
-  QgsMeshCalculator rc( QStringLiteral( "\"VertexScalarDataset\" + \"FaceScalarDataset\"" ),
-                        QStringLiteral( "BINARY_DAT" ),
-                        "NewMixScalarDataset",
-                        tempFilePath,
-                        extent,
-                        0,
-                        3600,
-                        mpMeshLayer
-                      );
+  const QString tempFilePath = QDir::tempPath() + '/' + "meshCalculatorResult.out";
+  QgsMeshCalculator rc( u"\"VertexScalarDataset\" + \"FaceScalarDataset\""_s, u"BINARY_DAT"_s, "NewMixScalarDataset_saved", tempFilePath, extent, 0, 3600, mpMeshLayer );
 
   rc.processCalculation();
 
-  QFileInfo fileInfo( tempFilePath );
+  const QFileInfo fileInfo( tempFilePath );
   QVERIFY( fileInfo.exists() );
 }
 
 void TestQgsMeshCalculator::virtualDatasetGroup()
 {
-  QString formula = QStringLiteral( "\"VertexScalarDataset\" + 2" );
+  QString formula = u"\"VertexScalarDataset\" + 2"_s;
   QgsMeshVirtualDatasetGroup virtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
   virtualDatasetGroup.initialize();
   QCOMPARE( virtualDatasetGroup.datasetCount(), 2 );
@@ -342,7 +306,7 @@ void TestQgsMeshCalculator::virtualDatasetGroup()
   QCOMPARE( dataset->datasetValue( 3 ).scalar(), 5.0 );
   QCOMPARE( dataset->datasetValue( 4 ).scalar(), 4.0 );
 
-  formula = QStringLiteral( "\"VertexScalarDataset\" + \"FaceScalarDataset\"" );
+  formula = u"\"VertexScalarDataset\" + \"FaceScalarDataset\""_s;
   virtualDatasetGroup = QgsMeshVirtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
   virtualDatasetGroup.initialize();
   QCOMPARE( virtualDatasetGroup.datasetCount(), 2 );
@@ -362,22 +326,88 @@ void TestQgsMeshCalculator::virtualDatasetGroup()
   QCOMPARE( dataset->datasetValue( 2 ).scalar(), 7.0 );
   QCOMPARE( dataset->datasetValue( 3 ).scalar(), 5.5 );
   QCOMPARE( dataset->datasetValue( 4 ).scalar(), 4.0 );
+
+  formula = u"\"VertexScalarDataset\" +  max_aggr (\"VertexScalarDataset\")"_s;
+  virtualDatasetGroup = QgsMeshVirtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
+  virtualDatasetGroup.initialize();
+  QCOMPARE( virtualDatasetGroup.datasetCount(), 2 );
+
+  dataset = virtualDatasetGroup.dataset( 0 );
+  QCOMPARE( dataset->valuesCount(), 5 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 3.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 5.0 );
+  QCOMPARE( dataset->datasetValue( 2 ).scalar(), 7.0 );
+  QCOMPARE( dataset->datasetValue( 3 ).scalar(), 5.0 );
+  QCOMPARE( dataset->datasetValue( 4 ).scalar(), 3.0 );
+
+  dataset = virtualDatasetGroup.dataset( 1 );
+  QCOMPARE( dataset->valuesCount(), 5 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 4.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 6.0 );
+  QCOMPARE( dataset->datasetValue( 2 ).scalar(), 8.0 );
+  QCOMPARE( dataset->datasetValue( 3 ).scalar(), 6.0 );
+  QCOMPARE( dataset->datasetValue( 4 ).scalar(), 4.0 );
+
+  formula = u"max_aggr (\"FaceScalarDataset\") + min_aggr (\"FaceScalarDataset\")"_s;
+  virtualDatasetGroup = QgsMeshVirtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
+  virtualDatasetGroup.initialize();
+  QCOMPARE( virtualDatasetGroup.datasetCount(), 1 );
+
+  dataset = virtualDatasetGroup.dataset( 0 );
+  QCOMPARE( dataset->valuesCount(), 2 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 3.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 5.0 );
+
+  formula = u"max_aggr (\"FaceScalarDataset\") + \"VertexScalarDataset\""_s;
+  virtualDatasetGroup = QgsMeshVirtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
+  virtualDatasetGroup.initialize();
+  QCOMPARE( virtualDatasetGroup.datasetCount(), 2 );
+
+  dataset = virtualDatasetGroup.dataset( 0 );
+  QCOMPARE( dataset->valuesCount(), 5 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 3.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 4.5 );
+  QCOMPARE( dataset->datasetValue( 2 ).scalar(), 6.0 );
+  QCOMPARE( dataset->datasetValue( 3 ).scalar(), 4.5 );
+  QCOMPARE( dataset->datasetValue( 4 ).scalar(), 3.0 );
+
+  dataset = virtualDatasetGroup.dataset( 1 );
+  QCOMPARE( dataset->valuesCount(), 5 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 4.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 5.5 );
+  QCOMPARE( dataset->datasetValue( 2 ).scalar(), 7.0 );
+  QCOMPARE( dataset->datasetValue( 3 ).scalar(), 5.5 );
+  QCOMPARE( dataset->datasetValue( 4 ).scalar(), 4.0 );
+
+  formula = u"max_aggr (\"FaceScalarDataset\" + \"VertexScalarDataset\")"_s;
+  virtualDatasetGroup = QgsMeshVirtualDatasetGroup( "Virtual Dataset group", formula, mpMeshLayer, 0, 10000000 );
+  virtualDatasetGroup.initialize();
+  QCOMPARE( virtualDatasetGroup.datasetCount(), 1 );
+
+  dataset = virtualDatasetGroup.dataset( 0 );
+  QCOMPARE( dataset->valuesCount(), 5 );
+  QCOMPARE( dataset->datasetValue( 0 ).scalar(), 4.0 );
+  QCOMPARE( dataset->datasetValue( 1 ).scalar(), 5.5 );
+  QCOMPARE( dataset->datasetValue( 2 ).scalar(), 7.0 );
+  QCOMPARE( dataset->datasetValue( 3 ).scalar(), 5.5 );
+  QCOMPARE( dataset->datasetValue( 4 ).scalar(), 4.0 );
 }
 
 
 void TestQgsMeshCalculator::test_dataset_group_dependency()
 {
-  int vertexCount = mpMeshLayer->dataProvider()->vertexCount();
+  const int vertexCount = mpMeshLayer->dataProvider()->vertexCount();
   std::vector<std::unique_ptr<QgsMeshMemoryDatasetGroup>> memoryDatasetGroups( 4 );
   for ( int dsg = 0; dsg < 4; ++dsg )
   {
-    memoryDatasetGroups[dsg].reset( new QgsMeshMemoryDatasetGroup );
+    memoryDatasetGroups[dsg] = std::make_unique<QgsMeshMemoryDatasetGroup>();
     memoryDatasetGroups[dsg]->setDataType( QgsMeshDatasetGroupMetadata::DataOnVertices );
     memoryDatasetGroups[dsg]->setName( QString( "dataset_group_%1" ).arg( dsg ) );
     for ( int i = 0; i < 10; i++ )
     {
-      std::shared_ptr<QgsMeshMemoryDataset> ds = std::make_shared<QgsMeshMemoryDataset>();
+      const std::shared_ptr<QgsMeshMemoryDataset> ds = std::make_shared<QgsMeshMemoryDataset>();
       ds->time = i / 3600.0;
+      ds->valid = true;
       for ( int v = 0; v < vertexCount; ++v )
         ds->values.append( QgsMeshDatasetValue( v / 2.0 + dsg ) );
 
@@ -388,26 +418,29 @@ void TestQgsMeshCalculator::test_dataset_group_dependency()
 
   QStringList formulas;
 
-  formulas.append( QStringLiteral( "\"dataset_group_0\" + 2" ) );
-  formulas.append( QStringLiteral( "\"dataset_group_3\" + \"virtual_0\"" ) );
-  formulas.append( QStringLiteral( "\"VertexScalarDataset\" + \"FaceScalarDataset\"" ) );
-  formulas.append( QStringLiteral( " max_aggr ( \"VertexScalarDataset\")  + min_aggr(\"FaceScalarDataset\")" ) );
-  formulas.append( QStringLiteral( " max_aggr ( \"VertexScalarDataset\")  + 2" ) );
-  formulas.append( QStringLiteral( " max_aggr ( \"VertexScalarDataset\")  + \"virtual_0\"" ) );
-  formulas.append( QStringLiteral( " \"virtual_0\" + max_aggr ( \"VertexScalarDataset\")  + 1" ) );
-  QVector<int> sizes{10, 10, 2, 1, 1, 10, 10};
+  formulas.append( u"\"dataset_group_0\" + 2"_s );
+  formulas.append( u"\"dataset_group_3\" + \"virtual_0\""_s );
+  formulas.append( u"\"VertexScalarDataset\" + \"FaceScalarDataset\""_s );
+  formulas.append( u" max_aggr ( \"VertexScalarDataset\")  + min_aggr(\"FaceScalarDataset\")"_s );
+  formulas.append( u" max_aggr ( \"VertexScalarDataset\")  + 2"_s );
+  formulas.append( u" max_aggr ( \"VertexScalarDataset\")  + \"virtual_0\""_s );
+  formulas.append( u" \"virtual_0\" + max_aggr ( \"VertexScalarDataset\")  + 1"_s );
+  formulas.append( u"if ( \"FaceScalarDataset\" = \"VertexScalarDataset\" , 0 , 1 )"_s ); //temporal one, must have several datasets
+  formulas.append( u"if ( 2 = 1 , 0 , 1 )"_s );                                           //static one, must have one dataset
+  formulas.append( u"if ( 2 = 1 , \"FaceScalarDataset\" , 1 )"_s );                       //temporal one, must have several datasets
+  QVector<int> sizes { 10, 10, 2, 1, 1, 10, 10, 2, 1, 2 };
 
   std::vector<std::unique_ptr<QgsMeshVirtualDatasetGroup>> virtualDatasetGroups( formulas.count() );
 
   for ( int i = 0; i < formulas.count(); ++i )
   {
-    virtualDatasetGroups[i].reset( new QgsMeshVirtualDatasetGroup( QString( "virtual_%1" ).arg( i ), formulas[i], mpMeshLayer, 0, 100000 ) );
+    virtualDatasetGroups[i] = std::make_unique<QgsMeshVirtualDatasetGroup>( QString( "virtual_%1" ).arg( i ), formulas[i], mpMeshLayer, 0, 100000 );
     virtualDatasetGroups[i]->initialize();
     QCOMPARE( sizes[i], virtualDatasetGroups[i]->datasetCount() );
     mpMeshLayer->addDatasets( virtualDatasetGroups[i].release() );
   }
 
-  QCOMPARE( 24, mpMeshLayer->datasetGroupCount() );
+  QCOMPARE( 27, mpMeshLayer->datasetGroupCount() );
 
   QgsMeshDatasetGroupTreeItem *rootItem = mpMeshLayer->datasetGroupTreeRootItem();
 

@@ -23,14 +23,13 @@ class QgsLineString;
 
 /**
  * \ingroup core
- * Assorted utility functions used during MVT decoding and encoding.
+ * \brief Assorted utility functions used during MVT decoding and encoding.
  *
  * \since QGIS 3.14
  */
 class QgsVectorTileMVTUtils
 {
   public:
-
     /**
      * Returns whether this linear ring forms an exterior ring according to MVT spec
      * (depending on the orientation - clockwise or counter-clockwise)

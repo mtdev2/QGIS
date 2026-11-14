@@ -16,12 +16,17 @@
  ***************************************************************************/
 
 #include "qgslayoutmarkerwidget.h"
-#include "qgsstyle.h"
-#include "qgslayoutitemmarker.h"
+
 #include "qgslayout.h"
-#include "qgslayoutundostack.h"
-#include "qgsvectorlayer.h"
 #include "qgslayoutitemmap.h"
+#include "qgslayoutitemmarker.h"
+#include "qgslayoutreportcontext.h"
+#include "qgslayoutundostack.h"
+#include "qgsmarkersymbol.h"
+#include "qgsstyle.h"
+#include "qgsvectorlayer.h"
+
+#include "moc_qgslayoutmarkerwidget.cpp"
 
 QgsLayoutMarkerWidget::QgsLayoutMarkerWidget( QgsLayoutItemMarker *marker )
   : QgsLayoutItemBaseWidget( nullptr, marker )
@@ -39,7 +44,7 @@ QgsLayoutMarkerWidget::QgsLayoutMarkerWidget( QgsLayoutItemMarker *marker )
 
   blockAllSignals( true );
 
-  mShapeStyleButton->setSymbolType( QgsSymbol::Marker );
+  mShapeStyleButton->setSymbolType( Qgis::SymbolType::Marker );
 
   blockAllSignals( false );
 
@@ -49,7 +54,7 @@ QgsLayoutMarkerWidget::QgsLayoutMarkerWidget( QgsLayoutItemMarker *marker )
   connect( mShapeStyleButton, &QgsSymbolButton::changed, this, &QgsLayoutMarkerWidget::symbolChanged );
 
   connect( mRotationFromMapCheckBox, &QCheckBox::stateChanged, this, &QgsLayoutMarkerWidget::rotationFromMapCheckBoxChanged );
-  connect( mNorthOffsetSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutMarkerWidget::northOffsetSpinBoxChanged );
+  connect( mNorthOffsetSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutMarkerWidget::northOffsetSpinBoxChanged );
   connect( mNorthTypeComboBox, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsLayoutMarkerWidget::northTypeComboBoxChanged );
 
   mNorthTypeComboBox->blockSignals( true );
@@ -86,7 +91,7 @@ bool QgsLayoutMarkerWidget::setNewItem( QgsLayoutItem *item )
     disconnect( mMarker, &QgsLayoutObject::changed, this, &QgsLayoutMarkerWidget::setGuiElementValues );
   }
 
-  mMarker = qobject_cast< QgsLayoutItemMarker * >( item );
+  mMarker = qobject_cast<QgsLayoutItemMarker *>( item );
   mItemPropertiesWidget->setItem( mMarker );
 
   if ( mMarker )
@@ -168,7 +173,7 @@ void QgsLayoutMarkerWidget::rotationFromMapCheckBoxChanged( int state )
   }
   else
   {
-    QgsLayoutItemMap *map = qobject_cast< QgsLayoutItemMap * >( mMapComboBox->currentItem() );
+    QgsLayoutItemMap *map = qobject_cast<QgsLayoutItemMap *>( mMapComboBox->currentItem() );
     mMarker->setLinkedMap( map );
     mNorthTypeComboBox->setEnabled( true );
     mNorthOffsetSpinBox->setEnabled( true );
@@ -190,7 +195,7 @@ void QgsLayoutMarkerWidget::mapChanged( QgsLayoutItem *item )
     return;
   }
 
-  QgsLayoutItemMap *map = qobject_cast< QgsLayoutItemMap *>( item );
+  QgsLayoutItemMap *map = qobject_cast<QgsLayoutItemMap *>( item );
   if ( !map )
   {
     return;
@@ -213,7 +218,7 @@ void QgsLayoutMarkerWidget::northOffsetSpinBoxChanged( double d )
 void QgsLayoutMarkerWidget::northTypeComboBoxChanged( int index )
 {
   mMarker->beginCommand( tr( "Change Marker North Mode" ) );
-  mMarker->setNorthMode( static_cast< QgsLayoutNorthArrowHandler::NorthMode >( mNorthTypeComboBox->itemData( index ).toInt() ) );
+  mMarker->setNorthMode( static_cast<QgsLayoutNorthArrowHandler::NorthMode>( mNorthTypeComboBox->itemData( index ).toInt() ) );
   mMarker->endCommand();
   mMarker->update();
 }

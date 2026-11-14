@@ -25,7 +25,6 @@ class QgsLayoutAtlas;
  * \ingroup core
  * \class QgsPrintLayout
  * \brief Print layout, a QgsLayout subclass for static or atlas-based layouts.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsPrintLayout : public QgsLayout, public QgsMasterLayoutInterface
 {
@@ -33,7 +32,6 @@ class CORE_EXPORT QgsPrintLayout : public QgsLayout, public QgsMasterLayoutInter
     Q_PROPERTY( QString name READ name WRITE setName NOTIFY nameChanged )
 
   public:
-
     /**
      * Constructor for QgsPrintLayout.
      */
@@ -72,7 +70,6 @@ class CORE_EXPORT QgsPrintLayout : public QgsLayout, public QgsMasterLayoutInter
     void nameChanged( const QString &name );
 
   private:
-
     QString mName;
     QgsLayoutAtlas *mAtlas = nullptr;
 

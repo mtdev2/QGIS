@@ -16,22 +16,21 @@
 #ifndef QGSANIMATEDICON_H
 #define QGSANIMATEDICON_H
 
-#include <QObject>
-#include <QMovie>
+#include "qgis_core.h"
+
 #include <QIcon>
 #include <QMetaMethod>
-
-#include "qgis_core.h"
+#include <QMovie>
+#include <QObject>
 
 /**
  * \ingroup core
- * Animated icon is keeping an animation running if there are listeners connected to frameChanged
+ * \brief Animated icon is keeping an animation running if there are listeners connected to frameChanged.
 */
 class CORE_EXPORT QgsAnimatedIcon : public QObject
 {
     Q_OBJECT
   public:
-
     /**
      * Create a new animated icon. Optionally, the \a iconPath can already be specified.
      */
@@ -65,10 +64,8 @@ class CORE_EXPORT QgsAnimatedIcon : public QObject
      *
      * \note Available in Python bindings as
      *       bool connectFrameChanged( const QObject *receiver, const char *method );.
-     * \since QGIS 3.0
      */
-    template <typename Func1>
-    bool connectFrameChanged( const typename QtPrivate::FunctionPointer<Func1>::Object *receiver, Func1 slot )
+    template<typename Func1> bool connectFrameChanged( const typename QtPrivate::FunctionPointer<Func1>::Object *receiver, Func1 slot )
     {
       if ( connect( this, &QgsAnimatedIcon::frameChanged, receiver, slot ) )
       {
@@ -84,10 +81,8 @@ class CORE_EXPORT QgsAnimatedIcon : public QObject
      *
      * \note Available in Python bindings as
      *       bool disconnectFrameChanged( const QObject *receiver, const char *method );.
-     * \since QGIS 3.0
      */
-    template <typename Func1>
-    bool disconnectFrameChanged( const typename QtPrivate::FunctionPointer<Func1>::Object *receiver, Func1 slot )
+    template<typename Func1> bool disconnectFrameChanged( const typename QtPrivate::FunctionPointer<Func1>::Object *receiver, Func1 slot )
     {
       return disconnect( this, &QgsAnimatedIcon::frameChanged, receiver, slot );
     }
@@ -101,14 +96,12 @@ class CORE_EXPORT QgsAnimatedIcon : public QObject
      * Connect to the frame changed signal with this method and not directly. This method
      * makes sure the annimation is started.
      *
-     * \since QGIS 3.0
      */
     bool connectFrameChanged( const QObject *receiver, const char *method );
 
     /**
      * Convenience function to disconnect the same style that the frame change connection was established.
      *
-     * \since QGIS 3.0
      */
     bool disconnectFrameChanged( const QObject *receiver, const char *method );
 
@@ -116,14 +109,12 @@ class CORE_EXPORT QgsAnimatedIcon : public QObject
     /**
      * The native width of the icon.
      *
-     * \since QGIS 3.0
      */
     int width() const;
 
     /**
      * The native height of the icon.
      *
-     * \since QGIS 3.0
      */
     int height() const;
 

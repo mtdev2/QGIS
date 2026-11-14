@@ -13,48 +13,50 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsarrowsymbollayerwidget.h"
+
 #include "qgsarrowsymbollayer.h"
 #include "qgsvectorlayer.h"
+
 #include <QColorDialog>
+#include <QString>
+
+#include "moc_qgsarrowsymbollayerwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsArrowSymbolLayerWidget::QgsArrowSymbolLayerWidget( QgsVectorLayer *vl, QWidget *parent )
   : QgsSymbolLayerWidget( parent, vl )
 
 {
   setupUi( this );
-  connect( mArrowWidthSpin, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mArrowWidthSpin_valueChanged );
+  connect( mArrowWidthSpin, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mArrowWidthSpin_valueChanged );
   connect( mArrowWidthUnitWidget, &QgsUnitSelectionWidget::changed, this, &QgsArrowSymbolLayerWidget::mArrowWidthUnitWidget_changed );
-  connect( mArrowStartWidthSpin, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mArrowStartWidthSpin_valueChanged );
+  connect( mArrowStartWidthSpin, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mArrowStartWidthSpin_valueChanged );
   connect( mArrowStartWidthUnitWidget, &QgsUnitSelectionWidget::changed, this, &QgsArrowSymbolLayerWidget::mArrowStartWidthUnitWidget_changed );
-  connect( mHeadLengthSpin, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mHeadLengthSpin_valueChanged );
+  connect( mHeadLengthSpin, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mHeadLengthSpin_valueChanged );
   connect( mHeadLengthUnitWidget, &QgsUnitSelectionWidget::changed, this, &QgsArrowSymbolLayerWidget::mHeadLengthUnitWidget_changed );
-  connect( mHeadThicknessSpin, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mHeadThicknessSpin_valueChanged );
+  connect( mHeadThicknessSpin, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mHeadThicknessSpin_valueChanged );
   connect( mHeadThicknessUnitWidget, &QgsUnitSelectionWidget::changed, this, &QgsArrowSymbolLayerWidget::mHeadThicknessUnitWidget_changed );
   connect( mHeadTypeCombo, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsArrowSymbolLayerWidget::mHeadTypeCombo_currentIndexChanged );
   connect( mArrowTypeCombo, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsArrowSymbolLayerWidget::mArrowTypeCombo_currentIndexChanged );
-  connect( mOffsetSpin, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mOffsetSpin_valueChanged );
+  connect( mOffsetSpin, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsArrowSymbolLayerWidget::mOffsetSpin_valueChanged );
   connect( mOffsetUnitWidget, &QgsUnitSelectionWidget::changed, this, &QgsArrowSymbolLayerWidget::mOffsetUnitWidget_changed );
-  connect( mCurvedArrowChck, &QCheckBox::stateChanged, this, &QgsArrowSymbolLayerWidget::mCurvedArrowChck_stateChanged );
-  connect( mRepeatArrowChck, &QCheckBox::stateChanged, this, &QgsArrowSymbolLayerWidget::mRepeatArrowChck_stateChanged );
+  connect( mCurvedArrowCheck, &QCheckBox::stateChanged, this, &QgsArrowSymbolLayerWidget::mCurvedArrowChck_stateChanged );
+  connect( mRepeatArrowCheck, &QCheckBox::stateChanged, this, &QgsArrowSymbolLayerWidget::mRepeatArrowChck_stateChanged );
   this->layout()->setContentsMargins( 0, 0, 0, 0 );
 
-  mArrowWidthUnitWidget->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderMapUnits << QgsUnitTypes::RenderPixels
-                                   << QgsUnitTypes::RenderPoints << QgsUnitTypes::RenderInches );
-  mArrowStartWidthUnitWidget->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderMapUnits << QgsUnitTypes::RenderPixels
-                                        << QgsUnitTypes::RenderPoints << QgsUnitTypes::RenderInches );
-  mHeadLengthUnitWidget->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderMapUnits << QgsUnitTypes::RenderPixels
-                                   << QgsUnitTypes::RenderPoints << QgsUnitTypes::RenderInches );
-  mHeadThicknessUnitWidget->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderMapUnits << QgsUnitTypes::RenderPixels
-                                      << QgsUnitTypes::RenderPoints << QgsUnitTypes::RenderInches );
-  mOffsetUnitWidget->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderMapUnits << QgsUnitTypes::RenderPixels
-                               << QgsUnitTypes::RenderPoints << QgsUnitTypes::RenderInches );
+  mArrowWidthUnitWidget->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::MapUnits, Qgis::RenderUnit::Pixels, Qgis::RenderUnit::Points, Qgis::RenderUnit::Inches } );
+  mArrowStartWidthUnitWidget->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::MapUnits, Qgis::RenderUnit::Pixels, Qgis::RenderUnit::Points, Qgis::RenderUnit::Inches } );
+  mHeadLengthUnitWidget->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::MapUnits, Qgis::RenderUnit::Pixels, Qgis::RenderUnit::Points, Qgis::RenderUnit::Inches } );
+  mHeadThicknessUnitWidget->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::MapUnits, Qgis::RenderUnit::Pixels, Qgis::RenderUnit::Points, Qgis::RenderUnit::Inches } );
+  mOffsetUnitWidget->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::MapUnits, Qgis::RenderUnit::Pixels, Qgis::RenderUnit::Points, Qgis::RenderUnit::Inches } );
 
   mOffsetSpin->setClearValue( 0.0 );
 }
 
 void QgsArrowSymbolLayerWidget::setSymbolLayer( QgsSymbolLayer *layer )
 {
-  if ( !layer || layer->layerType() != QLatin1String( "ArrowLine" ) )
+  if ( !layer || layer->layerType() != "ArrowLine"_L1 )
   {
     return;
   }
@@ -83,16 +85,16 @@ void QgsArrowSymbolLayerWidget::setSymbolLayer( QgsSymbolLayer *layer )
   mOffsetUnitWidget->setUnit( mLayer->offsetUnit() );
   mOffsetUnitWidget->setMapUnitScale( mLayer->offsetMapUnitScale() );
 
-  mCurvedArrowChck->setChecked( mLayer->isCurved() );
-  mRepeatArrowChck->setChecked( mLayer->isRepeated() );
+  mCurvedArrowCheck->setChecked( mLayer->isCurved() );
+  mRepeatArrowCheck->setChecked( mLayer->isRepeated() );
 
-  registerDataDefinedButton( mArrowWidthDDBtn, QgsSymbolLayer::PropertyArrowWidth );
-  registerDataDefinedButton( mArrowStartWidthDDBtn, QgsSymbolLayer::PropertyArrowStartWidth );
-  registerDataDefinedButton( mHeadWidthDDBtn, QgsSymbolLayer::PropertyArrowHeadLength );
-  registerDataDefinedButton( mHeadHeightDDBtn, QgsSymbolLayer::PropertyArrowHeadThickness );
-  registerDataDefinedButton( mHeadTypeDDBtn, QgsSymbolLayer::PropertyArrowHeadType );
-  registerDataDefinedButton( mArrowTypeDDBtn, QgsSymbolLayer::PropertyArrowType );
-  registerDataDefinedButton( mOffsetDDBtn, QgsSymbolLayer::PropertyOffset );
+  registerDataDefinedButton( mArrowWidthDDBtn, QgsSymbolLayer::Property::ArrowWidth );
+  registerDataDefinedButton( mArrowStartWidthDDBtn, QgsSymbolLayer::Property::ArrowStartWidth );
+  registerDataDefinedButton( mHeadWidthDDBtn, QgsSymbolLayer::Property::ArrowHeadLength );
+  registerDataDefinedButton( mHeadHeightDDBtn, QgsSymbolLayer::Property::ArrowHeadThickness );
+  registerDataDefinedButton( mHeadTypeDDBtn, QgsSymbolLayer::Property::ArrowHeadType );
+  registerDataDefinedButton( mArrowTypeDDBtn, QgsSymbolLayer::Property::ArrowType );
+  registerDataDefinedButton( mOffsetDDBtn, QgsSymbolLayer::Property::Offset );
 }
 
 
@@ -182,9 +184,9 @@ void QgsArrowSymbolLayerWidget::mHeadTypeCombo_currentIndexChanged( int idx )
   if ( !mLayer )
     return;
 
-  QgsArrowSymbolLayer::HeadType t = static_cast<QgsArrowSymbolLayer::HeadType>( idx );
+  const QgsArrowSymbolLayer::HeadType t = static_cast<QgsArrowSymbolLayer::HeadType>( idx );
   mLayer->setHeadType( t );
-  bool isSingle = t == QgsArrowSymbolLayer::HeadSingle || t == QgsArrowSymbolLayer::HeadReversed;
+  const bool isSingle = t == QgsArrowSymbolLayer::HeadSingle || t == QgsArrowSymbolLayer::HeadReversed;
   mArrowStartWidthDDBtn->setEnabled( isSingle );
   mArrowStartWidthSpin->setEnabled( isSingle );
   mArrowStartWidthUnitWidget->setEnabled( isSingle );
@@ -196,7 +198,7 @@ void QgsArrowSymbolLayerWidget::mArrowTypeCombo_currentIndexChanged( int idx )
   if ( !mLayer )
     return;
 
-  QgsArrowSymbolLayer::ArrowType t = static_cast<QgsArrowSymbolLayer::ArrowType>( idx );
+  const QgsArrowSymbolLayer::ArrowType t = static_cast<QgsArrowSymbolLayer::ArrowType>( idx );
   mLayer->setArrowType( t );
   emit changed();
 }
@@ -222,7 +224,7 @@ void QgsArrowSymbolLayerWidget::mOffsetUnitWidget_changed()
 
 void QgsArrowSymbolLayerWidget::mCurvedArrowChck_stateChanged( int state )
 {
-  if ( ! mLayer )
+  if ( !mLayer )
     return;
 
   mLayer->setIsCurved( state == Qt::Checked );
@@ -231,7 +233,7 @@ void QgsArrowSymbolLayerWidget::mCurvedArrowChck_stateChanged( int state )
 
 void QgsArrowSymbolLayerWidget::mRepeatArrowChck_stateChanged( int state )
 {
-  if ( ! mLayer )
+  if ( !mLayer )
     return;
 
   mLayer->setIsRepeated( state == Qt::Checked );

@@ -2,7 +2,6 @@
 
 in vec3 vertexPosition;
 
-out vec3 worldPosition;
 out vec2 texCoord;
 
 void main()

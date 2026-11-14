@@ -17,28 +17,28 @@
 #ifndef QGSSHADOWEFFECT_H
 #define QGSSHADOWEFFECT_H
 
+#include "qgis.h"
 #include "qgis_core.h"
-#include "qgspainteffect.h"
 #include "qgis_sip.h"
-#include "qgssymbol.h"
+#include "qgsmapunitscale.h"
+#include "qgspainteffect.h"
+
 #include <QPainter>
 
 /**
  * \ingroup core
  * \class QgsShadowEffect
- * \brief Base class for paint effects which offset, blurred shadows
- *
- * \since QGIS 2.9
+ * \brief Base class for paint effects which render offset, blurred shadows.
  */
-
 class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     QgsShadowEffect();
 
+    Qgis::PaintEffectFlags flags() const override;
     QVariantMap properties() const override;
+
+    using QgsPaintEffect::readProperties;
     void readProperties( const QVariantMap &props ) override;
 
     /**
@@ -69,7 +69,7 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see setBlurMapUnitScale
      * \since QGIS 3.4.9
      */
-    void setBlurUnit( const QgsUnitTypes::RenderUnit unit ) { mBlurUnit = unit; }
+    void setBlurUnit( const Qgis::RenderUnit unit ) { mBlurUnit = unit; }
 
     /**
      * Returns the units used for the shadow blur level (radius).
@@ -79,7 +79,7 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see blurMapUnitScale
      * \since QGIS 3.4.9
      */
-    QgsUnitTypes::RenderUnit blurUnit() const { return mBlurUnit; }
+    Qgis::RenderUnit blurUnit() const { return mBlurUnit; }
 
     /**
      * Sets the map unit scale used for the shadow blur strength (radius).
@@ -142,7 +142,7 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see setOffsetDistance
      * \see setOffsetMapUnitScale
      */
-    void setOffsetUnit( const QgsUnitTypes::RenderUnit unit ) { mOffsetUnit = unit; }
+    void setOffsetUnit( const Qgis::RenderUnit unit ) { mOffsetUnit = unit; }
 
     /**
      * Returns the units used for the shadow offset distance.
@@ -151,7 +151,7 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * \see offsetDistance
      * \see offsetMapUnitScale
      */
-    QgsUnitTypes::RenderUnit offsetUnit() const { return mOffsetUnit; }
+    Qgis::RenderUnit offsetUnit() const { return mOffsetUnit; }
 
     /**
      * Sets the map unit scale used for the shadow offset distance.
@@ -218,7 +218,6 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     QPainter::CompositionMode blendMode() const { return mBlendMode; }
 
   protected:
-
     QRectF boundingRect( const QRectF &rect, const QgsRenderContext &context ) const override;
     void draw( QgsRenderContext &context ) override;
 
@@ -231,37 +230,33 @@ class CORE_EXPORT QgsShadowEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     virtual bool exteriorShadow() const = 0;
 
     double mBlurLevel = 2.645;
-    QgsUnitTypes::RenderUnit mBlurUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mBlurUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mBlurMapUnitScale;
     int mOffsetAngle = 135;
     double mOffsetDist = 2.0;
-    QgsUnitTypes::RenderUnit mOffsetUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mOffsetUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mOffsetMapUnitScale;
     double mOpacity = 1.0;
     QColor mColor;
     QPainter::CompositionMode mBlendMode = QPainter::CompositionMode_Multiply;
-
 };
 
 
 /**
  * \ingroup core
  * \class QgsDropShadowEffect
- * \brief A paint effect which draws an offset and optionally blurred drop shadow
+ * \brief A paint effect which draws an offset and optionally blurred drop shadow.
  *
- * \since QGIS 2.9
  */
 class CORE_EXPORT QgsDropShadowEffect : public QgsShadowEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     /**
      * Creates a new QgsDropShadowEffect effect from a properties string map.
      * \param map encoded properties string map
      * \returns new QgsDropShadowEffect
      */
-    static QgsPaintEffect *create( const QVariantMap &map ) SIP_FACTORY;
+    static std::unique_ptr<QgsPaintEffect> create( const QVariantMap &map );
 
     QgsDropShadowEffect();
 
@@ -269,9 +264,7 @@ class CORE_EXPORT QgsDropShadowEffect : public QgsShadowEffect SIP_NODEFAULTCTOR
     QgsDropShadowEffect *clone() const override SIP_FACTORY;
 
   protected:
-
     bool exteriorShadow() const override;
-
 };
 
 /**
@@ -280,19 +273,16 @@ class CORE_EXPORT QgsDropShadowEffect : public QgsShadowEffect SIP_NODEFAULTCTOR
  * \brief A paint effect which draws an offset and optionally blurred drop shadow
  * within a picture.
  *
- * \since QGIS 2.9
  */
 class CORE_EXPORT QgsInnerShadowEffect : public QgsShadowEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     /**
      * Creates a new QgsInnerShadowEffect effect from a properties string map.
      * \param map encoded properties string map
      * \returns new QgsInnerShadowEffect
      */
-    static QgsPaintEffect *create( const QVariantMap &map ) SIP_FACTORY;
+    static std::unique_ptr<QgsPaintEffect> create( const QVariantMap &map );
 
     QgsInnerShadowEffect();
 
@@ -300,10 +290,7 @@ class CORE_EXPORT QgsInnerShadowEffect : public QgsShadowEffect SIP_NODEFAULTCTO
     QgsInnerShadowEffect *clone() const override SIP_FACTORY;
 
   protected:
-
     bool exteriorShadow() const override;
-
 };
 
 #endif // QGSSHADOWEFFECT_H
-

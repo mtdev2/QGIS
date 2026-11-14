@@ -19,28 +19,32 @@
 #define QGSLAYOUTLABELWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslayoutlabelwidgetbase.h"
+
+#include <functional>
 
 #include "qgis_gui.h"
-#include "ui_qgslayoutlabelwidgetbase.h"
-#include "qgslayoutitemwidget.h"
 #include "qgslayoutitemlabel.h"
-#include <functional>
+#include "qgslayoutitemwidget.h"
+
+#define SIP_NO_FILE
 
 /**
  * \ingroup gui
- * A widget for layout item settings.
+ * \brief A widget for layout item settings.
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
  */
-class GUI_EXPORT QgsLayoutLabelWidget: public QgsLayoutItemBaseWidget, private Ui::QgsLayoutLabelWidgetBase
+class GUI_EXPORT QgsLayoutLabelWidget : public QgsLayoutItemBaseWidget, public QgsExpressionContextGenerator, private Ui::QgsLayoutLabelWidgetBase
 {
     Q_OBJECT
   public:
     //! constructor
     explicit QgsLayoutLabelWidget( QgsLayoutItemLabel *label );
     void setMasterLayout( QgsMasterLayoutInterface *masterLayout ) override;
+    QgsExpressionContext createExpressionContext() const override;
 
     /**
      * Populates the specified \a menu with actions reflecting dynamic text expressions applicable for a \a layout.
@@ -56,10 +60,9 @@ class GUI_EXPORT QgsLayoutLabelWidget: public QgsLayoutItemBaseWidget, private U
      *
      * \since QGIS 3.18
      */
-    static void buildInsertDynamicTextMenu( QgsLayout *layout, QMenu *menu, const std::function< void( const QString &expression ) > &callback );
+    static void buildInsertDynamicTextMenu( QgsLayout *layout, QMenu *menu, const std::function<void( const QString &expression )> &callback );
 
   protected:
-
     bool setNewItem( QgsLayoutItem *item ) override;
 
   private slots:
@@ -68,19 +71,13 @@ class GUI_EXPORT QgsLayoutLabelWidget: public QgsLayoutItemBaseWidget, private U
     void mInsertExpressionButton_clicked();
     void mMarginXDoubleSpinBox_valueChanged( double d );
     void mMarginYDoubleSpinBox_valueChanged( double d );
-    void mFontColorButton_colorChanged( const QColor &newLabelColor );
-    void mCenterRadioButton_clicked();
-    void mLeftRadioButton_clicked();
-    void mRightRadioButton_clicked();
-    void mTopRadioButton_clicked();
-    void mBottomRadioButton_clicked();
-    void mMiddleRadioButton_clicked();
+    void horizontalAlignmentChanged();
+    void verticalAlignmentChanged();
     void setGuiElementValues();
     void fontChanged();
-    void justifyClicked();
 
   private:
-    QPointer< QgsLayoutItemLabel > mLabel = nullptr;
+    QPointer<QgsLayoutItemLabel> mLabel = nullptr;
 
     QgsLayoutItemPropertiesWidget *mItemPropertiesWidget = nullptr;
 

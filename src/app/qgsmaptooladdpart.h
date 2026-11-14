@@ -13,17 +13,23 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsmaptoolcapture.h"
+#ifndef QGSMAPTOOLADDPART_H
+#define QGSMAPTOOLADDPART_H
+
 #include "qgis_app.h"
+#include "qgsmaptoolcapturelayergeometry.h"
+
+class QgsCurvePolygon;
 
 //! A map tool that adds new parts to multipart features
-class APP_EXPORT QgsMapToolAddPart : public QgsMapToolCapture
+class APP_EXPORT QgsMapToolAddPart : public QgsMapToolCaptureLayerGeometry
 {
     Q_OBJECT
   public:
     QgsMapToolAddPart( QgsMapCanvas *canvas );
 
     QgsMapToolCapture::Capabilities capabilities() const override;
+    bool supportsTechnique( Qgis::CaptureTechnique technique ) const override;
 
     void canvasReleaseEvent( QgsMapMouseEvent *e ) override;
     void cadCanvasReleaseEvent( QgsMapMouseEvent *e ) override;
@@ -31,6 +37,15 @@ class APP_EXPORT QgsMapToolAddPart : public QgsMapToolCapture
     void activate() override;
 
   private:
-    //! Check if there is any feature selected
-    bool checkSelection();
+    /**
+     * Check if there is any feature selected and the layer supports adding the part
+     * Returns a nullptr otherwise
+     */
+    QgsVectorLayer *getLayerAndCheckSelection();
+
+    void layerGeometryCaptured( const QgsGeometry &geometry ) final;
+
+    void finalizeEditCommand( QgsVectorLayer *layer, const QgsGeometry &topologicalCandidates, Qgis::GeometryOperationResult errorCode );
 };
+
+#endif // QGSMAPTOOLADDPART_H

@@ -13,13 +13,13 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgis_core.h"
-#include <QString>
-#include <QRegExp>
-#include <QList>
-#include <QDomDocument>
-#include <QFont> // for enum values
 #include "qgis.h"
+#include "qgis_core.h"
+
+#include <QDomDocument>
+#include <QList>
+#include <QRegularExpression>
+#include <QString>
 
 #ifndef QGSSTRINGUTILS_H
 #define QGSSTRINGUTILS_H
@@ -32,14 +32,12 @@
  * \ingroup core
  * \class QgsStringReplacement
  * \brief A representation of a single string replacement.
- * \since QGIS 3.0
  */
+
 
 class CORE_EXPORT QgsStringReplacement
 {
-
   public:
-
     /**
      * Constructor for QgsStringReplacement.
      * \param match string to match
@@ -47,10 +45,7 @@ class CORE_EXPORT QgsStringReplacement
      * \param caseSensitive set to TRUE for a case sensitive match
      * \param wholeWordOnly set to TRUE to match complete words only, or FALSE to allow partial word matches
      */
-    QgsStringReplacement( const QString &match,
-                          const QString &replacement,
-                          bool caseSensitive = false,
-                          bool wholeWordOnly = false );
+    QgsStringReplacement( const QString &match, const QString &replacement, bool caseSensitive = false, bool wholeWordOnly = false );
 
     //! Returns the string matched by this object
     QString match() const { return mMatch; }
@@ -71,12 +66,9 @@ class CORE_EXPORT QgsStringReplacement
      */
     QString process( const QString &input ) const;
 
-    bool operator==( const QgsStringReplacement &other )
+    bool operator==( const QgsStringReplacement &other ) const
     {
-      return mMatch == other.mMatch
-             && mReplacement == other.mReplacement
-             && mCaseSensitive == other.mCaseSensitive
-             && mWholeWordOnly == other.mWholeWordOnly;
+      return mMatch == other.mMatch && mReplacement == other.mReplacement && mCaseSensitive == other.mCaseSensitive && mWholeWordOnly == other.mWholeWordOnly;
     }
 
     /**
@@ -92,7 +84,6 @@ class CORE_EXPORT QgsStringReplacement
     static QgsStringReplacement fromProperties( const QgsStringMap &properties );
 
   private:
-
     QString mMatch;
 
     QString mReplacement;
@@ -101,7 +92,7 @@ class CORE_EXPORT QgsStringReplacement
 
     bool mWholeWordOnly;
 
-    QRegExp mRx;
+    QRegularExpression mRx;
 };
 
 
@@ -109,14 +100,11 @@ class CORE_EXPORT QgsStringReplacement
  * \ingroup core
  * \class QgsStringReplacementCollection
  * \brief A collection of string replacements (specified using QgsStringReplacement objects).
- * \since QGIS 3.0
  */
 
 class CORE_EXPORT QgsStringReplacementCollection
 {
-
   public:
-
     /**
      * Constructor for QgsStringReplacementCollection
      * \param replacements initial list of string replacements
@@ -137,10 +125,7 @@ class CORE_EXPORT QgsStringReplacementCollection
      * order they are specified here.
      * \see replacements()
      */
-    void setReplacements( const QList< QgsStringReplacement > &replacements )
-    {
-      mReplacements = replacements;
-    }
+    void setReplacements( const QList< QgsStringReplacement > &replacements ) { mReplacements = replacements; }
 
     /**
      * Processes a given input string, applying any valid replacements which should be made
@@ -167,42 +152,25 @@ class CORE_EXPORT QgsStringReplacementCollection
     void readXml( const QDomElement &elem );
 
   private:
-
     QList< QgsStringReplacement > mReplacements;
-
-
 };
 
 /**
  * \ingroup core
  * \class QgsStringUtils
  * \brief Utility functions for working with strings.
- * \since QGIS 2.11
  */
 
 class CORE_EXPORT QgsStringUtils
 {
   public:
-
-    //! Capitalization options
-    enum Capitalization
-    {
-      MixedCase = QFont::MixedCase, //!< Mixed case, ie no change
-      AllUppercase = QFont::AllUppercase, //!< Convert all characters to uppercase
-      AllLowercase = QFont::AllLowercase,  //!< Convert all characters to lowercase
-      ForceFirstLetterToCapital = QFont::Capitalize, //!< Convert just the first letter of each word to uppercase, leave the rest untouched
-      TitleCase = QFont::Capitalize + 1000, //!< Simple title case conversion - does not fully grammatically parse the text and uses simple rules only. Note that this method does not convert any characters to lowercase, it only uppercases required letters. Callers must ensure that input strings are already lowercased.
-      UpperCamelCase = QFont::Capitalize + 1001, //!< Convert the string to upper camel case. Note that this method does not unaccent characters.
-    };
-
     /**
      * Converts a string by applying capitalization rules to the string.
      * \param string input string
      * \param capitalization capitalization type to apply
      * \returns capitalized string
-     * \since QGIS 3.0
      */
-    static QString capitalize( const QString &string, Capitalization capitalization );
+    static QString capitalize( const QString &string, Qgis::Capitalization capitalization );
 
     /**
      * Makes a raw string safe for inclusion as a HTML/XML string literal.
@@ -262,7 +230,7 @@ class CORE_EXPORT QgsStringUtils
      * \param search search term string
      * \return Normalized value of how likely is the \a search to be in the \a candidate
      * \note Use this function only to calculate the fuzzy score between two strings and later compare these values, but do not depend on the actual numbers. They are implementation detail that may change in a future release.
-     * \since 3.14
+     * \since QGIS 3.14
      */
     static double fuzzyScore( const QString &candidate, const QString &search );
 
@@ -272,9 +240,16 @@ class CORE_EXPORT QgsStringUtils
      * \param string string to insert links into
      * \param foundLinks if specified, will be set to TRUE if any links were inserted into the string
      * \returns string with inserted links
-     * \since QGIS 3.0
      */
     static QString insertLinks( const QString &string, bool *foundLinks = nullptr );
+
+    /**
+     * Returns whether the string is a URL (http,https,ftp,file)
+     * \param string the string to check
+     * \returns whether the string is an URL
+     * \since QGIS 3.22
+     */
+    static bool isUrl( const QString &string );
 
     /**
      * Automatically wraps a \a string by inserting new line characters at appropriate locations in the string.
@@ -306,6 +281,100 @@ class CORE_EXPORT QgsStringUtils
      */
     static QString htmlToMarkdown( const QString &html );
 
+    /**
+     * Returns an escaped string matching the behavior of QRegExp::escape.
+     * \param string String to escape
+     * \returns Escaped string
+     * \since QGIS 3.22
+     */
+    static QString qRegExpEscape( const QString &string );
+
+    /**
+     * Truncates a \a string to the specified maximum character length.
+     *
+     * If the \a string exceeds the maximum character length, then the string
+     * will be truncated by removing characters from the middle of the string
+     * and replacing them with a horizontal ellipsis character.
+     *
+     * \since QGIS 3.22
+     */
+    static QString truncateMiddleOfString( const QString &string, int maxLength );
+
+    /**
+     * Given a \a candidate string, returns TRUE if the \a candidate contains
+     * all the individual words from another string, regardless of their order.
+     *
+     * \note The search does NOT need to match whole words in the \a candidate string,
+     * so eg a candidate string of "Worldmap_Winkel_II" will return TRUE for \a words "winkle world"
+     *
+     * \since QGIS 3.42
+     */
+    static bool containsByWord( const QString &candidate, const QString &words, Qt::CaseSensitivity sensitivity = Qt::CaseInsensitive );
+
+    /**
+     * Generates the unaccent mapping table (auto-generated by script at build time).
+     *
+     * This function creates a hash map from the unaccent rules file
+     * (resources/unaccent.rules), which is derived from PostgreSQL's
+     * contrib/unaccent module.
+     *
+     * \note This function is called automatically during static initialization
+     * and should not need to be called directly by users.
+     *
+     * \since QGIS 4.0
+     */
+    SIP_SKIP static QHash<char32_t, QString> createUnaccentMap();
+
+    /**
+     * Removes accents and other diacritical marks from a string, replacing
+     * accented characters with their unaccented ASCII equivalents.
+     *
+     * This function uses a comprehensive mapping table derived from PostgreSQL's
+     * contrib/unaccent module, ensuring compatibility with PostgreSQL's unaccent()
+     * function. The implementation:
+     *
+     * - Normalizes input to Unicode NFC (Canonical Composition) form
+     * - Maps accented characters to their base forms (é→e, ñ→n, etc.)
+     * - Handles ligatures (Æ→AE, œ→oe, ß→ss, etc.)
+     * - Processes compatibility characters (℃→°C, ½→ 1/2, etc.)
+     * - Supports both BMP and non-BMP (surrogate pair) Unicode characters
+     * - Preserves characters without mappings unchanged
+     *
+     * Common use cases:
+     *
+     * - Normalizing text for search and comparison operations
+     * - Creating ASCII-safe identifiers or filenames from international text
+     * - Matching user input regardless of accent usage
+     * - Preparing text for systems that don't support Unicode well
+     *
+     * \param input string to remove accents from
+     * \returns string with accents and diacritical marks removed
+     *
+     * Example usage:
+     * \code{.cpp}
+     *   QgsStringUtils::unaccent("crème brûlée") // returns "creme brulee"
+     * \endcode
+     *
+     * \note This function is also available as an expression function unaccent()
+     * for use in QGIS expressions, field calculator, and labeling.
+     *
+     * \see QgsExpression for using this function in expressions
+     *
+     * \since QGIS 4.0
+     */
+    static QString unaccent( const QString &input );
+
+    /**
+     * Generates a unique identifier by appending a random UUID to \a base.
+     *
+     * Every non-word character (anything outside letters, digits and underscore)
+     * is replaced with an underscore, so the result is safe to use as an id in
+     * contexts such as XML. When \a base is empty the id is just the sanitized
+     * UUID; otherwise it is \a base followed by an underscore and the UUID.
+     *
+     * \since QGIS 4.4
+     */
+    static QString createUniqueId( const QString &base = QString() );
 };
 
 #endif //QGSSTRINGUTILS_H

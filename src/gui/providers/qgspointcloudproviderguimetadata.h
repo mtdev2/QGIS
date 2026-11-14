@@ -19,23 +19,24 @@
 #define QGPOINTCLOUDPROVIDERGUIMETADATA_H
 
 ///@cond PRIVATE
-#define SIP_NO_FILE
+
+#include "qgsproviderguimetadata.h"
 
 #include <QList>
 #include <QMainWindow>
 
-#include "qgsproviderguimetadata.h"
+#define SIP_NO_FILE
 
 /**
  * \ingroup gui
- * Provides a generic source select widget for point cloud providers.
+ * \brief Provides a generic source select widget for point cloud providers.
  *
  * The generated widget is provider agnostic, and is not attached to any single individual
  * provider but rather adapts to all available point cloud providers.
  *
  * \since QGIS 3.18
  */
-class QgsPointCloudProviderGuiMetadata: public QgsProviderGuiMetadata
+class QgsPointCloudProviderGuiMetadata : public QgsProviderGuiMetadata
 {
   public:
     QgsPointCloudProviderGuiMetadata();

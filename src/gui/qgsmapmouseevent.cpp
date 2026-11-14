@@ -15,10 +15,10 @@
 
 
 #include "qgsmapmouseevent.h"
-#include "qgsmapcanvas.h"
 
-#include "qgssnappingutils.h"
+#include "qgsmapcanvas.h"
 #include "qgssnappingconfig.h"
+#include "qgssnappingutils.h"
 
 QgsMapMouseEvent::QgsMapMouseEvent( QgsMapCanvas *mapCanvas, QMouseEvent *event )
   : QMouseEvent( event->type(), event->pos(), event->button(), event->buttons(), event->modifiers() )
@@ -27,8 +27,7 @@ QgsMapMouseEvent::QgsMapMouseEvent( QgsMapCanvas *mapCanvas, QMouseEvent *event 
   , mMapPoint( mOriginalMapPoint )
   , mPixelPoint( event->pos() )
   , mMapCanvas( mapCanvas )
-{
-}
+{}
 
 QgsMapMouseEvent::QgsMapMouseEvent( QgsMapCanvas *mapCanvas, QEvent::Type type, QPoint pos, Qt::MouseButton button, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers )
   : QMouseEvent( type, pos, button, buttons, modifiers )
@@ -37,8 +36,7 @@ QgsMapMouseEvent::QgsMapMouseEvent( QgsMapCanvas *mapCanvas, QEvent::Type type, 
   , mMapPoint( mOriginalMapPoint )
   , mPixelPoint( pos )
   , mMapCanvas( mapCanvas )
-{
-}
+{}
 
 QgsPointXY QgsMapMouseEvent::snapPoint()
 {
@@ -78,14 +76,14 @@ void QgsMapMouseEvent::snapToGrid( double precision, const QgsCoordinateReferenc
 
   try
   {
-    QgsCoordinateTransform ct( mMapCanvas->mapSettings().destinationCrs(), crs, mMapCanvas->mapSettings().transformContext() );
+    const QgsCoordinateTransform ct( mMapCanvas->mapSettings().destinationCrs(), crs, mMapCanvas->mapSettings().transformContext() );
 
     QgsPointXY pt = ct.transform( mMapPoint );
 
     pt.setX( std::round( pt.x() / precision ) * precision );
     pt.setY( std::round( pt.y() / precision ) * precision );
 
-    pt = ct.transform( pt, QgsCoordinateTransform::ReverseTransform );
+    pt = ct.transform( pt, Qgis::TransformDirection::Reverse );
 
     setMapPoint( pt );
   }

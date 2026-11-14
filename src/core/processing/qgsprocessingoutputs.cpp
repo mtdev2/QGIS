@@ -17,55 +17,278 @@
 
 #include "qgsprocessingoutputs.h"
 
+#include "qgsvariantutils.h"
+
+#include <QDir>
+#include <QString>
+#include <QUrl>
+
+using namespace Qt::StringLiterals;
+
 QgsProcessingOutputDefinition::QgsProcessingOutputDefinition( const QString &name, const QString &description )
   : mName( name )
   , mDescription( description )
-{
+{}
 
+QString QgsProcessingOutputDefinition::valueAsString( const QVariant &value, QgsProcessingContext &, bool &ok ) const
+{
+  if ( QgsVariantUtils::isNull( value ) )
+  {
+    ok = true;
+    return QObject::tr( "NULL" );
+  }
+
+  if ( value.userType() == QMetaType::Type::QString )
+  {
+    ok = true;
+    return value.toString();
+  }
+  ok = false;
+  return QString();
 }
 
-QgsProcessingOutputVectorLayer::QgsProcessingOutputVectorLayer( const QString &name, const QString &description, QgsProcessing::SourceType type )
+QString QgsProcessingOutputDefinition::valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  return valueAsString( value, context, ok );
+}
+
+bool QgsProcessingOutputDefinition::isMapLayer() const
+{
+  return false;
+}
+
+QColor QgsProcessingOutputDefinition::modelColor() const
+{
+  return QColor( 128, 128, 128 ); /* mid  gray */
+}
+
+QgsProcessingOutputVectorLayer::QgsProcessingOutputVectorLayer( const QString &name, const QString &description, Qgis::ProcessingSourceType type )
   : QgsProcessingOutputDefinition( name, description )
   , mDataType( type )
 {}
 
-QgsProcessing::SourceType QgsProcessingOutputVectorLayer::dataType() const
+Qgis::ProcessingSourceType QgsProcessingOutputVectorLayer::dataType() const
 {
   return mDataType;
 }
 
-void QgsProcessingOutputVectorLayer::setDataType( QgsProcessing::SourceType type )
+void QgsProcessingOutputVectorLayer::setDataType( Qgis::ProcessingSourceType type )
 {
   mDataType = type;
+}
+
+QColor QgsProcessingOutputVectorLayer::modelColor() const
+{
+  return QColor( 122, 0, 47 ); /* burgundy */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputVectorLayer::clone() const
+{
+  return new QgsProcessingOutputVectorLayer( *this );
+}
+
+bool QgsProcessingOutputVectorLayer::isMapLayer() const
+{
+  return true;
 }
 
 QgsProcessingOutputRasterLayer::QgsProcessingOutputRasterLayer( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
 
+QColor QgsProcessingOutputRasterLayer::modelColor() const
+{
+  return QColor( 0, 180, 180 ); /* turquoise */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputRasterLayer::clone() const
+{
+  return new QgsProcessingOutputRasterLayer( *this );
+}
+
+bool QgsProcessingOutputRasterLayer::isMapLayer() const
+{
+  return true;
+}
+
+QgsProcessingOutputPointCloudLayer::QgsProcessingOutputPointCloudLayer( const QString &name, const QString &description )
+  : QgsProcessingOutputDefinition( name, description )
+{}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputPointCloudLayer::clone() const
+{
+  return new QgsProcessingOutputPointCloudLayer( *this );
+}
+
+bool QgsProcessingOutputPointCloudLayer::isMapLayer() const
+{
+  return true;
+}
+
+QgsProcessingOutputVectorTileLayer::QgsProcessingOutputVectorTileLayer( const QString &name, const QString &description )
+  : QgsProcessingOutputDefinition( name, description )
+{}
+
+QColor QgsProcessingOutputVectorTileLayer::modelColor() const
+{
+  return QColor( 137, 150, 171 ); /* cold gray */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputVectorTileLayer::clone() const
+{
+  return new QgsProcessingOutputVectorTileLayer( *this );
+}
+
+bool QgsProcessingOutputVectorTileLayer::isMapLayer() const
+{
+  return true;
+}
+
 QgsProcessingOutputHtml::QgsProcessingOutputHtml( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
+
+QString QgsProcessingOutputHtml::valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  if ( value.userType() == QMetaType::Type::QString && !value.toString().isEmpty() )
+  {
+    ok = true;
+    return u"<a href=\"%1\">%2</a>"_s.arg( QUrl::fromLocalFile( value.toString() ).toString(), QDir::toNativeSeparators( value.toString() ) );
+  }
+
+  return valueAsString( value, context, ok );
+}
+
+QColor QgsProcessingOutputHtml::modelColor() const
+{
+  return QColor( 255, 131, 23 ); /* orange */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputHtml::clone() const
+{
+  return new QgsProcessingOutputHtml( *this );
+}
 
 QgsProcessingOutputNumber::QgsProcessingOutputNumber( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
 
+QString QgsProcessingOutputNumber::valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  ok = false;
+  switch ( value.userType() )
+  {
+    case QMetaType::Type::Int:
+    case QMetaType::Type::UInt:
+    case QMetaType::Type::LongLong:
+    case QMetaType::Type::ULongLong:
+    case QMetaType::Type::Double:
+      ok = true;
+      return value.toString();
+    default:
+      break;
+  }
+  return QgsProcessingOutputDefinition::valueAsString( value, context, ok );
+}
+
+QColor QgsProcessingOutputNumber::modelColor() const
+{
+  return QColor( 34, 157, 214 ); /* blue */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputNumber::clone() const
+{
+  return new QgsProcessingOutputNumber( *this );
+}
+
 QgsProcessingOutputString::QgsProcessingOutputString( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
+
+QColor QgsProcessingOutputString::modelColor() const
+{
+  return QColor( 255, 131, 23 ); /* orange */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputString::clone() const
+{
+  return new QgsProcessingOutputString( *this );
+}
 
 QgsProcessingOutputBoolean::QgsProcessingOutputBoolean( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
 
+QString QgsProcessingOutputBoolean::valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  ok = false;
+  if ( value.userType() == QMetaType::Type::Bool )
+  {
+    ok = true;
+    return value.toBool() ? QObject::tr( "True" ) : QObject::tr( "False" );
+  }
+  return QgsProcessingOutputDefinition::valueAsString( value, context, ok );
+}
+
+QColor QgsProcessingOutputBoolean::modelColor() const
+{
+  return QColor( 51, 201, 28 ); /* green */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputBoolean::clone() const
+{
+  return new QgsProcessingOutputBoolean( *this );
+}
+
 QgsProcessingOutputFolder::QgsProcessingOutputFolder( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
 
+QString QgsProcessingOutputFolder::valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  if ( value.userType() == QMetaType::Type::QString && !value.toString().isEmpty() )
+  {
+    ok = true;
+    return u"<a href=\"%1\">%2</a>"_s.arg( QUrl::fromLocalFile( value.toString() ).toString(), QDir::toNativeSeparators( value.toString() ) );
+  }
+
+  return valueAsString( value, context, ok );
+}
+
+QColor QgsProcessingOutputFolder::modelColor() const
+{
+  return QColor( 80, 80, 80 ); /* dark gray */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputFolder::clone() const
+{
+  return new QgsProcessingOutputFolder( *this );
+}
+
 QgsProcessingOutputFile::QgsProcessingOutputFile( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
+
+QString QgsProcessingOutputFile::valueAsFormattedString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  if ( value.userType() == QMetaType::Type::QString && !value.toString().isEmpty() )
+  {
+    ok = true;
+    return u"<a href=\"%1\">%2</a>"_s.arg( QUrl::fromLocalFile( value.toString() ).toString(), QDir::toNativeSeparators( value.toString() ) );
+  }
+
+  return valueAsString( value, context, ok );
+}
+
+QColor QgsProcessingOutputFile::modelColor() const
+{
+  return QColor( 80, 80, 80 ); /* dark gray */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputFile::clone() const
+{
+  return new QgsProcessingOutputFile( *this );
+}
 
 QgsProcessingOutputMapLayer::QgsProcessingOutputMapLayer( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
@@ -76,17 +299,137 @@ QString QgsProcessingOutputMapLayer::type() const
   return typeName();
 }
 
+bool QgsProcessingOutputMapLayer::isMapLayer() const
+{
+  return true;
+}
+
+QColor QgsProcessingOutputMapLayer::modelColor() const
+{
+  return QColor( 137, 150, 171 ); /* cold gray */
+}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputMapLayer::clone() const
+{
+  return new QgsProcessingOutputMapLayer( *this );
+}
+
 QgsProcessingOutputMultipleLayers::QgsProcessingOutputMultipleLayers( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
 {}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputMultipleLayers::clone() const
+{
+  return new QgsProcessingOutputMultipleLayers( *this );
+}
 
 QString QgsProcessingOutputMultipleLayers::type() const
 {
   return typeName();
 }
 
+QString QgsProcessingOutputMultipleLayers::valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  ok = false;
+  switch ( value.userType() )
+  {
+    case QMetaType::Type::QVariantList:
+    {
+      ok = true;
+      const QVariantList list = value.toList();
+
+      QStringList layerNames;
+      for ( const QVariant &v : list )
+      {
+        layerNames << v.toString();
+      }
+      return layerNames.join( ", "_L1 );
+    }
+
+    case QMetaType::Type::QStringList:
+    {
+      ok = true;
+      const QStringList list = value.toStringList();
+      return list.join( ", "_L1 );
+    }
+
+    default:
+      break;
+  }
+  return QgsProcessingOutputDefinition::valueAsString( value, context, ok );
+}
+
+bool QgsProcessingOutputMultipleLayers::isMapLayer() const
+{
+  return true;
+}
+
+QColor QgsProcessingOutputMultipleLayers::modelColor() const
+{
+  return QColor( 137, 150, 171 ); /* cold gray */
+}
+
 QgsProcessingOutputConditionalBranch::QgsProcessingOutputConditionalBranch( const QString &name, const QString &description )
   : QgsProcessingOutputDefinition( name, description )
-{
+{}
 
+QgsProcessingOutputDefinition *QgsProcessingOutputConditionalBranch::clone() const
+{
+  return new QgsProcessingOutputConditionalBranch( *this );
+}
+
+QgsProcessingOutputVariant::QgsProcessingOutputVariant( const QString &name, const QString &description )
+  : QgsProcessingOutputDefinition( name, description )
+{}
+
+QgsProcessingOutputDefinition *QgsProcessingOutputVariant::clone() const
+{
+  return new QgsProcessingOutputVariant( *this );
+}
+
+QString QgsProcessingOutputVariant::type() const
+{
+  return typeName();
+}
+
+QString QgsProcessingOutputVariant::valueAsString( const QVariant &value, QgsProcessingContext &context, bool &ok ) const
+{
+  ok = false;
+  switch ( value.userType() )
+  {
+    case QMetaType::Type::Int:
+    case QMetaType::Type::UInt:
+    case QMetaType::Type::LongLong:
+    case QMetaType::Type::ULongLong:
+    case QMetaType::Type::Double:
+      ok = true;
+      return value.toString();
+    case QMetaType::Type::Bool:
+      ok = true;
+      return value.toBool() ? QObject::tr( "True" ) : QObject::tr( "False" );
+
+    case QMetaType::Type::QVariantList:
+    {
+      ok = true;
+      const QVariantList list = value.toList();
+
+      QStringList names;
+      for ( const QVariant &v : list )
+      {
+        names << v.toString();
+      }
+      return names.join( ", "_L1 );
+    }
+
+    case QMetaType::Type::QStringList:
+    {
+      ok = true;
+      const QStringList list = value.toStringList();
+      return list.join( ", "_L1 );
+    }
+
+    default:
+      break;
+  }
+  return QgsProcessingOutputDefinition::valueAsString( value, context, ok );
 }

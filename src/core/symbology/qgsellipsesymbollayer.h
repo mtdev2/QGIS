@@ -15,42 +15,125 @@
 #ifndef QGSELLIPSESYMBOLLAYER_H
 #define QGSELLIPSESYMBOLLAYER_H
 
-#define DEFAULT_ELLIPSE_JOINSTYLE    Qt::MiterJoin
+#define DEFAULT_ELLIPSE_JOINSTYLE Qt::MiterJoin
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 #include "qgsmarkersymbollayer.h"
+
 #include <QPainterPath>
 
 class QgsExpression;
 
 /**
  * \ingroup core
- * A symbol layer for rendering objects with major and minor axis (e.g. ellipse, rectangle, etc).
+ * \brief A symbol layer for rendering objects with major and minor axis (e.g. ellipse, rectangle, etc).
 */
-class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
+class CORE_EXPORT QgsEllipseSymbolLayer : public QgsMarkerSymbolLayer
 {
   public:
+    //! Marker symbol shapes
+    enum Shape
+    {
+      Circle,            //!< Circle
+      Rectangle,         //!< Rectangle
+      Diamond,           //!< Diamond
+      Cross,             //!< Stroke-only cross
+      Arrow,             //!< Stroke-only arrow \since QGIS 3.20
+      HalfArc,           //!< Stroke-only half arc \since QGIS 3.20
+      Triangle,          //!< Triangle
+      RightHalfTriangle, //!< Right half of a triangle
+      LeftHalfTriangle,  //!< Left half of a triangle
+      SemiCircle,        //!< Semi circle
+      ThirdCircle,       //!< Third Circle \since QGIS 3.28
+      QuarterCircle,     //!< Quarter Circle \since QGIS 3.28
+      Pentagon,          //!< Pentagon \since QGIS 3.28
+      Hexagon,           //!< Hexagon \since QGIS 3.28
+      Octagon,           //!< Octagon \since QGIS 3.28
+      Star,              //!< Star \since QGIS 3.28
+    };
+
+    //! Returns a list of all available shape types.
+    static QList< QgsEllipseSymbolLayer::Shape > availableShapes();
+
+    /**
+     * Returns TRUE if a \a shape has a fill.
+     * \returns TRUE if shape uses a fill, or FALSE if shape uses lines only
+     * \since QGIS 3.20
+     */
+    static bool shapeIsFilled( const QgsEllipseSymbolLayer::Shape &shape );
+
     QgsEllipseSymbolLayer();
+    ~QgsEllipseSymbolLayer() override;
 
     //! Creates the symbol layer
-    static QgsSymbolLayer *create( const QVariantMap &properties = QVariantMap() ) SIP_FACTORY;
-    static QgsSymbolLayer *createFromSld( QDomElement &element ) SIP_FACTORY;
+    static std::unique_ptr<QgsSymbolLayer> create( const QVariantMap &properties = QVariantMap() );
+    static std::unique_ptr<QgsSymbolLayer> createFromSld( QDomElement &element );
 
     void renderPoint( QPointF point, QgsSymbolRenderContext &context ) override;
     QString layerType() const override;
+    Qgis::SymbolLayerFlags flags() const override;
     void startRender( QgsSymbolRenderContext &context ) override;
     void stopRender( QgsSymbolRenderContext &context ) override;
     QgsEllipseSymbolLayer *clone() const override SIP_FACTORY;
     QVariantMap properties() const override;
-
-    void toSld( QDomDocument &doc, QDomElement &element, const QVariantMap &props ) const override;
-    void writeSldMarker( QDomDocument &doc, QDomElement &element, const QVariantMap &props ) const override;
+    Q_DECL_DEPRECATED void toSld( QDomDocument &doc, QDomElement &element, const QVariantMap &props = QVariantMap() ) const override SIP_DEPRECATED;
+    bool toSld( QDomDocument &doc, QDomElement &element, QgsSldExportContext &context ) const override;
+    Q_DECL_DEPRECATED void writeSldMarker( QDomDocument &doc, QDomElement &element, const QVariantMap &props ) const override SIP_DEPRECATED;
+    bool writeSldMarker( QDomDocument &doc, QDomElement &element, QgsSldExportContext &context ) const override;
 
     bool writeDxf( QgsDxfExport &e, double mmMapUnitScaleFactor, const QString &layerName, QgsSymbolRenderContext &context, QPointF shift = QPointF( 0.0, 0.0 ) ) const override;
 
-    void setSymbolName( const QString &name ) { mSymbolName = name; }
-    QString symbolName() const { return mSymbolName; }
+    /**
+     * Sets the rendered ellipse marker shape using a symbol \a name.
+     * \see setShape()
+     * \see shape()
+     * \deprecated QGIS 3.20
+     */
+    Q_DECL_DEPRECATED void setSymbolName( const QString &name ) SIP_DEPRECATED { mShape = decodeShape( name ); }
+
+    /**
+     * Returns the shape name for the rendered ellipse marker symbol.
+     * \see shape()
+     * \see setShape()
+     * \deprecated QGIS 3.20
+     */
+    Q_DECL_DEPRECATED QString symbolName() const SIP_DEPRECATED { return encodeShape( mShape ); }
+
+    /**
+     * Returns the shape for the rendered ellipse marker symbol.
+     * \see setShape()
+     * \since QGIS 3.20
+     */
+    QgsEllipseSymbolLayer::Shape shape() const { return mShape; }
+
+    /**
+     * Sets the rendered ellipse marker shape.
+     * \param shape new ellipse marker shape
+     * \see shape()
+     * \since QGIS 3.20
+     */
+    void setShape( QgsEllipseSymbolLayer::Shape shape ) { mShape = shape; }
+
+    /**
+     * Attempts to decode a string representation of a shape name to the corresponding
+     * shape.
+     * \param name encoded shape name
+     * \param ok if specified, will be set to TRUE if shape was successfully decoded
+     * \returns decoded name
+     * \see encodeShape()
+     * \since QGIS 3.20
+     */
+    static QgsEllipseSymbolLayer::Shape decodeShape( const QString &name, bool *ok = nullptr );
+
+    /**
+     * Encodes a shape to its string representation.
+     * \param shape shape to encode
+     * \returns encoded string
+     * \see decodeShape()
+     * \since QGIS 3.20
+     */
+    static QString encodeShape( QgsEllipseSymbolLayer::Shape shape );
 
     void setSize( double size ) override;
 
@@ -65,15 +148,33 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
 
     /**
      * Gets stroke join style.
-     * \since QGIS 2.16
      */
     Qt::PenJoinStyle penJoinStyle() const { return mPenJoinStyle; }
 
     /**
      * Set stroke join style.
-     * \since QGIS 2.16
     */
     void setPenJoinStyle( Qt::PenJoinStyle style ) { mPenJoinStyle = style; }
+
+    /**
+     * Returns the marker's stroke cap style (e.g., flat, round, etc).
+     * \see setPenCapStyle()
+     * \see penJoinStyle()
+     * \see strokeColor()
+     * \see strokeStyle()
+     * \since QGIS 3.20
+    */
+    Qt::PenCapStyle penCapStyle() const { return mPenCapStyle; }
+
+    /**
+     * Sets the marker's stroke cap \a style (e.g., flat, round, etc).
+     * \see penCapStyle()
+     * \see penJoinStyle()
+     * \see setStrokeColor()
+     * \see setStrokeStyle()
+     * \since QGIS 3.20
+    */
+    void setPenCapStyle( Qt::PenCapStyle style ) { mPenCapStyle = style; }
 
     void setStrokeWidth( double w ) { mStrokeWidth = w; }
     double strokeWidth() const { return mStrokeWidth; }
@@ -90,14 +191,14 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
      * \see symbolWidthUnit()
      * \see setSymbolHeightUnit()
     */
-    void setSymbolWidthUnit( QgsUnitTypes::RenderUnit unit ) { mSymbolWidthUnit = unit; }
+    void setSymbolWidthUnit( Qgis::RenderUnit unit ) { mSymbolWidthUnit = unit; }
 
     /**
      * Returns the units for the symbol's width.
      * \see setSymbolWidthUnit()
      * \see symbolHeightUnit()
     */
-    QgsUnitTypes::RenderUnit symbolWidthUnit() const { return mSymbolWidthUnit; }
+    Qgis::RenderUnit symbolWidthUnit() const { return mSymbolWidthUnit; }
 
     void setSymbolWidthMapUnitScale( const QgsMapUnitScale &scale ) { mSymbolWidthMapUnitScale = scale; }
     const QgsMapUnitScale &symbolWidthMapUnitScale() const { return mSymbolWidthMapUnitScale; }
@@ -108,14 +209,14 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
      * \see symbolHeightUnit()
      * \see setSymbolWidthUnit()
     */
-    void setSymbolHeightUnit( QgsUnitTypes::RenderUnit unit ) { mSymbolHeightUnit = unit; }
+    void setSymbolHeightUnit( Qgis::RenderUnit unit ) { mSymbolHeightUnit = unit; }
 
     /**
      * Returns the units for the symbol's height.
      * \see setSymbolHeightUnit()
      * \see symbolWidthUnit()
     */
-    QgsUnitTypes::RenderUnit symbolHeightUnit() const { return mSymbolHeightUnit; }
+    Qgis::RenderUnit symbolHeightUnit() const { return mSymbolHeightUnit; }
 
     void setSymbolHeightMapUnitScale( const QgsMapUnitScale &scale ) { mSymbolHeightMapUnitScale = scale; }
     const QgsMapUnitScale &symbolHeightMapUnitScale() const { return mSymbolHeightMapUnitScale; }
@@ -125,19 +226,19 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
      * \param unit symbol units
      * \see strokeWidthUnit()
     */
-    void setStrokeWidthUnit( QgsUnitTypes::RenderUnit unit ) { mStrokeWidthUnit = unit; }
+    void setStrokeWidthUnit( Qgis::RenderUnit unit ) { mStrokeWidthUnit = unit; }
 
     /**
      * Returns the units for the symbol's stroke width.
      * \see setStrokeWidthUnit()
     */
-    QgsUnitTypes::RenderUnit strokeWidthUnit() const { return mStrokeWidthUnit; }
+    Qgis::RenderUnit strokeWidthUnit() const { return mStrokeWidthUnit; }
 
     void setStrokeWidthMapUnitScale( const QgsMapUnitScale &scale ) { mStrokeWidthMapUnitScale = scale; }
     const QgsMapUnitScale &strokeWidthMapUnitScale() const { return mStrokeWidthMapUnitScale; }
 
-    void setOutputUnit( QgsUnitTypes::RenderUnit unit ) override;
-    QgsUnitTypes::RenderUnit outputUnit() const override;
+    void setOutputUnit( Qgis::RenderUnit unit ) override;
+    Qgis::RenderUnit outputUnit() const override;
     bool usesMapUnits() const override;
 
     void setMapUnitScale( const QgsMapUnitScale &scale ) override;
@@ -146,18 +247,19 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
     QRectF bounds( QPointF point, QgsSymbolRenderContext &context ) override;
 
   private:
-    QString mSymbolName;
+    Shape mShape = Circle;
     double mSymbolWidth = 4;
-    QgsUnitTypes::RenderUnit mSymbolWidthUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mSymbolWidthUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mSymbolWidthMapUnitScale;
     double mSymbolHeight = 3;
-    QgsUnitTypes::RenderUnit mSymbolHeightUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mSymbolHeightUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mSymbolHeightMapUnitScale;
     QColor mStrokeColor;
     Qt::PenStyle mStrokeStyle = Qt::SolidLine;
     Qt::PenJoinStyle mPenJoinStyle = DEFAULT_ELLIPSE_JOINSTYLE;
+    Qt::PenCapStyle mPenCapStyle = Qt::SquareCap;
     double mStrokeWidth = 0;
-    QgsUnitTypes::RenderUnit mStrokeWidthUnit = QgsUnitTypes::RenderMillimeters;
+    Qgis::RenderUnit mStrokeWidthUnit = Qgis::RenderUnit::Millimeters;
     QgsMapUnitScale mStrokeWidthMapUnitScale;
 
     QPainterPath mPainterPath;
@@ -171,13 +273,13 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
 
     /**
      * Setup mPainterPath
-     * \param symbolName name of symbol
+     * \param shape name of symbol
      * \param context render context
      * \param scaledWidth optional width
      * \param scaledHeight optional height
      * \param f optional feature to render (0 if no data defined rendering)
      */
-    void preparePath( const QString &symbolName, QgsSymbolRenderContext &context, double *scaledWidth = nullptr, double *scaledHeight = nullptr, const QgsFeature *f = nullptr );
+    void preparePath( const QgsEllipseSymbolLayer::Shape &shape, QgsSymbolRenderContext &context, double *scaledWidth = nullptr, double *scaledHeight = nullptr, const QgsFeature *f = nullptr );
     QSizeF calculateSize( QgsSymbolRenderContext &context, double *scaledWidth = nullptr, double *scaledHeight = nullptr );
     void calculateOffsetAndRotation( QgsSymbolRenderContext &context, double scaledWidth, double scaledHeight, bool &hasDataDefinedRotation, QPointF &offset, double &angle ) const;
 };
@@ -185,5 +287,3 @@ class CORE_EXPORT QgsEllipseSymbolLayer: public QgsMarkerSymbolLayer
 // clazy:excludeall=qstring-allocations
 
 #endif // QGSELLIPSESYMBOLLAYER_H
-
-

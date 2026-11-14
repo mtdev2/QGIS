@@ -38,7 +38,11 @@ std::string MDAL::Driver::filters() const
 
 std::string MDAL::Driver::writeDatasetOnFileSuffix() const
 {
+  return std::string();
+}
 
+std::string MDAL::Driver::saveMeshOnFileSuffix() const
+{
   return std::string();
 }
 
@@ -79,7 +83,8 @@ std::unique_ptr< MDAL::Mesh > MDAL::Driver::load( const std::string &, const std
 
 void MDAL::Driver::load( const std::string &, Mesh * ) {}
 
-void MDAL::Driver::save( const std::string &, MDAL::Mesh * ) {}
+void MDAL::Driver::save( const std::string &, const std::string &, MDAL::Mesh * )
+{}
 
 void MDAL::Driver::createDatasetGroup( MDAL::Mesh *mesh, const std::string &groupName, MDAL_DataLocation dataLocation, bool hasScalarData, const std::string &datasetGroupFile )
 {
@@ -92,7 +97,7 @@ void MDAL::Driver::createDatasetGroup( MDAL::Mesh *mesh, const std::string &grou
   grp->setDataLocation( dataLocation );
   grp->setIsScalar( hasScalarData );
   grp->startEditing();
-  mesh->datasetGroups.push_back( grp );
+  mesh->datasetGroups.emplace_back( std::move( grp ) );
 }
 
 void MDAL::Driver::createDataset( MDAL::DatasetGroup *group, MDAL::RelativeTimestamp time, const double *values, const int *active )
@@ -106,8 +111,31 @@ void MDAL::Driver::createDataset( MDAL::DatasetGroup *group, MDAL::RelativeTimes
     count *= 2;
 
   memcpy( dataset->values(), values, sizeof( double ) * count );
-  if ( dataset->supportsActiveFlag() )
+  if ( supportsActiveFlag && dataset->supportsActiveFlag() )
     dataset->setActive( active );
+  dataset->setStatistics( MDAL::calculateStatistics( dataset ) );
+  group->datasets.push_back( dataset );
+}
+
+void MDAL::Driver::createDataset( MDAL::DatasetGroup *group, MDAL::RelativeTimestamp time, const double *values, const int *verticalLevelCounts, const double *verticalExtrusions )
+{
+  size_t count = 0;
+  size_t facesCount = group->mesh()->facesCount();
+  int maxVerticalLevel = 0;
+  for ( size_t i = 0; i < facesCount; i++ )
+  {
+    count += verticalLevelCounts[i];
+    if ( verticalLevelCounts[i] > maxVerticalLevel ) maxVerticalLevel = verticalLevelCounts[i];
+  };
+
+  std::shared_ptr<MDAL::MemoryDataset3D> dataset = std::make_shared< MemoryDataset3D >( group, count, maxVerticalLevel, verticalLevelCounts, verticalExtrusions );
+  dataset->setTime( time );
+
+  if ( !group->isScalar() )
+    count *= 2;
+
+  memcpy( dataset->values(), values, sizeof( double ) * count );
+
   dataset->setStatistics( MDAL::calculateStatistics( dataset ) );
   group->datasets.push_back( dataset );
 }

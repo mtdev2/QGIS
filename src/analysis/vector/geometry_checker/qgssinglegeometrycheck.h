@@ -16,14 +16,13 @@ email                : matthias@opengis.ch
 #ifndef QGSSINGLEGEOMETRYCHECK_H
 #define QGSSINGLEGEOMETRYCHECK_H
 
-#include <QList>
-#include <QCoreApplication>
-
+#include "qgis_analysis.h"
 #include "qgsgeometry.h"
 #include "qgsgeometrycheck.h"
 #include "qgsgeometrycheckerror.h"
 
-#include "qgis_analysis.h"
+#include <QCoreApplication>
+#include <QList>
 
 class QgsFeature;
 class QgsSingleGeometryCheck;
@@ -31,7 +30,7 @@ class QgsSingleGeometryCheck;
 /**
  * \ingroup analysis
  *
- * An error from a QgsSingleGeometryCheck.
+ * \brief An error from a QgsSingleGeometryCheck.
  *
  * \note This class is a technology preview and unstable API.
  * \since QGIS 3.4
@@ -39,7 +38,6 @@ class QgsSingleGeometryCheck;
 class ANALYSIS_EXPORT QgsSingleGeometryCheckError
 {
   public:
-
     /**
      * Creates a new single geometry check error.
      */
@@ -106,7 +104,7 @@ class ANALYSIS_EXPORT QgsSingleGeometryCheckError
 /**
  * \ingroup analysis
  *
- * Wraps a QgsSingleGeometryError into a standard QgsGeometryCheckError.
+ * \brief Wraps a QgsSingleGeometryError into a standard QgsGeometryCheckError.
  * The single error can be obtained via singleError.
  *
  * \note This class is a technology preview and unstable API.
@@ -115,7 +113,6 @@ class ANALYSIS_EXPORT QgsSingleGeometryCheckError
 class ANALYSIS_EXPORT QgsGeometryCheckErrorSingle : public QgsGeometryCheckError
 {
   public:
-
     /**
      * Creates a new error for a QgsSingleGeometryCheck.
      */
@@ -139,7 +136,8 @@ class ANALYSIS_EXPORT QgsGeometryCheckErrorSingle : public QgsGeometryCheckError
 /**
  * \ingroup analysis
  *
- * Base class for geometry checks for a single geometry without any context of the layer or other layers in the project.
+ * \brief Base class for geometry checks for a single geometry without any context of the layer or other layers in the project.
+ *
  * Classic examples are validity checks like self-intersection.
  *
  * Subclasses need to implement the processGeometry method.
@@ -149,20 +147,20 @@ class ANALYSIS_EXPORT QgsGeometryCheckErrorSingle : public QgsGeometryCheckError
 class ANALYSIS_EXPORT QgsSingleGeometryCheck : public QgsGeometryCheck
 {
   public:
-
     /**
      * Creates a new single geometry check.
      */
-    QgsSingleGeometryCheck( const QgsGeometryCheckContext *context,
-                            const QVariantMap &configuration )
+    QgsSingleGeometryCheck( const QgsGeometryCheckContext *context, const QVariantMap &configuration )
       : QgsGeometryCheck( context, configuration )
     {}
 
-    void collectErrors( const QMap<QString, QgsFeaturePool *> &featurePools,
-                        QList<QgsGeometryCheckError *> &errors,
-                        QStringList &messages,
-                        QgsFeedback *feedback = nullptr,
-                        const QgsGeometryCheck::LayerFeatureIds &ids = QgsGeometryCheck::LayerFeatureIds() ) const FINAL;
+    QgsGeometryCheck::Result collectErrors(
+      const QMap<QString, QgsFeaturePool *> &featurePools,
+      QList<QgsGeometryCheckError *> &errors,
+      QStringList &messages,
+      QgsFeedback *feedback = nullptr,
+      const QgsGeometryCheck::LayerFeatureIds &ids = QgsGeometryCheck::LayerFeatureIds()
+    ) const final;
 
     /**
      * Check the \a geometry for errors. It may make use of \a configuration options.
@@ -175,14 +173,12 @@ class ANALYSIS_EXPORT QgsSingleGeometryCheck : public QgsGeometryCheck
     virtual QList<QgsSingleGeometryCheckError *> processGeometry( const QgsGeometry &geometry ) const = 0;
 
   private:
-
     /**
      * Converts a QgsSingleGeometryCheckError to a QgsGeometryCheckErrorSingle.
      *
      * \since QGIS 3.4
      */
     QgsGeometryCheckErrorSingle *convertToGeometryCheckError( QgsSingleGeometryCheckError *singleGeometryCheckError, const QgsGeometryCheckerUtils::LayerFeature &layerFeature ) const;
-
 };
 
 #endif // QGSSINGLEGEOMETRYCHECK_H

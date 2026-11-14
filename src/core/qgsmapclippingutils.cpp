@@ -14,11 +14,18 @@
  ***************************************************************************/
 
 #include "qgsmapclippingutils.h"
-#include "qgsgeometry.h"
-#include "qgsrendercontext.h"
-#include "qgsmapclippingregion.h"
-#include "qgslogger.h"
+
 #include <algorithm>
+
+#include "qgsgeometry.h"
+#include "qgslogger.h"
+#include "qgsmapclippingregion.h"
+#include "qgsrendercontext.h"
+
+#include <QPointer>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QList<QgsMapClippingRegion> QgsMapClippingUtils::collectClippingRegionsForLayer( const QgsRenderContext &context, const QgsMapLayer *layer )
 {
@@ -26,10 +33,7 @@ QList<QgsMapClippingRegion> QgsMapClippingUtils::collectClippingRegionsForLayer(
   const QList< QgsMapClippingRegion > regions = context.clippingRegions();
   res.reserve( regions.size() );
 
-  std::copy_if( regions.begin(), regions.end(), std::back_inserter( res ), [layer]( const QgsMapClippingRegion & region )
-  {
-    return region.appliesToLayer( layer );
-  } );
+  std::copy_if( regions.begin(), regions.end(), std::back_inserter( res ), [layer]( const QgsMapClippingRegion &region ) { return region.appliesToLayer( layer ); } );
 
   return res;
 }
@@ -41,7 +45,7 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureRequestGeometry( const QList< Q
   shouldFilter = false;
   for ( const QgsMapClippingRegion &region : regions )
   {
-    if ( region.geometry().type() != QgsWkbTypes::PolygonGeometry )
+    if ( region.geometry().type() != Qgis::GeometryType::Polygon )
       continue;
 
     shouldFilter = true;
@@ -52,7 +56,7 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureRequestGeometry( const QList< Q
     }
     else
     {
-      result = result.intersection( region.geometry() );
+      result = result.intersection( region.geometry(), QgsGeometryParameters(), context.feedback() );
     }
   }
 
@@ -60,16 +64,16 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureRequestGeometry( const QList< Q
     return QgsGeometry();
 
   // filter out polygon parts from result only
-  result.convertGeometryCollectionToSubclass( QgsWkbTypes::PolygonGeometry );
+  result.convertGeometryCollectionToSubclass( Qgis::GeometryType::Polygon );
 
   // lastly transform back to layer CRS
   try
   {
-    result.transform( context.coordinateTransform(), QgsCoordinateTransform::ReverseTransform );
+    result.transform( context.coordinateTransform(), Qgis::TransformDirection::Reverse );
   }
   catch ( QgsCsException & )
   {
-    QgsDebugMsg( QStringLiteral( "Could not transform clipping region to layer CRS" ) );
+    QgsDebugError( u"Could not transform clipping region to layer CRS"_s );
     shouldFilter = false;
     return QgsGeometry();
   }
@@ -84,7 +88,7 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureIntersectionGeometry( const QLi
   shouldClip = false;
   for ( const QgsMapClippingRegion &region : regions )
   {
-    if ( region.geometry().type() != QgsWkbTypes::PolygonGeometry )
+    if ( region.geometry().type() != Qgis::GeometryType::Polygon )
       continue;
 
     if ( region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipToIntersection )
@@ -98,7 +102,7 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureIntersectionGeometry( const QLi
     }
     else
     {
-      result = result.intersection( region.geometry() );
+      result = result.intersection( region.geometry(), QgsGeometryParameters(), context.feedback() );
     }
   }
 
@@ -106,16 +110,16 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureIntersectionGeometry( const QLi
     return QgsGeometry();
 
   // filter out polygon parts from result only
-  result.convertGeometryCollectionToSubclass( QgsWkbTypes::PolygonGeometry );
+  result.convertGeometryCollectionToSubclass( Qgis::GeometryType::Polygon );
 
   // lastly transform back to layer CRS
   try
   {
-    result.transform( context.coordinateTransform(), QgsCoordinateTransform::ReverseTransform );
+    result.transform( context.coordinateTransform(), Qgis::TransformDirection::Reverse );
   }
   catch ( QgsCsException & )
   {
-    QgsDebugMsg( QStringLiteral( "Could not transform clipping region to layer CRS" ) );
+    QgsDebugError( u"Could not transform clipping region to layer CRS"_s );
     shouldClip = false;
     return QgsGeometry();
   }
@@ -123,37 +127,38 @@ QgsGeometry QgsMapClippingUtils::calculateFeatureIntersectionGeometry( const QLi
   return result;
 }
 
-QPainterPath QgsMapClippingUtils::calculatePainterClipRegion( const QList<QgsMapClippingRegion> &regions, const QgsRenderContext &context, QgsMapLayerType layerType, bool &shouldClip )
+QPainterPath QgsMapClippingUtils::calculatePainterClipRegion( const QList<QgsMapClippingRegion> &regions, const QgsRenderContext &context, Qgis::LayerType layerType, bool &shouldClip )
 {
   QgsGeometry result;
   bool first = true;
   shouldClip = false;
   for ( const QgsMapClippingRegion &region : regions )
   {
-    if ( region.geometry().type() != QgsWkbTypes::PolygonGeometry )
+    if ( region.geometry().type() != Qgis::GeometryType::Polygon )
       continue;
 
     switch ( layerType )
     {
-      case QgsMapLayerType::VectorLayer:
+      case Qgis::LayerType::Vector:
         if ( region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipPainterOnly )
           continue;
         break;
 
-      case QgsMapLayerType::VectorTileLayer:
+      case Qgis::LayerType::VectorTile:
         // for now, we ignore the region's featureClip behavior when rendering vector tiles
         // TODO: ideally we should apply this during rendering, just like we do for normal
         // vector layers
         break;
 
-      case QgsMapLayerType::MeshLayer:
-      case QgsMapLayerType::RasterLayer:
-      case QgsMapLayerType::PluginLayer:
-      case QgsMapLayerType::PointCloudLayer:
-      case QgsMapLayerType::AnnotationLayer:
+      case Qgis::LayerType::Mesh:
+      case Qgis::LayerType::Raster:
+      case Qgis::LayerType::Plugin:
+      case Qgis::LayerType::PointCloud:
+      case Qgis::LayerType::Annotation:
+      case Qgis::LayerType::Group:
+      case Qgis::LayerType::TiledScene:
         // for these layer types, we ignore the region's featureClip behavior.
         break;
-
     }
 
     shouldClip = true;
@@ -164,7 +169,7 @@ QPainterPath QgsMapClippingUtils::calculatePainterClipRegion( const QList<QgsMap
     }
     else
     {
-      result = result.intersection( region.geometry() );
+      result = result.intersection( region.geometry(), QgsGeometryParameters(), context.feedback() );
     }
   }
 
@@ -184,14 +189,13 @@ QgsGeometry QgsMapClippingUtils::calculateLabelIntersectionGeometry( const QList
   shouldClip = false;
   for ( const QgsMapClippingRegion &region : regions )
   {
-    if ( region.geometry().type() != QgsWkbTypes::PolygonGeometry )
+    if ( region.geometry().type() != Qgis::GeometryType::Polygon )
       continue;
 
     // for labeling, we clip using either painter clip regions or intersects type regions.
     // unlike feature rendering, we clip features to painter clip regions for labeling, because
     // we want the label to sit within the clip region if possible
-    if ( region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipPainterOnly &&
-         region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipToIntersection )
+    if ( region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipPainterOnly && region.featureClip() != QgsMapClippingRegion::FeatureClippingType::ClipToIntersection )
       continue;
 
     shouldClip = true;
@@ -202,7 +206,7 @@ QgsGeometry QgsMapClippingUtils::calculateLabelIntersectionGeometry( const QList
     }
     else
     {
-      result = result.intersection( region.geometry() );
+      result = result.intersection( region.geometry(), QgsGeometryParameters(), context.feedback() );
     }
   }
 
@@ -210,16 +214,16 @@ QgsGeometry QgsMapClippingUtils::calculateLabelIntersectionGeometry( const QList
     return QgsGeometry();
 
   // filter out polygon parts from result only
-  result.convertGeometryCollectionToSubclass( QgsWkbTypes::PolygonGeometry );
+  result.convertGeometryCollectionToSubclass( Qgis::GeometryType::Polygon );
 
   // lastly transform back to layer CRS
   try
   {
-    result.transform( context.coordinateTransform(), QgsCoordinateTransform::ReverseTransform );
+    result.transform( context.coordinateTransform(), Qgis::TransformDirection::Reverse );
   }
   catch ( QgsCsException & )
   {
-    QgsDebugMsg( QStringLiteral( "Could not transform clipping region to layer CRS" ) );
+    QgsDebugError( u"Could not transform clipping region to layer CRS"_s );
     shouldClip = false;
     return QgsGeometry();
   }

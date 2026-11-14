@@ -17,10 +17,14 @@
  ***************************************************************************/
 
 #include "qgsarchive.h"
-#include "qgsziputils.h"
-#include "qgsmessagelog.h"
-#include "qgsauxiliarystorage.h"
 
+#include "qgsauxiliarystorage.h"
+#include "qgsmessagelog.h"
+#include "qgsziputils.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -28,24 +32,23 @@
 
 #include <QStandardPaths>
 #include <QUuid>
+#include <memory>
 
 QgsArchive::QgsArchive()
   : mDir( new QTemporaryDir() )
-{
-}
+{}
 
 QgsArchive::QgsArchive( const QgsArchive &other )
   : mFiles( other.mFiles )
   , mDir( new QTemporaryDir() )
-{
-}
+{}
 
 QgsArchive &QgsArchive::operator=( const QgsArchive &other )
 {
   if ( this != &other )
   {
     mFiles = other.mFiles;
-    mDir.reset( new QTemporaryDir() );
+    mDir = std::make_unique<QTemporaryDir>();
   }
 
   return *this;
@@ -58,40 +61,53 @@ QString QgsArchive::dir() const
 
 void QgsArchive::clear()
 {
-  mDir.reset( new QTemporaryDir() );
+  mDir = std::make_unique<QTemporaryDir>();
   mFiles.clear();
 }
 
 bool QgsArchive::zip( const QString &filename )
 {
-  QString tempPath = QStandardPaths::standardLocations( QStandardPaths::TempLocation ).at( 0 );
-  QString uuid = QUuid::createUuid().toString();
-  QFile tmpFile( tempPath + QDir::separator() + uuid );
+  const QString tempPath( QDir::temp().absoluteFilePath( u"qgis-project-XXXXXX.zip"_s ) );
 
   // zip content
-  if ( ! QgsZipUtils::zip( tmpFile.fileName(), mFiles ) )
+  if ( !QgsZipUtils::zip( tempPath, mFiles, true ) )
   {
-    QString err = QObject::tr( "Unable to zip content" );
-    QgsMessageLog::logMessage( err, QStringLiteral( "QgsArchive" ) );
+    const QString err = QObject::tr( "Unable to zip content" );
+    QgsMessageLog::logMessage( err, u"QgsArchive"_s );
     return false;
   }
 
+  QString target { filename };
+
   // remove existing zip file
-  if ( QFile::exists( filename ) )
-    QFile::remove( filename );
+  if ( QFile::exists( target ) )
+  {
+    // If symlink -> we want to write to its target instead
+    const QFileInfo targetFileInfo( target );
+    target = targetFileInfo.canonicalFilePath();
+    // If target still exists, remove (might not exist if was a dangling symlink)
+    if ( QFile::exists( target ) )
+      QFile::remove( target );
+  }
 
 #ifdef Q_OS_WIN
   // Clear temporary flag (see GH #32118)
   DWORD dwAttrs;
-  dwAttrs = GetFileAttributes( tmpFile.fileName().toLocal8Bit( ).data( ) );
-  SetFileAttributes( tmpFile.fileName().toLocal8Bit( ).data( ), dwAttrs & ~ FILE_ATTRIBUTE_TEMPORARY );
+#ifdef UNICODE
+  dwAttrs = GetFileAttributes( qUtf16Printable( tempPath ) );
+  SetFileAttributes( qUtf16Printable( tempPath ), dwAttrs & ~FILE_ATTRIBUTE_TEMPORARY );
+#else
+  dwAttrs = GetFileAttributes( tempPath.toLocal8Bit().data() );
+  SetFileAttributes( tempPath.toLocal8Bit().data(), dwAttrs & ~FILE_ATTRIBUTE_TEMPORARY );
+#endif
+
 #endif // Q_OS_WIN
 
   // save zip archive
-  if ( ! tmpFile.rename( filename ) )
+  if ( !QFile::rename( tempPath, target ) )
   {
-    QString err = QObject::tr( "Unable to save zip file '%1'" ).arg( filename );
-    QgsMessageLog::logMessage( err, QStringLiteral( "QgsArchive" ) );
+    const QString err = QObject::tr( "Unable to save zip file '%1'" ).arg( target );
+    QgsMessageLog::logMessage( err, u"QgsArchive"_s );
     return false;
   }
 
@@ -126,13 +142,18 @@ QStringList QgsArchive::files() const
   return mFiles;
 }
 
+bool QgsArchive::exists() const
+{
+  return QFileInfo::exists( mDir->path() );
+}
+
 QString QgsProjectArchive::projectFile() const
 {
   const auto constFiles = files();
   for ( const QString &file : constFiles )
   {
-    QFileInfo fileInfo( file );
-    if ( fileInfo.suffix().compare( QLatin1String( "qgs" ), Qt::CaseInsensitive ) == 0 )
+    const QFileInfo fileInfo( file );
+    if ( fileInfo.suffix().compare( "qgs"_L1, Qt::CaseInsensitive ) == 0 )
       return file;
   }
 
@@ -142,7 +163,7 @@ QString QgsProjectArchive::projectFile() const
 bool QgsProjectArchive::unzip( const QString &filename )
 {
   if ( QgsArchive::unzip( filename ) )
-    return ! projectFile().isEmpty();
+    return !projectFile().isEmpty();
   else
     return false;
 }

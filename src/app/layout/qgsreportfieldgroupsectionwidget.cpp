@@ -15,10 +15,13 @@
  ***************************************************************************/
 
 #include "qgsreportfieldgroupsectionwidget.h"
-#include "qgsreportsectionfieldgroup.h"
+
 #include "qgslayout.h"
 #include "qgslayoutdesignerdialog.h"
 #include "qgsreportorganizerwidget.h"
+#include "qgsreportsectionfieldgroup.h"
+
+#include "moc_qgsreportfieldgroupsectionwidget.cpp"
 
 QgsReportSectionFieldGroupWidget::QgsReportSectionFieldGroupWidget( QgsReportOrganizerWidget *parent, QgsLayoutDesignerDialog *designer, QgsReportSectionFieldGroup *section )
   : QWidget( parent )
@@ -28,13 +31,14 @@ QgsReportSectionFieldGroupWidget::QgsReportSectionFieldGroupWidget( QgsReportOrg
 {
   setupUi( this );
 
-  mLayerComboBox->setFilters( QgsMapLayerProxyModel::VectorLayer );
+  mLayerComboBox->setFilters( Qgis::LayerFilter::VectorLayer );
   connect( mLayerComboBox, &QgsMapLayerComboBox::layerChanged, mFieldComboBox, &QgsFieldComboBox::setLayer );
   connect( mButtonEditBody, &QPushButton::clicked, this, &QgsReportSectionFieldGroupWidget::editBody );
   connect( mButtonEditHeader, &QPushButton::clicked, this, &QgsReportSectionFieldGroupWidget::editHeader );
   connect( mButtonEditFooter, &QPushButton::clicked, this, &QgsReportSectionFieldGroupWidget::editFooter );
 
   mLayerComboBox->setLayer( section->layer() );
+  mFieldComboBox->setLayer( section->layer() );
   mFieldComboBox->setField( section->field() );
   mSortAscendingCheckBox->setChecked( section->sortAscending() );
 
@@ -89,7 +93,7 @@ void QgsReportSectionFieldGroupWidget::editHeader()
 {
   if ( !mSection->header() )
   {
-    std::unique_ptr< QgsLayout > header = qgis::make_unique< QgsLayout >( mSection->project() );
+    auto header = std::make_unique<QgsLayout>( mSection->project() );
     header->initializeDefaults();
     mSection->setHeader( header.release() );
   }
@@ -107,7 +111,7 @@ void QgsReportSectionFieldGroupWidget::editFooter()
 {
   if ( !mSection->footer() )
   {
-    std::unique_ptr< QgsLayout > footer = qgis::make_unique< QgsLayout >( mSection->project() );
+    auto footer = std::make_unique<QgsLayout>( mSection->project() );
     footer->initializeDefaults();
     mSection->setFooter( footer.release() );
   }
@@ -130,7 +134,7 @@ void QgsReportSectionFieldGroupWidget::editBody()
 {
   if ( !mSection->body() )
   {
-    std::unique_ptr< QgsLayout > body = qgis::make_unique< QgsLayout >( mSection->project() );
+    auto body = std::make_unique<QgsLayout>( mSection->project() );
     body->initializeDefaults();
     mSection->setBody( body.release() );
   }
@@ -151,7 +155,7 @@ void QgsReportSectionFieldGroupWidget::sortAscendingToggled( bool checked )
 
 void QgsReportSectionFieldGroupWidget::setLayer( QgsMapLayer *layer )
 {
-  QgsVectorLayer *vl = qobject_cast< QgsVectorLayer * >( layer );
+  QgsVectorLayer *vl = qobject_cast<QgsVectorLayer *>( layer );
   if ( !vl )
     return;
 

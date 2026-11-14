@@ -18,6 +18,7 @@
 #define QGS_GEOMETRY_CHECKER_RESULT_TAB_H
 
 #include "ui_qgsgeometrycheckerresulttab.h"
+
 #include "qgsgeometrycheckerfixsummarydialog.h"
 
 class QDialog;
@@ -63,7 +64,7 @@ class QgsGeometryCheckerResultTab : public QWidget
     void exportErrors();
     void highlightError( QgsGeometryCheckError *error );
     void highlightErrors( bool current = false );
-    void onSelectionChanged( const QItemSelection &newSel, const QItemSelection & /*oldSel*/ );
+    void onSelectionChanged( const QItemSelection &, const QItemSelection & );
     void openAttributeTable();
     void fixErrorsWithDefault() { fixErrors( false ); }
     void fixErrorsWithPrompt() { fixErrors( true ); }

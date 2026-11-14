@@ -18,10 +18,14 @@
 #define QGSCOLOREFFECT_H
 
 #include "qgis_core.h"
-#include "qgspainteffect.h"
-#include "qgsimageoperation.h"
 #include "qgis_sip.h"
+#include "qgsimageoperation.h"
+#include "qgspainteffect.h"
+
 #include <QPainter>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
@@ -29,25 +33,25 @@
  * \brief A paint effect which alters the colors (e.g., brightness, contrast) in a
  * source picture.
  *
- * \since QGIS 2.9
  */
 
 class CORE_EXPORT QgsColorEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 {
-
   public:
-
     /**
      * Creates a new QgsColorEffect effect from a properties string map.
      * \param map encoded properties string map
      * \returns new QgsColorEffect
      */
-    static QgsPaintEffect *create( const QVariantMap &map ) SIP_FACTORY;
+    static std::unique_ptr<QgsPaintEffect> create( const QVariantMap &map );
 
     QgsColorEffect();
 
-    QString type() const override { return QStringLiteral( "color" ); }
+    Qgis::PaintEffectFlags flags() const override;
+    QString type() const override { return u"color"_s; }
     QVariantMap properties() const override;
+
+    using QgsPaintEffect::readProperties;
     void readProperties( const QVariantMap &props ) override;
     QgsColorEffect *clone() const override SIP_FACTORY;
 
@@ -58,7 +62,7 @@ class CORE_EXPORT QgsColorEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * lightening
      * \see setBrightness
      */
-    void setBrightness( int brightness ) { mBrightness = qBound( -255, brightness, 255 ); }
+    void setBrightness( int brightness );
 
     /**
      * Returns the brightness modification for the effect.
@@ -76,7 +80,7 @@ class CORE_EXPORT QgsColorEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
      * greater contrast
      * \see setContrast
      */
-    void setContrast( int contrast ) { mContrast = qBound( -100, contrast, 100 ); }
+    void setContrast( int contrast );
 
     /**
      * Returns the contrast modification for the effect.
@@ -210,11 +214,9 @@ class CORE_EXPORT QgsColorEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
     QPainter::CompositionMode blendMode() const { return mBlendMode; }
 
   protected:
-
     void draw( QgsRenderContext &context ) override;
 
   private:
-
     double mOpacity = 1.0;
     QPainter::CompositionMode mBlendMode = QPainter::CompositionMode_SourceOver;
     int mBrightness = 0;
@@ -227,4 +229,3 @@ class CORE_EXPORT QgsColorEffect : public QgsPaintEffect SIP_NODEFAULTCTORS
 };
 
 #endif // QGSBLUREFFECT_H
-

@@ -18,11 +18,12 @@
 #ifndef QGSALGORITHMSAVELOG_H
 #define QGSALGORITHMSAVELOG_H
 
-#define SIP_NO_FILE
 
 #include "qgis_sip.h"
-#include "qgsprocessingalgorithm.h"
 #include "qgsapplication.h"
+#include "qgsprocessingalgorithm.h"
+
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -34,7 +35,7 @@ class QgsSaveLogToFileAlgorithm : public QgsProcessingAlgorithm
   public:
     QgsSaveLogToFileAlgorithm() = default;
     void initAlgorithm( const QVariantMap &configuration = QVariantMap() ) override;
-    Flags flags() const override;
+    Qgis::ProcessingAlgorithmFlags flags() const override;
     QString name() const override;
     QString displayName() const override;
     QStringList tags() const override;
@@ -45,10 +46,7 @@ class QgsSaveLogToFileAlgorithm : public QgsProcessingAlgorithm
     QgsSaveLogToFileAlgorithm *createInstance() const override SIP_FACTORY;
 
   protected:
-
-    QVariantMap processAlgorithm( const QVariantMap &parameters,
-                                  QgsProcessingContext &context, QgsProcessingFeedback * ) override;
-
+    QVariantMap processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback * ) override;
 };
 
 

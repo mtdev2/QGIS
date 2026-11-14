@@ -25,14 +25,12 @@ class QString;
 /**
  * \ingroup gui
  * \class QgsMapCanvasUtils
- * Utility functions for working with QgsMapCanvas widgets.
+ * \brief Utility functions for working with QgsMapCanvas widgets.
  * \since QGIS 3.14
  */
 class GUI_EXPORT QgsMapCanvasUtils
 {
-
   public:
-
     /**
      * Zooms a map \a canvas to features from the specified \a layer which match the given \a filter expression string.
      *
@@ -47,6 +45,17 @@ class GUI_EXPORT QgsMapCanvasUtils
      */
     static long flashMatchingFeatures( QgsMapCanvas *canvas, QgsVectorLayer *layer, const QString &filter );
 
+    /**
+     * Constructs a filter to use for selecting features from the given \a layer, in order to
+     * apply filters which prevent some features from being displayed (e.g. as a result
+     * of temporal range of the canvas and the layer's temporal settings).
+     *
+     * Will return an empty string if no filtering is required, or "FALSE" if ALL features are filtered
+     * out by the canvas.
+     *
+     * \since QGIS 3.26
+     */
+    static QString filterForLayer( QgsMapCanvas *canvas, QgsVectorLayer *layer );
 };
 
 #endif //QGSMAPCANVASUTILS_H

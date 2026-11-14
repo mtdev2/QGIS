@@ -13,26 +13,34 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgsnumericformatregistry.h"
-#include "qgsnumericformat.h"
 
-#include "qgsfallbacknumericformat.h"
 #include "qgsbasicnumericformat.h"
 #include "qgsbearingnumericformat.h"
+#include "qgscoordinatenumericformat.h"
 #include "qgscurrencynumericformat.h"
+#include "qgsexpressionbasednumericformat.h"
+#include "qgsfallbacknumericformat.h"
+#include "qgsfractionnumericformat.h"
+#include "qgsnumericformat.h"
 #include "qgspercentagenumericformat.h"
 #include "qgsscientificnumericformat.h"
-#include "qgsfractionnumericformat.h"
 #include "qgsxmlutils.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsNumericFormatRegistry::QgsNumericFormatRegistry()
 {
   addFormat( new QgsFallbackNumericFormat() );
   addFormat( new QgsBasicNumericFormat() );
   addFormat( new QgsBearingNumericFormat() );
+  addFormat( new QgsGeographicCoordinateNumericFormat() );
   addFormat( new QgsCurrencyNumericFormat() );
   addFormat( new QgsPercentageNumericFormat() );
   addFormat( new QgsScientificNumericFormat() );
   addFormat( new QgsFractionNumericFormat() );
+  addFormat( new QgsExpressionBasedNumericFormat() );
 }
 
 QgsNumericFormatRegistry::~QgsNumericFormatRegistry()
@@ -80,7 +88,7 @@ QgsNumericFormat *QgsNumericFormatRegistry::create( const QString &id, const QVa
 QgsNumericFormat *QgsNumericFormatRegistry::createFromXml( const QDomElement &element, const QgsReadWriteContext &context ) const
 {
   const QVariantMap configuration = QgsXmlUtils::readVariant( element.firstChildElement() ).toMap();
-  const QString id = element.attribute( QStringLiteral( "id" ) );
+  const QString id = element.attribute( u"id"_s );
 
   if ( mFormats.contains( id ) )
     return mFormats.value( id )->create( configuration, context );
@@ -88,9 +96,9 @@ QgsNumericFormat *QgsNumericFormatRegistry::createFromXml( const QDomElement &el
   return new QgsFallbackNumericFormat();
 }
 
-QgsNumericFormat *QgsNumericFormatRegistry::fallbackFormat() const
+std::unique_ptr<QgsNumericFormat> QgsNumericFormatRegistry::fallbackFormat() const
 {
-  return new QgsFallbackNumericFormat();
+  return std::make_unique<QgsFallbackNumericFormat>();
 }
 
 QString QgsNumericFormatRegistry::visibleName( const QString &id ) const

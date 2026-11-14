@@ -16,35 +16,41 @@
  ***************************************************************************/
 
 #include "qgsapplication.h"
-#include "qgslayout.h"
-#include "qgsmultirenderchecker.h"
-#include "qgslayoutitemmap.h"
-#include "qgslayoutitemmapoverview.h"
+#include "qgsfillsymbol.h"
+#include "qgsfontutils.h"
 #include "qgslayoutatlas.h"
 #include "qgslayoutitemlabel.h"
-#include "qgsproject.h"
-#include "qgsvectorlayer.h"
-#include "qgsvectordataprovider.h"
-#include "qgssymbol.h"
-#include "qgssinglesymbolrenderer.h"
-#include "qgsfontutils.h"
+#include "qgslayoutitemmap.h"
+#include "qgslayoutitemmapoverview.h"
+#include "qgslayoutrendercontext.h"
 #include "qgsprintlayout.h"
-#include <QObject>
-#include <QtTest/QSignalSpy>
+#include "qgsproject.h"
+#include "qgssinglesymbolrenderer.h"
+#include "qgssymbol.h"
 #include "qgstest.h"
+#include "qgsvectordataprovider.h"
+#include "qgsvectorlayer.h"
 
-class TestQgsLayoutAtlas : public QObject
+#include <QObject>
+#include <QString>
+#include <QtTest/QSignalSpy>
+
+using namespace Qt::StringLiterals;
+
+class TestQgsLayoutAtlas : public QgsTest
 {
     Q_OBJECT
 
   public:
-    TestQgsLayoutAtlas() = default;
+    TestQgsLayoutAtlas()
+      : QgsTest( u"Layout Atlas Tests"_s, u"atlas"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void initTestCase();
+    void cleanupTestCase();
+    void init();
+    void cleanup();
 
     // test filename pattern evaluation
     void filename();
@@ -78,7 +84,6 @@ class TestQgsLayoutAtlas : public QObject
     QgsVectorLayer *mVectorLayer = nullptr;
     QgsVectorLayer *mVectorLayer2 = nullptr;
     QgsLayoutAtlas *mAtlas = nullptr;
-    QString mReport;
 };
 
 void TestQgsLayoutAtlas::initTestCase()
@@ -87,19 +92,13 @@ void TestQgsLayoutAtlas::initTestCase()
   QgsApplication::initQgis();
 
   //create maplayers from testdata and add to layer registry
-  QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/france_parts.shp" );
-  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(),
-                                     vectorFileInfo.completeBaseName(),
-                                     QStringLiteral( "ogr" ) );
-  mVectorLayer2 = new QgsVectorLayer( vectorFileInfo.filePath(),
-                                      vectorFileInfo.completeBaseName(),
-                                      QStringLiteral( "ogr" ) );
+  const QFileInfo vectorFileInfo( QStringLiteral( TEST_DATA_DIR ) + "/france_parts.shp" );
+  mVectorLayer = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
+  mVectorLayer2 = new QgsVectorLayer( vectorFileInfo.filePath(), vectorFileInfo.completeBaseName(), u"ogr"_s );
 
   QgsVectorSimplifyMethod simplifyMethod;
-  simplifyMethod.setSimplifyHints( QgsVectorSimplifyMethod::NoSimplification );
+  simplifyMethod.setSimplifyHints( Qgis::VectorRenderingSimplificationFlags() );
   mVectorLayer->setSimplifyMethod( simplifyMethod );
-
-  mReport = QStringLiteral( "<h1>Composer Atlas Tests</h1>\n" );
 }
 
 void TestQgsLayoutAtlas::cleanupTestCase()
@@ -107,31 +106,22 @@ void TestQgsLayoutAtlas::cleanupTestCase()
   delete mLayout;
   delete mVectorLayer;
   QgsApplication::exitQgis();
-
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
 }
 
 void TestQgsLayoutAtlas::init()
 {
   //create composition with composer map
 
-  QgsCoordinateReferenceSystem crs( QStringLiteral( "EPSG:2154" ) );
+  const QgsCoordinateReferenceSystem crs( u"EPSG:2154"_s );
   QgsProject::instance()->setCrs( crs );
   mLayout = new QgsPrintLayout( QgsProject::instance() );
   mLayout->initializeDefaults();
 
   // fix the renderer, fill with green
   QVariantMap props;
-  props.insert( QStringLiteral( "color" ), QStringLiteral( "0,127,0" ) );
-  props.insert( QStringLiteral( "outline_color" ), QStringLiteral( "0,0,0" ) );
-  QgsFillSymbol *fillSymbol = QgsFillSymbol::createSimple( props );
+  props.insert( u"color"_s, u"0,127,0"_s );
+  props.insert( u"outline_color"_s, u"0,0,0"_s );
+  QgsFillSymbol *fillSymbol = QgsFillSymbol::createSimple( props ).release();
   QgsSingleSymbolRenderer *renderer = new QgsSingleSymbolRenderer( fillSymbol );
   mVectorLayer->setRenderer( renderer );
 
@@ -157,16 +147,20 @@ void TestQgsLayoutAtlas::init()
 
   // set the fill symbol of the overview map
   QVariantMap props2;
-  props2.insert( QStringLiteral( "color" ), QStringLiteral( "127,0,0,127" ) );
-  props2.insert( QStringLiteral( "outline_color" ), QStringLiteral( "0,0,0" ) );
-  QgsFillSymbol *fillSymbol2 = QgsFillSymbol::createSimple( props2 );
+  props2.insert( u"color"_s, u"127,0,0,127"_s );
+  props2.insert( u"outline_color"_s, u"0,0,0"_s );
+  QgsFillSymbol *fillSymbol2 = QgsFillSymbol::createSimple( props2 ).release();
   mOverview->overview()->setFrameSymbol( fillSymbol2 );
 
   // header label
   mLabel1 = new QgsLayoutItemLabel( mLayout );
   mLayout->addLayoutItem( mLabel1 );
-  mLabel1->setText( QStringLiteral( "[% \"NAME_1\" %] area" ) );
-  mLabel1->setFont( QgsFontUtils::getStandardTestFont() );
+  mLabel1->setText( u"[% \"NAME_1\" %] area"_s );
+  QgsTextFormat format;
+  format.setFont( QgsFontUtils::getStandardTestFont() );
+  format.setSize( 12 );
+  format.setSizeUnit( Qgis::RenderUnit::Points );
+  mLabel1->setTextFormat( format );
   mLabel1->setMarginX( 1 );
   mLabel1->setMarginY( 1 );
   //need to explicitly set width, since expression hasn't been evaluated against
@@ -176,15 +170,15 @@ void TestQgsLayoutAtlas::init()
   // feature number label
   mLabel2 = new QgsLayoutItemLabel( mLayout );
   mLayout->addLayoutItem( mLabel2 );
-  mLabel2->setText( QStringLiteral( "# [%@atlas_featurenumber || ' / ' || @atlas_totalfeatures%]" ) );
-  mLabel2->setFont( QgsFontUtils::getStandardTestFont() );
+  mLabel2->setText( u"# [%@atlas_featurenumber || ' / ' || @atlas_totalfeatures%]"_s );
+  mLabel2->setTextFormat( format );
   mLabel2->attemptSetSceneRect( QRectF( 150, 200, 60, 15 ) );
   mLabel2->setMarginX( 1 );
   mLabel2->setMarginY( 1 );
 
 
-  qDebug() << "header label font: " << mLabel1->font().toString() << " exactMatch:" << mLabel1->font().exactMatch();
-  qDebug() << "feature number label font: " << mLabel2->font().toString() << " exactMatch:" << mLabel2->font().exactMatch();
+  qDebug() << "header label font: " << mLabel1->textFormat().font().toString() << " exactMatch:" << mLabel1->textFormat().font().exactMatch();
+  qDebug() << "feature number label font: " << mLabel2->textFormat().font().toString() << " exactMatch:" << mLabel2->textFormat().font().exactMatch();
 }
 
 void TestQgsLayoutAtlas::cleanup()
@@ -196,12 +190,12 @@ void TestQgsLayoutAtlas::cleanup()
 void TestQgsLayoutAtlas::filename()
 {
   QString error;
-  mAtlas->setFilenameExpression( QStringLiteral( "'output_' || @atlas_featurenumber" ), error );
+  mAtlas->setFilenameExpression( u"'output_' || @atlas_featurenumber"_s, error );
   mAtlas->beginRender();
   for ( int fi = 0; fi < mAtlas->count(); ++fi )
   {
     mAtlas->seekTo( fi );
-    QString expected = QStringLiteral( "output_%1" ).arg( ( int )( fi + 1 ) );
+    const QString expected = u"output_%1"_s.arg( ( int ) ( fi + 1 ) );
     QCOMPARE( mAtlas->currentFilename(), expected );
   }
   mAtlas->endRender();
@@ -222,9 +216,7 @@ void TestQgsLayoutAtlas::autoscale_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_autoscale%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_autoscale%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -244,9 +236,7 @@ void TestQgsLayoutAtlas::fixedscale_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_fixedscale%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_fixedscale%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -278,9 +268,7 @@ void TestQgsLayoutAtlas::predefinedscales_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_predefinedscales%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_predefinedscales%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -302,9 +290,7 @@ void TestQgsLayoutAtlas::two_map_autoscale_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_two_maps%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_two_maps%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -323,9 +309,7 @@ void TestQgsLayoutAtlas::hiding_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_hiding%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_hiding%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -338,7 +322,7 @@ void TestQgsLayoutAtlas::sorting_render()
   mAtlas->setHideCoverage( false );
 
   mAtlas->setSortFeatures( true );
-  mAtlas->setSortExpression( QStringLiteral( "NAME_1" ) ); // departement name
+  mAtlas->setSortExpression( u"NAME_1"_s ); // departement name
   mAtlas->setSortAscending( false );
 
   mAtlas->beginRender();
@@ -348,9 +332,7 @@ void TestQgsLayoutAtlas::sorting_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_sorting%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_sorting%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -366,7 +348,7 @@ void TestQgsLayoutAtlas::filtering_render()
 
   mAtlas->setFilterFeatures( true );
   QString error;
-  mAtlas->setFilterExpression( QStringLiteral( "substr(NAME_1,1,1)='P'" ), error ); // select only 'Pays de la Loire'
+  mAtlas->setFilterExpression( u"substr(NAME_1,1,1)='P'"_s, error ); // select only 'Pays de la Loire'
 
   mAtlas->beginRender();
 
@@ -375,9 +357,7 @@ void TestQgsLayoutAtlas::filtering_render()
     mAtlas->seekTo( fit );
     mLabel1->adjustSizeToText();
 
-    QgsLayoutChecker checker( QStringLiteral( "atlas_filtering%1" ).arg( ( ( int )fit ) + 1 ), mLayout );
-    checker.setControlPathPrefix( QStringLiteral( "atlas" ) );
-    QVERIFY( checker.testLayout( mReport, 0, 100 ) );
+    QGSVERIFYLAYOUTCHECK( u"atlas_filtering%1"_s.arg( ( ( int ) fit ) + 1 ), mLayout, 0, 100 );
   }
   mAtlas->endRender();
 }
@@ -391,10 +371,10 @@ void TestQgsLayoutAtlas::test_signals()
   mAtlas->setSortFeatures( false );
   mAtlas->setFilterFeatures( false );
 
-  QSignalSpy spyRenderBegun( mAtlas, &QgsLayoutAtlas::renderBegun );
-  QSignalSpy spyRenderEnded( mAtlas, &QgsLayoutAtlas::renderEnded );
-  QSignalSpy spyFeatureChanged( mAtlas, &QgsLayoutAtlas::featureChanged );
-  QSignalSpy spyPreparedForAtlas( mAtlasMap, &QgsLayoutItemMap::preparedForAtlas );
+  const QSignalSpy spyRenderBegun( mAtlas, &QgsLayoutAtlas::renderBegun );
+  const QSignalSpy spyRenderEnded( mAtlas, &QgsLayoutAtlas::renderEnded );
+  const QSignalSpy spyFeatureChanged( mAtlas, &QgsLayoutAtlas::featureChanged );
+  const QSignalSpy spyPreparedForAtlas( mAtlasMap, &QgsLayoutItemMap::preparedForAtlas );
   mAtlas->beginRender();
 
   QCOMPARE( spyRenderBegun.count(), 1 );
@@ -416,7 +396,7 @@ void TestQgsLayoutAtlas::test_remove_layer()
   mAtlas->setCoverageLayer( mVectorLayer2 );
   mAtlas->setEnabled( true );
 
-  QSignalSpy spyToggled( mAtlas, SIGNAL( toggled( bool ) ) );
+  const QSignalSpy spyToggled( mAtlas, SIGNAL( toggled( bool ) ) );
 
   //remove coverage layer while atlas is enabled
   QgsProject::instance()->removeMapLayer( mVectorLayer2->id() );
@@ -428,7 +408,7 @@ void TestQgsLayoutAtlas::test_remove_layer()
 
 void TestQgsLayoutAtlas::context()
 {
-  std::unique_ptr< QgsVectorLayer> vl2( new QgsVectorLayer( QStringLiteral( "Point?crs=epsg:4326&field=id:integer&field=labelx:integer" ), QStringLiteral( "vl" ), QStringLiteral( "memory" ) ) );
+  auto vl2 = std::make_unique<QgsVectorLayer>( u"Point?crs=epsg:4326&field=id:integer&field=labelx:integer"_s, u"vl"_s, u"memory"_s );
   QgsFeature f;
   QVERIFY( vl2->dataProvider()->addFeature( f ) );
   QgsFeature f2;
@@ -437,12 +417,12 @@ void TestQgsLayoutAtlas::context()
   mAtlas->setCoverageLayer( vl2.get() );
   mAtlas->setEnabled( true );
 
-  QgsExpressionContext context = mAtlas->createExpressionContext();
-  QVERIFY( context.hasVariable( QStringLiteral( "project_title" ) ) );
-  QVERIFY( context.hasVariable( QStringLiteral( "layout_name" ) ) );
-  QVERIFY( context.hasVariable( QStringLiteral( "atlas_totalfeatures" ) ) );
-  QVERIFY( context.hasVariable( QStringLiteral( "layer_id" ) ) );
-  QCOMPARE( context.fields().at( 1 ).name(), QStringLiteral( "labelx" ) );
+  const QgsExpressionContext context = mAtlas->createExpressionContext();
+  QVERIFY( context.hasVariable( u"project_title"_s ) );
+  QVERIFY( context.hasVariable( u"layout_name"_s ) );
+  QVERIFY( context.hasVariable( u"atlas_totalfeatures"_s ) );
+  QVERIFY( context.hasVariable( u"layer_id"_s ) );
+  QCOMPARE( context.fields().at( 1 ).name(), u"labelx"_s );
   QVERIFY( context.hasFeature() );
 
   mAtlas->setCoverageLayer( nullptr );

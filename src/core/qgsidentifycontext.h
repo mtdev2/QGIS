@@ -17,7 +17,6 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-
 #include "qgsrange.h"
 
 /**
@@ -31,8 +30,6 @@
 class CORE_EXPORT QgsIdentifyContext
 {
   public:
-
-    //! Constructor for QgsIdentifyContext
     QgsIdentifyContext() = default;
 
     /**
@@ -56,10 +53,28 @@ class CORE_EXPORT QgsIdentifyContext
     */
     bool isTemporal() const;
 
+    /**
+     * Returns the range of z-values to identify within, or an infinite range if no filtering by
+     * z should be applied.
+     *
+     * \see setZRange()
+     * \since QGIS 3.38
+     */
+    QgsDoubleRange zRange() const;
+
+    /**
+     * Sets the \a range of z-values to identify within.
+     *
+     * Set to an infinite range if no filtering by z should be applied.
+     *
+     * \see zRange()
+     * \since QGIS 3.38
+     */
+    void setZRange( const QgsDoubleRange &range );
+
   private:
-
     QgsDateTimeRange mTemporalRange;
-
+    QgsDoubleRange mZRange;
 };
 
 #endif // QGSEXPRESSIONCONTEXT_H

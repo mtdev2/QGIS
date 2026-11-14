@@ -17,22 +17,19 @@
  ***************************************************************************/
 
 #include "qgsabstractdatasourcewidget.h"
+
 #include <QPushButton>
 
-QgsAbstractDataSourceWidget::QgsAbstractDataSourceWidget( QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode ):
-  QDialog( parent, fl ),
-  mWidgetMode( widgetMode )
-{
-}
+#include "moc_qgsabstractdatasourcewidget.cpp"
+
+QgsAbstractDataSourceWidget::QgsAbstractDataSourceWidget( QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode )
+  : QDialog( parent, fl )
+  , mWidgetMode( widgetMode )
+{}
 
 QgsProviderRegistry::WidgetMode QgsAbstractDataSourceWidget::widgetMode() const
 {
   return mWidgetMode;
-}
-
-const QgsMapCanvas *QgsAbstractDataSourceWidget::mapCanvas() const
-{
-  return mMapCanvas;
 }
 
 QgsBrowserModel *QgsAbstractDataSourceWidget::browserModel()
@@ -43,7 +40,7 @@ QgsBrowserModel *QgsAbstractDataSourceWidget::browserModel()
 void QgsAbstractDataSourceWidget::setupButtons( QDialogButtonBox *buttonBox )
 {
   buttonBox->setStandardButtons( QDialogButtonBox::Apply | QDialogButtonBox::Close | QDialogButtonBox::Help );
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
   buttonBox->setStyleSheet( "* { button-layout: 2 }" );
 #endif
   mAddButton = buttonBox->button( QDialogButtonBox::Apply );
@@ -58,20 +55,19 @@ void QgsAbstractDataSourceWidget::setupButtons( QDialogButtonBox *buttonBox )
   connect( closeButton, &QPushButton::clicked, this, &QgsAbstractDataSourceWidget::reject );
 }
 
-void QgsAbstractDataSourceWidget::setMapCanvas( const QgsMapCanvas *mapCanvas )
-{
-  mMapCanvas = mapCanvas;
-}
-
 void QgsAbstractDataSourceWidget::setBrowserModel( QgsBrowserModel *model )
 {
   mBrowserModel = model;
 }
 
 void QgsAbstractDataSourceWidget::addButtonClicked()
-{
-}
+{}
 
 void QgsAbstractDataSourceWidget::reset()
+{}
+
+bool QgsAbstractDataSourceWidget::configureFromUri( const QString &uri )
 {
+  Q_UNUSED( uri );
+  return false;
 }

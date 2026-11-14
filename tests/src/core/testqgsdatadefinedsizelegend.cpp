@@ -13,30 +13,14 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
-
 #include "qgsdatadefinedsizelegend.h"
 #include "qgsfontutils.h"
-#include "qgsrenderchecker.h"
-#include "qgssymbol.h"
+#include "qgsmarkersymbol.h"
+#include "qgstest.h"
 
+#include <QString>
 
-static QString _fileNameForTest( const QString &testName )
-{
-  return QDir::tempPath() + '/' + testName + ".png";
-}
-
-static bool _verifyImage( const QString &testName, QString &report )
-{
-  QgsRenderChecker checker;
-  checker.setControlPathPrefix( QStringLiteral( "data_defined_size_legend" ) );
-  checker.setControlName( "expected_" + testName );
-  checker.setRenderedImage( _fileNameForTest( testName ) );
-  checker.setSizeTolerance( 3, 3 );
-  bool equal = checker.compareImages( testName, 500 );
-  report += checker.report();
-  return equal;
-}
+using namespace Qt::StringLiterals;
 
 static QgsRenderContext _createRenderContext( double mupp, double dpi, double scale )
 {
@@ -44,6 +28,7 @@ static QgsRenderContext _createRenderContext( double mupp, double dpi, double sc
   context.setScaleFactor( dpi / 25.4 );
   context.setRendererScale( scale );
   context.setMapToPixel( QgsMapToPixel( mupp ) );
+  context.setFlag( Qgis::RenderContextFlag::Antialiasing, true );
   return context;
 }
 
@@ -52,21 +37,21 @@ static QgsRenderContext _createRenderContext( double mupp, double dpi, double sc
  * \ingroup UnitTests
  * This is a unit test for legend rendering when using data-defined size of markers.
  */
-class TestQgsDataDefinedSizeLegend : public QObject
+class TestQgsDataDefinedSizeLegend : public QgsTest
 {
     Q_OBJECT
 
   public:
+    TestQgsDataDefinedSizeLegend()
+      : QgsTest( u"Data Defined Size Legend Tests"_s, u"data_defined_size_legend"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     void testBasic();
     void testCrowded();
-
-  private:
-    QString mReport;
 };
 
 void TestQgsDataDefinedSizeLegend::initTestCase()
@@ -76,21 +61,10 @@ void TestQgsDataDefinedSizeLegend::initTestCase()
   QgsApplication::init();
   QgsApplication::initQgis();
   QgsApplication::showSettings();
-
-  mReport += QLatin1String( "<h1>Data Defined Size Legend Tests</h1>\n" );
 }
 
 void TestQgsDataDefinedSizeLegend::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
-
   QgsApplication::exitQgis();
 }
 
@@ -98,62 +72,58 @@ void TestQgsDataDefinedSizeLegend::testBasic()
 {
   QgsDataDefinedSizeLegend settings;
   settings.setLegendType( QgsDataDefinedSizeLegend::LegendCollapsed );
-  settings.setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  settings.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
 
   QList<QgsDataDefinedSizeLegend::SizeClass> classes;
-  classes << QgsDataDefinedSizeLegend::SizeClass( 3.,  QStringLiteral( "3" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 15., QStringLiteral( "15" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 30., QStringLiteral( "30" ) );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 3., u"3"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 15., u"15"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 30., u"30"_s );
   settings.setClasses( classes );
 
   QVariantMap props;
-  props[QStringLiteral( "name" )] = QStringLiteral( "circle" );
-  props[QStringLiteral( "color" )] = QStringLiteral( "200,255,200" );
-  props[QStringLiteral( "outline_color" )] = QStringLiteral( "0,255,0" );
+  props[u"name"_s] = u"circle"_s;
+  props[u"color"_s] = u"200,255,200"_s;
+  props[u"outline_color"_s] = u"0,255,0"_s;
 
-  settings.setSymbol( QgsMarkerSymbol::createSimple( props ) );  // takes ownership
+  settings.setSymbol( QgsMarkerSymbol::createSimple( props ).release() ); // takes ownership
 
   QgsRenderContext context( _createRenderContext( 100, 96, 100 ) );
 
-  QImage imgBottom = settings.collapsedLegendImage( context, Qt::white, 1 );
-  imgBottom.save( _fileNameForTest( QStringLiteral( "basic_bottom" ) ) );
-  QVERIFY( _verifyImage( "basic_bottom", mReport ) );
+  const QImage imgBottom = settings.collapsedLegendImage( context, Qt::white, 1 );
+  QGSVERIFYIMAGECHECK( "basic_bottom", "basic_bottom", imgBottom, QString(), 500, QSize( 3, 3 ) );
 
   settings.setVerticalAlignment( QgsDataDefinedSizeLegend::AlignCenter );
 
-  QImage imgCenter = settings.collapsedLegendImage( context, Qt::white, 1 );
-  imgCenter.save( _fileNameForTest( QStringLiteral( "basic_center" ) ) );
-  QVERIFY( _verifyImage( "basic_center", mReport ) );
+  const QImage imgCenter = settings.collapsedLegendImage( context, Qt::white, 1 );
+  QGSVERIFYIMAGECHECK( "basic_center", "basic_center", imgCenter, QString(), 500, QSize( 3, 3 ) );
 }
 
 void TestQgsDataDefinedSizeLegend::testCrowded()
 {
   QgsDataDefinedSizeLegend settings;
   settings.setLegendType( QgsDataDefinedSizeLegend::LegendCollapsed );
-  settings.setFont( QgsFontUtils::getStandardTestFont( QStringLiteral( "Bold" ) ) );
+  settings.setFont( QgsFontUtils::getStandardTestFont( u"Bold"_s ) );
 
   QList<QgsDataDefinedSizeLegend::SizeClass> classes;
-  classes << QgsDataDefinedSizeLegend::SizeClass( 2.,  QStringLiteral( "2" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 5.,  QStringLiteral( "5" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 10., QStringLiteral( "10" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 12., QStringLiteral( "12" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 15., QStringLiteral( "15" ) );
-  classes << QgsDataDefinedSizeLegend::SizeClass( 18., QStringLiteral( "18" ) );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 2., u"2"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 5., u"5"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 10., u"10"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 12., u"12"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 15., u"15"_s );
+  classes << QgsDataDefinedSizeLegend::SizeClass( 18., u"18"_s );
   settings.setClasses( classes );
 
   QVariantMap props;
-  props[QStringLiteral( "name" )] = QStringLiteral( "circle" );
-  props[QStringLiteral( "color" )] = QStringLiteral( "200,255,200" );
-  props[QStringLiteral( "outline_color" )] = QStringLiteral( "0,255,0" );
+  props[u"name"_s] = u"circle"_s;
+  props[u"color"_s] = u"200,255,200"_s;
+  props[u"outline_color"_s] = u"0,255,0"_s;
 
-  settings.setSymbol( QgsMarkerSymbol::createSimple( props ) );  // takes ownership
+  settings.setSymbol( QgsMarkerSymbol::createSimple( props ).release() ); // takes ownership
 
   QgsRenderContext context( _createRenderContext( 100, 96, 100 ) );
 
-  QImage img = settings.collapsedLegendImage( context, Qt::white, 1 );
-  img.save( _fileNameForTest( QStringLiteral( "crowded" ) ) );
-
-  QVERIFY( _verifyImage( "crowded", mReport ) );
+  const QImage img = settings.collapsedLegendImage( context, Qt::white, 1 );
+  QGSVERIFYIMAGECHECK( "crowded", "crowded", img, QString(), 500, QSize( 3, 3 ) );
 }
 
 QGSTEST_MAIN( TestQgsDataDefinedSizeLegend )

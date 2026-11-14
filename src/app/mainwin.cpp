@@ -12,24 +12,18 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include <windows.h>
-#include <io.h>
-
-#include <sstream>
-#include <iostream>
 #include <fstream>
+#include <io.h>
+#include <iostream>
 #include <list>
 #include <memory>
+#include <sstream>
+#include <windows.h>
 
 void showError( std::string message, std::string title )
 {
   std::string newmessage = "Oops, looks like an error loading QGIS \n\n Details: \n\n" + message;
-  MessageBox(
-    NULL,
-    newmessage.c_str(),
-    title.c_str(),
-    MB_ICONERROR | MB_OK
-  );
+  MessageBox( NULL, newmessage.c_str(), title.c_str(), MB_ICONERROR | MB_OK );
   std::cerr << message << std::endl;
 }
 
@@ -50,7 +44,7 @@ std::string moduleExeBaseName( void )
   return basename;
 }
 
-int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
+int CALLBACK WinMain( HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/ )
 {
   std::string exename( moduleExeBaseName() );
   std::string basename( exename.substr( 0, exename.size() - 4 ) );
@@ -77,7 +71,7 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
         varfile.close();
       }
-      catch ( std::ifstream::failure e )
+      catch ( std::ifstream::failure &e )
       {
         std::string message = "Could not read environment variable list " + basename + ".vars" + " [" + e.what() + "]";
         showError( message, "Error loading QGIS" );
@@ -89,13 +83,13 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
         std::ofstream file;
         file.open( envfile, std::ifstream::out );
 
-        for ( std::list<std::string>::const_iterator it = vars.begin();  it != vars.end(); ++it )
+        for ( std::list<std::string>::const_iterator it = vars.begin(); it != vars.end(); ++it )
         {
           if ( getenv( it->c_str() ) )
             file << *it << "=" << getenv( it->c_str() ) << std::endl;
         }
       }
-      catch ( std::ifstream::failure e )
+      catch ( std::ifstream::failure &e )
       {
         std::string message = "Could not write environment file " + basename + ".env" + " [" + e.what() + "]";
         showError( message, "Error loading QGIS" );
@@ -122,16 +116,22 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
       }
     }
   }
-  catch ( std::ifstream::failure e )
+  catch ( std::ifstream::failure &e )
   {
     std::string message = "Could not read environment file " + basename + ".env" + " [" + e.what() + "]";
     showError( message, "Error loading QGIS" );
     return EXIT_FAILURE;
   }
 
+#ifndef _MSC_VER // MinGW
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
   HINSTANCE hKernelDLL = LoadLibrary( "kernel32.dll" );
-  BOOL ( *SetDefaultDllDirectories )( DWORD ) = hKernelDLL ? reinterpret_cast<BOOL( * )( DWORD )>( GetProcAddress( hKernelDLL, "SetDefaultDllDirectories" ) ) : 0;
-  DLL_DIRECTORY_COOKIE( *AddDllDirectory )( PCWSTR ) = hKernelDLL ? reinterpret_cast<DLL_DIRECTORY_COOKIE( * )( PCWSTR )>( GetProcAddress( hKernelDLL, "AddDllDirectory" ) ) : 0;
+  BOOL ( *SetDefaultDllDirectories )( DWORD ) = hKernelDLL ? reinterpret_cast<BOOL ( * )( DWORD )>( GetProcAddress( hKernelDLL, "SetDefaultDllDirectories" ) ) : 0;
+  DLL_DIRECTORY_COOKIE ( *AddDllDirectory )( PCWSTR ) = hKernelDLL ? reinterpret_cast<DLL_DIRECTORY_COOKIE ( * )( PCWSTR )>( GetProcAddress( hKernelDLL, "AddDllDirectory" ) ) : 0;
+#ifndef _MSC_VER // MinGW
+#pragma GCC diagnostic pop
+#endif
 
   if ( SetDefaultDllDirectories && AddDllDirectory )
   {
@@ -144,7 +144,11 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
     wchar_t *path = wcsdup( _wgetenv( L"PATH" ) );
 
+#ifdef _UCRT
+    for ( wchar_t *p = wcstok( path, L";", nullptr ); p; p = wcstok( NULL, L";", nullptr ) )
+#else
     for ( wchar_t *p = wcstok( path, L";" ); p; p = wcstok( NULL, L";" ) )
+#endif
     {
       if ( wcsicmp( p, windir ) == 0 )
         continue;
@@ -160,7 +164,7 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 #ifdef _MSC_VER
   HINSTANCE hGetProcIDDLL = LoadLibrary( "qgis_app.dll" );
 #else
-// MinGW
+  // MinGW
   HINSTANCE hGetProcIDDLL = LoadLibrary( "libqgis_app.dll" );
 #endif
 
@@ -169,17 +173,9 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
     DWORD error = GetLastError();
     LPTSTR errorText = NULL;
 
-    FormatMessage(
-      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS,
-      NULL,
-      error,
-      MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ),
-      ( LPTSTR )&errorText,
-      0,
-      NULL );
+    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error, MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ), ( LPTSTR ) &errorText, 0, NULL );
 
-    std::string message = "Could not load qgis_app.dll \n Windows Error: " + std::string( errorText )
-                          + "\n Help: \n\n Check " + basename + ".env for correct environment paths";
+    std::string message = "Could not load qgis_app.dll \n Windows Error: " + std::string( errorText ) + "\n Help: \n\n Check " + basename + ".env for correct environment paths";
     showError( message, "Error loading QGIS" );
 
     LocalFree( errorText );
@@ -187,7 +183,14 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
     return EXIT_FAILURE;
   }
 
+#ifndef _MSC_VER // MinGW
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
   int ( *realmain )( int, char *[] ) = ( int ( * )( int, char *[] ) ) GetProcAddress( hGetProcIDDLL, "main" );
+#ifndef _MSC_VER // MinGW
+#pragma GCC diagnostic pop
+#endif
+
   if ( !realmain )
   {
     showError( "Could not locate main function in qgis_app.dll", "Error loading QGIS" );

@@ -16,15 +16,16 @@
  ***************************************************************************/
 
 #include "qgslayoutitemtexttable.h"
-#include "qgslayouttablecolumn.h"
-#include "qgslayoutframe.h"
+
 #include "qgslayout.h"
+#include "qgslayoutframe.h"
+#include "qgslayouttablecolumn.h"
+
+#include "moc_qgslayoutitemtexttable.cpp"
 
 QgsLayoutItemTextTable::QgsLayoutItemTextTable( QgsLayout *layout )
   : QgsLayoutTable( layout )
-{
-
-}
+{}
 
 int QgsLayoutItemTextTable::type() const
 {
@@ -57,7 +58,7 @@ bool QgsLayoutItemTextTable::getTableContents( QgsLayoutTableContents &contents 
 {
   contents.clear();
 
-  for ( const QStringList &row : qgis::as_const( mRowText ) )
+  for ( const QStringList &row : std::as_const( mRowText ) )
   {
     QgsLayoutTableRow currentRow;
 

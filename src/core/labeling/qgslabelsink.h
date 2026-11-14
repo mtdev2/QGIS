@@ -18,17 +18,18 @@
 #ifndef QGSLABELSINK_H
 #define QGSLABELSINK_H
 
-#define SIP_NO_FILE
 
-#include "qgsvectorlayerlabelprovider.h"
 #include "qgsrulebasedlabeling.h"
+#include "qgsvectorlayerlabelprovider.h"
+
+#define SIP_NO_FILE
 
 class QgsPalLayerSettings;
 class QgsRuleBasedLabeling;
 
 /**
  * \ingroup core
- * Abstract base class that can be used to intercept rendered labels from
+ * \brief Abstract base class that can be used to intercept rendered labels from
  * a labeling / rendering job.
  *
  * \note not available in Python bindings
@@ -45,11 +46,28 @@ class QgsLabelSink
      * to another desired location.
      */
     virtual void drawLabel( const QString &layerId, QgsRenderContext &context, pal::LabelPosition *label, const QgsPalLayerSettings &settings ) = 0;
+
+    /**
+     * The drawLabel method is called for each unplaced label.
+     * \param layerId The layer ID associated to the label
+     * \param context The render context object
+     * \param label The label object
+     * \param settings The layer labeling settings
+     * \since QGIS 3.24
+     */
+    virtual void drawUnplacedLabel( const QString &layerId, QgsRenderContext &context, pal::LabelPosition *label, const QgsPalLayerSettings &settings )
+    {
+      Q_UNUSED( layerId );
+      Q_UNUSED( context )
+      Q_UNUSED( label );
+      Q_UNUSED( settings );
+      return;
+    }
 };
 
 /**
  * \ingroup core
- * Implements a derived label provider for use with QgsLabelSink.
+ * \brief Implements a derived label provider for use with QgsLabelSink.
  *
  * \note not available in Python bindings
  * \since QGIS 3.14
@@ -61,6 +79,7 @@ class QgsLabelSinkProvider : public QgsVectorLayerLabelProvider
     explicit QgsLabelSinkProvider( QgsVectorLayer *layer, const QString &providerId, QgsLabelSink *sink, const QgsPalLayerSettings *settings );
 
     void drawLabel( QgsRenderContext &context, pal::LabelPosition *label ) const override;
+    void drawUnplacedLabel( QgsRenderContext &context, pal::LabelPosition *label ) const override;
 
   private:
     QgsLabelSink *mLabelSink = nullptr;
@@ -68,7 +87,7 @@ class QgsLabelSinkProvider : public QgsVectorLayerLabelProvider
 
 /**
  * \ingroup core
- * Implements a derived label provider for rule based labels for use with QgsLabelSink.
+ * \brief Implements a derived label provider for rule based labels for use with QgsLabelSink.
  *
  * \note not available in Python bindings
  * \since QGIS 3.14
@@ -81,11 +100,12 @@ class QgsRuleBasedLabelSinkProvider : public QgsRuleBasedLabelProvider
 
     /**
      * Reinitialize the subproviders with QgsLabelSinkProviders
-     * \deprecated since QGIS 3.12
+     * \deprecated QGIS 3.12
      */
     Q_DECL_DEPRECATED void reinit( QgsVectorLayer *layer );
 
     void drawLabel( QgsRenderContext &context, pal::LabelPosition *label ) const override;
+    void drawUnplacedLabel( QgsRenderContext &context, pal::LabelPosition *label ) const override;
 
     //! Creates a  QgsRuleBasedLabelSinkProvider
     QgsVectorLayerLabelProvider *createProvider( QgsVectorLayer *layer, const QString &providerId, bool withFeatureLoop, const QgsPalLayerSettings *settings ) override;
@@ -93,7 +113,6 @@ class QgsRuleBasedLabelSinkProvider : public QgsRuleBasedLabelProvider
   private:
     QgsLabelSink *mLabelSink = nullptr;
 };
-
 
 
 #endif // QGSLABELSINK_H

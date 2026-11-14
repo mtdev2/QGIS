@@ -20,10 +20,11 @@
 
 #include "qgis_core.h"
 #include "qgslocatorfilter.h"
+
 #include <QAbstractListModel>
-#include <QTimer>
 #include <QSet>
 #include <QSortFilterProxyModel>
+#include <QTimer>
 
 class QgsLocator;
 class QgsLocatorModel;
@@ -32,32 +33,43 @@ class QgsLocatorProxyModel;
 /**
  * \class QgsLocatorModel
  * \ingroup core
- * An abstract list model for displaying the results of locator searches.
+ * \brief An abstract list model for displaying the results of locator searches.
  *
  * Note that this class should generally be used with a QgsLocatorProxyModel
  * in order to ensure correct sorting of results by priority and match level.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLocatorModel : public QAbstractTableModel
 {
     Q_OBJECT
 
   public:
-
-    static const int NoGroup = 9999;
+    static const int NoGroup = -1;
+    static const int UnorderedGroup = 0;
 
     //! Custom model roles
-    enum Role
+    // *INDENT-OFF*
+
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsLocatorModel::Role
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsLocatorModel, Role ) : int
     {
-      ResultDataRole = Qt::UserRole + 1, //!< QgsLocatorResult data
-      ResultTypeRole, //!< Result type
-      ResultFilterPriorityRole, //!< Result priority, used by QgsLocatorProxyModel for sorting roles.
-      ResultScoreRole, //!< Result match score, used by QgsLocatorProxyModel for sorting roles.
-      ResultFilterNameRole, //!< Associated filter name which created the result
-      ResultFilterGroupSortingRole, //!< Group results within the same filter results
-      ResultActionsRole, //!< The actions to be shown for the given result in a context menu
+      ResultData SIP_MONKEYPATCH_COMPAT_NAME( ResultDataRole ) = Qt::UserRole + 1,          //!< QgsLocatorResult data
+      ResultType SIP_MONKEYPATCH_COMPAT_NAME( ResultTypeRole ),                             //!< Result type
+      ResultFilterPriority SIP_MONKEYPATCH_COMPAT_NAME( ResultFilterPriorityRole ),         //!< Result priority, used by QgsLocatorProxyModel for sorting roles.
+      ResultScore SIP_MONKEYPATCH_COMPAT_NAME( ResultScoreRole ),                           //!< Result match score, used by QgsLocatorProxyModel for sorting roles.
+      ResultFilterName SIP_MONKEYPATCH_COMPAT_NAME( ResultFilterNameRole ),                 //!< Associated filter name which created the result
+      ResultFilterGroupSorting SIP_MONKEYPATCH_COMPAT_NAME( ResultFilterGroupSortingRole ), //!< Custom value for sorting \deprecated QGIS 3.40. No longer used.
+      ResultFilterGroupTitle,                                                               //!< Group title
+      ResultFilterGroupScore,                                                               //!< Group score
+      ResultActions SIP_MONKEYPATCH_COMPAT_NAME( ResultActionsRole ),                       //!< The actions to be shown for the given result in a context menu
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsLocatorModel.
@@ -92,25 +104,35 @@ class CORE_EXPORT QgsLocatorModel : public QAbstractTableModel
     void addResult( const QgsLocatorResult &result );
 
   private:
-
-    enum ColumnCount
+    enum Column
     {
       Name = 0,
       Description
     };
 
+
+    // sorting is made on these values!
+    enum class EntryType : int
+    {
+      Filter = 0,
+      Group = 1,
+      Result = 2,
+    };
+
     struct Entry
     {
-      QgsLocatorResult result;
-      QString filterTitle;
-      QgsLocatorFilter *filter = nullptr;
-      QString groupTitle = QString();
-      int groupSorting = 0;
+        EntryType type = EntryType::Result;
+        QgsLocatorResult result;
+        QString filterTitle;
+        QgsLocatorFilter *filter = nullptr;
+        QString groupTitle = QString();
+        double groupScore = UnorderedGroup;
     };
 
     QList<Entry> mResults;
     QSet<QString> mFoundResultsFromFilterNames;
-    QMap<QgsLocatorFilter *, QStringList> mFoundResultsFilterGroups;
+    // maps locator with pair of group title and group score
+    QMap<QgsLocatorFilter *, QList<std::pair<QString, double>>> mFoundResultsFilterGroups;
     bool mDeferredClear = false;
     QTimer mDeferredClearTimer;
 };
@@ -118,7 +140,7 @@ class CORE_EXPORT QgsLocatorModel : public QAbstractTableModel
 /**
  * \class QgsLocatorAutomaticModel
  * \ingroup core
- * A QgsLocatorModel which has is associated directly with a
+ * \brief A QgsLocatorModel which is associated directly with a
  * QgsLocator, and is automatically populated with results
  * from locator searches.
  *
@@ -131,14 +153,12 @@ class CORE_EXPORT QgsLocatorModel : public QAbstractTableModel
  * Note that this class should generally be used with a QgsLocatorProxyModel
  * in order to ensure correct sorting of results by priority and match level.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLocatorAutomaticModel : public QgsLocatorModel
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLocatorAutomaticModel, linked with the specified \a locator.
      *
@@ -174,7 +194,6 @@ class CORE_EXPORT QgsLocatorAutomaticModel : public QgsLocatorModel
     void searchFinished();
 
   private:
-
     QgsLocator *mLocator = nullptr;
 
     QString mNextRequestedString;
@@ -184,16 +203,14 @@ class CORE_EXPORT QgsLocatorAutomaticModel : public QgsLocatorModel
 /**
  * \class QgsLocatorProxyModel
  * \ingroup core
- * A sort proxy model for QgsLocatorModel, which automatically sorts
+ * \brief A sort proxy model for QgsLocatorModel, which automatically sorts
  * results by precedence.
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsLocatorProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLocatorProxyModel, with the specified \a parent object.
      */
@@ -202,5 +219,3 @@ class CORE_EXPORT QgsLocatorProxyModel : public QSortFilterProxyModel
 };
 
 #endif // QGSLOCATORMODEL_H
-
-

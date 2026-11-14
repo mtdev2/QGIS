@@ -16,17 +16,22 @@
  ***************************************************************************/
 
 #include "qgsalgorithmpackage.h"
-#include "qgsgeometryengine.h"
+
 #include "qgsogrutils.h"
+#include "qgssettings.h"
 #include "qgsvectorfilewriter.h"
 #include "qgsvectorlayer.h"
-#include "qgssettings.h"
+
+#include <QLocale>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QString QgsPackageAlgorithm::name() const
 {
-  return QStringLiteral( "package" );
+  return u"package"_s;
 }
 
 QString QgsPackageAlgorithm::displayName() const
@@ -46,23 +51,40 @@ QString QgsPackageAlgorithm::group() const
 
 QString QgsPackageAlgorithm::groupId() const
 {
-  return QStringLiteral( "database" );
+  return u"database"_s;
 }
 
 void QgsPackageAlgorithm::initAlgorithm( const QVariantMap & )
 {
-  addParameter( new QgsProcessingParameterMultipleLayers( QStringLiteral( "LAYERS" ), QObject::tr( "Input layers" ), QgsProcessing::TypeVector ) );
-  QgsProcessingParameterFileDestination *outputParameter = new QgsProcessingParameterFileDestination( QStringLiteral( "OUTPUT" ), QObject::tr( "Destination GeoPackage" ), QObject::tr( "GeoPackage files (*.gpkg)" ) );
-  outputParameter->setMetadata( QVariantMap( {{QStringLiteral( "widget_wrapper" ), QVariantMap( {{QStringLiteral( "dontconfirmoverwrite" ), true }} ) }} ) );
+  addParameter( new QgsProcessingParameterMultipleLayers( u"LAYERS"_s, QObject::tr( "Input layers" ), Qgis::ProcessingSourceType::Vector ) );
+  QgsProcessingParameterFileDestination *outputParameter = new QgsProcessingParameterFileDestination( u"OUTPUT"_s, QObject::tr( "Destination GeoPackage" ), QObject::tr( "GeoPackage files (*.gpkg)" ) );
+  outputParameter->setMetadata( QVariantMap( { { u"widget_wrapper"_s, QVariantMap( { { u"dontconfirmoverwrite"_s, true } } ) } } ) );
   addParameter( outputParameter );
-  addParameter( new QgsProcessingParameterBoolean( QStringLiteral( "OVERWRITE" ), QObject::tr( "Overwrite existing GeoPackage" ), false ) );
-  addParameter( new QgsProcessingParameterBoolean( QStringLiteral( "SAVE_STYLES" ), QObject::tr( "Save layer styles into GeoPackage" ), true ) );
-  addOutput( new QgsProcessingOutputMultipleLayers( QStringLiteral( "OUTPUT_LAYERS" ), QObject::tr( "Layers within new package" ) ) );
+  addParameter( new QgsProcessingParameterBoolean( u"OVERWRITE"_s, QObject::tr( "Overwrite existing GeoPackage" ), false ) );
+  addParameter( new QgsProcessingParameterBoolean( u"SAVE_STYLES"_s, QObject::tr( "Save layer styles into GeoPackage" ), true ) );
+  addParameter( new QgsProcessingParameterBoolean( u"SAVE_METADATA"_s, QObject::tr( "Save layer metadata into GeoPackage" ), true ) );
+  addParameter( new QgsProcessingParameterBoolean( u"SELECTED_FEATURES_ONLY"_s, QObject::tr( "Save only selected features" ), false ) );
+  addParameter( new QgsProcessingParameterBoolean( u"EXPORT_RELATED_LAYERS"_s, QObject::tr( "Export related layers following relations defined in the project" ), false ) );
+  auto extentParam = std::make_unique<QgsProcessingParameterExtent>( u"EXTENT"_s, QObject::tr( "Extent" ), QVariant(), true );
+  extentParam->setHelp( QObject::tr( "Limit exported features to those with geometries intersecting the provided extent" ) );
+  addParameter( extentParam.release() );
+
+  auto crsParam = std::make_unique< QgsProcessingParameterCrs >( u"CRS"_s, QObject::tr( "Destination CRS" ), QVariant(), true );
+  crsParam->setFlags( crsParam->flags() | Qgis::ProcessingParameterFlag::Advanced );
+  crsParam->setHelp( QObject::tr( "If set, all layers will be transformed to the destination CRS during packaging." ) );
+  addParameter( std::move( crsParam ) );
+
+  addOutput( new QgsProcessingOutputMultipleLayers( u"OUTPUT_LAYERS"_s, QObject::tr( "Layers within new package" ) ) );
 }
 
 QString QgsPackageAlgorithm::shortHelpString() const
 {
   return QObject::tr( "This algorithm collects a number of existing layers and packages them together into a single GeoPackage database." );
+}
+
+QString QgsPackageAlgorithm::shortDescription() const
+{
+  return QObject::tr( "Packages a number of existing layers together into a single GeoPackage database." );
 }
 
 QgsPackageAlgorithm *QgsPackageAlgorithm::createInstance() const
@@ -72,33 +94,47 @@ QgsPackageAlgorithm *QgsPackageAlgorithm::createInstance() const
 
 bool QgsPackageAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  const QList< QgsMapLayer * > layers = parameterAsLayerList( parameters, QStringLiteral( "LAYERS" ), context );
-  for ( QgsMapLayer *layer : layers )
+  const QList<QgsMapLayer *> layers = parameterAsLayerList( parameters, u"LAYERS"_s, context );
+
+  for ( const QgsMapLayer *layer : std::as_const( layers ) )
   {
-    mLayers.emplace_back( layer->clone() );
+    QgsMapLayer *clonedLayer { layer->clone() };
+    mClonedLayerIds.insert( clonedLayer->id(), layer->id() );
+    mLayers.emplace_back( clonedLayer );
   }
 
   if ( mLayers.empty() )
+  {
     feedback->reportError( QObject::tr( "No layers selected, geopackage will be empty" ), false );
+  }
+
+  mDestinationCrs = parameterAsCrs( parameters, u"CRS"_s, context );
 
   return true;
 }
 
 QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
 {
-  const bool overwrite = parameterAsBoolean( parameters, QStringLiteral( "OVERWRITE" ), context );
-  const bool saveStyles = parameterAsBoolean( parameters, QStringLiteral( "SAVE_STYLES" ), context );
-  QString packagePath = parameterAsString( parameters, QStringLiteral( "OUTPUT" ), context );
+  QGS_MARK_ALGORITHM_SOURCE
+
+  const bool overwrite = parameterAsBoolean( parameters, u"OVERWRITE"_s, context );
+  const bool saveStyles = parameterAsBoolean( parameters, u"SAVE_STYLES"_s, context );
+  const bool saveMetadata = parameterAsBoolean( parameters, u"SAVE_METADATA"_s, context );
+  const bool selectedFeaturesOnly = parameterAsBoolean( parameters, u"SELECTED_FEATURES_ONLY"_s, context );
+  const bool exportRelatedLayers = parameterAsBoolean( parameters, u"EXPORT_RELATED_LAYERS"_s, context );
+  const QString packagePath = parameterAsString( parameters, u"OUTPUT"_s, context );
+  const QList<QgsMapLayer *> layers = parameterAsLayerList( parameters, u"LAYERS"_s, context );
+
   if ( packagePath.isEmpty() )
     throw QgsProcessingException( QObject::tr( "No output file specified." ) );
 
   // delete existing geopackage if it exists
   if ( overwrite && QFile::exists( packagePath ) )
   {
-    feedback->pushInfo( QObject::tr( "Removing existing file '%1'" ).arg( packagePath ) );
+    feedback->pushWarning( QObject::tr( "Removing existing file '%1'" ).arg( QDir::toNativeSeparators( packagePath ) ) );
     if ( !QFile( packagePath ).remove() )
     {
-      throw QgsProcessingException( QObject::tr( "Could not remove existing file '%1'" ).arg( packagePath ) );
+      throw QgsProcessingException( QObject::tr( "Could not remove existing file '%1'" ).arg( QDir::toNativeSeparators( packagePath ) ) );
     }
   }
 
@@ -106,6 +142,173 @@ QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters
   if ( !hGpkgDriver )
   {
     throw QgsProcessingException( QObject::tr( "GeoPackage driver not found." ) );
+  }
+
+
+  // Collect related layers from project relations
+  if ( exportRelatedLayers )
+  {
+    const QgsProject *project { context.project() };
+    if ( project && !project->relationManager()->relations().isEmpty() )
+    {
+      // Infinite recursion should not happen in the real world but better safe than sorry
+      const int maxRecursion { 10 };
+      int recursionGuard { 0 };
+
+      // This function recursively finds referenced layers
+      const auto findReferenced = [this, &project, &feedback, &recursionGuard, &layers]( const QgsVectorLayer *vLayer, bool onlySaveSelected, auto &&findReferenced ) -> void {
+        const QgsVectorLayer *originalLayer { qobject_cast<QgsVectorLayer *>( project->mapLayer( mClonedLayerIds.value( vLayer->id(), vLayer->id() ) ) ) };
+        Q_ASSERT( originalLayer );
+        const QList<QgsRelation> relations { project->relationManager()->referencingRelations( originalLayer ) };
+        for ( const QgsRelation &relation : std::as_const( relations ) )
+        {
+          QgsVectorLayer *referencedLayer { relation.referencedLayer() };
+          QgsVectorLayer *relatedLayer { nullptr };
+
+          // Check if the layer was already in the export list
+          bool alreadyAdded { false };
+          for ( const auto &layerToExport : std::as_const( mLayers ) )
+          {
+            const QString originalId { mClonedLayerIds.value( layerToExport->id() ) };
+            if ( originalId == referencedLayer->id() )
+            {
+              relatedLayer = qobject_cast<QgsVectorLayer *>( layerToExport.get() );
+              alreadyAdded = true;
+              break;
+            }
+          }
+
+          if ( !alreadyAdded )
+          {
+            feedback->pushInfo( QObject::tr( "Adding referenced layer '%1'" ).arg( referencedLayer->name() ) );
+            relatedLayer = referencedLayer->clone();
+            mLayers.emplace_back( relatedLayer );
+            mClonedLayerIds.insert( relatedLayer->id(), referencedLayer->id() );
+          }
+
+          // Export only relevant features unless the layer was in the original export list and no selection was made on that layer
+          // in that case the user explicitly marked the layer for export and it is supposed to be exported fully.
+          if ( onlySaveSelected )
+          {
+            if ( !layers.contains( qobject_cast<QgsMapLayer *>( referencedLayer ) ) || referencedLayer->selectedFeatureCount() > 0 )
+            {
+              Q_ASSERT( relatedLayer );
+              QgsFeatureIds selected;
+              QgsFeatureIterator it { vLayer->getSelectedFeatures() };
+              QgsFeature selectedFeature;
+              while ( it.nextFeature( selectedFeature ) )
+              {
+                QgsFeature referencedFeature { relation.getReferencedFeature( selectedFeature ) };
+                if ( referencedFeature.isValid() )
+                {
+                  selected.insert( referencedFeature.id() );
+                }
+              }
+              relatedLayer->selectByIds( selected, Qgis::SelectBehavior::AddToSelection );
+            }
+          }
+
+          // Recursive finding
+          if ( recursionGuard > maxRecursion )
+          {
+            feedback->pushWarning( QObject::tr( "Max recursion (%1) adding referenced layer '%2', layer was not added" ).arg( QLocale().toString( recursionGuard ), referencedLayer->name() ) );
+          }
+          else
+          {
+            recursionGuard++;
+            findReferenced( relatedLayer, onlySaveSelected, findReferenced );
+          }
+        }
+      };
+
+      // This function recursively finds referencing layers
+      const auto findReferencing = [this, &project, &feedback, &recursionGuard, &layers]( const QgsVectorLayer *vLayer, bool onlySaveSelected, auto &&findReferencing ) -> void {
+        const QgsVectorLayer *originalLayer { qobject_cast<QgsVectorLayer *>( project->mapLayer( mClonedLayerIds.value( vLayer->id(), vLayer->id() ) ) ) };
+        Q_ASSERT( originalLayer );
+        const QList<QgsRelation> relations { project->relationManager()->referencedRelations( originalLayer ) };
+        for ( const QgsRelation &relation : std::as_const( relations ) )
+        {
+          QgsVectorLayer *referencingLayer { relation.referencingLayer() };
+          QgsVectorLayer *relatedLayer { nullptr };
+          const bool layerWasExplicitlyAdded { layers.contains( qobject_cast<QgsMapLayer *>( referencingLayer ) ) };
+
+          // Check if the layer was already in the export list
+          bool alreadyAdded { false };
+          for ( const auto &layerToExport : std::as_const( mLayers ) )
+          {
+            const QString originalId { mClonedLayerIds.value( layerToExport->id() ) };
+            if ( originalId == referencingLayer->id() )
+            {
+              relatedLayer = qobject_cast<QgsVectorLayer *>( layerToExport.get() );
+              alreadyAdded = true;
+              break;
+            }
+          }
+
+          // Export only relevant features unless the layer was in the original export list and no selection was made on that layer
+          // in that case the user explicitly marked the layer for export and it is supposed to be exported fully.
+          QgsFeatureIds selected;
+
+          if ( onlySaveSelected && ( !layerWasExplicitlyAdded || referencingLayer->selectedFeatureCount() > 0 ) )
+          {
+            if ( !layers.contains( qobject_cast<QgsMapLayer *>( referencingLayer ) ) || referencingLayer->selectedFeatureCount() > 0 )
+            {
+              QgsFeatureIterator it { vLayer->getSelectedFeatures() };
+              QgsFeature selectedFeature;
+              while ( it.nextFeature( selectedFeature ) )
+              {
+                QgsFeatureIterator referencingFeaturesIterator { relation.getRelatedFeatures( selectedFeature ) };
+                QgsFeature referencingFeature;
+                while ( referencingFeaturesIterator.nextFeature( referencingFeature ) )
+                {
+                  if ( referencingFeature.isValid() )
+                  {
+                    selected.insert( referencingFeature.id() );
+                  }
+                }
+              }
+            }
+          }
+
+          if ( !alreadyAdded && ( !onlySaveSelected || !selected.isEmpty() ) )
+          {
+            feedback->pushInfo( QObject::tr( "Adding referencing layer '%1'" ).arg( referencingLayer->name() ) );
+            relatedLayer = referencingLayer->clone();
+            mLayers.emplace_back( relatedLayer );
+            mClonedLayerIds.insert( relatedLayer->id(), referencingLayer->id() );
+          }
+
+          if ( relatedLayer && !selected.isEmpty() )
+          {
+            relatedLayer->selectByIds( selected, Qgis::SelectBehavior::AddToSelection );
+          }
+
+          // Recursive finding
+          if ( recursionGuard > maxRecursion )
+          {
+            feedback->pushWarning( QObject::tr( "Max recursion (%1) adding referencing layer '%2', layer was not added" ).arg( QLocale().toString( recursionGuard ), referencingLayer->name() ) );
+          }
+          else if ( relatedLayer )
+          {
+            recursionGuard++;
+            findReferencing( relatedLayer, onlySaveSelected, findReferencing );
+          }
+        }
+      };
+
+      for ( const QgsMapLayer *layer : std::as_const( layers ) )
+      {
+        const QgsVectorLayer *vLayer { qobject_cast<const QgsVectorLayer *>( layer ) };
+        if ( vLayer )
+        {
+          const bool onlySaveSelected = vLayer->selectedFeatureCount() > 0 && selectedFeaturesOnly;
+          recursionGuard = 0;
+          findReferenced( vLayer, onlySaveSelected, findReferenced );
+          recursionGuard = 0;
+          findReferencing( vLayer, onlySaveSelected, findReferencing );
+        }
+      }
+    }
   }
 
   gdal::ogr_datasource_unique_ptr hDS;
@@ -123,12 +326,14 @@ QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters
       throw QgsProcessingException( QObject::tr( "Opening database %1 failed (OGR error: %2)" ).arg( packagePath, QString::fromUtf8( CPLGetLastErrorMsg() ) ) );
   }
 
+  const bool validExtent = parameters.value( u"EXTENT"_s ).isValid();
 
   bool errored = false;
 
   QgsProcessingMultiStepFeedback multiStepFeedback( mLayers.size(), feedback );
 
   QStringList outputLayers;
+
   int i = 0;
   for ( const auto &layer : mLayers )
   {
@@ -148,19 +353,32 @@ QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters
 
     feedback->pushInfo( QObject::tr( "Packaging layer %1/%2: %3" ).arg( i ).arg( mLayers.size() ).arg( layer ? layer->name() : QString() ) );
 
+    QgsRectangle extent;
+
     switch ( layer->type() )
     {
-      case QgsMapLayerType::VectorLayer:
+      case Qgis::LayerType::Vector:
       {
-        if ( !packageVectorLayer( qobject_cast< QgsVectorLayer * >( layer.get() ), packagePath,
-                                  context, &multiStepFeedback, saveStyles ) )
+        QgsVectorLayer *vectorLayer = qobject_cast<QgsVectorLayer *>( layer.get() );
+
+        if ( validExtent )
+        {
+          if ( vectorLayer->hasSpatialIndex() == Qgis::SpatialIndexPresence::NotPresent )
+          {
+            feedback->pushWarning( QObject::tr( "No spatial index exists for layer %1, performance will be severely degraded" ).arg( vectorLayer->name() ) );
+          }
+
+          extent = parameterAsExtent( parameters, u"EXTENT"_s, context, mDestinationCrs.isValid() ? mDestinationCrs : layer->crs() );
+        }
+
+        if ( !packageVectorLayer( vectorLayer, packagePath, context, &multiStepFeedback, saveStyles, saveMetadata, selectedFeaturesOnly, extent ) )
           errored = true;
         else
-          outputLayers.append( QStringLiteral( "%1|layername=%2" ).arg( packagePath, layer->name() ) );
+          outputLayers.append( u"%1|layername=%2"_s.arg( packagePath, layer->name() ) );
         break;
       }
 
-      case QgsMapLayerType::RasterLayer:
+      case Qgis::LayerType::Raster:
       {
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging raster layers is not supported." ) );
@@ -168,33 +386,45 @@ QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters
         break;
       }
 
-      case QgsMapLayerType::PluginLayer:
+      case Qgis::LayerType::Plugin:
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging plugin layers is not supported." ) );
         errored = true;
         break;
 
-      case QgsMapLayerType::MeshLayer:
+      case Qgis::LayerType::Mesh:
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging mesh layers is not supported." ) );
         errored = true;
         break;
 
-      case QgsMapLayerType::PointCloudLayer:
+      case Qgis::LayerType::PointCloud:
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging point cloud layers is not supported." ) );
         errored = true;
         break;
 
-      case QgsMapLayerType::VectorTileLayer:
+      case Qgis::LayerType::VectorTile:
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging vector tile layers is not supported." ) );
         errored = true;
         break;
 
-      case QgsMapLayerType::AnnotationLayer:
+      case Qgis::LayerType::Annotation:
         //not supported
         feedback->pushDebugInfo( QObject::tr( "Packaging annotation layers is not supported." ) );
+        errored = true;
+        break;
+
+      case Qgis::LayerType::Group:
+        //not supported
+        feedback->pushDebugInfo( QObject::tr( "Packaging group layers is not supported." ) );
+        errored = true;
+        break;
+
+      case Qgis::LayerType::TiledScene:
+        //not supported
+        feedback->pushDebugInfo( QObject::tr( "Packaging tiled scene layers is not supported." ) );
         errored = true;
         break;
     }
@@ -204,39 +434,69 @@ QVariantMap QgsPackageAlgorithm::processAlgorithm( const QVariantMap &parameters
     throw QgsProcessingException( QObject::tr( "Error obtained while packaging one or more layers." ) );
 
   QVariantMap outputs;
-  outputs.insert( QStringLiteral( "OUTPUT" ), packagePath );
-  outputs.insert( QStringLiteral( "OUTPUT_LAYERS" ), outputLayers );
+  outputs.insert( u"OUTPUT"_s, packagePath );
+  outputs.insert( u"OUTPUT_LAYERS"_s, outputLayers );
   return outputs;
 }
 
-bool QgsPackageAlgorithm::packageVectorLayer( QgsVectorLayer *layer, const QString &path, QgsProcessingContext &context,
-    QgsProcessingFeedback *feedback, bool saveStyles )
+bool QgsPackageAlgorithm::packageVectorLayer(
+  QgsVectorLayer *layer, const QString &path, QgsProcessingContext &context, QgsProcessingFeedback *feedback, bool saveStyles, bool saveMetadata, bool selectedFeaturesOnly, const QgsRectangle &extent
+)
 {
   QgsVectorFileWriter::SaveVectorOptions options;
-  options.driverName = QStringLiteral( "GPKG" );
+  options.driverName = u"GPKG"_s;
   options.layerName = layer->name();
   options.actionOnExistingFile = QgsVectorFileWriter::CreateOrOverwriteLayer;
   options.fileEncoding = context.defaultEncoding();
+  options.onlySelectedFeatures = selectedFeaturesOnly;
   options.feedback = feedback;
+  if ( saveMetadata )
+  {
+    options.layerMetadata = layer->metadata();
+    options.saveMetadata = true;
+  }
 
-  // remove any existing FID field, let this be completely recreated
-  // since many layer sources have fid fields which are not compatible with gpkg requirements
-  QgsFields fields = layer->fields();
-  const int fidIndex = fields.lookupField( QStringLiteral( "fid" ) );
+  if ( mDestinationCrs.isValid() )
+  {
+    options.ct = QgsCoordinateTransform( layer->crs(), mDestinationCrs, context.transformContext() );
+  }
+
+  // Check FID compatibility with GPKG and remove any existing FID field if not compatible,
+  // let this be completely recreated since many layer sources have fid fields which are
+  // not compatible with gpkg requirements
+  const QgsFields fields = layer->fields();
+  const int fidIndex = fields.lookupField( u"fid"_s );
 
   options.attributes = fields.allAttributesList();
   if ( fidIndex >= 0 )
-    options.attributes.removeAll( fidIndex );
+  {
+    const QMetaType::Type fidType { layer->fields().field( fidIndex ).type() };
+    if ( !layer->fieldConstraints( fidIndex ).testFlag( QgsFieldConstraints::Constraint::ConstraintUnique )
+         && !layer->fieldConstraints( fidIndex ).testFlag( QgsFieldConstraints::Constraint::ConstraintNotNull )
+         && fidType != QMetaType::Type::Int
+         && fidType != QMetaType::Type::UInt
+         && fidType != QMetaType::Type::LongLong
+         && fidType != QMetaType::Type::ULongLong )
+    {
+      options.attributes.removeAll( fidIndex );
+    }
+  }
+
   if ( options.attributes.isEmpty() )
   {
     // fid was the only field
     options.skipAttributeCreation = true;
   }
 
+  if ( !extent.isNull() )
+  {
+    options.filterExtent = extent;
+  }
+
   QString error;
   QString newFilename;
   QString newLayer;
-  if ( QgsVectorFileWriter::writeAsVectorFormatV2( layer, path, context.transformContext(), options, &newFilename, &newLayer, &error ) != QgsVectorFileWriter::NoError )
+  if ( QgsVectorFileWriter::writeAsVectorFormatV3( layer, path, context.transformContext(), options, &error, &newFilename, &newLayer ) != QgsVectorFileWriter::NoError )
   {
     feedback->reportError( QObject::tr( "Packaging layer failed: %1" ).arg( error ) );
     return false;
@@ -245,12 +505,12 @@ bool QgsPackageAlgorithm::packageVectorLayer( QgsVectorLayer *layer, const QStri
   {
     if ( saveStyles )
     {
-      std::unique_ptr< QgsVectorLayer > res = qgis::make_unique< QgsVectorLayer >( QStringLiteral( "%1|layername=%2" ).arg( newFilename, newLayer ) );
-      if ( res )
+      auto res = std::make_unique<QgsVectorLayer>( u"%1|layername=%2"_s.arg( newFilename, newLayer ) );
+      if ( res->isValid() )
       {
         QString errorMsg;
-        QDomDocument doc( QStringLiteral( "qgis" ) );
-        QgsReadWriteContext context;
+        QDomDocument doc( u"qgis"_s );
+        const QgsReadWriteContext context;
         layer->exportNamedStyle( doc, errorMsg, context );
         if ( !errorMsg.isEmpty() )
         {
@@ -266,11 +526,11 @@ bool QgsPackageAlgorithm::packageVectorLayer( QgsVectorLayer *layer, const QStri
           {
             QgsSettings settings;
             // this is not nice -- but needed to avoid an "overwrite" prompt messagebox from the provider! This api needs a rework to avoid this.
-            QVariant prevOverwriteStyle = settings.value( QStringLiteral( "qgis/overwriteStyle" ) );
-            settings.setValue( QStringLiteral( "qgis/overwriteStyle" ), true );
-            res->saveStyleToDatabase( newLayer, QString(), true, QString(), errorMsg );
-            settings.setValue( QStringLiteral( "qgis/overwriteStyle" ), prevOverwriteStyle );
-            if ( !errorMsg.isEmpty() )
+            const QVariant prevOverwriteStyle = settings.value( u"qgis/overwriteStyle"_s );
+            settings.setValue( u"qgis/overwriteStyle"_s, true );
+            QgsMapLayer::SaveStyleResults saveStyleResults = res->saveStyleToDatabaseV2( newLayer, QString(), true, QString(), errorMsg );
+            settings.setValue( u"qgis/overwriteStyle"_s, prevOverwriteStyle );
+            if ( saveStyleResults.testFlag( QgsMapLayer::SaveStyleResult::QmlGenerationFailed ) || saveStyleResults.testFlag( QgsMapLayer::SaveStyleResult::DatabaseWriteFailed ) )
             {
               feedback->reportError( QObject::tr( "Could not save layer style: %1 " ).arg( errorMsg ) );
             }

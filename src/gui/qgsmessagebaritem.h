@@ -18,11 +18,11 @@
 #define QGSMESSAGEBARITEM_H
 
 #include "qgis.h"
-
-#include <QWidget>
-#include <QIcon>
-#include <QHBoxLayout>
 #include "qgis_gui.h"
+
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QWidget>
 
 class QTextBrowser;
 class QLabel;
@@ -31,7 +31,7 @@ class QgsMessageBar;
 /**
  * \ingroup gui
  * \class QgsMessageBarItem
- * Represents an item shown within a QgsMessageBar widget.
+ * \brief Represents an item shown within a QgsMessageBar widget.
  *
  * QgsMessageBarItem represents a single item (or message) which can be shown in a QgsMessageBar widget.
  */
@@ -39,7 +39,6 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsMessageBarItem, containing a message with the specified \a text to be displayed on the bar.
      *
@@ -50,7 +49,7 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
      * is set to 0, then the message must be manually dismissed by the user. Since QGIS 3.18, a duration of -1 indicates that
      * the default timeout for the message \a level should be used.
      */
-    QgsMessageBarItem( const QString &text, Qgis::MessageLevel level = Qgis::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
+    QgsMessageBarItem( const QString &text, Qgis::MessageLevel level = Qgis::MessageLevel::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
      * Constructor for QgsMessageBarItem, containing a \a title and message with the specified \a text to be displayed on the bar.
@@ -62,7 +61,7 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
      * is set to 0, then the message must be manually dismissed by the user. Since QGIS 3.18, a duration of -1 indicates that
      * the default timeout for the message \a level should be used.
      */
-    QgsMessageBarItem( const QString &title, const QString &text, Qgis::MessageLevel level = Qgis::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
+    QgsMessageBarItem( const QString &title, const QString &text, Qgis::MessageLevel level = Qgis::MessageLevel::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
      * Constructor for QgsMessageBarItem, containing a \a title, message with the specified \a text, and a custom \a widget to be displayed on the bar.
@@ -74,7 +73,7 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
      * is set to 0, then the message must be manually dismissed by the user. Since QGIS 3.18, a duration of -1 indicates that
      * the default timeout for the message \a level should be used.
      */
-    QgsMessageBarItem( const QString &title, const QString &text, QWidget *widget, Qgis::MessageLevel level = Qgis::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
+    QgsMessageBarItem( const QString &title, const QString &text, QWidget *widget, Qgis::MessageLevel level = Qgis::MessageLevel::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
      * Constructor for QgsMessageBarItem, containing a custom \a widget to be displayed on the bar.
@@ -86,7 +85,7 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
      * is set to 0, then the message must be manually dismissed by the user. Since QGIS 3.18, a duration of -1 indicates that
      * the default timeout for the message \a level should be used.
      */
-    QgsMessageBarItem( QWidget *widget, Qgis::MessageLevel level = Qgis::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
+    QgsMessageBarItem( QWidget *widget, Qgis::MessageLevel level = Qgis::MessageLevel::Info, int duration = 0, QWidget *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
      * Sets the message \a text to show in the item.
@@ -182,7 +181,7 @@ class GUI_EXPORT QgsMessageBarItem : public QWidget
      * Returns the styleSheet which should be used to style a QgsMessageBar object when
      * this item is displayed.
      */
-    QString getStyleSheet() { return mStyleSheet; }
+    QString getStyleSheet() const { return mStyleSheet; }
 
   public slots:
 

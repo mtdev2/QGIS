@@ -20,57 +20,72 @@
 #define QGSADDTABORGROUP
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
 
 #include "ui_qgsaddtaborgroupbase.h"
-#include "qgsguiutils.h"
-#include "qgis_gui.h"
-#include "qgshelp.h"
 
-class QTreeWidgetItem;
+#include "qgis_gui.h"
+#include "qgsguiutils.h"
+
+#define SIP_NO_FILE
+
 class QgsVectorLayer;
+class QgsSettingsEntryInteger;
 
 /**
  * \ingroup gui
- * Dialog to add a tab or group of attributes
+ * \brief Dialog to add a container for attribute widgets
  *
  * \note This class is not a part of public API
  * \since QGIS 3.14
  */
-class GUI_EXPORT QgsAddTabOrGroup : public QDialog, private Ui::QgsAddTabOrGroupBase
+class GUI_EXPORT QgsAddAttributeFormContainerDialog : public QDialog, private Ui::QgsAddTabOrGroupBase
 {
     Q_OBJECT
 
   public:
-    typedef QPair<QString, QTreeWidgetItem *> TabPair;
+    typedef QPair<QString, QModelIndex> ContainerPair;
 
   public:
     //! constructor
-    QgsAddTabOrGroup( QgsVectorLayer *lyr, const QList<TabPair> &tabList, QTreeWidgetItem *currentTab = nullptr, QWidget *parent = nullptr );
+    QgsAddAttributeFormContainerDialog( QgsVectorLayer *layer, const QList<ContainerPair> &existingContainerList, QModelIndex &currentItemIndex, QWidget *parent = nullptr );
 
-    //! Returns the name of the tab or group
+    //! Returns the name of the container
     QString name();
 
-    //! Returns tree item corresponding to the added tab
-    QTreeWidgetItem *tab();
+    /**
+     * Returns tree model index corresponding to the selected parent container.
+     *
+     * Will be an invalid index when a new tab is created.
+     * \since QGIS 3.44
+     */
+    QModelIndex parentContainerItem() const;
 
     //! Returns the column count
     int columnCount() const;
 
-    //! Returns whether the tab button is checked
-    bool tabButtonIsChecked();
+    /**
+     * Returns the container type.
+     *
+     * \since QGIS 3.32
+     */
+    Qgis::AttributeEditorContainerType containerType() const;
 
     //! Accepts the dialog
     void accept() override;
 
   private slots:
-    void mGroupButton_toggled( bool checked );
-    void mTabButton_toggled( bool checked );
     void showHelp();
+    void containerTypeChanged();
 
   protected:
     QgsVectorLayer *mLayer = nullptr;
-    QList< TabPair > mTabs;
+    QList<ContainerPair> mExistingContainers;
+
+  public:
+    //! Settings entry for the default column count for tab containers \since QGIS 4.0.1
+    static const QgsSettingsEntryInteger *settingsDefaultTabColumnCount;
+    //! Settings entry for the default column count for group box containers \since QGIS 4.0.1
+    static const QgsSettingsEntryInteger *settingsDefaultGroupColumnCount;
 };
 
 #endif

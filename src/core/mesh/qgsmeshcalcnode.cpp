@@ -16,21 +16,19 @@
  ***************************************************************************/
 ///@cond PRIVATE
 
+#include "qgsmeshcalcnode.h"
+
 #include <cfloat>
 
-#include "qgsmeshcalcnode.h"
 #include "qgsmeshmemorydataprovider.h"
 
 QgsMeshCalcNode::QgsMeshCalcNode()
-  : mType( tNoData )
-{
-}
+{}
 
 QgsMeshCalcNode::QgsMeshCalcNode( double number )
   : mType( tNumber )
   , mNumber( number )
-{
-}
+{}
 
 
 QgsMeshCalcNode::QgsMeshCalcNode( Operator op, QgsMeshCalcNode *left, QgsMeshCalcNode *right )
@@ -38,19 +36,15 @@ QgsMeshCalcNode::QgsMeshCalcNode( Operator op, QgsMeshCalcNode *left, QgsMeshCal
   , mLeft( left )
   , mRight( right )
   , mOperator( op )
-{
-}
+{}
 
-QgsMeshCalcNode::QgsMeshCalcNode( QgsMeshCalcNode *condition /* bool condition */,
-                                  QgsMeshCalcNode *left /*if true */,
-                                  QgsMeshCalcNode *right /* if false */ )
+QgsMeshCalcNode::QgsMeshCalcNode( QgsMeshCalcNode *condition /* bool condition */, QgsMeshCalcNode *left /*if true */, QgsMeshCalcNode *right /* if false */ )
   : mType( tOperator )
   , mLeft( left )
   , mRight( right )
   , mCondition( condition )
   , mOperator( opIF )
-{
-}
+{}
 
 QgsMeshCalcNode::QgsMeshCalcNode( const QString &datasetGroupName )
   : mType( tDatasetGroupRef )
@@ -104,11 +98,132 @@ QStringList QgsMeshCalcNode::usedDatasetGroupNames() const
   return res;
 }
 
-bool QgsMeshCalcNode::calculate( const  QgsMeshCalcUtils &dsu, QgsMeshMemoryDatasetGroup &result ) const
+QStringList QgsMeshCalcNode::aggregatedUsedDatasetGroupNames() const
+{
+  QStringList res;
+
+  switch ( mOperator )
+  {
+    case QgsMeshCalcNode::opPLUS:
+    case QgsMeshCalcNode::opMINUS:
+    case QgsMeshCalcNode::opMUL:
+    case QgsMeshCalcNode::opDIV:
+    case QgsMeshCalcNode::opPOW:
+    case QgsMeshCalcNode::opEQ:
+    case QgsMeshCalcNode::opNE:
+    case QgsMeshCalcNode::opGT:
+    case QgsMeshCalcNode::opLT:
+    case QgsMeshCalcNode::opGE:
+    case QgsMeshCalcNode::opLE:
+    case QgsMeshCalcNode::opAND:
+    case QgsMeshCalcNode::opOR:
+    case QgsMeshCalcNode::opNOT:
+    case QgsMeshCalcNode::opIF:
+    case QgsMeshCalcNode::opSIGN:
+    case QgsMeshCalcNode::opMIN:
+    case QgsMeshCalcNode::opMAX:
+    case QgsMeshCalcNode::opABS:
+    case QgsMeshCalcNode::opNONE:
+      if ( mLeft )
+      {
+        res += mLeft->aggregatedUsedDatasetGroupNames();
+      }
+
+      if ( mRight )
+      {
+        res += mRight->aggregatedUsedDatasetGroupNames();
+      }
+
+      if ( mCondition )
+      {
+        res += mCondition->aggregatedUsedDatasetGroupNames();
+      }
+      break;
+    case QgsMeshCalcNode::opSUM_AGGR:
+    case QgsMeshCalcNode::opMAX_AGGR:
+    case QgsMeshCalcNode::opMIN_AGGR:
+    case QgsMeshCalcNode::opAVG_AGGR:
+      if ( mLeft )
+      {
+        res += mLeft->usedDatasetGroupNames();
+      }
+
+      if ( mRight )
+      {
+        res += mRight->usedDatasetGroupNames();
+      }
+
+      if ( mCondition )
+      {
+        res += mCondition->usedDatasetGroupNames();
+      }
+      break;
+  }
+
+  return res;
+}
+
+QStringList QgsMeshCalcNode::notAggregatedUsedDatasetGroupNames() const
+{
+  QStringList res;
+
+  if ( mType == tDatasetGroupRef )
+  {
+    res.append( mDatasetGroupName );
+  }
+
+  switch ( mOperator )
+  {
+    case QgsMeshCalcNode::opPLUS:
+    case QgsMeshCalcNode::opMINUS:
+    case QgsMeshCalcNode::opMUL:
+    case QgsMeshCalcNode::opDIV:
+    case QgsMeshCalcNode::opPOW:
+    case QgsMeshCalcNode::opEQ:
+    case QgsMeshCalcNode::opNE:
+    case QgsMeshCalcNode::opGT:
+    case QgsMeshCalcNode::opLT:
+    case QgsMeshCalcNode::opGE:
+    case QgsMeshCalcNode::opLE:
+    case QgsMeshCalcNode::opAND:
+    case QgsMeshCalcNode::opOR:
+    case QgsMeshCalcNode::opNOT:
+    case QgsMeshCalcNode::opIF:
+    case QgsMeshCalcNode::opSIGN:
+    case QgsMeshCalcNode::opMIN:
+    case QgsMeshCalcNode::opMAX:
+    case QgsMeshCalcNode::opABS:
+      if ( mLeft )
+      {
+        res += mLeft->notAggregatedUsedDatasetGroupNames();
+      }
+
+      if ( mRight )
+      {
+        res += mRight->notAggregatedUsedDatasetGroupNames();
+      }
+
+      if ( mCondition )
+      {
+        res += mCondition->notAggregatedUsedDatasetGroupNames();
+      }
+      break;
+    case QgsMeshCalcNode::opSUM_AGGR:
+    case QgsMeshCalcNode::opMAX_AGGR:
+    case QgsMeshCalcNode::opMIN_AGGR:
+    case QgsMeshCalcNode::opAVG_AGGR:
+    case QgsMeshCalcNode::opNONE:
+      break;
+  }
+
+  return res;
+}
+
+bool QgsMeshCalcNode::calculate( const QgsMeshCalcUtils &dsu, QgsMeshMemoryDatasetGroup &result, bool isAggregate ) const
 {
   if ( mType == tDatasetGroupRef )
   {
-    dsu.copy( result, mDatasetGroupName );
+    dsu.copy( result, mDatasetGroupName, isAggregate );
     return true;
   }
   else if ( mType == tOperator )
@@ -116,11 +231,13 @@ bool QgsMeshCalcNode::calculate( const  QgsMeshCalcUtils &dsu, QgsMeshMemoryData
     QgsMeshMemoryDatasetGroup leftDatasetGroup( "left", dsu.outputType() );
     QgsMeshMemoryDatasetGroup rightDatasetGroup( "right", dsu.outputType() );
 
-    if ( !mLeft || !mLeft->calculate( dsu, leftDatasetGroup ) )
+    bool currentOperatorIsAggregate = mOperator == opSUM_AGGR || mOperator == opMAX_AGGR || mOperator == opMIN_AGGR || mOperator == opAVG_AGGR;
+
+    if ( !mLeft || !mLeft->calculate( dsu, leftDatasetGroup, isAggregate || currentOperatorIsAggregate ) )
     {
       return false;
     }
-    if ( mRight && !mRight->calculate( dsu, rightDatasetGroup ) )
+    if ( mRight && !mRight->calculate( dsu, rightDatasetGroup, isAggregate || currentOperatorIsAggregate ) )
     {
       return false;
     }
@@ -227,7 +344,7 @@ bool QgsMeshCalcNode::calculate( const  QgsMeshCalcUtils &dsu, QgsMeshMemoryData
 
 QgsMeshCalcNode *QgsMeshCalcNode::parseMeshCalcString( const QString &str, QString &parserErrorMsg )
 {
-  extern QgsMeshCalcNode *localParseMeshCalcString( const QString & str, QString & parserErrorMsg );
+  extern QgsMeshCalcNode *localParseMeshCalcString( const QString &str, QString &parserErrorMsg );
   return localParseMeshCalcString( str, parserErrorMsg );
 }
 
@@ -241,6 +358,9 @@ bool QgsMeshCalcNode::isNonTemporal() const
 
   switch ( mOperator )
   {
+    case QgsMeshCalcNode::opIF:
+      return ( mLeft && mLeft->isNonTemporal() ) && ( mRight && mRight->isNonTemporal() && mCondition->isNonTemporal() );
+      break;
     case QgsMeshCalcNode::opPLUS:
     case QgsMeshCalcNode::opMINUS:
     case QgsMeshCalcNode::opMUL:
@@ -255,13 +375,11 @@ bool QgsMeshCalcNode::isNonTemporal() const
     case QgsMeshCalcNode::opAND:
     case QgsMeshCalcNode::opOR:
     case QgsMeshCalcNode::opNOT:
-    case QgsMeshCalcNode::opIF:
     case QgsMeshCalcNode::opSIGN:
     case QgsMeshCalcNode::opMIN:
     case QgsMeshCalcNode::opMAX:
     case QgsMeshCalcNode::opABS:
-      return ( mLeft && mLeft->isNonTemporal() ) &&
-             ( mRight && mRight->isNonTemporal() );
+      return ( mLeft && mLeft->isNonTemporal() ) && ( mRight && mRight->isNonTemporal() );
       break;
     case QgsMeshCalcNode::opSUM_AGGR:
     case QgsMeshCalcNode::opMAX_AGGR:

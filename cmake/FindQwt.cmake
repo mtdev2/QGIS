@@ -12,14 +12,15 @@
 #
 
 
-set(QWT_LIBRARY_NAMES qwt-qt5 qwt6-qt5 qwt qwt6)
+set(QWT_LIBRARY_NAMES qwt-${QT_VERSION_BASE_LOWER} qwt qwt6 qwt6-${QT_VERSION_BASE_LOWER})
 
 find_library(QWT_LIBRARY
   NAMES ${QWT_LIBRARY_NAMES}
   PATHS
     /usr/lib
+    /usr/lib64
     /usr/local/lib
-    /usr/local/lib/qt5
+    /usr/local/lib/${QT_VERSION_BASE_LOWER}
     "$ENV{LIB_DIR}/lib"
     "$ENV{LIB}"
 )
@@ -32,24 +33,27 @@ endif()
 FIND_PATH(QWT_INCLUDE_DIR NAMES qwt.h PATHS
   "${_qwt_fw}/Headers"
   /usr/include
-  /usr/include/qt5
+  /usr/include/${QT_VERSION_BASE_LOWER}
   /usr/local/include
-  /usr/local/include/qt5
+  /usr/local/include/${QT_VERSION_BASE_LOWER}
   "$ENV{LIB_DIR}/include"
   "$ENV{INCLUDE}"
-  PATH_SUFFIXES qwt-qt5 qwt qwt6
+  PATH_SUFFIXES qwt-${QT_VERSION_BASE_LOWER} ${QT_VERSION_BASE_LOWER}/qwt qwt qwt6
 )
 
 IF (QWT_INCLUDE_DIR AND QWT_LIBRARY)
   SET(QWT_FOUND TRUE)
-ENDIF (QWT_INCLUDE_DIR AND QWT_LIBRARY)
+ENDIF ()
 
 IF (QWT_FOUND)
   FILE(READ ${QWT_INCLUDE_DIR}/qwt_global.h qwt_header)
   STRING(REGEX REPLACE "^.*QWT_VERSION_STR +\"([^\"]+)\".*$" "\\1" QWT_VERSION_STR "${qwt_header}")
-  IF (NOT QWT_FIND_QUIETLY)
+  IF (NOT Qwt_FIND_QUIETLY)
     MESSAGE(STATUS "Found Qwt: ${QWT_LIBRARY} (${QWT_VERSION_STR})")
-  ENDIF (NOT QWT_FIND_QUIETLY)
+  ENDIF (NOT Qwt_FIND_QUIETLY)
+  IF(QWT_VERSION_STR VERSION_LESS Qwt_FIND_VERSION)
+    SET(QWT_FOUND FALSE)
+  ENDIF ()
 ELSE (QWT_FOUND)
   IF (QWT_FIND_REQUIRED)
     MESSAGE(FATAL_ERROR "Could not find Qwt")

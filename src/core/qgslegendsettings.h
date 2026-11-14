@@ -18,6 +18,7 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+
 #include <QColor>
 #include <QSizeF>
 
@@ -29,16 +30,23 @@ class QgsExpressionContext;
 
 /**
  * \ingroup core
- * \brief The QgsLegendSettings class stores the appearance and layout settings
- * for legend drawing with QgsLegendRenderer. The content of the legend is given
- * in QgsLegendModel class.
+ * \brief Stores the appearance and layout settings
+ * for legend drawing with QgsLegendRenderer.
  *
- * \since QGIS 2.6
+ * The content of the legend is driven by the QgsLegendModel class.
  */
 class CORE_EXPORT QgsLegendSettings
 {
   public:
     QgsLegendSettings();
+
+    /**
+     * Updates any data-defined properties in the settings, using the specified
+     * render \a context.
+     *
+     * \since QGIS 3.42
+     */
+    void updateDataDefinedProperties( QgsRenderContext &context );
 
     /**
      * Sets the title for the legend, which will be rendered above all legend items.
@@ -71,21 +79,21 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \note Not available in Python bindings.
      */
-    SIP_SKIP QgsLegendStyle &rstyle( QgsLegendStyle::Style s ) { return mStyleMap[s]; } SIP_SKIP
+    SIP_SKIP QgsLegendStyle &rstyle( Qgis::LegendComponent s ) SIP_SKIP { return mStyleMap[static_cast< int >( s )]; }
 
     /**
      * Returns the style for a legend component.
      *
      * \see setStyle()
      */
-    QgsLegendStyle style( QgsLegendStyle::Style s ) const { return mStyleMap.value( s ); }
+    QgsLegendStyle style( Qgis::LegendComponent s ) const { return mStyleMap[static_cast< int >( s )]; }
 
     /**
      * Sets the \a style for a legend component.
      *
      * \see style()
      */
-    void setStyle( QgsLegendStyle::Style s, const QgsLegendStyle &style ) { mStyleMap[s] = style; }
+    void setStyle( Qgis::LegendComponent s, const QgsLegendStyle &style ) { mStyleMap[static_cast< int >( s )] = style; }
 
     /**
      * Returns the legend box space (in millimeters), which is the empty margin around the inside of the legend's
@@ -93,7 +101,7 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see setBoxSpace()
      */
-    double boxSpace() const {return mBoxSpace;}
+    double boxSpace() const { return mBoxSpace; }
 
     /**
      * Sets the legend box space (in millimeters), which is the empty margin around the inside of the legend's
@@ -101,7 +109,7 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see boxSpace()
      */
-    void setBoxSpace( double s ) {mBoxSpace = s;}
+    void setBoxSpace( double s ) { mBoxSpace = s; }
 
     /**
      * Sets a string to use as a wrapping character.
@@ -111,7 +119,7 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see wrapChar()
      */
-    void setWrapChar( const QString &t ) {mWrapChar = t;}
+    void setWrapChar( const QString &t ) { mWrapChar = t; }
 
     /**
      * Returns the string used as a wrapping character.
@@ -121,21 +129,21 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see setWrapChar()
      */
-    QString wrapChar() const {return mWrapChar;}
+    QString wrapChar() const { return mWrapChar; }
 
     /**
      * Returns the margin space between adjacent columns (in millimeters).
      *
      * \see setColumnSpace()
      */
-    double columnSpace() const {return mColumnSpace;}
+    double columnSpace() const { return mColumnSpace; }
 
     /**
      * Sets the margin space between adjacent columns (in millimeters).
      *
      * \see columnSpace()
      */
-    void setColumnSpace( double s ) { mColumnSpace = s;}
+    void setColumnSpace( double s ) { mColumnSpace = s; }
 
     /**
      * Returns the desired minimum number of columns to show in the legend.
@@ -155,7 +163,7 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see columnCount()
      */
-    void setColumnCount( int c ) { mColumnCount = c;}
+    void setColumnCount( int c ) { mColumnCount = c; }
 
     /**
      * Returns TRUE if layer components can be split over multiple columns.
@@ -169,7 +177,7 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see splitLayer()
      */
-    void setSplitLayer( bool s ) { mSplitLayer = s;}
+    void setSplitLayer( bool s ) { mSplitLayer = s; }
 
     /**
      * Returns TRUE if all columns should have equal widths.
@@ -187,52 +195,54 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see equalColumnWidth()
      */
-    void setEqualColumnWidth( bool s ) { mEqualColumnWidth = s;}
+    void setEqualColumnWidth( bool s ) { mEqualColumnWidth = s; }
 
     /**
      * Returns the font color used for legend items.
      *
      * \see setFontColor()
+    * \deprecated QGIS 3.40. Use QgsLegendStyle::textFormat() instead.
      */
-    QColor fontColor() const {return mFontColor;}
+    Q_DECL_DEPRECATED QColor fontColor() const SIP_DEPRECATED;
 
     /**
      * Sets the font color used for legend items.
      *
      * \see fontColor()
+    * \deprecated QGIS 3.40. Use QgsLegendStyle::textFormat() instead.
      */
-    void setFontColor( const QColor &c ) {mFontColor = c;}
+    Q_DECL_DEPRECATED void setFontColor( const QColor &c ) SIP_DEPRECATED;
 
     /**
      * Returns layer font color, defaults to fontColor()
      * \see setLayerFontColor()
      * \see fontColor()
-     * \since QGIS 3.4.7
+     * \deprecated QGIS 3.40. Use QgsLegendStyle::textFormat() instead.
      */
-    QColor layerFontColor() const {return mLayerFontColor.isValid() ? mLayerFontColor : fontColor() ;}
+    Q_DECL_DEPRECATED QColor layerFontColor() const SIP_DEPRECATED;
 
     /**
      * Sets layer font color to \a fontColor
      * Overrides fontColor()
      * \see layerFontColor()
      * \see fontColor()
-     * \since QGIS 3.4.7
+     * \deprecated QGIS 3.40. Use QgsLegendStyle::textFormat() instead.
      */
-    void setLayerFontColor( const QColor &fontColor ) {mLayerFontColor = fontColor;}
+    Q_DECL_DEPRECATED void setLayerFontColor( const QColor &fontColor ) SIP_DEPRECATED;
 
     /**
      * Returns the default symbol size (in millimeters) used for legend items.
      *
      * \see setSymbolSize()
      */
-    QSizeF symbolSize() const {return mSymbolSize;}
+    QSizeF symbolSize() const { return mSymbolSize; }
 
     /**
      * Sets the default symbol size (in millimeters) used for legend items.
      *
      * \see symbolSize()
      */
-    void setSymbolSize( QSizeF s ) {mSymbolSize = s;}
+    void setSymbolSize( QSizeF s ) { mSymbolSize = s; }
 
     /**
      * Returns the maximum symbol size (in mm). 0.0 means there is no maximum set.
@@ -240,7 +250,7 @@ class CORE_EXPORT QgsLegendSettings
      * \see setMaximumSymbolSize()
      * \since QGIS 3.16
      */
-    double maximumSymbolSize() const {return mMaxSymbolSize; }
+    double maximumSymbolSize() const { return mMaxSymbolSize; }
 
     /**
      * Set the maximum symbol \a size for symbol (in millimeters).
@@ -250,7 +260,7 @@ class CORE_EXPORT QgsLegendSettings
      * \see maximumSymbolSize()
      * \since QGIS 3.16
      */
-    void setMaximumSymbolSize( double size ) { mMaxSymbolSize = size;}
+    void setMaximumSymbolSize( double size ) { mMaxSymbolSize = size; }
 
     /**
      * Returns the minimum symbol size (in mm). A value 0.0 means there is no minimum set.
@@ -258,7 +268,7 @@ class CORE_EXPORT QgsLegendSettings
      * \see setMinimumSymbolSize
      * \since QGIS 3.16
      */
-    double minimumSymbolSize() const {return mMinSymbolSize; }
+    double minimumSymbolSize() const { return mMinSymbolSize; }
 
     /**
      * Set the minimum symbol \a size for symbol (in millimeters).
@@ -268,7 +278,7 @@ class CORE_EXPORT QgsLegendSettings
      * \see minimumSymbolSize()
      * \since QGIS 3.16
      */
-    void setMinimumSymbolSize( double size ) { mMinSymbolSize = size;}
+    void setMinimumSymbolSize( double size ) { mMinSymbolSize = size; }
 
     /**
      * Sets the \a alignment for placement of legend symbols.
@@ -295,7 +305,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see setDrawRasterStroke()
      * \see rasterStrokeColor()
      * \see rasterStrokeWidth()
-     * \since QGIS 2.12
      */
     bool drawRasterStroke() const { return mRasterSymbolStroke; }
 
@@ -305,7 +314,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see drawRasterStroke()
      * \see setRasterStrokeColor()
      * \see setRasterStrokeWidth()
-     * \since QGIS 2.12
      */
     void setDrawRasterStroke( bool enabled ) { mRasterSymbolStroke = enabled; }
 
@@ -315,7 +323,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see setRasterStrokeColor()
      * \see drawRasterStroke()
      * \see rasterStrokeWidth()
-     * \since QGIS 2.12
      */
     QColor rasterStrokeColor() const { return mRasterStrokeColor; }
 
@@ -326,7 +333,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see rasterStrokeColor()
      * \see setDrawRasterStroke()
      * \see setRasterStrokeWidth()
-     * \since QGIS 2.12
      */
     void setRasterStrokeColor( const QColor &color ) { mRasterStrokeColor = color; }
 
@@ -336,7 +342,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see setRasterStrokeWidth()
      * \see drawRasterStroke()
      * \see rasterStrokeColor()
-     * \since QGIS 2.12
      */
     double rasterStrokeWidth() const { return mRasterStrokeWidth; }
 
@@ -347,7 +352,6 @@ class CORE_EXPORT QgsLegendSettings
      * \see rasterStrokeWidth()
      * \see setDrawRasterStroke()
      * \see setRasterStrokeColor()
-     * \since QGIS 2.12
      */
     void setRasterStrokeWidth( double width ) { mRasterStrokeWidth = width; }
 
@@ -356,46 +360,66 @@ class CORE_EXPORT QgsLegendSettings
      *
      * \see setWmsLegendSize()
      */
-    QSizeF wmsLegendSize() const {return mWmsLegendSize;}
+    QSizeF wmsLegendSize() const { return mWmsLegendSize; }
 
     /**
      * Sets the desired size (in millimeters) of WMS legend graphics shown in the legend.
      *
      * \see wmsLegendSize()
      */
-    void setWmsLegendSize( QSizeF s ) {mWmsLegendSize = s;}
+    void setWmsLegendSize( QSizeF s ) { mWmsLegendSize = s; }
+
+    /**
+     * Sets whether to request legend graphics synchronously.
+     *
+     * \see synchronousLegendRequests()
+     *
+     * \since QGIS 3.34
+     */
+    void setSynchronousLegendRequests( bool b ) { mSynchronousLegendRequests = b; }
+
+    /**
+     * Returns whether to request legend graphics synchronously.
+     *
+     * \see setSynchronousLegendRequests()
+     *
+     * \since QGIS 3.34
+     */
+    bool synchronousLegendRequests() const { return mSynchronousLegendRequests; }
 
     /**
      * Returns the line spacing to use between lines of legend text.
      *
      * \see setLineSpacing()
+     * \deprecated QGIS 3.40. Use QgsLegendStyle::textFormat() from style() instead.
      */
-    double lineSpacing() const { return mLineSpacing; }
+    Q_DECL_DEPRECATED double lineSpacing() const SIP_DEPRECATED { return mLineSpacing; }
 
     /**
      * Sets the line spacing to use between lines of legend text.
      *
      * \see lineSpacing()
+     * \deprecated QGIS 3.40. Use QgsLegendStyle::setTextFormat() from style() instead.
      */
-    void setLineSpacing( double s ) { mLineSpacing = s; }
+    Q_DECL_DEPRECATED void setLineSpacing( double s );
 
     /**
-     * \deprecated Use scale factor from render contexts instead.
+     * \deprecated QGIS 3.40. Use scale factor from render contexts instead.
      */
     Q_DECL_DEPRECATED double mmPerMapUnit() const SIP_DEPRECATED;
 
     /**
-     * \deprecated Set scale factor on render contexts instead.
+     * \deprecated QGIS 3.40. Set scale factor on render contexts instead.
      */
     Q_DECL_DEPRECATED void setMmPerMapUnit( double mmPerMapUnit ) SIP_DEPRECATED;
 
     /**
-     * \deprecated Use flags from render contexts instead.
+     * \deprecated QGIS 3.40. Use flags from render contexts instead.
      */
     Q_DECL_DEPRECATED bool useAdvancedEffects() const SIP_DEPRECATED;
 
     /**
-     * \deprecated Set flag on render contexts instead.
+     * \deprecated QGIS 3.40. Set flag on render contexts instead.
      */
     Q_DECL_DEPRECATED void setUseAdvancedEffects( bool use ) SIP_DEPRECATED;
 
@@ -403,7 +427,7 @@ class CORE_EXPORT QgsLegendSettings
      * Returns the legend map scale.
      * The scale value indicates the scale denominator, e.g. 1000.0 for a 1:1000 map.
      * \see setMapScale()
-     * \deprecated take this property from the render context instead
+     * \deprecated QGIS 3.40. Take this property from the render context instead.
      */
     Q_DECL_DEPRECATED double mapScale() const SIP_DEPRECATED;
 
@@ -411,35 +435,35 @@ class CORE_EXPORT QgsLegendSettings
      * Sets the legend map \a scale.
      * The \a scale value indicates the scale denominator, e.g. 1000.0 for a 1:1000 map.
      * \see mapScale()
-     * \deprecated set this property on the render context instead
+     * \deprecated QGIS 3.40. Set this property on the render context instead.
      */
     Q_DECL_DEPRECATED void setMapScale( double scale ) SIP_DEPRECATED;
 
     /**
      * Returns the factor of map units per pixel for symbols with size given in map units calculated by dpi and mmPerMapUnit
      * \see setMapUnitsPerPixel()
-     * \deprecated take these properties on render contexts instead
+     * \deprecated QGIS 3.40. Take these properties on render contexts instead.
      */
     Q_DECL_DEPRECATED double mapUnitsPerPixel() const SIP_DEPRECATED;
 
     /**
      * Sets the mmPerMapUnit calculated by \a mapUnitsPerPixel mostly taken from the map settings.
      * \see mapUnitsPerPixel()
-     * \deprecated set these properties on render contexts instead
+     * \deprecated QGIS 3.40. Set these properties on render contexts instead.
      */
     Q_DECL_DEPRECATED void setMapUnitsPerPixel( double mapUnitsPerPixel ) SIP_DEPRECATED;
 
     /**
-     * \deprecated Take dpi from render contexts instead.
+     * \deprecated QGIS 3.40. Take dpi from render contexts instead.
      */
     Q_DECL_DEPRECATED int dpi() const SIP_DEPRECATED;
 
     /**
-     * \deprecated Set dpi on render contexts instead.
+     * \deprecated QGIS 3.40. Set dpi on render contexts instead.
      */
     Q_DECL_DEPRECATED void setDpi( int dpi ) SIP_DEPRECATED;
 
-// utility functions
+    // utility functions
 
     /**
      * Splits a string using the wrap char taking into account handling empty
@@ -478,7 +502,9 @@ class CORE_EXPORT QgsLegendSettings
      * \param valignment optional vertical alignment
      * \param flags allows for passing Qt::TextFlags to control appearance of rendered text
      */
-    void drawText( QPainter *p, const QRectF &rect, const QString &text, const QFont &font, Qt::AlignmentFlag halignment = Qt::AlignLeft, Qt::AlignmentFlag valignment = Qt::AlignTop, int flags = Qt::TextWordWrap ) const;
+    void drawText(
+      QPainter *p, const QRectF &rect, const QString &text, const QFont &font, Qt::AlignmentFlag halignment = Qt::AlignLeft, Qt::AlignmentFlag valignment = Qt::AlignTop, int flags = Qt::TextWordWrap
+    ) const;
 
     //! Returns a font where size is in pixel and font size is upscaled with FONT_WORKAROUND_SCALE
     QFont scaledFontPixelSize( const QFont &font ) const;
@@ -498,72 +524,109 @@ class CORE_EXPORT QgsLegendSettings
     //! Returns the font descent in Millimeters (considers upscaling and downscaling with FONT_WORKAROUND_SCALE
     double fontDescentMillimeters( const QFont &font ) const;
 
-  private:
+    /**
+     * Returns the JSON export flags.
+     * \since QGIS 3.36
+     */
+    Qgis::LegendJsonRenderFlags jsonRenderFlags() const;
 
+    /**
+     * Sets the JSON export flags to \a jsonRenderFlags.
+     * \since QGIS 3.36
+     */
+    void setJsonRenderFlags( const Qgis::LegendJsonRenderFlags &jsonRenderFlags );
+
+    /**
+     * Returns the maximum line length (in millimeters) allowed before lines of text in the legend
+     * will be automatically word wrapped.
+     *
+     * If the returned value is 0, then no automatic wrapping will occur.
+     *
+     * \see setAutoWrapLinesAfter()
+     *
+     * \since QGIS 3.44
+     */
+    double autoWrapLinesAfter() const { return mAutoWrapLinesAfter; }
+
+    /**
+     * Sets the maximum line \a length (in millimeters) allowed before lines of text in the legend
+     * will be automatically word wrapped.
+     *
+     * If \a length is 0, then no automatic wrapping will occur.
+     *
+     * \see autoWrapLinesAfter()
+     *
+     * \since QGIS 3.44
+     */
+    void setAutoWrapLinesAfter( double length ) { mAutoWrapLinesAfter = length; }
+
+  private:
     QString mTitle;
 
-//! Title alignment, one of Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight)
+    //! Title alignment, one of Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight)
     Qt::AlignmentFlag mTitleAlignment = Qt::AlignLeft;
 
     QString mWrapChar;
 
-    QColor mFontColor;
+    double mAutoWrapLinesAfter = 0;
 
-//! Space between item box and contents
+    //! Space between item box and contents
     qreal mBoxSpace = 2;
 
-//! Width and height of symbol icon
+    //! Width and height of symbol icon
     QSizeF mSymbolSize;
 
-//! Maximum marker symbol size (in mm)
+    //! Maximum marker symbol size (in mm)
     double mMaxSymbolSize = 0.0;
 
-//! Minimum marker symbol size (in mm)
+    //! Minimum marker symbol size (in mm)
     double mMinSymbolSize = 0.0;
 
-//! Width and height of WMS legendGraphic pixmap
+    //! Width and height of WMS legendGraphic pixmap
     QSizeF mWmsLegendSize;
 
-//! Spacing between lines when wrapped
+    //! Whether to request legend graphics synchronously
+    bool mSynchronousLegendRequests = false;
+
+    //! Spacing between lines when wrapped
     double mLineSpacing = 1;
 
-//! Space between columns
+    //! Space between columns
     double mColumnSpace = 2;
 
-//! Number of legend columns
+    //! Number of legend columns
     int mColumnCount = 1;
 
-//! Allow splitting layers into multiple columns
+    //! Allow splitting layers into multiple columns
     bool mSplitLayer = false;
 
-//! Use the same width (maximum) for all columns
+    //! Use the same width (maximum) for all columns
     bool mEqualColumnWidth = false;
 
     bool mRasterSymbolStroke = true;
     QColor mRasterStrokeColor;
     double mRasterStrokeWidth = 0.0;
 
-    QMap<QgsLegendStyle::Style, QgsLegendStyle> mStyleMap;
+    QVector<QgsLegendStyle> mStyleMap;
 
-//! Conversion ratio between millimeters and map units - for symbols with size given in map units
+    //! Conversion ratio between millimeters and map units - for symbols with size given in map units
     double mMmPerMapUnit = 1;
 
-//! Whether to use advanced effects like opacity for symbols - may require their rasterization
+    //! Whether to use advanced effects like opacity for symbols - may require their rasterization
     bool mUseAdvancedEffects = true;
 
-//! Denominator of map's scale
+    //! Denominator of map's scale
     double mMapScale = 1;
 
-//! DPI to be used when rendering legend
+    //! DPI to be used when rendering legend
     int mDpi = 96;
 
-//! Font color for layers, overrides font color
-    QColor mLayerFontColor;
-
-//! Symbol alignment
+    //! Symbol alignment
     Qt::AlignmentFlag mSymbolAlignment = Qt::AlignLeft;
-};
 
+    //! JSON export flags
+    Qgis::LegendJsonRenderFlags mJsonRenderFlags;
+};
 
 
 #endif // QGSLEGENDSETTINGS_H

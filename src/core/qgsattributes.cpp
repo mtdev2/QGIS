@@ -15,25 +15,25 @@
  ***************************************************************************/
 
 #include "qgsattributes.h"
-#include "qgis.h"
 
+#include "qgis.h"
 
 QgsAttributeMap QgsAttributes::toMap() const
 {
   QgsAttributeMap map;
   for ( int idx = 0; idx < count(); ++idx )
   {
-    QVariant v = at( idx );
+    const QVariant v = at( idx );
     if ( v.isValid() )
       map.insert( idx, v );
   }
   return map;
 }
 
-uint qHash( const QgsAttributes &attributes )
+size_t qHash( const QgsAttributes &attributes )
 {
   if ( attributes.isEmpty() )
-    return std::numeric_limits<uint>::max();
+    return std::numeric_limits<size_t>::max();
   else
     return qHash( attributes.at( 0 ) );
 }

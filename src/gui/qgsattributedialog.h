@@ -17,29 +17,30 @@
 #ifndef QGSATTRIBUTEDIALOG_H
 #define QGSATTRIBUTEDIALOG_H
 
-#include "qgsattributeeditorcontext.h"
+#include "qgis_gui.h"
 #include "qgis_sip.h"
+#include "qgsattributeeditorcontext.h"
 #include "qgsattributeform.h"
+#include "qgsmaplayeractioncontextgenerator.h"
 #include "qgstrackedvectorlayertools.h"
-#include "qgsactionmenu.h"
 
 #include <QDialog>
-#include <QMenuBar>
 #include <QGridLayout>
-#include "qgis_gui.h"
+#include <QMenuBar>
 
 class QgsHighlight;
+class QgsActionMenu;
 
 /**
  * \ingroup gui
  * \class QgsAttributeDialog
+ * \brief An attribute table dialog for a vector layer.
  */
-class GUI_EXPORT QgsAttributeDialog : public QDialog
+class GUI_EXPORT QgsAttributeDialog : public QDialog, public QgsMapLayerActionContextGenerator
 {
     Q_OBJECT
 
   public:
-
     /**
      * Create an attribute dialog for a given layer and feature
      *
@@ -51,7 +52,14 @@ class GUI_EXPORT QgsAttributeDialog : public QDialog
      * \param context           The context in which this dialog is created
      *
      */
-    QgsAttributeDialog( QgsVectorLayer *vl, QgsFeature *thepFeature, bool featureOwner, QWidget *parent SIP_TRANSFERTHIS = nullptr, bool showDialogButtons = true, const QgsAttributeEditorContext &context = QgsAttributeEditorContext() );
+    QgsAttributeDialog(
+      QgsVectorLayer *vl,
+      QgsFeature *thepFeature,
+      bool featureOwner,
+      QWidget *parent SIP_TRANSFERTHIS = nullptr,
+      bool showDialogButtons = true,
+      const QgsAttributeEditorContext &context = QgsAttributeEditorContext()
+    );
 
     ~QgsAttributeDialog() override;
 
@@ -61,16 +69,22 @@ class GUI_EXPORT QgsAttributeDialog : public QDialog
      */
     void setHighlight( QgsHighlight *h );
 
-    QgsAttributeForm *attributeForm() { return mAttributeForm; }
+    /**
+     * Returns the attribute form.
+     */
+    QgsAttributeForm *attributeForm() const { return mAttributeForm; }
 
-    const QgsFeature *feature() { return &mAttributeForm->feature(); }
+    /**
+     * Returns the current feature of the attribute form.
+     */
+    const QgsFeature *feature() const { return &mAttributeForm->feature(); }
 
     /**
      * Is this dialog editable?
      *
      * \returns returns TRUE, if this dialog was created in an editable manner.
      */
-    bool editable() { return mAttributeForm->editable(); }
+    bool editable() const { return mAttributeForm->editable(); }
 
     /**
      * Toggles the form mode.
@@ -95,6 +109,8 @@ class GUI_EXPORT QgsAttributeDialog : public QDialog
      */
     bool event( QEvent *e ) override;
 
+    void showEvent( QShowEvent *event ) override;
+
     /**
      * Sets \a extraScope as an additional expression context scope to be used
      * for calculations in this form.
@@ -102,6 +118,8 @@ class GUI_EXPORT QgsAttributeDialog : public QDialog
      * \since QGIS 3.16
      */
     void setExtraContextScope( QgsExpressionContextScope *extraScope SIP_TRANSFER );
+
+    QgsMapLayerActionContext createActionContext() override;
 
   public slots:
     void accept() override;
@@ -116,22 +134,19 @@ class GUI_EXPORT QgsAttributeDialog : public QDialog
     QString mSettingsPath;
     // Used to sync multiple widgets for the same field
     QgsHighlight *mHighlight = nullptr;
-    int mFormNr;
-    bool mShowDialogButtons;
     QString mReturnvarname;
     QgsAttributeForm *mAttributeForm = nullptr;
-    QgsFeature *mOwnedFeature = nullptr;
+    std::unique_ptr<QgsFeature> mOwnedFeature;
     QgsMessageBar *mMessageBar = nullptr;
 
     QgsTrackedVectorLayerTools mTrackedVectorLayerTools;
 
-    // true if this dialog is editable
-    bool mEditable;
-
     QgsActionMenu *mMenu;
+    QMenuBar *mMenuBar = nullptr;
 
     static int sFormCounter;
 
+    bool mFirstShow = true;
     void saveGeometry();
     void restoreGeometry();
 };

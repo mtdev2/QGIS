@@ -14,11 +14,11 @@
  ***************************************************************************/
 
 #include "qgsvaliditycheckregistry.h"
+
 #include "qgsfeedback.h"
 
 QgsValidityCheckRegistry::QgsValidityCheckRegistry()
-{
-}
+{}
 
 QgsValidityCheckRegistry::~QgsValidityCheckRegistry()
 {
@@ -54,7 +54,7 @@ void QgsValidityCheckRegistry::addCheck( QgsAbstractValidityCheck *check )
 
 void QgsValidityCheckRegistry::removeCheck( QgsAbstractValidityCheck *check )
 {
-  int index = mChecks.indexOf( check );
+  const int index = mChecks.indexOf( check );
   if ( index >= 0 )
     delete mChecks.takeAt( index );
 }

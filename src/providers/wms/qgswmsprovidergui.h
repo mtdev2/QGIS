@@ -16,12 +16,14 @@
 #ifndef QGSWMSPROVIDERGUI_H
 #define QGSWMSPROVIDERGUI_H
 
-#include <QList>
-#include <QMainWindow>
+#include <memory>
 
 #include "qgsproviderguimetadata.h"
 
-class QgsWmsProviderGuiMetadata: public QgsProviderGuiMetadata
+#include <QList>
+#include <QMainWindow>
+
+class QgsWmsProviderGuiMetadata : public QgsProviderGuiMetadata
 {
   public:
     QgsWmsProviderGuiMetadata();
@@ -31,6 +33,10 @@ class QgsWmsProviderGuiMetadata: public QgsProviderGuiMetadata
     QList<QgsProviderSourceWidgetProvider *> sourceWidgetProviders() override;
 
     void registerGui( QMainWindow *widget ) override;
+    QList<const QgsMapLayerConfigWidgetFactory *> mapLayerConfigWidgetFactories() override;
+
+  private:
+    std::unique_ptr<QgsMapLayerConfigWidgetFactory> mWmstConfigWidgetFactory;
 };
 
 #endif // QGSWMSPROVIDERGUI_H

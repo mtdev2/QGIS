@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for QgsRectangle.
 
 .. note:: This program is free software; you can redistribute it and/or modify
@@ -6,64 +5,72 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 """
-__author__ = 'Tim Sutton'
-__date__ = '20/08/2012'
-__copyright__ = 'Copyright 2012, The QGIS Project'
 
-import qgis  # NOQA
+__author__ = "Tim Sutton"
+__date__ = "20/08/2012"
+__copyright__ = "Copyright 2012, The QGIS Project"
 
-from qgis.core import QgsRectangle, QgsPointXY, QgsVector
+import unittest
 
-from qgis.testing import start_app, unittest
+from qgis.core import QgsPointXY, QgsRectangle, QgsVector
+from qgis.testing import QgisTestCase, start_app
 from utilities import compareWkt
 
 start_app()
 
 
-class TestQgsRectangle(unittest.TestCase):
-
+class TestQgsRectangle(QgisTestCase):
     def testCtor(self):
-        rect = QgsRectangle(5.0, 5.0, 10.0, 10.0)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (5.0, rect.xMinimum()))
-        assert rect.xMinimum() == 5.0, myMessage
+        rect = QgsRectangle(5.0, 10.0, 15.0, 20.0, normalize=True)
+        self.assertEqual(rect.xMinimum(), 5.0)
+        self.assertEqual(rect.left(), 5.0)
+        self.assertEqual(rect.yMinimum(), 10.0)
+        self.assertEqual(rect.bottom(), 10.0)
+        self.assertEqual(rect.xMaximum(), 15.0)
+        self.assertEqual(rect.right(), 15.0)
+        self.assertEqual(rect.yMaximum(), 20.0)
+        self.assertEqual(rect.top(), 20.0)
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (5.0, rect.yMinimum()))
-        assert rect.yMinimum() == 5.0, myMessage
+        rect = QgsRectangle.fromEdges(5.0, 20.0, 15.0, 10.0)
+        self.assertEqual(rect.xMinimum(), 5.0)
+        self.assertEqual(rect.left(), 5.0)
+        self.assertEqual(rect.yMinimum(), 10.0)
+        self.assertEqual(rect.bottom(), 10.0)
+        self.assertEqual(rect.xMaximum(), 15.0)
+        self.assertEqual(rect.right(), 15.0)
+        self.assertEqual(rect.yMaximum(), 20.0)
+        self.assertEqual(rect.top(), 20.0)
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (10.0, rect.xMaximum()))
-        assert rect.xMaximum() == 10.0, myMessage
+    def testCtorNotNormalizedValues(self):
+        rect = QgsRectangle(20.0, 15.0, 10.0, 5.0, normalize=True)
+        self.assertEqual(rect.xMinimum(), 10.0)
+        self.assertEqual(rect.left(), 10.0)
+        self.assertEqual(rect.yMinimum(), 5.0)
+        self.assertEqual(rect.bottom(), 5.0)
+        self.assertEqual(rect.xMaximum(), 20.0)
+        self.assertEqual(rect.right(), 20.0)
+        self.assertEqual(rect.yMaximum(), 15.0)
+        self.assertEqual(rect.top(), 15.0)
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (10.0, rect.yMaximum()))
-        assert rect.yMaximum() == 10.0, myMessage
+        rect = QgsRectangle.fromEdges(20.0, 5.0, 10.0, 15.0)
+        self.assertEqual(rect.xMinimum(), 20.0)
+        self.assertEqual(rect.left(), 20.0)
+        self.assertEqual(rect.yMinimum(), 15.0)
+        self.assertEqual(rect.bottom(), 15.0)
+        self.assertEqual(rect.xMaximum(), 10.0)
+        self.assertEqual(rect.right(), 10.0)
+        self.assertEqual(rect.yMaximum(), 5.0)
+        self.assertEqual(rect.top(), 5.0)
 
     def testDimensions(self):
-        rect = QgsRectangle(0.0, 0.0, 10.0, 10.0)
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (10.0, rect.width()))
-        assert rect.width() == 10.0, myMessage
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (10.0, rect.height()))
-        assert rect.height() == 10.0, myMessage
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     ("5.0, 5.0", rect.center().toString()))
-        assert rect.center() == QgsPointXY(5.0, 5.0), myMessage
+        rect = QgsRectangle(0.0, 0.0, 10.0, 20.0)
+        self.assertEqual(rect.width(), 10.0)
+        self.assertEqual(rect.height(), 20.0)
+        self.assertEqual(rect.center(), QgsPointXY(5.0, 10.0))
 
         rect.scale(2.0)
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (20.0, rect.width()))
-        assert rect.width() == 20.0, myMessage
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (20.0, rect.height()))
-        assert rect.height() == 20.0, myMessage
+        self.assertEqual(rect.width(), 20.0)
+        self.assertEqual(rect.height(), 40.0)
 
     def testCalculations(self):
         rect = QgsRectangle(0.0, 1.0, 20.0, 10.0)
@@ -71,23 +78,23 @@ class TestQgsRectangle(unittest.TestCase):
         self.assertEqual(rect.perimeter(), 58.0)
 
     def testIntersection(self):
+        rect1 = QgsRectangle()
+        rect2 = QgsRectangle()
+
+        # both rectangle are null, they do not intersect
+        self.assertTrue(rect1.isNull())
+        self.assertTrue(rect2.isNull())
+        self.assertFalse(rect2.intersects(rect1))
+
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
         rect2 = QgsRectangle(2.0, 2.0, 7.0, 7.0)
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.intersects(rect2)))
-        assert rect1.intersects(rect2), myMessage
+        self.assertTrue(rect1.intersects(rect2))
 
         rect3 = rect1.intersect(rect2)
         self.assertFalse(rect3.isEmpty(), "Empty rectangle returned")
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (3.0, rect3.width()))
-        assert rect3.width() == 3.0, myMessage
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (3.0, rect3.height()))
-        assert rect3.height() == 3.0, myMessage
+        self.assertEqual(rect3.width(), 3.0)
+        self.assertEqual(rect3.height(), 3.0)
 
     def testContains(self):
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
@@ -96,43 +103,234 @@ class TestQgsRectangle(unittest.TestCase):
         pnt2 = QgsPointXY(6.0, 2.0)
 
         rect3 = rect1.intersect(rect2)
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.contains(rect3)))
-        assert rect1.contains(rect3), myMessage
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect2.contains(rect3)))
-        assert rect2.contains(rect3), myMessage
+        self.assertTrue(rect1.contains(rect1))
+        self.assertTrue(rect1.contains(rect3))
+        self.assertTrue(rect2.contains(rect3))
 
         # test for point
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.contains(pnt1)))
-        assert rect1.contains(pnt1), myMessage
+        self.assertTrue(rect1.contains(pnt1))
+        self.assertTrue(rect1.contains(pnt1.x(), pnt1.y()))
+        self.assertTrue(rect2.contains(pnt1))
+        self.assertTrue(rect2.contains(pnt1.x(), pnt1.y()))
+        self.assertTrue(rect3.contains(pnt1))
+        self.assertTrue(rect3.contains(pnt1.x(), pnt1.y()))
+        self.assertFalse(rect1.contains(pnt2))
+        self.assertFalse(rect1.contains(pnt2.x(), pnt2.y()))
+        self.assertTrue(rect2.contains(pnt2))
+        self.assertTrue(rect2.contains(pnt2.x(), pnt2.y()))
+        self.assertFalse(rect3.contains(pnt2))
+        self.assertFalse(rect3.contains(pnt2.x(), pnt2.y()))
+        self.assertTrue(rect3.contains(pnt1))
+        self.assertTrue(rect3.contains(pnt1.x(), pnt1.y()))
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect2.contains(pnt1)))
-        assert rect2.contains(pnt1), myMessage
+    def testContainsNonNormalized(self):
+        """
+        Test QgsRectangle contains method with non-normalized rectangles
+        """
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect3.contains(pnt1)))
-        assert rect3.contains(pnt1), myMessage
+        # y is completely within:
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (False, rect1.contains(pnt2)))
-        self.assertFalse(rect1.contains(pnt2), myMessage)
+        # x-axis:
+        # 1. ---|               |-----
+        # 2. |-|
+        self.assertTrue(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(1, 25, 2, 27)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.   |-|
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(1, 25, 12, 27)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.        |-|
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(12, 25, 15, 27)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.                  |---|
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(25, 25, 35, 27)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.                     |--|
+        self.assertTrue(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(35, 25, 45, 27)
+            )
+        )
+        # 1. |-|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(1, 5, 2, 45).contains(
+                QgsRectangle(31, 25, 12, 27, normalize=False)
+            )
+        )
+        # 1. |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(1, 5, 15, 45).contains(
+                QgsRectangle(31, 25, 12, 27, normalize=False)
+            )
+        )
+        # 1.         |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(15, 5, 18, 45).contains(
+                QgsRectangle(31, 25, 12, 27, normalize=False)
+            )
+        )
+        # 1.                 |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(15, 5, 38, 45).contains(
+                QgsRectangle(31, 25, 12, 27, normalize=False)
+            )
+        )
+        # 1.                      |--|
+        # 2. ---|               |------
+        self.assertFalse(
+            QgsRectangle(35, 5, 38, 45).contains(
+                QgsRectangle(31, 25, 12, 27, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. -|                    |--
+        self.assertTrue(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(35, 25, 2, 27, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. ------|               |--
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(35, 25, 15, 27, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. ------|          |-------
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(25, 25, 15, 27, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. -|               |-------
+        self.assertFalse(
+            QgsRectangle(30, 5, 10, 45, normalize=False).contains(
+                QgsRectangle(25, 25, 2, 27, normalize=False)
+            )
+        )
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect2.contains(pnt2)))
-        assert rect2.contains(pnt2), myMessage
+        # x is completely within:
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (False, rect3.contains(pnt2)))
-        self.assertFalse(rect3.contains(pnt2), myMessage)
-
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect3.contains(pnt1)))
-        self.assertTrue(rect3.contains(pnt1), myMessage)
+        # y-axis:
+        # 1. ---|               |-----
+        # 2. |-|
+        self.assertTrue(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 1, 27, 2)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.   |-|
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 1, 27, 12)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.        |-|
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 12, 27, 15)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.                  |---|
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 25, 27, 35)
+            )
+        )
+        # 1. ---|               |-----
+        # 2.                     |--|
+        self.assertTrue(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 35, 27, 45)
+            )
+        )
+        # 1. |-|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(5, 1, 45, 2).contains(
+                QgsRectangle(25, 31, 27, 12, normalize=False)
+            )
+        )
+        # 1. |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(5, 1, 45, 15).contains(
+                QgsRectangle(25, 31, 27, 12, normalize=False)
+            )
+        )
+        # 1.         |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(5, 15, 45, 18).contains(
+                QgsRectangle(25, 31, 27, 12, normalize=False)
+            )
+        )
+        # 1.                 |-----|
+        # 2. ---|               |-----
+        self.assertFalse(
+            QgsRectangle(5, 15, 45, 38).contains(
+                QgsRectangle(25, 31, 27, 12, normalize=False)
+            )
+        )
+        # 1.                      |--|
+        # 2. ---|               |------
+        self.assertFalse(
+            QgsRectangle(5, 35, 45, 38).contains(
+                QgsRectangle(25, 31, 27, 12, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. -|                    |--
+        self.assertTrue(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 35, 27, 2, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. ------|               |--
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 35, 27, 15, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. ------|          |-------
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 25, 27, 15, normalize=False)
+            )
+        )
+        # 1. ---|               |-----
+        # 2. -|               |-------
+        self.assertFalse(
+            QgsRectangle(5, 30, 45, 10, normalize=False).contains(
+                QgsRectangle(25, 25, 27, 2, normalize=False)
+            )
+        )
 
     def testUnion(self):
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
@@ -140,110 +338,66 @@ class TestQgsRectangle(unittest.TestCase):
         pnt1 = QgsPointXY(6.0, 2.0)
 
         rect1.combineExtentWith(rect2)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.contains(rect2)))
-        assert rect1.contains(rect2), myMessage
+        self.assertTrue(rect1.contains(rect2))
 
-        print((rect1.toString()))
-        assert rect1 == QgsRectangle(
-            0.0, 0.0, 7.0, 7.0), 'Wrong combine with rectangle result'
+        self.assertEqual(rect1, QgsRectangle(0.0, 0.0, 7.0, 7.0))
 
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
         rect1.combineExtentWith(6.0, 2.0)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.contains(pnt1)))
-        assert rect1.contains(pnt1), myMessage
+        self.assertTrue(rect1.contains(pnt1))
 
-        myExpectedResult = QgsRectangle(0.0, 0.0, 6.0, 5.0).toString()
-        myResult = rect1.toString()
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedResult, myResult))
-        self.assertEqual(myResult, myExpectedResult, myMessage)
+        self.assertEqual(rect1.toString(), QgsRectangle(0.0, 0.0, 6.0, 5.0).toString())
 
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
         rect1.combineExtentWith(rect2)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (True, rect1.contains(rect2)))
-        assert rect1.contains(rect2), myMessage
+        self.assertTrue(rect1.contains(rect2))
 
-        assert rect1 == QgsRectangle(0.0, 0.0, 7.0, 7.0), "Wrong union result"
+        self.assertEqual(rect1, QgsRectangle(0.0, 0.0, 7.0, 7.0))
 
     def testAsWktCoordinates(self):
         """Test that we can get a proper wkt representation fo the rect"""
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
-        myExpectedWkt = ('0 0, '
-                         '5 5')
+        myExpectedWkt = "0 0, 5 5"
         myWkt = rect1.asWktCoordinates()
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedWkt, myWkt))
-        assert compareWkt(myWkt, myExpectedWkt), myMessage
+        myMessage = f"Expected: {myExpectedWkt}\nGot: {myWkt}\n"
+        self.assertTrue(compareWkt(myWkt, myExpectedWkt), myMessage)
 
     def testAsWktPolygon(self):
         """Test that we can get a proper rect wkt polygon representation for rect"""
         rect1 = QgsRectangle(0.0, 0.0, 5.0, 5.0)
-        myExpectedWkt = ('POLYGON((0 0, '
-                         '5 0, '
-                         '5 5, '
-                         '0 5, '
-                         '0 0))')
+        myExpectedWkt = "Polygon ((0 0, 5 0, 5 5, 0 5, 0 0))"
         myWkt = rect1.asWktPolygon()
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedWkt, myWkt))
-        assert compareWkt(myWkt, myExpectedWkt), myMessage
+        myMessage = f"Expected: {myExpectedWkt}\nGot: {myWkt}\n"
+        self.assertTrue(compareWkt(myWkt, myExpectedWkt), myMessage)
 
     def testToString(self):
         """Test the different string representations"""
-        self.assertEqual(QgsRectangle().toString(), 'Empty')
+        self.assertEqual(QgsRectangle().toString(), "Null")
         rect = QgsRectangle(0, 0.1, 0.2, 0.3)
-        myExpectedString = '0.0000000000000000,0.1000000000000000 : 0.2000000000000000,0.3000000000000000'
-        myString = rect.toString()
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
+        self.assertEqual(
+            rect.toString(),
+            "0.0000000000000000,0.1000000000000000 : 0.2000000000000000,0.3000000000000000",
+        )
 
         # can't test the actual result here, because floating point inaccuracies mean the result is unpredictable
         # at this precision
         self.assertEqual(len(rect.toString(20)), 93)
 
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
-
-        myExpectedString = '0,0 : 0,0'
-        myString = rect.toString(0)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
-
-        myExpectedString = '0.00,0.10 : 0.20,0.30'
-        myString = rect.toString(2)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
-
-        myExpectedString = '0.0,0.1 : 0.2,0.3'
-        myString = rect.toString(1)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
-
-        myExpectedString = '0.00,0.10 : 0.20,0.30'
-        myString = rect.toString(-1)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
+        self.assertEqual(rect.toString(0), "0,0 : 0,0")
+        self.assertEqual(rect.toString(2), "0.00,0.10 : 0.20,0.30")
+        self.assertEqual(rect.toString(1), "0.0,0.1 : 0.2,0.3")
+        self.assertEqual(rect.toString(-1), "0.00,0.10 : 0.20,0.30")
 
         rect = QgsRectangle(5000000.01111, -0.3, 5000000.44111, 99.8)
-        myExpectedString = '5000000.01,-0.30 : 5000000.44,99.80'
-        myString = rect.toString(-1)
-        myMessage = ('Expected: %s\nGot: %s\n' %
-                     (myExpectedString, myString))
-        assert myString == myExpectedString, myMessage
+        self.assertEqual(rect.toString(-1), "5000000.01,-0.30 : 5000000.44,99.80")
 
     def testAsPolygon(self):
         """Test string representation as polygon"""
-        self.assertEqual(QgsRectangle().asPolygon(), '0.00000000 0.00000000, 0.00000000 0.00000000, 0.00000000 0.00000000, 0.00000000 0.00000000, 0.00000000 0.00000000')
-        self.assertEqual(QgsRectangle(0, 0.1, 0.2, 0.3).asPolygon(), '0.00000000 0.10000000, 0.00000000 0.30000000, 0.20000000 0.30000000, 0.20000000 0.10000000, 0.00000000 0.10000000')
+        self.assertEqual(QgsRectangle().asPolygon(), "EMPTY")
+        self.assertEqual(
+            QgsRectangle(0, 0.1, 0.2, 0.3).asPolygon(),
+            "0.00000000 0.10000000, 0.00000000 0.30000000, 0.20000000 0.30000000, 0.20000000 0.10000000, 0.00000000 0.10000000",
+        )
 
     def testToBox3d(self):
         rect = QgsRectangle(0, 0.1, 0.2, 0.3)
@@ -258,11 +412,11 @@ class TestQgsRectangle(unittest.TestCase):
     def testOperators(self):
         rect1 = QgsRectangle(10, 20, 40, 40)
         rect2 = rect1 + QgsVector(3, 5.5)
-        assert rect2 == QgsRectangle(13, 25.5, 43, 45.5), "QgsRectangle + operator does no work"
+        self.assertEqual(rect2, QgsRectangle(13, 25.5, 43, 45.5))
 
         # Subtracting the center point, so it becomes zero.
         rect1 -= rect1.center() - QgsPointXY(0, 0)
-        assert rect1.center() == QgsPointXY(0, 0)
+        self.assertEqual(rect1.center(), QgsPointXY(0, 0))
 
     def testInvert(self):
         rect = QgsRectangle(0, 0.1, 0.2, 0.3)
@@ -272,6 +426,158 @@ class TestQgsRectangle(unittest.TestCase):
         self.assertEqual(rect.xMaximum(), 0.3)
         self.assertEqual(rect.yMaximum(), 0.2)
 
+    def testValid(self):
+        # a default rectangle is not valid
+        rect = QgsRectangle()
+        self.assertFalse(rect.isValid())
 
-if __name__ == '__main__':
+        # all the values are valid, xMin < xMax, yMin, yMax
+        rect2 = QgsRectangle(10, 12, 15, 25)
+        self.assertTrue(rect2.isValid())
+
+        # xMax < xMin
+        # not valid
+        rect2.setXMaximum(9)
+        self.assertFalse(rect2.isValid())
+
+        # One of the coordinates is NaN
+        # not valid
+        rect3 = QgsRectangle(-3, 5, 2500, 4200)
+        self.assertTrue(rect3.isValid())
+        rect3.setYMinimum(float("nan"))
+        self.assertFalse(rect3.isValid())
+
+        # One of the coordinates is infinity
+        # not valid
+        rect4 = QgsRectangle(22, 15, 33, 55)
+        self.assertTrue(rect4.isValid())
+        rect4.setXMaximum(float("inf"))
+        self.assertFalse(rect4.isValid())
+
+    def test_is_point(self):
+        rect = QgsRectangle()
+        self.assertFalse(rect.isPoint())
+
+        rect = QgsRectangle(1, 2, 3, 4)
+        self.assertFalse(rect.isPoint())
+
+        rect = QgsRectangle(1, 2, 1, 4)
+        self.assertFalse(rect.isPoint())
+
+        rect = QgsRectangle(1, 2, 3, 2)
+        self.assertFalse(rect.isPoint())
+
+        rect = QgsRectangle(1.1, 2.1, 1.1, 2.1)
+        self.assertTrue(rect.isPoint())
+
+        rect = QgsRectangle(0, 0, 0, 0)
+        self.assertTrue(rect.isPoint())
+
+        rect = QgsRectangle(-9999.9999, -999999.9999, -9999.9999, -999999.9999)
+        self.assertTrue(rect.isPoint())
+
+        rect = QgsRectangle(4, 1, 3, 2, normalize=False)
+        self.assertFalse(rect.isPoint())
+
+    def test_is_normalized(self):
+        rect = QgsRectangle()
+        self.assertFalse(rect.isNormalized())
+
+        rect = QgsRectangle(1, 2, 3, 4)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(1, 2, 1, 4)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(1, 2, 3, 2)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(1.1, 2.1, 1.1, 2.1)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(0, 0, 0, 0)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(-9999.9999, -999999.9999, -9999.9999, -999999.9999)
+        self.assertTrue(rect.isNormalized())
+
+        rect = QgsRectangle(4, 1, 3, 2, normalize=False)
+        self.assertFalse(rect.isNormalized())
+
+        rect = QgsRectangle(3, 2, 4, 1, normalize=False)
+        self.assertFalse(rect.isNormalized())
+
+        rect = QgsRectangle(4, 2, 3, 1, normalize=False)
+        self.assertFalse(rect.isNormalized())
+
+    def test_split_antimeridian(self):
+        # normalized rects
+
+        # vertical slices:
+        self.assertEqual(
+            QgsRectangle(-120, 60, -120, 70).splitAtAntimeridian(),
+            (QgsRectangle(-120, 60, -120, 70), QgsRectangle()),
+        )
+        self.assertEqual(
+            QgsRectangle(120, 60, 120, 70).splitAtAntimeridian(),
+            (QgsRectangle(120, 60, 120, 70), QgsRectangle()),
+        )
+        self.assertEqual(
+            QgsRectangle(-180, 60, -180, 70).splitAtAntimeridian(),
+            (QgsRectangle(-180, 60, -180, 70), QgsRectangle()),
+        )
+        self.assertEqual(
+            QgsRectangle(180, 60, 180, 70).splitAtAntimeridian(),
+            (QgsRectangle(180, 60, 180, 70), QgsRectangle()),
+        )
+
+        self.assertEqual(
+            QgsRectangle(190, 60, 190, 70).splitAtAntimeridian(),
+            (QgsRectangle(-170, 60, -170, 70), QgsRectangle()),
+        )
+
+        self.assertEqual(
+            QgsRectangle(-190, 60, -190, 70).splitAtAntimeridian(),
+            (QgsRectangle(170, 60, 170, 70), QgsRectangle()),
+        )
+
+        self.assertEqual(
+            QgsRectangle(-550, 60, -550, 70).splitAtAntimeridian(),
+            (QgsRectangle(170, 60, 170, 70), QgsRectangle()),
+        )
+        self.assertEqual(
+            QgsRectangle(550, 60, 550, 70).splitAtAntimeridian(),
+            (QgsRectangle(-170, 60, -170, 70), QgsRectangle()),
+        )
+
+        # normalized rects
+
+        self.assertEqual(
+            QgsRectangle(-120, 60, 110, 70).splitAtAntimeridian(),
+            (QgsRectangle(-120, 60, 110, 70), QgsRectangle()),
+        )
+
+        self.assertEqual(
+            QgsRectangle(-120, 60, 190, 70).splitAtAntimeridian(),
+            (QgsRectangle(-120, 60, 180, 70), QgsRectangle(-180, 60, -170, 70)),
+        )
+
+        self.assertEqual(
+            QgsRectangle(-190, 60, 120, 70).splitAtAntimeridian(),
+            (QgsRectangle(170, 60, 180, 70), QgsRectangle(-180, 60, 120, 70)),
+        )
+
+        # non-normalized rects
+        self.assertEqual(
+            QgsRectangle(110, 60, -120, 70, normalize=False).splitAtAntimeridian(),
+            (QgsRectangle(110, 60, 180, 70), QgsRectangle(-180, 60, -120, 70)),
+        )
+
+        self.assertEqual(
+            QgsRectangle(5, 60, -5, 70, normalize=False).splitAtAntimeridian(),
+            (QgsRectangle(5, 60, 180, 70), QgsRectangle(-180, 60, -5, 70)),
+        )
+
+
+if __name__ == "__main__":
     unittest.main()

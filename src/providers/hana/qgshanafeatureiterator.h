@@ -17,13 +17,14 @@
 #ifndef QGSHANAFEATUREITERATOR_H
 #define QGSHANAFEATUREITERATOR_H
 
+#include <odbc/Forwards.h>
+
+#include "qgscoordinatetransform.h"
 #include "qgsfeatureiterator.h"
 #include "qgshanaconnectionpool.h"
 #include "qgshanaprimarykeys.h"
 #include "qgshanaprovider.h"
 #include "qgshanaresultset.h"
-
-#include "odbc/Forwards.h"
 
 class QgsHanaFeatureSource : public QgsAbstractFeatureSource
 {
@@ -34,24 +35,22 @@ class QgsHanaFeatureSource : public QgsAbstractFeatureSource
     QgsFeatureIterator getFeatures( const QgsFeatureRequest &request ) override;
 
   private:
-    bool isSpatial() const { return !mGeometryColumn.isEmpty() && mGeometryType != QgsWkbTypes::Unknown; }
+    bool isSpatial() const { return !mGeometryColumn.isEmpty() && mGeometryType != Qgis::WkbType::Unknown; }
 
   private:
     QVersionNumber mDatabaseVersion;
     QgsDataSourceUri mUri;
-    QString mSchemaName;
-    QString mTableName;
+    QString mQuery;
+    QString mQueryWhereClause;
     QgsHanaPrimaryKeyType mPrimaryKeyType = QgsHanaPrimaryKeyType::PktUnknown;
     QList<int> mPrimaryKeyAttrs;
     std::shared_ptr<QgsHanaPrimaryKeyContext> mPrimaryKeyCntx;
     QgsFields mFields;
-    QVector<FieldInfo> mFieldInfos;
     QString mGeometryColumn;
-    QgsWkbTypes::Type mGeometryType;
+    Qgis::WkbType mGeometryType;
     int mSrid;
     QgsRectangle mSrsExtent;
     QgsCoordinateReferenceSystem mCrs;
-    QString mQueryWhereClause;
 
     friend class QgsHanaFeatureIterator;
     friend class QgsHanaExpressionCompiler;
@@ -60,10 +59,7 @@ class QgsHanaFeatureSource : public QgsAbstractFeatureSource
 class QgsHanaFeatureIterator : public QgsAbstractFeatureIteratorFromSource<QgsHanaFeatureSource>
 {
   public:
-    QgsHanaFeatureIterator(
-      QgsHanaFeatureSource *source,
-      bool ownSource,
-      const QgsFeatureRequest &request );
+    QgsHanaFeatureIterator( QgsHanaFeatureSource *source, bool ownSource, const QgsFeatureRequest &request );
 
     ~QgsHanaFeatureIterator() override;
 
@@ -78,7 +74,7 @@ class QgsHanaFeatureIterator : public QgsAbstractFeatureIteratorFromSource<QgsHa
     bool prepareOrderBy( const QList<QgsFeatureRequest::OrderByClause> &orderBys ) override;
 
     QString buildSqlQuery( const QgsFeatureRequest &request );
-    QVariantList buildSqlQueryParameters( ) const;
+    QVariantList buildSqlQueryParameters() const;
     QString getBBOXFilter() const;
     QgsRectangle getFilterRect() const;
 
@@ -89,6 +85,8 @@ class QgsHanaFeatureIterator : public QgsAbstractFeatureIteratorFromSource<QgsHa
     QString mSqlQuery;
     QVariantList mSqlQueryParams;
     QgsRectangle mFilterRect;
+    QgsGeometry mDistanceWithinGeom;
+    std::unique_ptr<QgsGeometryEngine> mDistanceWithinEngine;
     QgsAttributeList mAttributesToFetch;
     QgsCoordinateTransform mTransform;
     bool mHasAttributes = false;

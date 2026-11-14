@@ -16,11 +16,11 @@
 #ifndef QGSRASTERLAYERRENDERER_H
 #define QGSRASTERLAYERRENDERER_H
 
-#define SIP_NO_FILE
 
-#include "qgsmaplayerrenderer.h"
-#include "qgsrasterdataprovider.h"
 #include "qgsmapclippingregion.h"
+#include "qgsmaplayerrenderer.h"
+
+#define SIP_NO_FILE
 
 class QPainter;
 
@@ -31,6 +31,7 @@ struct QgsRasterViewPort;
 class QgsRenderContext;
 
 class QgsRasterLayerRenderer;
+class QgsRasterLayerLabelProvider;
 
 #include "qgsrasterinterface.h"
 
@@ -38,9 +39,8 @@ class QgsRasterLayerRenderer;
 
 /**
  * \ingroup core
- * Specific internal feedback class to provide preview of raster layer rendering.
+ * \brief Specific internal feedback class to provide preview of raster layer rendering.
  * \note not available in Python bindings
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsRasterLayerRendererFeedback : public QgsRasterBlockFeedback
 {
@@ -52,20 +52,20 @@ class CORE_EXPORT QgsRasterLayerRendererFeedback : public QgsRasterBlockFeedback
 
     //! when notified of new data in data provider it launches a preview draw of the raster
     void onNewData() override;
+
   private:
-    QgsRasterLayerRenderer *mR = nullptr;   //!< Parent renderer instance
-    int mMinimalPreviewInterval;  //!< In milliseconds
-    QTime mLastPreview;           //!< When last preview has been generated
+    QgsRasterLayerRenderer *mR = nullptr; //!< Parent renderer instance
+    int mMinimalPreviewInterval = 250;    //!< In milliseconds
+    QTime mLastPreview;                   //!< When last preview has been generated
 };
 
 ///@endcond
 
 /**
  * \ingroup core
- * Implementation of threaded rendering for raster layers.
+ * \brief Implementation of threaded rendering for raster layers.
  *
  * \note not available in Python bindings
- * \since QGIS 2.4
  */
 class CORE_EXPORT QgsRasterLayerRenderer : public QgsMapLayerRenderer
 {
@@ -78,17 +78,35 @@ class CORE_EXPORT QgsRasterLayerRenderer : public QgsMapLayerRenderer
     bool forceRasterRender() const override;
 
   private:
+    void prepareLabeling( QgsRasterLayer *layer );
+    void drawLabeling();
 
-    QgsRasterViewPort *mRasterViewPort = nullptr;
+    QString mLayerName;
+    std::unique_ptr<QgsRasterViewPort> mRasterViewPort;
 
-    QgsRasterPipe *mPipe = nullptr;
+    double mLayerOpacity = 1.0;
+    std::unique_ptr<QgsRasterPipe> mPipe;
 
-    QgsRasterDataProvider::Capability mProviderCapabilities;
+    Qgis::RasterProviderCapabilities mProviderCapabilities;
+    Qgis::RasterInterfaceCapabilities mInterfaceCapabilities;
 
     //! feedback class for cancellation and preview generation
-    QgsRasterLayerRendererFeedback *mFeedback = nullptr;
+    std::unique_ptr<QgsRasterLayerRendererFeedback> mFeedback;
 
     QList< QgsMapClippingRegion > mClippingRegions;
+
+    double mElevationScale = 1.0;
+    double mElevationOffset = 0.0;
+    int mElevationBand = 0;
+    bool mDrawElevationMap = false;
+
+    bool mEnableProfile = false;
+    quint64 mPreparationTime = 0;
+
+    // may be NULLPTR. no need to delete: if exists it is owned by labeling engine
+    QgsRasterLayerLabelProvider *mLabelProvider = nullptr;
+
+    void drawElevationMap();
 
     friend class QgsRasterLayerRendererFeedback;
 };

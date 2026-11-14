@@ -20,13 +20,16 @@ email                : marco.hugentobler at sourcepole dot com
 #include "qgis_sip.h"
 #include "qgsgeometrycollection.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 /**
  * \ingroup core
  * \class QgsMultiCurve
  * \brief Multi curve geometry collection.
- * \since QGIS 2.10
  */
-class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
+class CORE_EXPORT QgsMultiCurve : public QgsGeometryCollection
 {
   public:
     QgsMultiCurve();
@@ -41,11 +44,12 @@ class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
      */
     QgsCurve *curveN( int index );
 #else
+    // clang-format off
 
     /**
      * Returns the curve with the specified \a index.
      *
-     * An IndexError will be raised if no curve with the specified index exists.
+     * \throws IndexError if no curve with the specified index exists.
      *
      * \since QGIS 3.16
      */
@@ -61,6 +65,7 @@ class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
       return sipConvertFromType( sipCpp->curveN( a0 ), sipType_QgsCurve, NULL );
     }
     % End
+// clang-format on
 #endif
 
 #ifndef SIP_RUN
@@ -75,22 +80,25 @@ class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
     const QgsCurve *curveN( int index ) const;
 #endif
 
+    // clang-format off
     QString geometryType() const override SIP_HOLDGIL;
+    // clang-format on
     QgsMultiCurve *clone() const override SIP_FACTORY;
     void clear() override;
     QgsMultiCurve *toCurveType() const override SIP_FACTORY;
     bool fromWkt( const QString &wkt ) override;
     QDomElement asGml2( QDomDocument &doc, int precision = 17, const QString &ns = "gml", QgsAbstractGeometry::AxisOrder axisOrder = QgsAbstractGeometry::AxisOrder::XY ) const override;
     QDomElement asGml3( QDomDocument &doc, int precision = 17, const QString &ns = "gml", QgsAbstractGeometry::AxisOrder axisOrder = QgsAbstractGeometry::AxisOrder::XY ) const override;
-    json asJsonObject( int precision = 17 ) const override SIP_SKIP;
+    json asJsonObject( int precision = 17, Qgis::GeoJsonProfile profile = Qgis::GeoJsonProfile::Legacy ) const override SIP_SKIP;
     bool addGeometry( QgsAbstractGeometry *g SIP_TRANSFER ) override;
+    bool addGeometries( const QVector< QgsAbstractGeometry * > &geometries SIP_TRANSFER ) override;
     bool insertGeometry( QgsAbstractGeometry *g SIP_TRANSFER, int index ) override;
+    QgsMultiCurve *simplifyByDistance( double tolerance ) const override SIP_FACTORY;
 
     /**
      * Returns a copy of the multi curve, where each component curve has had its line direction reversed.
-     * \since QGIS 2.14
      */
-    QgsMultiCurve *reversed() const SIP_FACTORY;
+    std::unique_ptr<QgsMultiCurve> reversed() const;
 
     QgsAbstractGeometry *boundary() const override SIP_FACTORY;
 
@@ -100,18 +108,39 @@ class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
      * Cast the \a geom to a QgsMultiCurve.
      * Should be used by qgsgeometry_cast<QgsMultiCurve *>( geometry ).
      *
-     * \note Not available in Python. Objects will be automatically be converted to the appropriate target type.
-     * \since QGIS 3.0
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
      */
-    inline static const QgsMultiCurve *cast( const QgsAbstractGeometry *geom )
+    inline static const QgsMultiCurve *cast( const QgsAbstractGeometry *geom ) // cppcheck-suppress duplInheritedMember
     {
       if ( !geom )
         return nullptr;
 
-      QgsWkbTypes::Type flatType = QgsWkbTypes::flatType( geom->wkbType() );
-      if ( flatType == QgsWkbTypes::MultiCurve
-           || flatType == QgsWkbTypes::MultiLineString )
+      const Qgis::WkbType flatType = QgsWkbTypes::flatType( geom->wkbType() );
+      if ( flatType == Qgis::WkbType::MultiCurve
+           || flatType == Qgis::WkbType::MultiLineString )
         return static_cast<const QgsMultiCurve *>( geom );
+      return nullptr;
+    }
+
+    /**
+     * Cast the \a geom to a QgsMultiCurve.
+     * Should be used by qgsgeometry_cast<QgsMultiCurve *>( geometry ).
+     *
+     * Objects will be automatically converted to the appropriate target type.
+     *
+     * \note Not available in Python.
+     */
+    inline static QgsMultiCurve *cast( QgsAbstractGeometry *geom ) // cppcheck-suppress duplInheritedMember
+    {
+      if ( !geom )
+        return nullptr;
+
+      const Qgis::WkbType flatType = QgsWkbTypes::flatType( geom->wkbType() );
+      if ( flatType == Qgis::WkbType::MultiCurve
+           || flatType == Qgis::WkbType::MultiLineString )
+        return static_cast<QgsMultiCurve *>( geom );
       return nullptr;
     }
 #endif
@@ -119,14 +148,16 @@ class CORE_EXPORT QgsMultiCurve: public QgsGeometryCollection
     QgsMultiCurve *createEmptyWithSameType() const override SIP_FACTORY;
 
 #ifdef SIP_RUN
+// clang-format off
     SIP_PYOBJECT __repr__();
     % MethodCode
     QString wkt = sipCpp->asWkt();
     if ( wkt.length() > 1000 )
-      wkt = wkt.left( 1000 ) + QStringLiteral( "..." );
-    QString str = QStringLiteral( "<QgsMultiCurve: %1>" ).arg( wkt );
+      wkt = wkt.left( 1000 ) + u"..."_s;
+    QString str = u"<QgsMultiCurve: %1>"_s.arg( wkt );
     sipRes = PyUnicode_FromString( str.toUtf8().constData() );
     % End
+// clang-format on
 #endif
 
 };

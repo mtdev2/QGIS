@@ -18,10 +18,10 @@
 #ifndef QGSHISTOGRAM_H
 #define QGSHISTOGRAM_H
 
-#include <QList>
-
 #include "qgis_core.h"
 #include "qgsfeedback.h"
+
+#include <QList>
 
 class QgsVectorLayer;
 
@@ -31,16 +31,11 @@ class QgsVectorLayer;
  * \class QgsHistogram
  * \brief Calculator for a numeric histogram from a list of values.
  *
- * \since QGIS 2.9
  */
 
 class CORE_EXPORT QgsHistogram
 {
   public:
-
-    /**
-     * Constructor for QgsHistogram.
-     */
     QgsHistogram() = default;
 
     virtual ~QgsHistogram() = default;
@@ -98,14 +93,12 @@ class CORE_EXPORT QgsHistogram
     QList<int> counts( int bins ) const;
 
   private:
-
     QList<double> mValues;
     double mMax = 0;
     double mMin = 0;
     double mIQR = 0;
 
     void prepareValues();
-
 };
 
 #endif // QGSHISTOGRAM_H

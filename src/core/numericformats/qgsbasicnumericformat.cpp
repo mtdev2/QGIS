@@ -15,35 +15,43 @@
  ***************************************************************************/
 
 #include "qgsbasicnumericformat.h"
-#include "qgis.h"
-#include <memory>
+
+#include <iomanip>
 #include <iostream>
 #include <locale>
-#include <iomanip>
+#include <memory>
 
-struct formatter : std::numpunct<wchar_t>
+#include "qgis.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+namespace QgsBasicNumericFormat_ns
 {
-  formatter( QChar thousands, bool showThousands, QChar decimal )
-    : mThousands( thousands.unicode() )
-    , mDecimal( decimal.unicode() )
-    , mShowThousands( showThousands )
-  {}
-  wchar_t do_decimal_point() const override { return mDecimal; }
-  wchar_t do_thousands_sep() const override { return mThousands; }
-  std::string do_grouping() const override { return mShowThousands ? "\3" : "\0"; }
+  struct formatter : std::numpunct<wchar_t>
+  {
+      formatter( QChar thousands, bool showThousands, QChar decimal )
+        : mThousands( thousands.unicode() )
+        , mDecimal( decimal.unicode() )
+        , mShowThousands( showThousands )
+      {}
+      wchar_t do_decimal_point() const override { return mDecimal; }
+      wchar_t do_thousands_sep() const override { return mThousands; }
+      std::string do_grouping() const override { return mShowThousands ? "\3" : "\0"; }
 
-  wchar_t mThousands;
-  wchar_t mDecimal;
-  bool mShowThousands = true;
-};
+      wchar_t mThousands;
+      wchar_t mDecimal;
+      bool mShowThousands = true;
+  };
+} //namespace QgsBasicNumericFormat_ns
 
 QgsBasicNumericFormat::QgsBasicNumericFormat()
-{
-}
+{}
 
 QString QgsBasicNumericFormat::id() const
 {
-  return QStringLiteral( "basic" );
+  return u"basic"_s;
 }
 
 QString QgsBasicNumericFormat::visibleName() const
@@ -58,11 +66,9 @@ int QgsBasicNumericFormat::sortKey()
 
 QString QgsBasicNumericFormat::formatDouble( double value, const QgsNumericFormatContext &context ) const
 {
-  QChar decimal = mDecimalSeparator.isNull() ? context.decimalSeparator() : mDecimalSeparator;
+  const QChar decimal = mDecimalSeparator.isNull() ? context.decimalSeparator() : mDecimalSeparator;
   std::basic_stringstream<wchar_t> os;
-  os.imbue( std::locale( os.getloc(), new formatter( mThousandsSeparator.isNull() ? context.thousandsSeparator() : mThousandsSeparator,
-                         mShowThousandsSeparator,
-                         decimal ) ) );
+  os.imbue( std::locale( os.getloc(), new QgsBasicNumericFormat_ns::formatter( mThousandsSeparator.isNull() ? context.thousandsSeparator() : mThousandsSeparator, mShowThousandsSeparator, decimal ) ) );
 
   if ( !mUseScientific )
   {
@@ -70,20 +76,24 @@ QString QgsBasicNumericFormat::formatDouble( double value, const QgsNumericForma
     {
       case DecimalPlaces:
         os << std::fixed << std::setprecision( mNumberDecimalPlaces );
-        os << value;
+        if ( qgsDoubleNear( value, 0 ) )
+          os << 0.0;
+        else
+          os << value;
+
         break;
 
       case SignificantFigures:
       {
         if ( qgsDoubleNear( value, 0 ) )
         {
-          os << std::fixed << std::setprecision( mNumberDecimalPlaces - 1 ) << value;
+          os << std::fixed << std::setprecision( mNumberDecimalPlaces - 1 ) << 0.0;
         }
         else
         {
           // digits before decimal point
           const int d = std::floor( std::log10( value < 0 ? -value : value ) ) + 1;
-          double order = std::pow( 10.0, mNumberDecimalPlaces - d );
+          const double order = std::pow( 10.0, mNumberDecimalPlaces - d );
           os << std::fixed << std::setprecision( std::max( mNumberDecimalPlaces - d, 0 ) ) << std::round( value * order ) / order;
         }
         break;
@@ -93,7 +103,10 @@ QString QgsBasicNumericFormat::formatDouble( double value, const QgsNumericForma
   else
   {
     os << std::scientific << std::setprecision( mNumberDecimalPlaces );
-    os << value;
+    if ( qgsDoubleNear( value, 0 ) )
+      os << 0.0;
+    else
+      os << value;
   }
 
   QString res = QString::fromStdWString( os.str() );
@@ -119,7 +132,7 @@ QString QgsBasicNumericFormat::formatDouble( double value, const QgsNumericForma
     if ( res.at( trimPoint ) == decimal )
       trimPoint--;
 
-    QString original = res;
+    const QString original = res;
     res.truncate( trimPoint + 1 );
     if ( mUseScientific )
       res += original.mid( ePoint );
@@ -135,7 +148,7 @@ QgsNumericFormat *QgsBasicNumericFormat::clone() const
 
 QgsNumericFormat *QgsBasicNumericFormat::create( const QVariantMap &configuration, const QgsReadWriteContext &context ) const
 {
-  std::unique_ptr< QgsBasicNumericFormat > res = qgis::make_unique< QgsBasicNumericFormat >();
+  auto res = std::make_unique< QgsBasicNumericFormat >();
   res->setConfiguration( configuration, context );
   return res.release();
 }
@@ -143,25 +156,25 @@ QgsNumericFormat *QgsBasicNumericFormat::create( const QVariantMap &configuratio
 QVariantMap QgsBasicNumericFormat::configuration( const QgsReadWriteContext & ) const
 {
   QVariantMap res;
-  res.insert( QStringLiteral( "decimals" ), mNumberDecimalPlaces );
-  res.insert( QStringLiteral( "show_thousand_separator" ), mShowThousandsSeparator );
-  res.insert( QStringLiteral( "show_plus" ), mShowPlusSign );
-  res.insert( QStringLiteral( "show_trailing_zeros" ), mShowTrailingZeros );
-  res.insert( QStringLiteral( "rounding_type" ), static_cast< int >( mRoundingType ) );
-  res.insert( QStringLiteral( "thousand_separator" ), mThousandsSeparator );
-  res.insert( QStringLiteral( "decimal_separator" ), mDecimalSeparator );
+  res.insert( u"decimals"_s, mNumberDecimalPlaces );
+  res.insert( u"show_thousand_separator"_s, mShowThousandsSeparator );
+  res.insert( u"show_plus"_s, mShowPlusSign );
+  res.insert( u"show_trailing_zeros"_s, mShowTrailingZeros );
+  res.insert( u"rounding_type"_s, static_cast< int >( mRoundingType ) );
+  res.insert( u"thousand_separator"_s, mThousandsSeparator.isNull() ? QVariant() : QVariant::fromValue( mThousandsSeparator ) );
+  res.insert( u"decimal_separator"_s, mDecimalSeparator.isNull() ? QVariant() : QVariant::fromValue( mDecimalSeparator ) );
   return res;
 }
 
 void QgsBasicNumericFormat::setConfiguration( const QVariantMap &configuration, const QgsReadWriteContext & )
 {
-  mNumberDecimalPlaces = configuration.value( QStringLiteral( "decimals" ), 6 ).toInt();
-  mShowThousandsSeparator = configuration.value( QStringLiteral( "show_thousand_separator" ), true ).toBool();
-  mShowPlusSign = configuration.value( QStringLiteral( "show_plus" ), false ).toBool();
-  mShowTrailingZeros = configuration.value( QStringLiteral( "show_trailing_zeros" ), false ).toBool();
-  mRoundingType = static_cast< RoundingType >( configuration.value( QStringLiteral( "rounding_type" ), static_cast< int >( DecimalPlaces ) ).toInt() );
-  mThousandsSeparator = configuration.value( QStringLiteral( "thousand_separator" ), QChar() ).toChar();
-  mDecimalSeparator = configuration.value( QStringLiteral( "decimal_separator" ), QChar() ).toChar();
+  mNumberDecimalPlaces = configuration.value( u"decimals"_s, 6 ).toInt();
+  mShowThousandsSeparator = configuration.value( u"show_thousand_separator"_s, true ).toBool();
+  mShowPlusSign = configuration.value( u"show_plus"_s, false ).toBool();
+  mShowTrailingZeros = configuration.value( u"show_trailing_zeros"_s, false ).toBool();
+  mRoundingType = static_cast< RoundingType >( configuration.value( u"rounding_type"_s, static_cast< int >( DecimalPlaces ) ).toInt() );
+  mThousandsSeparator = configuration.value( u"thousand_separator"_s, QChar() ).toChar();
+  mDecimalSeparator = configuration.value( u"decimal_separator"_s, QChar() ).toChar();
 }
 
 int QgsBasicNumericFormat::numberDecimalPlaces() const

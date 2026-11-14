@@ -15,39 +15,40 @@
  ***************************************************************************/
 
 #include "qgsgrassnewmapset.h"
-#include "qgsgrassplugin.h"
-#include "qgsgrass.h"
-#include "qgis.h"
 
+#include "qgis.h"
 #include "qgisinterface.h"
 #include "qgsapplication.h"
 #include "qgscoordinatetransform.h"
+#include "qgsexception.h"
+#include "qgsextentwidget.h"
+#include "qgsgrass.h"
+#include "qgsgrassplugin.h"
+#include "qgsgui.h"
+#include "qgshelp.h"
+#include "qgslocalec.h"
 #include "qgslogger.h"
 #include "qgsmapcanvas.h"
 #include "qgsproject.h"
 #include "qgsprojectionselectiontreewidget.h"
-#include "qgslocalec.h"
-#include "qgsexception.h"
 #include "qgssettings.h"
-#include "qgsgui.h"
-
-#include "cpl_conv.h"
-#include "ogr_srs_api.h"
 
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QRegExp>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QString>
 #include <QTextStream>
 
+#include "moc_qgsgrassnewmapset.cpp"
+
+using namespace Qt::StringLiterals;
 
 extern "C"
 {
-#if defined(_MSC_VER) && defined(M_PI_4)
+#if defined( _MSC_VER ) && defined( M_PI_4 )
 #undef M_PI_4 //avoid redefinition warning
-#endif
-#if defined(PROJ_VERSION_MAJOR) && PROJ_VERSION_MAJOR>=6
-#define ACCEPT_USE_OF_DEPRECATED_PROJ_API_H
 #endif
 #include <grass/gprojects.h>
 }
@@ -64,61 +65,53 @@ QString temp3( GRASS_VERSION_MINOR );
 QString temp4( GRASS_VERSION_RELEASE );
 #endif
 
-bool QgsGrassNewMapset::sRunning = false;
-
-QgsGrassNewMapset::QgsGrassNewMapset( QgisInterface *iface,
-                                      QgsGrassPlugin *plugin, QWidget *parent,
-                                      Qt::WindowFlags f )
+QgsGrassNewMapset::QgsGrassNewMapset( QgisInterface *iface, QgsGrassPlugin *plugin, QWidget *parent, Qt::WindowFlags f )
   : QWizard( parent, f )
   , QgsGrassNewMapsetBase()
+  , mIface( iface )
+  , mPlugin( plugin )
 {
-  QgsDebugMsg( "QgsGrassNewMapset()" );
+  QgsDebugMsgLevel( "QgsGrassNewMapset()", 3 );
 
   setupUi( this );
   QgsGui::instance()->enableAutoGeometryRestore( this );
 
-  connect( mDatabaseButton, &QPushButton::clicked, this, &QgsGrassNewMapset::mDatabaseButton_clicked );
-  connect( mDatabaseLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mDatabaseLineEdit_returnPressed );
-  connect( mDatabaseLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mDatabaseLineEdit_textChanged );
+  mDirectoryWidget->setStorageMode( QgsFileWidget::GetDirectory );
+  mDirectoryWidget->lineEdit()->setShowClearButton( false );
+  connect( mDirectoryWidget, &QgsFileWidget::fileChanged, this, &QgsGrassNewMapset::databaseChanged );
+
+  mExtentWidget = new QgsExtentWidget( nullptr, QgsExtentWidget::ExpandedStyle );
+  QVBoxLayout *extentLayout = new QVBoxLayout();
+  extentLayout->setContentsMargins( 0, 0, 0, 0 );
+  extentLayout->addWidget( mExtentWidget );
+  mExtentWidgetFrame->setLayout( extentLayout );
+  mExtentWidget->setMapCanvas( mIface->mapCanvas() );
+
   connect( mCreateLocationRadioButton, &QRadioButton::clicked, this, &QgsGrassNewMapset::mCreateLocationRadioButton_clicked );
   connect( mSelectLocationRadioButton, &QRadioButton::clicked, this, &QgsGrassNewMapset::mSelectLocationRadioButton_clicked );
-  connect( mLocationComboBox, &QComboBox::editTextChanged, this, &QgsGrassNewMapset::mLocationComboBox_textChanged );
   connect( mLocationLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mLocationLineEdit_returnPressed );
   connect( mLocationLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mLocationLineEdit_textChanged );
   connect( mNoProjRadioButton, &QRadioButton::clicked, this, &QgsGrassNewMapset::mNoProjRadioButton_clicked );
   connect( mProjRadioButton, &QRadioButton::clicked, this, &QgsGrassNewMapset::mProjRadioButton_clicked );
-  connect( mNorthLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mNorthLineEdit_returnPressed );
-  connect( mNorthLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mNorthLineEdit_textChanged );
-  connect( mSouthLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mSouthLineEdit_returnPressed );
-  connect( mSouthLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mSouthLineEdit_textChanged );
-  connect( mEastLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mEastLineEdit_returnPressed );
-  connect( mEastLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mEastLineEdit_textChanged );
-  connect( mWestLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mWestLineEdit_returnPressed );
-  connect( mWestLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mWestLineEdit_textChanged );
-  connect( mCurrentRegionButton, &QPushButton::clicked, this, &QgsGrassNewMapset::mCurrentRegionButton_clicked );
+  connect( mExtentWidget, &QgsExtentWidget::extentChanged, this, &QgsGrassNewMapset::regionChanged );
   connect( mRegionButton, &QPushButton::clicked, this, &QgsGrassNewMapset::mRegionButton_clicked );
   connect( mMapsetLineEdit, &QLineEdit::returnPressed, this, &QgsGrassNewMapset::mMapsetLineEdit_returnPressed );
   connect( mMapsetLineEdit, &QLineEdit::textChanged, this, &QgsGrassNewMapset::mMapsetLineEdit_textChanged );
   connect( mOpenNewMapsetCheckBox, &QCheckBox::stateChanged, this, &QgsGrassNewMapset::mOpenNewMapsetCheckBox_stateChanged );
+  setOption( HaveHelpButton, true );
+  connect( this, &QWizard::helpRequested, this, [] { QgsHelp::openHelp( u"grass_integration/grass_integration.html#grass-plugin"_s ); } );
 #ifdef Q_OS_MAC
   setWizardStyle( QWizard::ClassicStyle );
 #endif
 
-  sRunning = true;
-  mIface = iface;
-  mProjectionSelector = nullptr;
-  mPreviousPage = -1;
-  mRegionModified = false;
-
-  QString mapPath = QStringLiteral( ":/images/grass/world.png" );
-  QgsDebugMsg( QString( "mapPath = %1" ).arg( mapPath ) );
+  QString mapPath = u":/images/grass/world.png"_s;
+  QgsDebugMsgLevel( QString( "mapPath = %1" ).arg( mapPath ), 2 );
 
   //mPixmap = QPixmap( *(mRegionMap->pixmap()) );
   mPixmap.load( mapPath );
-  QgsDebugMsg( QString( "mPixmap.isNull() = %1" ).arg( mPixmap.isNull() ) );
+  QgsDebugMsgLevel( QString( "mPixmap.isNull() = %1" ).arg( mPixmap.isNull() ), 3 );
 
   mRegionsInited = false;
-  mPlugin = plugin;
 
   setError( mDatabaseErrorLabel );
   setError( mLocationErrorLabel );
@@ -128,53 +121,37 @@ QgsGrassNewMapset::QgsGrassNewMapset( QgisInterface *iface,
 
   // DATABASE
   QgsSettings settings;
-  QString gisdbase = settings.value( QStringLiteral( "GRASS/lastGisdbase" ) ).toString();
+  QString gisdbase = settings.value( u"GRASS/lastGisdbase"_s ).toString();
   if ( gisdbase.isEmpty() )
   {
     gisdbase = QDir::homePath() + QDir::separator() + "grassdata";
   }
-  mDatabaseLineEdit->setText( gisdbase );
+  mDirectoryWidget->setFilePath( gisdbase );
   databaseChanged();
 
-  // LOCATION
-  QRegExp rx( "[A-Za-z0-9_.]+" );
-  mLocationLineEdit->setValidator( new QRegExpValidator( rx, mLocationLineEdit ) );
+  // PROJECT
+  const thread_local QRegularExpression rx( "[A-Za-z0-9_.]+" );
+  mLocationLineEdit->setValidator( new QRegularExpressionValidator( rx, mLocationLineEdit ) );
 
   // CRS
 
   // MAPSET
   mMapsetsListView->clear();
-  mMapsetLineEdit->setValidator( new QRegExpValidator( rx, mMapsetLineEdit ) );
+  mMapsetLineEdit->setValidator( new QRegularExpressionValidator( rx, mMapsetLineEdit ) );
 
   mMapsetsListView->header()->setSectionResizeMode( QHeaderView::ResizeToContents );
 
   // FINISH
-  mOpenNewMapsetCheckBox->setChecked( settings.value( QStringLiteral( "GRASS/newMapsetWizard/openMapset" ), true ).toBool() );
+  mOpenNewMapsetCheckBox->setChecked( settings.value( u"GRASS/newMapsetWizard/openMapset"_s, true ).toBool() );
   connect( this, &QWizard::currentIdChanged, this, &QgsGrassNewMapset::pageSelected );
 }
 
-QgsGrassNewMapset::~QgsGrassNewMapset()
-{
-  sRunning = false;
-}
-/*************************** DATABASE *******************************/
-void QgsGrassNewMapset::browseDatabase()
-{
-  QString selectedDir = QFileDialog::getExistingDirectory( this, nullptr, mDatabaseLineEdit->text() );
-  if ( selectedDir.isEmpty() )
-  {
-    return;
-  }
-
-  mDatabaseLineEdit->setText( selectedDir );
-  databaseChanged();
-}
+QgsGrassNewMapset::~QgsGrassNewMapset() = default;
 
 void QgsGrassNewMapset::databaseChanged()
 {
-
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "GRASS/lastGisdbase" ), mDatabaseLineEdit->text() );
+  settings.setValue( u"GRASS/lastGisdbase"_s, mDirectoryWidget->filePath() );
 
   button( QWizard::NextButton )->setEnabled( false );
   setError( mDatabaseErrorLabel );
@@ -195,12 +172,12 @@ void QgsGrassNewMapset::databaseChanged()
   }
   else
   {
-    // Check if at least one writable location exists or database is writable
+    // Check if at least one writable project exists or database is writable
     bool locationExists = false;
     QDir dir( gisdbase() );
     for ( unsigned int i = 0; i < dir.count(); i++ )
     {
-      if ( dir[i] == QLatin1String( "." ) || dir[i] == QLatin1String( ".." ) )
+      if ( dir[i] == "."_L1 || dir[i] == ".."_L1 )
         continue;
 
       QString windName = gisdbase() + "/" + dir[i] + "/PERMANENT/DEFAULT_WIND";
@@ -221,14 +198,14 @@ void QgsGrassNewMapset::databaseChanged()
     }
     else
     {
-      setError( mDatabaseErrorLabel, tr( "No writable locations, the database is not writable!" ) );
+      setError( mDatabaseErrorLabel, tr( "No writable projects, the database is not writable!" ) );
     }
   }
 }
 
-QString QgsGrassNewMapset::gisdbase()
+QString QgsGrassNewMapset::gisdbase() const
 {
-  return mDatabaseLineEdit->text().trimmed();
+  return mDirectoryWidget->filePath();
 }
 
 bool QgsGrassNewMapset::gisdbaseExists()
@@ -237,20 +214,18 @@ bool QgsGrassNewMapset::gisdbaseExists()
   return databaseInfo.exists();
 }
 
-/*************************** LOCATION *******************************/
+/*************************** PROJECT *******************************/
 void QgsGrassNewMapset::setLocationPage()
 {
-
   setLocations();
 }
 
 void QgsGrassNewMapset::setLocations()
 {
-
   mLocationComboBox->clear();
 
   QgsSettings settings;
-  QString lastLocation = settings.value( QStringLiteral( "GRASS/lastLocation" ) ).toString();
+  QString lastLocation = settings.value( u"GRASS/lastLocation"_s ).toString();
 
   if ( gisdbaseExists() )
   {
@@ -262,11 +237,11 @@ void QgsGrassNewMapset::setLocations()
     int sel = -1;
     for ( unsigned int i = 0; i < gisdbaseDir.count(); i++ )
     {
-      if ( gisdbaseDir[i] == QLatin1String( "." ) || gisdbaseDir[i] == QLatin1String( ".." ) )
+      if ( gisdbaseDir[i] == "."_L1 || gisdbaseDir[i] == ".."_L1 )
         continue;
 
-      QString windName = mDatabaseLineEdit->text() + "/" + gisdbaseDir[i] + "/PERMANENT/DEFAULT_WIND";
-      QString locationName = mDatabaseLineEdit->text() + "/" + gisdbaseDir[i];
+      QString windName = mDirectoryWidget->filePath() + "/" + gisdbaseDir[i] + "/PERMANENT/DEFAULT_WIND";
+      QString locationName = mDirectoryWidget->filePath() + "/" + gisdbaseDir[i];
       QFileInfo locationInfo( locationName );
 
       if ( QFile::exists( windName ) && locationInfo.isWritable() )
@@ -318,13 +293,13 @@ int QgsGrassNewMapset::nextId() const
   int id = currentId();
   switch ( id )
   {
-    case Location:
+    case Project:
       if ( mSelectLocationRadioButton->isChecked() )
       {
         id = MapSet;
         break;
       }
-      FALLTHROUGH
+      [[fallthrough]];
     case Database:
     case Crs:
     case Region:
@@ -350,22 +325,17 @@ void QgsGrassNewMapset::checkLocation()
     if ( location.isEmpty() )
     {
       button( QWizard::NextButton )->setEnabled( false );
-      setError( mLocationErrorLabel, tr( "Enter location name!" ) );
+      setError( mLocationErrorLabel, tr( "Enter project name!" ) );
     }
     else
     {
       if ( QFile::exists( gisdbase() + "/" + location ) )
       {
         button( QWizard::NextButton )->setEnabled( false );
-        setError( mLocationErrorLabel, tr( "The location exists!" ) );
+        setError( mLocationErrorLabel, tr( "The project exists!" ) );
       }
     }
   }
-}
-
-void QgsGrassNewMapset::existingLocationChanged( const QString &text )
-{
-  Q_UNUSED( text )
 }
 
 void QgsGrassNewMapset::newLocationChanged()
@@ -407,7 +377,7 @@ void QgsGrassNewMapset::setGrassProjection()
 {
   setError( mProjErrorLabel );
 
-  QString proj4 = mProjectionSelector->crs().toProj();
+  const QgsCoordinateReferenceSystem crs = mProjectionSelector->crs();
 
   // Not defined
   if ( mNoProjRadioButton->isChecked() )
@@ -422,69 +392,29 @@ void QgsGrassNewMapset::setGrassProjection()
   }
 
   // Define projection
-  if ( !proj4.isEmpty() )
+  if ( crs.isValid() )
   {
-    QgsDebugMsg( QString( "proj4 = %1" ).arg( proj4.toLocal8Bit().constData() ) );
+    const QString wkt = crs.toWkt( Qgis::CrsWktVariant::Preferred );
+    QgsDebugMsgLevel( u"wkt = %1"_s.arg( crs.toWkt( Qgis::CrsWktVariant::Preferred ) ), 3 );
 
-    OGRSpatialReferenceH hCRS = nullptr;
-    hCRS = OSRNewSpatialReference( nullptr );
-    int errcode;
-
+    G_TRY
     {
-      QgsLocaleNumC l;
-      errcode = OSRImportFromProj4( hCRS, proj4.toUtf8() );
+      GPJ_wkt_to_grass( &mCellHead, &mProjInfo, &mProjUnits, wkt.toUtf8().constData(), 0 );
     }
-
-    if ( errcode != OGRERR_NONE )
+    G_CATCH( QgsGrass::Exception & e )
     {
-      QgsDebugMsg( QString( "OGR can't parse PROJ-style parameter string:\n%1\nOGR Error code was %2" ).arg( proj4 ).arg( errcode ) );
-
-      mCellHead.proj = PROJECTION_XY;
-      mCellHead.zone = 0;
-      mProjInfo = nullptr;
-      mProjUnits = nullptr;
-    }
-    else
-    {
-      char *wkt = nullptr;
-
-      QgsDebugMsg( QString( "OSRIsGeographic = %1" ).arg( OSRIsGeographic( hCRS ) ) );
-      QgsDebugMsg( QString( "OSRIsProjected = %1" ).arg( OSRIsProjected( hCRS ) ) );
-
-      if ( ( errcode = OSRExportToWkt( hCRS, &wkt ) ) != OGRERR_NONE )
-      {
-        QgsDebugMsg( QString( "OGR can't get Wkt-style parameter string\nOGR Error code was %1" ).arg( errcode ) );
-      }
-      else
-      {
-        QgsDebugMsg( QString( "wkt = %1" ).arg( wkt ) );
-      }
-
-      // Note: GPJ_osr_to_grass() defaults in PROJECTION_XY if projection
-      //       cannot be set
-
-      G_TRY
-      {
-        // There was a bug in GRASS, it is present in 6.0.x line
-        int ret = GPJ_wkt_to_grass( &mCellHead, &mProjInfo, &mProjUnits, wkt, 0 );
-        // Note: It seems that GPJ_osr_to_grass()returns always 1,
-        //   -> test if mProjInfo was set
-
-        Q_UNUSED( ret )
-        QgsDebugMsg( QString( "ret = %1" ).arg( ret ) );
-        QgsDebugMsg( QString( "mProjInfo = %1" ).arg( QString::number( ( qulonglong )mProjInfo, 16 ).toLocal8Bit().constData() ) );
-        CPLFree( wkt );
-      }
-      G_CATCH( QgsGrass::Exception & e )
-      {
-        QgsGrass::warning( tr( "Cannot set projection: %1" ).arg( e.what() ) );
-        return;
-      }
+      QgsGrass::warning( tr( "Cannot set projection: %1" ).arg( e.what() ) );
+      return;
     }
 
     if ( !mProjInfo || !mProjUnits )
     {
       setError( mProjErrorLabel, tr( "Selected projection is not supported by GRASS!" ) );
+    }
+    else
+    {
+      mProjSrid = crs.authid().toUpper();
+      mProjWkt = wkt;
     }
   }
   else // Nothing selected
@@ -493,6 +423,8 @@ void QgsGrassNewMapset::setGrassProjection()
     mCellHead.zone = 0;
     mProjInfo = nullptr;
     mProjUnits = nullptr;
+    mProjSrid.clear();
+    mProjWkt.clear();
   }
   button( QWizard::NextButton )->setEnabled( mProjInfo && mProjUnits );
 }
@@ -500,7 +432,6 @@ void QgsGrassNewMapset::setGrassProjection()
 /**************************** REGION ********************************/
 void QgsGrassNewMapset::setRegionPage()
 {
-
   // Set defaults
   if ( !mRegionModified )
   {
@@ -511,75 +442,21 @@ void QgsGrassNewMapset::setRegionPage()
   QgsCoordinateReferenceSystem newCrs;
   if ( mProjRadioButton->isChecked() )
   {
-    QgsDebugMsg( QString( "selectedCrsId() = %1" ).arg( mProjectionSelector->crs().srsid() ) );
+    QgsDebugMsgLevel( QString( "selectedCrsId() = %1" ).arg( mProjectionSelector->crs().srsid() ), 2 );
 
-    if ( mProjectionSelector->crs().srsid() > 0 )
+    if ( mProjectionSelector->crs().isValid() )
     {
-      newCrs = mProjectionSelector->crs();
-      if ( ! newCrs.isValid() )
-      {
-        QgsGrass::warning( tr( "Cannot create projection." ) );
-      }
+      mCrs = mProjectionSelector->crs();
     }
   }
 
-  // Reproject previous region if it was modified
-  // and if previous and current projection is valid
-  if ( mRegionModified && newCrs.isValid() && mCrs.isValid()
-       && newCrs.srsid() != mCrs.srsid() )
-  {
-    QgsCoordinateTransform trans( mCrs, newCrs, QgsProject::instance() );
-
-    double n = mNorthLineEdit->text().toDouble();
-    double s = mSouthLineEdit->text().toDouble();
-    double e = mEastLineEdit->text().toDouble();
-    double w = mWestLineEdit->text().toDouble();
-
-    std::vector<QgsPointXY> points;
-
-    // TODO: this is not perfect
-    points.push_back( QgsPointXY( w, s ) );
-    points.push_back( QgsPointXY( e, n ) );
-
-    bool ok = true;
-    for ( int i = 0; i < 2; i++ )
-    {
-      try
-      {
-        points[i] = trans.transform( points[i] );
-      }
-      catch ( QgsCsException &cse )
-      {
-        Q_UNUSED( cse )
-        QgsDebugMsg( "Cannot transform point" );
-        ok = false;
-        break;
-      }
-    }
-
-    if ( ok )
-    {
-      int precision = newCrs.mapUnits() == QgsUnitTypes::DistanceDegrees ? 6 : 1;
-      mNorthLineEdit->setText( qgsDoubleToString( points[1].y(), precision ) );
-      mSouthLineEdit->setText( qgsDoubleToString( points[0].y(), precision ) );
-      mEastLineEdit->setText( qgsDoubleToString( points[1].x(), precision ) );
-      mWestLineEdit->setText( qgsDoubleToString( points[0].x(), precision ) );
-    }
-    else
-    {
-      QgsGrass::warning( tr( "Cannot reproject previously set region, default region set." ) );
-      setGrassRegionDefaults();
-    }
-  }
-
-  // Set current region projection
-  mCrs = newCrs;
+  mExtentWidget->setOutputCrs( mCrs );
 
   // Enable / disable region selection widgets
   if ( mNoProjRadioButton->isChecked() )
   {
     mRegionMap->hide();
-    mCurrentRegionButton->hide();
+    mExtentWidgetFrame->hide();
     mRegionsComboBox->hide();
     mRegionButton->hide();
     mSetRegionFrame->hide();
@@ -587,14 +464,10 @@ void QgsGrassNewMapset::setRegionPage()
   else
   {
     mRegionMap->show();
-    mCurrentRegionButton->show();
+    mExtentWidgetFrame->show();
     mRegionsComboBox->show();
     mRegionButton->show();
     mSetRegionFrame->show();
-
-    QgsRectangle ext = mIface->mapCanvas()->extent();
-
-    mCurrentRegionButton->setEnabled( !ext.isEmpty() );
   }
 
   checkRegion();
@@ -607,10 +480,10 @@ void QgsGrassNewMapset::setRegionPage()
 
 void QgsGrassNewMapset::setGrassRegionDefaults()
 {
-  QgsDebugMsg( QString( "mCellHead.proj = %1" ).arg( mCellHead.proj ) );
+  QgsDebugMsgLevel( QString( "mCellHead.proj = %1" ).arg( mCellHead.proj ), 3 );
 
-  QgsCoordinateReferenceSystem srs = mIface->mapCanvas()->mapSettings().destinationCrs();
-  QgsDebugMsg( "srs = " + srs.toWkt() );
+  QgsCoordinateReferenceSystem canvasCrs = mIface->mapCanvas()->mapSettings().destinationCrs();
+  QgsDebugMsgLevel( "srs = " + canvasCrs.toWkt(), 3 );
 
   QgsRectangle ext = mIface->mapCanvas()->extent();
   bool extSet = false;
@@ -619,45 +492,48 @@ void QgsGrassNewMapset::setGrassRegionDefaults()
     extSet = true;
   }
 
-  if ( extSet &&
-       ( mNoProjRadioButton->isChecked() ||
-         ( mProjRadioButton->isChecked()
-           && srs.srsid() == mProjectionSelector->crs().srsid() )
-       )
-     )
+  const QgsCoordinateReferenceSystem selectedCrs = mProjectionSelector->crs();
+
+  QgsRectangle defaultExtent;
+  if ( extSet && ( mNoProjRadioButton->isChecked() || ( mProjRadioButton->isChecked() && canvasCrs == selectedCrs ) ) )
   {
-    mNorthLineEdit->setText( QString::number( ext.yMaximum() ) );
-    mSouthLineEdit->setText( QString::number( ext.yMinimum() ) );
-    mEastLineEdit->setText( QString::number( ext.xMaximum() ) );
-    mWestLineEdit->setText( QString::number( ext.xMinimum() ) );
+    defaultExtent = ext;
   }
-  else if ( mCellHead.proj == PROJECTION_XY )
+  else if ( !selectedCrs.bounds().isEmpty() )
   {
-    mNorthLineEdit->setText( QStringLiteral( "1000" ) );
-    mSouthLineEdit->setText( QStringLiteral( "0" ) );
-    mEastLineEdit->setText( QStringLiteral( "1000" ) );
-    mWestLineEdit->setText( QStringLiteral( "0" ) );
+    const QgsRectangle boundsWgs84 = selectedCrs.bounds();
+    QgsCoordinateTransform fromWgs84Transform( QgsCoordinateReferenceSystem( u"EPSG:4326"_s ), selectedCrs, QgsProject::instance()->transformContext() );
+    fromWgs84Transform.setBallparkTransformsAreAppropriate( true );
+
+    try
+    {
+      defaultExtent = fromWgs84Transform.transformBoundingBox( boundsWgs84 );
+    }
+    catch ( QgsCsException & )
+    {}
   }
-  else if ( mCellHead.proj == PROJECTION_LL )
+  if ( defaultExtent.isEmpty() )
   {
-    mNorthLineEdit->setText( QStringLiteral( "90" ) );
-    mSouthLineEdit->setText( QStringLiteral( "-90" ) );
-    mEastLineEdit->setText( QStringLiteral( "180" ) );
-    mWestLineEdit->setText( QStringLiteral( "-180" ) );
+    if ( mCellHead.proj == PROJECTION_XY )
+    {
+      defaultExtent = QgsRectangle( 0, 0, 1000, 1000 );
+    }
+    else if ( mCellHead.proj == PROJECTION_LL )
+    {
+      defaultExtent = QgsRectangle( -180, -90, 180, 90 );
+    }
+    else
+    {
+      defaultExtent = QgsRectangle( -100000, -100000, 100000, 100000 );
+    }
   }
-  else
-  {
-    mNorthLineEdit->setText( QStringLiteral( "100000" ) );
-    mSouthLineEdit->setText( QStringLiteral( "-100000" ) );
-    mEastLineEdit->setText( QStringLiteral( "100000" ) );
-    mWestLineEdit->setText( QStringLiteral( "-100000" ) );
-  }
+  mExtentWidget->setOutputExtentFromUser( defaultExtent, mProjectionSelector->crs() );
+
   mRegionModified = false;
 }
 
 void QgsGrassNewMapset::regionChanged()
 {
-
   mRegionModified = true;
   checkRegion();
   drawRegion();
@@ -665,24 +541,16 @@ void QgsGrassNewMapset::regionChanged()
 
 void QgsGrassNewMapset::checkRegion()
 {
-
   bool err = false;
 
   setError( mRegionErrorLabel );
   button( QWizard::NextButton )->setEnabled( false );
 
-  if ( mNorthLineEdit->text().trimmed().length() == 0
-       || mSouthLineEdit->text().trimmed().length() == 0
-       || mEastLineEdit->text().trimmed().length() == 0
-       || mWestLineEdit->text().trimmed().length() == 0 )
-  {
-    return;
-  }
-
-  double n = mNorthLineEdit->text().toDouble();
-  double s = mSouthLineEdit->text().toDouble();
-  double e = mEastLineEdit->text().toDouble();
-  double w = mWestLineEdit->text().toDouble();
+  const QgsRectangle extent = mExtentWidget->outputExtent();
+  double n = extent.yMaximum();
+  double s = extent.yMinimum();
+  double e = extent.xMaximum();
+  double w = extent.xMinimum();
 
   if ( n <= s )
   {
@@ -708,17 +576,17 @@ void QgsGrassNewMapset::checkRegion()
   double res = ( e - w ) / 1000; // reasonable resolution
   double res3 = res / 10.;
 
-  mCellHead.rows   = ( int )( ( n - s ) / res );
-  mCellHead.rows3  = ( int )( ( n - s ) / res3 );
-  mCellHead.cols   = ( int )( ( e - w ) / res );
-  mCellHead.cols3  = ( int )( ( e - w ) / res3 );
+  mCellHead.rows = ( int ) ( ( n - s ) / res );
+  mCellHead.rows3 = ( int ) ( ( n - s ) / res3 );
+  mCellHead.cols = ( int ) ( ( e - w ) / res );
+  mCellHead.cols3 = ( int ) ( ( e - w ) / res3 );
   mCellHead.depths = 1;
 
-  mCellHead.ew_res  = res;
+  mCellHead.ew_res = res;
   mCellHead.ew_res3 = res3;
-  mCellHead.ns_res  = res;
+  mCellHead.ns_res = res;
   mCellHead.ns_res3 = res3;
-  mCellHead.tb_res  = 1.;
+  mCellHead.tb_res = 1.;
   // Do not override zone, it was set in setGrassProjection()
   //mCellHead.zone = 0;
 
@@ -727,9 +595,8 @@ void QgsGrassNewMapset::checkRegion()
 
 void QgsGrassNewMapset::loadRegions()
 {
-
   QString path = QgsApplication::pkgDataPath() + "/grass/locations.gml";
-  QgsDebugMsg( QString( "load:%1" ).arg( path.toLocal8Bit().constData() ) );
+  QgsDebugMsgLevel( QString( "load:%1" ).arg( path.toLocal8Bit().constData() ), 2 );
 
   QFile file( path );
 
@@ -738,28 +605,27 @@ void QgsGrassNewMapset::loadRegions()
     QgsGrass::warning( tr( "Regions file (%1) not found." ).arg( path ) );
     return;
   }
-  if ( ! file.open( QIODevice::ReadOnly ) )
+  if ( !file.open( QIODevice::ReadOnly ) )
   {
-    QgsGrass::warning( tr( "Cannot open locations file (%1)" ).arg( path ) );
+    QgsGrass::warning( tr( "Cannot open projects file (%1)" ).arg( path ) );
     return;
   }
 
-  QDomDocument doc( QStringLiteral( "gml:FeatureCollection" ) );
+  QDomDocument doc( u"gml:FeatureCollection"_s );
   QString err;
   int line, column;
 
-  if ( !doc.setContent( &file,  &err, &line, &column ) )
+  if ( !doc.setContent( &file, &err, &line, &column ) )
   {
-    QString errmsg = tr( "Cannot read locations file (%1):" ).arg( path )
-                     + tr( "\n%1\nat line %2 column %3" ).arg( err ).arg( line ).arg( column );
-    QgsDebugMsg( errmsg );
+    QString errmsg = tr( "Cannot read projects file (%1):" ).arg( path ) + tr( "\n%1\nat line %2 column %3" ).arg( err ).arg( line ).arg( column );
+    QgsDebugError( errmsg );
     QgsGrass::warning( errmsg );
     file.close();
     return;
   }
 
   QDomElement docElem = doc.documentElement();
-  QDomNodeList nodes = docElem.elementsByTagName( QStringLiteral( "gml:featureMember" ) );
+  QDomNodeList nodes = docElem.elementsByTagName( u"gml:featureMember"_s );
 
   for ( int i = 0; i < nodes.count(); i++ )
   {
@@ -771,7 +637,7 @@ void QgsGrassNewMapset::loadRegions()
     }
 
     QDomElement elem = node.toElement();
-    QDomNodeList nameNodes = elem.elementsByTagName( QStringLiteral( "gml:name" ) );
+    QDomNodeList nameNodes = elem.elementsByTagName( u"gml:name"_s );
     if ( nameNodes.count() == 0 )
       continue;
     if ( nameNodes.item( 0 ).isNull() )
@@ -781,14 +647,14 @@ void QgsGrassNewMapset::loadRegions()
     if ( nameElem.text().isNull() )
       continue;
 
-    QDomNodeList envNodes = elem.elementsByTagName( QStringLiteral( "gml:Envelope" ) );
+    QDomNodeList envNodes = elem.elementsByTagName( u"gml:Envelope"_s );
     if ( envNodes.count() == 0 )
       continue;
     if ( envNodes.item( 0 ).isNull() )
       continue;
     QDomElement envElem = envNodes.item( 0 ).toElement();
 
-    QDomNodeList coorNodes = envElem.elementsByTagName( QStringLiteral( "gml:coordinates" ) );
+    QDomNodeList coorNodes = envElem.elementsByTagName( u"gml:coordinates"_s );
     if ( coorNodes.count() == 0 )
       continue;
     if ( coorNodes.item( 0 ).isNull() )
@@ -797,28 +663,25 @@ void QgsGrassNewMapset::loadRegions()
     if ( coorElem.text().isNull() )
       continue;
 
-    QStringList coor = coorElem.text().split( QStringLiteral( " " ), QString::SkipEmptyParts );
+    QStringList coor = coorElem.text().split( u" "_s, Qt::SkipEmptyParts );
     if ( coor.size() != 2 )
     {
-      QgsDebugMsg( QString( "Cannot parse coordinates: %1" ).arg( coorElem.text() ) );
+      QgsDebugError( QString( "Cannot parse coordinates: %1" ).arg( coorElem.text() ) );
       continue;
     }
 
-    QStringList ll = coor[0].split( QStringLiteral( "," ), QString::SkipEmptyParts );
-    QStringList ur = coor[1].split( QStringLiteral( "," ), QString::SkipEmptyParts );
+    QStringList ll = coor[0].split( u","_s, Qt::SkipEmptyParts );
+    QStringList ur = coor[1].split( u","_s, Qt::SkipEmptyParts );
     if ( ll.size() != 2 || ur.size() != 2 )
     {
-      QgsDebugMsg( QString( "Cannot parse coordinates: %1" ).arg( coorElem.text() ) );
+      QgsDebugError( QString( "Cannot parse coordinates: %1" ).arg( coorElem.text() ) );
       continue;
     }
 
-    // Add region
-    mRegionsComboBox->addItem( nameElem.text() );
+    const QgsRectangle rect( ll[0].toDouble(), ll[1].toDouble(), ur[0].toDouble(), ur[1].toDouble() );
 
-    QgsPointXY llp( ll[0].toDouble(), ll[1].toDouble() );
-    mRegionsPoints.push_back( llp );
-    QgsPointXY urp( ur[0].toDouble(), ur[1].toDouble() );
-    mRegionsPoints.push_back( urp );
+    // Add region
+    mRegionsComboBox->addItem( nameElem.text(), QVariant::fromValue( rect ) );
   }
   mRegionsComboBox->setCurrentIndex( -1 );
 
@@ -827,32 +690,27 @@ void QgsGrassNewMapset::loadRegions()
 
 void QgsGrassNewMapset::setSelectedRegion()
 {
+  if ( mRegionsComboBox->currentIndex() < 0 )
+    return;
 
-  // mRegionsPoints are in EPSG 4326 = LL WGS84
-  int index = 2 * mRegionsComboBox->currentIndex();
+  const QgsRectangle currentRect = mRegionsComboBox->currentData().value<QgsRectangle>();
 
   std::vector<QgsPointXY> points;
   // corners ll lr ur ul
-  points.push_back( QgsPointXY( mRegionsPoints[index] ) );
-  points.push_back( QgsPointXY( mRegionsPoints[index + 1].x(),
-                                mRegionsPoints[index].y() ) );
-  points.push_back( QgsPointXY( mRegionsPoints[index + 1] ) );
-  points.push_back( QgsPointXY( mRegionsPoints[index].x(),
-                                mRegionsPoints[index + 1].y() ) );
+  points.push_back( QgsPointXY( currentRect.xMinimum(), currentRect.yMinimum() ) );
+  points.push_back( QgsPointXY( currentRect.xMaximum(), currentRect.yMinimum() ) );
+  points.push_back( QgsPointXY( currentRect.xMaximum(), currentRect.yMaximum() ) );
+  points.push_back( QgsPointXY( currentRect.xMinimum(), currentRect.yMaximum() ) );
 
   // Convert to currently selected coordinate system
 
-
   // Warning: seems that crashes if source == dest
-  if ( mProjectionSelector->crs().srsid() != GEOCRS_ID )
+  if ( mProjectionSelector->crs().srsid() != 3452 )
   {
-    // Warning: QgsCoordinateReferenceSystem::EpsgCrsId is broken (using epsg_id)
-    //QgsCoordinateReferenceSystem source ( 4326, QgsCoordinateReferenceSystem::EpsgCrsId );
-    QgsCoordinateReferenceSystem source = QgsCoordinateReferenceSystem::fromSrsId( GEOCRS_ID );
-
+    const QgsCoordinateReferenceSystem source( u"EPSG:4326"_s );
     if ( !source.isValid() )
     {
-      QgsGrass::warning( tr( "Cannot create QgsCoordinateReferenceSystem" ) );
+      QgsGrass::warning( tr( "Cannot create Coordinate Reference System" ) );
       return;
     }
 
@@ -860,7 +718,7 @@ void QgsGrassNewMapset::setSelectedRegion()
 
     if ( !dest.isValid() )
     {
-      QgsGrass::warning( tr( "Cannot create QgsCoordinateReferenceSystem" ) );
+      QgsGrass::warning( tr( "Cannot create Coordinate Reference System" ) );
       return;
     }
 
@@ -869,16 +727,16 @@ void QgsGrassNewMapset::setSelectedRegion()
     bool ok = true;
     for ( int i = 0; i < 4; i++ )
     {
-      QgsDebugMsg( QString( "%1,%2->" ).arg( points[i].x() ).arg( points[i].y() ) );
+      QgsDebugMsgLevel( QString( "%1,%2->" ).arg( points[i].x() ).arg( points[i].y() ), 3 );
       try
       {
         points[i] = trans.transform( points[i] );
-        QgsDebugMsg( QString( "%1,%2" ).arg( points[i].x() ).arg( points[i].y() ) );
+        QgsDebugMsgLevel( QString( "%1,%2" ).arg( points[i].x() ).arg( points[i].y() ), 3 );
       }
       catch ( QgsCsException &cse )
       {
         Q_UNUSED( cse )
-        QgsDebugMsg( "Cannot transform point" );
+        QgsDebugError( "Cannot transform point" );
         ok = false;
         break;
       }
@@ -926,10 +784,8 @@ void QgsGrassNewMapset::setSelectedRegion()
     }
   }
 
-  mNorthLineEdit->setText( QString::number( n ) );
-  mSouthLineEdit->setText( QString::number( s ) );
-  mEastLineEdit->setText( QString::number( e ) );
-  mWestLineEdit->setText( QString::number( w ) );
+  const QgsRectangle newRegion( e, s, w, n );
+  mExtentWidget->setOutputExtentFromUser( newRegion, mProjectionSelector->crs() );
 
   mRegionModified = true;
   checkRegion();
@@ -938,81 +794,35 @@ void QgsGrassNewMapset::setSelectedRegion()
 
 void QgsGrassNewMapset::setCurrentRegion()
 {
-
-  QgsRectangle ext = mIface->mapCanvas()->extent();
-
-  QgsCoordinateReferenceSystem srs = mIface->mapCanvas()->mapSettings().destinationCrs();
-  QgsDebugMsg( "srs = " + srs.toWkt() );
-
-  std::vector<QgsPointXY> points;
-
-  // TODO: this is not perfect
-  points.push_back( QgsPointXY( ext.xMinimum(), ext.yMinimum() ) );
-  points.push_back( QgsPointXY( ext.xMaximum(), ext.yMaximum() ) );
-
-  // TODO add a method, this code is copy-paste from setSelectedRegion
-  if ( srs.isValid() && mCrs.isValid()
-       && srs.srsid() != mCrs.srsid() )
-  {
-    QgsCoordinateTransform trans( srs, mCrs, QgsProject::instance() );
-
-    bool ok = true;
-    for ( int i = 0; i < 2; i++ )
-    {
-      try
-      {
-        points[i] = trans.transform( points[i] );
-      }
-      catch ( QgsCsException &cse )
-      {
-        Q_UNUSED( cse )
-        QgsDebugMsg( "Cannot transform point" );
-        ok = false;
-        break;
-      }
-    }
-
-    if ( !ok )
-    {
-      QgsGrass::warning( tr( "Cannot reproject region" ) );
-      return;
-    }
-  }
-  mNorthLineEdit->setText( QString::number( points[1].y() ) );
-  mSouthLineEdit->setText( QString::number( points[0].y() ) );
-  mEastLineEdit->setText( QString::number( points[1].x() ) );
-  mWestLineEdit->setText( QString::number( points[0].x() ) );
-
   mRegionModified = true;
   checkRegion();
   drawRegion();
-  QgsDebugMsg( "setCurrentRegion - End" );
+  QgsDebugMsgLevel( "setCurrentRegion - End", 3 );
 }
 
 void QgsGrassNewMapset::clearRegion()
 {
-
   QPixmap pm = mPixmap;
   mRegionMap->setPixmap( pm );
 }
 
 void QgsGrassNewMapset::drawRegion()
 {
-
   QPixmap pm = mPixmap;
   mRegionMap->setPixmap( pm );
 
   if ( mCellHead.proj == PROJECTION_XY )
     return;
 
-  QgsDebugMsg( QString( "pm.isNull() = %1" ).arg( pm.isNull() ) );
+  QgsDebugMsgLevel( QString( "pm.isNull() = %1" ).arg( pm.isNull() ), 3 );
   QPainter p( &pm );
   p.setPen( QPen( QColor( 255, 0, 0 ), 3 ) );
 
-  double n = mNorthLineEdit->text().toDouble();
-  double s = mSouthLineEdit->text().toDouble();
-  double e = mEastLineEdit->text().toDouble();
-  double w = mWestLineEdit->text().toDouble();
+  const QgsRectangle extent = mExtentWidget->outputExtent();
+  double n = extent.yMaximum();
+  double s = extent.yMinimum();
+  double e = extent.xMaximum();
+  double w = extent.xMinimum();
 
   // Shift if LL and W > E
   if ( mCellHead.proj == PROJECTION_LL && w > e )
@@ -1046,33 +856,34 @@ void QgsGrassNewMapset::drawRegion()
       double y = tpoints[i].y();
       double dx = ( tpoints[i + 1].x() - x ) / 3;
       double dy = ( tpoints[i + 1].y() - y ) / 3;
-      QgsDebugMsg( QString( "dx = %1 x = %2" ).arg( dx ).arg( x + j * dx ) );
+      QgsDebugMsgLevel( QString( "dx = %1 x = %2" ).arg( dx ).arg( x + j * dx ), 3 );
       points << QgsPointXY( x + j * dx, y + j * dy );
-
     }
   }
   points << points[0]; // close polygon
 
   // Warning: seems that crashes if source == dest
-  if ( mProjectionSelector->crs().srsid() != GEOCRS_ID )
+  if ( mProjectionSelector->crs().srsid() != 3452 )
   {
     QgsCoordinateReferenceSystem source = mProjectionSelector->crs();
 
     if ( !source.isValid() )
     {
-      QgsGrass::warning( tr( "Cannot create QgsCoordinateReferenceSystem" ) );
+      QgsGrass::warning( tr( "Cannot create Coordinate Reference System" ) );
       return;
     }
 
-    QgsCoordinateReferenceSystem dest = QgsCoordinateReferenceSystem::fromSrsId( GEOCRS_ID );
+    QgsCoordinateReferenceSystem dest = QgsCoordinateReferenceSystem::fromSrsId( 3452 );
 
     if ( !dest.isValid() )
     {
-      QgsGrass::warning( tr( "Cannot create QgsCoordinateReferenceSystem" ) );
+      QgsGrass::warning( tr( "Cannot create Coordinate Reference System" ) );
       return;
     }
 
     QgsCoordinateTransform trans( source, dest, QgsProject::instance() );
+    trans.setAllowFallbackTransforms( true );
+    trans.setBallparkTransformsAreAppropriate( true );
 
     for ( int i = points.size() - 1; i >= 0; i-- )
     {
@@ -1088,32 +899,32 @@ void QgsGrassNewMapset::drawRegion()
           points[i].setY( -89.9 );
       }
 
-      QgsDebugMsg( QString( "%1,%2" ).arg( points[i].x() ).arg( points[i].y() ) );
+      QgsDebugMsgLevel( QString( "%1,%2" ).arg( points[i].x() ).arg( points[i].y() ), 3 );
 
       // exclude points if transformation failed
       try
       {
         points[i] = trans.transform( points[i] );
-        QgsDebugMsg( QString( " --> %1,%2" ).arg( points[i].x() ).arg( points[i].y() ) );
+        QgsDebugMsgLevel( QString( " --> %1,%2" ).arg( points[i].x() ).arg( points[i].y() ), 3 );
       }
       catch ( QgsCsException &cse )
       {
         Q_UNUSED( cse )
-        QgsDebugMsg( "Cannot transform point" );
+        QgsDebugError( "Cannot transform point" );
         points.removeAt( i );
       }
     }
 
     if ( points.size() < 3 )
     {
-      QgsDebugMsg( "Cannot reproject region." );
+      QgsDebugError( "Cannot reproject region." );
       return;
     }
   }
 
   for ( int shift = -360; shift <= 360; shift += 360 )
   {
-    for ( int i = 0; i < 12; i++ )
+    for ( int i = 0; i < points.size() - 1; i++ )
     {
       double x1 = points[i].x();
       double x2 = points[i + 1].x();
@@ -1129,8 +940,7 @@ void QgsGrassNewMapset::drawRegion()
           x2 -= 360;
         }
       }
-      p.drawLine( 180 + shift + static_cast<int>( x1 ), 90 - static_cast<int>( points[i].y() ),
-                  180 + shift + static_cast<int>( x2 ), 90 - static_cast<int>( points[i + 1].y() ) );
+      p.drawLine( 180 + shift + static_cast<int>( x1 ), 90 - static_cast<int>( points[i].y() ), 180 + shift + static_cast<int>( x2 ), 90 - static_cast<int>( points[i + 1].y() ) );
     }
   }
 
@@ -1157,13 +967,13 @@ void QgsGrassNewMapset::setMapsets()
   }
 
   // Get available mapsets
-  QString locationPath = mDatabaseLineEdit->text() + "/" + mLocationComboBox->currentText();
+  QString locationPath = mDirectoryWidget->filePath() + "/" + mLocationComboBox->currentText();
   QDir d( locationPath );
 
   // Add all subdirs containing WIND
   for ( unsigned int i = 0; i < d.count(); i++ )
   {
-    if ( d[i] == QLatin1String( "." ) || d[i] == QLatin1String( ".." ) )
+    if ( d[i] == "."_L1 || d[i] == ".."_L1 )
       continue;
 
     QString mapsetPath = locationPath + "/" + d[i];
@@ -1179,7 +989,6 @@ void QgsGrassNewMapset::setMapsets()
 
 void QgsGrassNewMapset::mapsetChanged()
 {
-
   button( QWizard::NextButton )->setEnabled( false );
   setError( mMapsetErrorLabel );
 
@@ -1194,7 +1003,7 @@ void QgsGrassNewMapset::mapsetChanged()
   // Check if exists
   if ( mSelectLocationRadioButton->isChecked() )
   {
-    QString locationPath = mDatabaseLineEdit->text() + "/" + mLocationComboBox->currentText();
+    QString locationPath = mDirectoryWidget->filePath() + "/" + mLocationComboBox->currentText();
     if ( QFile::exists( locationPath + "/" + mapset ) )
     {
       setError( mMapsetErrorLabel, tr( "The mapset already exists" ) );
@@ -1215,13 +1024,12 @@ void QgsGrassNewMapset::mOpenNewMapsetCheckBox_stateChanged( int state )
 {
   Q_UNUSED( state )
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "GRASS/newMapsetWizard/openMapset" ), mOpenNewMapsetCheckBox->isChecked() );
+  settings.setValue( u"GRASS/newMapsetWizard/openMapset"_s, mOpenNewMapsetCheckBox->isChecked() );
 }
 
 void QgsGrassNewMapset::setFinishPage()
 {
-
-  mDatabaseLabel->setText( tr( "Database" ) + " : " + mDatabaseLineEdit->text() );
+  mDatabaseLabel->setText( tr( "Database" ) + " : " + mDirectoryWidget->filePath() );
 
   QString location;
   if ( mSelectLocationRadioButton->isChecked() )
@@ -1232,19 +1040,18 @@ void QgsGrassNewMapset::setFinishPage()
   {
     location = mLocationLineEdit->text();
   }
-  mLocationLabel->setText( tr( "Location" ) + " : " + location );
+  mLocationLabel->setText( tr( "Project" ) + " : " + location );
 
   mMapsetLabel->setText( tr( "Mapset" ) + " : " + mMapsetLineEdit->text() );
 }
 
 void QgsGrassNewMapset::createMapset()
 {
-
   // TODO: handle all possible errors better, especially half created location/mapset
 
   if ( !gisdbaseExists() )
   {
-    QgsDebugMsg( "create gisdbase " + gisdbase() );
+    QgsDebugMsgLevel( "create gisdbase " + gisdbase(), 3 );
     QDir gisdbaseDir( gisdbase() );
     QString dirName = gisdbaseDir.dirName();
     gisdbaseDir.cdUp();
@@ -1266,7 +1073,7 @@ void QgsGrassNewMapset::createMapset()
     QString error;
     G_TRY
     {
-      ret = G_make_location( location.toUtf8().constData(), &mCellHead, mProjInfo, mProjUnits );
+      ret = G_make_location_crs( location.toUtf8().constData(), &mCellHead, mProjInfo, mProjUnits, mProjSrid.toUtf8().constData(), mProjWkt.toUtf8().constData() );
     }
     G_CATCH( QgsGrass::Exception & e )
     {
@@ -1276,11 +1083,11 @@ void QgsGrassNewMapset::createMapset()
 
     if ( ret != 0 )
     {
-      QgsGrass::warning( tr( "Cannot create new location: %1" ).arg( error ) );
+      QgsGrass::warning( tr( "Cannot create new project: %1" ).arg( error ) );
       return;
     }
 
-    // Location created -> reset widgets
+    // Project created -> reset widgets
     setLocations();
     mSelectLocationRadioButton->setChecked( true );
     mLocationComboBox->setItemText( mLocationComboBox->currentIndex(), location );
@@ -1295,7 +1102,7 @@ void QgsGrassNewMapset::createMapset()
   // Create mapset
   QString mapset = mMapsetLineEdit->text();
 
-  if ( mapset != QLatin1String( "PERMANENT" ) )
+  if ( mapset != "PERMANENT"_L1 )
   {
     QString error;
     QgsGrass::createMapset( gisdbase(), location, mapset, error );
@@ -1308,18 +1115,15 @@ void QgsGrassNewMapset::createMapset()
 
   if ( mOpenNewMapsetCheckBox->isChecked() )
   {
-    QString error = QgsGrass::openMapset(
-                      mDatabaseLineEdit->text(), location, mapset );
+    QString error = QgsGrass::openMapset( mDirectoryWidget->filePath(), location, mapset );
 
     if ( !error.isEmpty() )
     {
-      QMessageBox::information( this, tr( "New mapset" ),
-                                tr( "New mapset successfully created, but cannot be opened: %1" ).arg( error ) );
+      QMessageBox::information( this, tr( "New mapset" ), tr( "New mapset successfully created, but cannot be opened: %1" ).arg( error ) );
     }
     else
     {
-      QMessageBox::information( this, tr( "New mapset" ),
-                                tr( "New mapset successfully created and set as current working mapset." ) );
+      QMessageBox::information( this, tr( "New mapset" ), tr( "New mapset successfully created and set as current working mapset." ) );
 
       mPlugin->mapsetChanged();
     }
@@ -1334,14 +1138,12 @@ void QgsGrassNewMapset::createMapset()
 
 void QgsGrassNewMapset::accept()
 {
-
   createMapset();
 }
 
 /********************************************************************/
 void QgsGrassNewMapset::setError( QLabel *line, const QString &err )
 {
-
   if ( !err.isEmpty() )
   {
     line->setText( err );
@@ -1362,16 +1164,16 @@ void QgsGrassNewMapset::setError( QLabel *line, const QString &err )
 void QgsGrassNewMapset::keyPressEvent( QKeyEvent *e )
 {
   Q_UNUSED( e )
-// QgsDebugMsg(QString("key = %1").arg(e->key()));
+  // QgsDebugMsgLevel(QString("key = %1").arg(e->key()), 3);
 }
 
 void QgsGrassNewMapset::pageSelected( int index )
 {
-  QgsDebugMsg( QString( "title = %1" ).arg( page( index ) ? page( index )->title() : "(null)" ) );
+  QgsDebugMsgLevel( QString( "title = %1" ).arg( page( index ) ? page( index )->title() : "(null)" ), 3 );
 
   switch ( index )
   {
-    case Location:
+    case Project:
       if ( mPreviousPage == Database )
       {
         setLocationPage();
@@ -1383,6 +1185,7 @@ void QgsGrassNewMapset::pageSelected( int index )
       if ( !mProjectionSelector )
       {
         QGridLayout *projectionLayout = new QGridLayout( mProjectionFrame );
+        projectionLayout->setContentsMargins( 0, 0, 0, 0 );
 
         mProjectionSelector = new QgsProjectionSelectionTreeWidget( mProjectionFrame );
         mProjectionSelector->setEnabled( false );
@@ -1390,11 +1193,10 @@ void QgsGrassNewMapset::pageSelected( int index )
 
         mProjectionSelector->show();
 
-        connect( mProjectionSelector, &QgsProjectionSelectionTreeWidget::crsSelected,
-                 this, &QgsGrassNewMapset::sridSelected );
+        connect( mProjectionSelector, &QgsProjectionSelectionTreeWidget::crsSelected, this, &QgsGrassNewMapset::sridSelected );
 
-        QgsCoordinateReferenceSystem  srs = mIface->mapCanvas()->mapSettings().destinationCrs();
-        QgsDebugMsg( "srs = " + srs.toWkt() );
+        QgsCoordinateReferenceSystem srs = mIface->mapCanvas()->mapSettings().destinationCrs();
+        QgsDebugMsgLevel( "srs = " + srs.toWkt(), 3 );
 
         if ( srs.isValid() )
         {
@@ -1403,7 +1205,7 @@ void QgsGrassNewMapset::pageSelected( int index )
           projRadioSwitched();
         }
       }
-      if ( mPreviousPage == Location )
+      if ( mPreviousPage == Project )
       {
         setProjectionPage();
       }
@@ -1424,7 +1226,7 @@ void QgsGrassNewMapset::pageSelected( int index )
       break;
 
     case MapSet:
-      if ( mPreviousPage == Location || mPreviousPage == Region )
+      if ( mPreviousPage == Project || mPreviousPage == Region )
       {
         setMapsets();
         mapsetChanged();
@@ -1436,24 +1238,4 @@ void QgsGrassNewMapset::pageSelected( int index )
       break;
   }
   mPreviousPage = index;
-}
-
-bool QgsGrassNewMapset::isRunning( void )
-{
-  return sRunning;
-}
-
-void QgsGrassNewMapset::close( void )
-{
-
-  hide();
-  sRunning = false;
-  deleteLater();
-}
-
-void QgsGrassNewMapset::closeEvent( QCloseEvent *e )
-{
-
-  e->accept();
-  close();
 }

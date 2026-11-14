@@ -15,13 +15,14 @@
  ***************************************************************************/
 
 #include "qgsscalebarrendererregistry.h"
-#include "qgsscalebarrenderer.h"
+
 #include "qgsdoubleboxscalebarrenderer.h"
-#include "qgsnumericscalebarrenderer.h"
-#include "qgssingleboxscalebarrenderer.h"
-#include "qgsticksscalebarrenderer.h"
-#include "qgssteppedlinescalebarrenderer.h"
 #include "qgshollowscalebarrenderer.h"
+#include "qgsnumericscalebarrenderer.h"
+#include "qgsscalebarrenderer.h"
+#include "qgssingleboxscalebarrenderer.h"
+#include "qgssteppedlinescalebarrenderer.h"
+#include "qgsticksscalebarrenderer.h"
 
 QgsScaleBarRendererRegistry::QgsScaleBarRendererRegistry()
 {
@@ -49,15 +50,14 @@ QStringList QgsScaleBarRendererRegistry::sortedRendererList() const
 {
   QStringList ids = mRenderers.keys();
 
-  std::sort( ids.begin(), ids.end(), [ = ]( const QString & a, const QString & b )->bool
-  {
+  std::sort( ids.begin(), ids.end(), [this]( const QString &a, const QString &b ) -> bool {
     if ( sortKey( a ) < sortKey( b ) )
       return true;
     else if ( sortKey( a ) > sortKey( b ) )
       return false;
     else
     {
-      int res = QString::localeAwareCompare( visibleName( a ), visibleName( b ) );
+      const int res = QString::localeAwareCompare( visibleName( a ), visibleName( b ) );
       if ( res < 0 )
         return true;
       else if ( res > 0 )

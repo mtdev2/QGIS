@@ -18,14 +18,17 @@
 #ifndef QGSMESH3DMATERIAL_H
 #define QGSMESH3DMATERIAL_H
 
-#include <Qt3DRender/QBuffer>
-#include <Qt3DRender/QMaterial>
+
+#include "qgsmaterial.h"
+#include "qgsmesh3dsymbol.h"
+#include "qgsrange.h"
+#include "qgsvector3d.h"
+
+#include <Qt3DRender/QAbstractTextureImage>
 #include <Qt3DRender/QRenderPassFilter>
 #include <Qt3DRender/QTechnique>
 
-#include "qgs3dmapsettings.h"
-#include "qgsmesh3dsymbol.h"
-#include "qgscolorrampshader.h"
+#define SIP_NO_FILE
 
 ///@cond PRIVATE
 
@@ -38,17 +41,18 @@
 // version without notice, or even be removed.
 //
 
-#define SIP_NO_FILE
 
 class QgsMeshLayer;
 
 /**
- * \ingroup 3d
- * Implementation of material used to render the mesh layer
+ * \ingroup qgis_3d
+ * \brief Implementation of material used to render the mesh layer
  * \since QGIS 3.12
  */
-class QgsMesh3dMaterial : public Qt3DRender::QMaterial
+class QgsMesh3DMaterial : public QgsMaterial
 {
+    Q_OBJECT
+
   public:
     //! enum used to defined which type of value will be used to render the 3D entity
     enum MagnitudeType
@@ -68,14 +72,10 @@ class QgsMesh3dMaterial : public Qt3DRender::QMaterial
     };
 
     //! Constructor
-    QgsMesh3dMaterial( QgsMeshLayer *layer,
-                       const QgsDateTimeRange &timeRange,
-                       const QgsVector3D &origin,
-                       const QgsMesh3DSymbol *symbol,
-                       MagnitudeType magnitudeType = ZValue );
+    QgsMesh3DMaterial( QgsMeshLayer *layer, const QgsDateTimeRange &timeRange, const QgsVector3D &origin, const QgsMesh3DSymbol *symbol, MagnitudeType magnitudeType = ZValue );
 
   private:
-    std::unique_ptr< QgsMesh3DSymbol > mSymbol;
+    std::unique_ptr<QgsMesh3DSymbol> mSymbol;
     Qt3DRender::QTechnique *mTechnique;
     MagnitudeType mMagnitudeType = ZValue;
     QgsVector3D mOrigin;
@@ -83,6 +83,25 @@ class QgsMesh3dMaterial : public Qt3DRender::QMaterial
     void configure();
     void configureArrows( QgsMeshLayer *layer, const QgsDateTimeRange &timeRange );
 };
+
+
+class ArrowsGridTexture : public Qt3DRender::QAbstractTextureImage
+{
+    Q_OBJECT
+
+  public:
+    ArrowsGridTexture( const QVector<QgsVector> &vectors, const QSize &size, bool fixedSize, double maxVectorLength );
+
+  protected:
+    Qt3DRender::QTextureImageDataGeneratorPtr dataGenerator() const override;
+
+  private:
+    const QVector<QgsVector> mVectors;
+    const QSize mSize;
+    const bool mFixedSize;
+    const double mMaxVectorLength;
+};
+
 
 ///@endcond
 

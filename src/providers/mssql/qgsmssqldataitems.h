@@ -16,12 +16,16 @@
  ***************************************************************************/
 
 
-
 #ifndef QGSMSSQLDATAITEMS_H
 #define QGSMSSQLDATAITEMS_H
 
-#include "qgsdataitem.h"
+#include "qgsconfig.h"
+
+#include "qgsconnectionsitem.h"
+#include "qgsdatabaseschemaitem.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
+#include "qgslayeritem.h"
 #include "qgsmssqltablemodel.h"
 
 class QgsMssqlGeomColumnTypeThread;
@@ -61,10 +65,10 @@ class QgsMssqlConnectionItem : public QgsDataCollectionItem
     QVector<QgsDataItem *> createChildren() override;
     bool equal( const QgsDataItem *other ) override;
 
-    bool handleDrop( const QMimeData *data, const QString &toSchema );
-
-    QString connInfo() const { return mConnInfo; }
+    QString connectionUri() const { return mConnectionUri; }
     bool allowGeometrylessTables() const { return mAllowGeometrylessTables; }
+
+    using QgsDataCollectionItem::refresh;
 
   signals:
     void addGeometryColumn( const QgsMssqlLayerProperty & );
@@ -81,15 +85,16 @@ class QgsMssqlConnectionItem : public QgsDataCollectionItem
     void setAsPopulated();
 
   private:
-    QString mConnInfo;
+    void setChildAncestorDepthRecursive( QgsDataItem *child, int depth );
+    QString mConnectionUri;
     QString mService;
     QString mHost;
     QString mDatabase;
     QString mUsername;
     QString mPassword;
-    bool mUseGeometryColumns;
-    bool mUseEstimatedMetadata;
-    bool mAllowGeometrylessTables;
+    bool mUseGeometryColumns = false;
+    bool mUseEstimatedMetadata = false;
+    bool mAllowGeometrylessTables = true;
     QgsMssqlGeomColumnTypeThread *mColumnTypeThread = nullptr;
     QVariantMap mSchemaSettings;
     bool mSchemasFilteringEnabled = false;
@@ -107,6 +112,8 @@ class QgsMssqlSchemaItem : public QgsDatabaseSchemaItem
     QVector<QgsDataItem *> createChildren() override;
 
     QgsMssqlLayerItem *addLayer( const QgsMssqlLayerProperty &layerProperty, bool refresh );
+
+    using QgsDatabaseSchemaItem::refresh;
     void refresh() override; // do not refresh directly (call parent)
     void addLayers( QgsDataItem *newLayers );
 
@@ -119,7 +126,7 @@ class QgsMssqlLayerItem : public QgsLayerItem
     Q_OBJECT
 
   public:
-    QgsMssqlLayerItem( QgsDataItem *parent, const QString &name, const QString &path, QgsLayerItem::LayerType layerType, const QgsMssqlLayerProperty &layerProperties );
+    QgsMssqlLayerItem( QgsDataItem *parent, const QString &name, const QString &path, Qgis::BrowserLayerType layerType, const QgsMssqlLayerProperty &layerProperties );
 
     QString createUri();
 
@@ -134,9 +141,7 @@ class QgsMssqlLayerItem : public QgsLayerItem
   private:
     QgsMssqlLayerProperty mLayerProperty;
     bool mDisableInvalidGeometryHandling = false;
-
 };
-
 
 
 //! Provider for GDAL root data item
@@ -147,7 +152,7 @@ class QgsMssqlDataItemProvider : public QgsDataItemProvider
 
     QString dataProviderKey() const override;
 
-    int capabilities() const override;
+    Qgis::DataItemProviderCapabilities capabilities() const override;
 
     QgsDataItem *createDataItem( const QString &pathIn, QgsDataItem *parentItem ) override;
 };

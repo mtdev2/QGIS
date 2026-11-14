@@ -19,35 +19,44 @@
 #define QGSLOCATORWIDGET_H
 
 #include "qgis_gui.h"
-#include "qgslocatorfilter.h"
-#include "qgsfloatingwidget.h"
 #include "qgsfilterlineedit.h"
+#include "qgsfloatingwidget.h"
+#include "qgslocatorfilter.h"
+#include "qgssettingstree.h"
 
-#include <QWidget>
-#include <QTreeView>
 #include <QFocusEvent>
 #include <QHeaderView>
+#include <QString>
 #include <QTimer>
+#include <QTreeView>
+#include <QWidget>
+
+using namespace Qt::StringLiterals;
 
 class QgsLocator;
 class QgsLocatorResultsView;
 class QgsMapCanvas;
 class QgsLocatorModelBridge;
 class QgsLocatorLineEdit;
+class QgsSettingsEntryInteger;
 
 /**
  * \class QgsLocatorWidget
  * \ingroup gui
- * A special locator widget which allows searching for matching results from a QgsLocator
+ * \brief A special locator widget which allows searching for matching results from a QgsLocator
  * and presenting them to users for selection.
  * \see QgsLocator
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsLocatorWidget : public QWidget
 {
     Q_OBJECT
 
   public:
+#ifndef SIP_RUN
+
+    static inline QgsSettingsTreeNode *sTreeGuiLocator = QgsSettingsTree::sTreeGui->createChildNode( u"locator"_s );
+    static const QgsSettingsEntryInteger *settingLocatorTreeHeight;
+#endif
 
     /**
      * Constructor for QgsLocatorWidget.
@@ -65,6 +74,19 @@ class GUI_EXPORT QgsLocatorWidget : public QWidget
      * as prioritizing results which are near the current canvas extent.
      */
     void setMapCanvas( QgsMapCanvas *canvas );
+
+    /**
+     * \brief Set placeholder \a text for the line edit.
+     * \since QGIS 3.36
+     */
+    void setPlaceholderText( const QString &text );
+
+    /**
+     * Sets the result container \a anchorPoint and \a anchorWidgetPoint position.
+     *
+     * \since QGIS 3.36
+     */
+    void setResultContainerAnchors( QgsFloatingWidget::AnchorPoint anchorPoint, QgsFloatingWidget::AnchorPoint anchorWidgetPoint );
 
   public slots:
 
@@ -97,6 +119,7 @@ class GUI_EXPORT QgsLocatorWidget : public QWidget
     void scheduleDelayedPopup();
     void resultAdded();
     void showContextMenu( const QPoint &point );
+    void selectionChanged( const QItemSelection &selected, const QItemSelection &deselected );
 
   private:
     QgsLocatorModelBridge *mModelBridge = nullptr;
@@ -112,7 +135,6 @@ class GUI_EXPORT QgsLocatorWidget : public QWidget
     bool mHasSelectedResult = false;
 
     void acceptCurrentEntry();
-
 };
 
 #ifndef SIP_RUN
@@ -124,15 +146,14 @@ class QgsLocatorFilterFilter : public QgsLocatorFilter
     Q_OBJECT
 
   public:
-
     QgsLocatorFilterFilter( QgsLocatorWidget *widget, QObject *parent = nullptr );
 
     QgsLocatorFilterFilter *clone() const override SIP_FACTORY;
     QgsLocatorFilter::Flags flags() const override;
 
-    QString name() const override { return QStringLiteral( "filters" );}
+    QString name() const override { return u"filters"_s; }
     QString displayName() const override { return QString(); }
-    Priority priority() const override { return static_cast< QgsLocatorFilter::Priority>( -1 ); /** shh, we cheat!**/ }
+    Priority priority() const override { return static_cast<QgsLocatorFilter::Priority>( -1 ); /** shh, we cheat!**/ }
     void fetchResults( const QString &string, const QgsLocatorContext &context, QgsFeedback *feedback ) override;
     void triggerResult( const QgsLocatorResult &result ) override;
 
@@ -143,15 +164,13 @@ class QgsLocatorFilterFilter : public QgsLocatorFilter
 /**
  * \class QgsLocatorResultsView
  * \ingroup gui
- * Custom QTreeView designed for showing the results in a QgsLocatorWidget.
- * \since QGIS 3.0
+ * \brief Custom QTreeView designed for showing the results in a QgsLocatorWidget.
  */
 class GUI_EXPORT QgsLocatorResultsView : public QTreeView
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLocatorResultsView.
      */
@@ -171,14 +190,13 @@ class GUI_EXPORT QgsLocatorResultsView : public QTreeView
      * Selects the previous result in the list, wrapping around for the first result.
      */
     void selectPreviousResult();
-
 };
 
 
 /**
  * \class QgsLocatorLineEdit
  * \ingroup gui
- * Custom line edit to handle completion within the line edit as a light gray text
+ * \brief Custom line edit to handle completion within the line edit as a light gray text
  * \since QGIS 3.16
  */
 class QgsLocatorLineEdit : public QgsFilterLineEdit
@@ -204,5 +222,3 @@ class QgsLocatorLineEdit : public QgsFilterLineEdit
 
 
 #endif // QGSLOCATORWIDGET_H
-
-

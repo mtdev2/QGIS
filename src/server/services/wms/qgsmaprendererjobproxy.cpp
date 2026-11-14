@@ -17,22 +17,25 @@
 
 #include "qgsmaprendererjobproxy.h"
 
-#include "qgsmessagelog.h"
-#include "qgsmaprendererparalleljob.h"
-#include "qgsmaprenderercustompainterjob.h"
+#include <memory>
+
 #include "qgsapplication.h"
+#include "qgsmaprenderercustompainterjob.h"
+#include "qgsmaprendererparalleljob.h"
+#include "qgsmessagelog.h"
+
+#include <QString>
+#include <QThread>
+
+using namespace Qt::StringLiterals;
 
 namespace QgsWms
 {
 
-  QgsMapRendererJobProxy::QgsMapRendererJobProxy(
-    bool parallelRendering
-    , int maxThreads
-    , QgsFeatureFilterProvider *featureFilterProvider
-  )
-    :
-    mParallelRendering( parallelRendering )
+  QgsMapRendererJobProxy::QgsMapRendererJobProxy( bool parallelRendering, int maxThreads, QgsFeatureFilterProvider *featureFilterProvider, QHash<QgsMapLayer *, QgsDateTimeRange> perLayerTemporalRange )
+    : mParallelRendering( parallelRendering )
     , mFeatureFilterProvider( featureFilterProvider )
+    , mPerLayerTemporalRange( perLayerTemporalRange )
   {
 #ifndef HAVE_SERVER_PYTHON_PLUGINS
     Q_UNUSED( mFeatureFilterProvider )
@@ -40,15 +43,15 @@ namespace QgsWms
     if ( mParallelRendering )
     {
       QgsApplication::setMaxThreads( maxThreads );
-      QgsMessageLog::logMessage( QStringLiteral( "Parallel rendering activated with %1 threads" ).arg( maxThreads ), QStringLiteral( "server" ), Qgis::Info );
+      QgsMessageLog::logMessage( u"Parallel rendering activated with %1 threads"_s.arg( maxThreads ), u"server"_s, Qgis::MessageLevel::Info );
     }
     else
     {
-      QgsMessageLog::logMessage( QStringLiteral( "Parallel rendering deactivated" ), QStringLiteral( "server" ), Qgis::Info );
+      QgsMessageLog::logMessage( u"Parallel rendering deactivated"_s, u"server"_s, Qgis::MessageLevel::Info );
     }
   }
 
-  void QgsMapRendererJobProxy::render( const QgsMapSettings &mapSettings, QImage *image )
+  void QgsMapRendererJobProxy::render( const QgsMapSettings &mapSettings, QImage *image, const QgsFeedback *feedback )
   {
     if ( mParallelRendering )
     {
@@ -56,29 +59,48 @@ namespace QgsWms
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
       renderJob.setFeatureFilterProvider( mFeatureFilterProvider );
 #endif
-      renderJob.start();
 
       // Allows the main thread to manage blocking call coming from rendering
       // threads (see discussion in https://github.com/qgis/QGIS/issues/26819).
       QEventLoop loop;
       QObject::connect( &renderJob, &QgsMapRendererParallelJob::finished, &loop, &QEventLoop::quit );
-      loop.exec();
+      if ( feedback )
+        QObject::connect( feedback, &QgsFeedback::canceled, &renderJob, &QgsMapRendererParallelJob::cancel );
 
-      renderJob.waitForFinished();
-      *image = renderJob.renderedImage();
-      mPainter.reset( new QPainter( image ) );
+      if ( !feedback || !feedback->isCanceled() )
+        renderJob.start();
+
+      if ( renderJob.isActive() )
+      {
+        loop.exec();
+
+        renderJob.waitForFinished();
+        *image = renderJob.renderedImage();
+        mPainter = std::make_unique<QPainter>( image );
+      }
 
       mErrors = renderJob.errors();
+
+      if ( feedback )
+        QObject::disconnect( feedback, &QgsFeedback::canceled, &renderJob, &QgsMapRendererParallelJob::cancel );
     }
     else
     {
-      mPainter.reset( new QPainter( image ) );
+      mPainter = std::make_unique<QPainter>( image );
       QgsMapRendererCustomPainterJob renderJob( mapSettings, mPainter.get() );
+      if ( feedback )
+        QObject::connect( feedback, &QgsFeedback::canceled, &renderJob, &QgsMapRendererCustomPainterJob::cancel );
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
       renderJob.setFeatureFilterProvider( mFeatureFilterProvider );
 #endif
-      renderJob.renderSynchronously();
+      renderJob.setPerLayerTemporalRange( mPerLayerTemporalRange );
+      if ( !feedback || !feedback->isCanceled() )
+        renderJob.renderSynchronously();
+
       mErrors = renderJob.errors();
+
+      if ( feedback )
+        QObject::disconnect( feedback, &QgsFeedback::canceled, &renderJob, &QgsMapRendererCustomPainterJob::cancel );
     }
   }
 
@@ -86,4 +108,4 @@ namespace QgsWms
   {
     return mPainter.release();
   }
-} // namespace qgsws
+} // namespace QgsWms

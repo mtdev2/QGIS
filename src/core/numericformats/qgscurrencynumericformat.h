@@ -21,14 +21,13 @@
 
 /**
  * \ingroup core
- * A numeric formatter which returns a text representation of a currency value.
+ * \brief A numeric formatter which returns a text representation of a currency value.
  *
  * \since QGIS 3.12
  */
 class CORE_EXPORT QgsCurrencyNumericFormat : public QgsBasicNumericFormat
 {
   public:
-
     /**
       * Default constructor
       */
@@ -68,10 +67,8 @@ class CORE_EXPORT QgsCurrencyNumericFormat : public QgsBasicNumericFormat
     void setSuffix( const QString &suffix );
 
   private:
-
     QString mPrefix;
     QString mSuffix;
-
 };
 
 #endif // QGSCURRENCYNUMERICFORMAT_H

@@ -16,12 +16,20 @@
  ***************************************************************************/
 
 #include "qgsstatusbar.h"
+
+#include "qgsapplication.h"
+
+#include <QEvent>
 #include <QLayout>
 #include <QLineEdit>
 #include <QPalette>
-#include <QTimer>
-#include <QEvent>
 #include <QStatusBar>
+#include <QString>
+#include <QTimer>
+
+#include "moc_qgsstatusbar.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsStatusBar::QgsStatusBar( QWidget *parent )
   : QWidget( parent )
@@ -34,12 +42,19 @@ QgsStatusBar::QgsStatusBar( QWidget *parent )
   mLineEdit->setDisabled( true );
   mLineEdit->setFrame( false );
   mLineEdit->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Minimum );
-  QPalette palette = mLineEdit->palette();
-  palette.setColor( QPalette::Disabled, QPalette::Text, QPalette::WindowText );
-  mLineEdit->setPalette( palette );
-  mLineEdit->setStyleSheet( QStringLiteral( "* { border: 0; background-color: rgba(0, 0, 0, 0); }" ) );
+  applyWidgetStyle();
   mLayout->addWidget( mLineEdit, 10 );
   setLayout( mLayout );
+
+  connect( QgsApplication::instance(), &QgsApplication::themeChanged, this, &QgsStatusBar::applyWidgetStyle );
+}
+
+void QgsStatusBar::applyWidgetStyle()
+{
+  QPalette pal = mLineEdit->palette();
+  pal.setColor( QPalette::Disabled, QPalette::Text, palette().color( QPalette::WindowText ) );
+  mLineEdit->setPalette( pal );
+  mLineEdit->setStyleSheet( u"* { border: 0; background-color: rgba(0, 0, 0, 0); color: %1; }"_s.arg( palette().color( QPalette::WindowText ).name() ) );
 }
 
 void QgsStatusBar::addPermanentWidget( QWidget *widget, int stretch, Anchor anchor )
@@ -59,6 +74,7 @@ void QgsStatusBar::addPermanentWidget( QWidget *widget, int stretch, Anchor anch
 void QgsStatusBar::removeWidget( QWidget *widget )
 {
   mLayout->removeWidget( widget );
+  widget->hide();
 }
 
 QString QgsStatusBar::currentMessage() const
@@ -76,6 +92,7 @@ void QgsStatusBar::showMessage( const QString &text, int timeout )
     {
       mTempMessageTimer = new QTimer( this );
       connect( mTempMessageTimer, &QTimer::timeout, this, &QgsStatusBar::clearMessage );
+      mTempMessageTimer->setSingleShot( true );
     }
     mTempMessageTimer->start( timeout );
   }
@@ -94,12 +111,12 @@ void QgsStatusBar::clearMessage()
 void QgsStatusBar::setParentStatusBar( QStatusBar *statusBar )
 {
   if ( mParentStatusBar )
-    mParentStatusBar->disconnect( mShowMessageConnection );
+    QStatusBar::disconnect( mShowMessageConnection );
 
   mParentStatusBar = statusBar;
 
   if ( mParentStatusBar )
-    mShowMessageConnection = connect( mParentStatusBar, &QStatusBar::messageChanged, this, [this]( const QString & message ) { showMessage( message ); } );
+    mShowMessageConnection = connect( mParentStatusBar, &QStatusBar::messageChanged, this, [this]( const QString &message ) { showMessage( message ); } );
 }
 
 void QgsStatusBar::changeEvent( QEvent *event )

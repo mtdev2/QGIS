@@ -15,19 +15,22 @@
 #ifndef QGSSPATIALITEDATAITEMS_H
 #define QGSSPATIALITEDATAITEMS_H
 
-#include "qgsdataitem.h"
+#include "qgsconfig.h"
+
+#include "qgsconnectionsitem.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
+#include "qgslayeritem.h"
 
 class QgsSLLayerItem : public QgsLayerItem
 {
     Q_OBJECT
   public:
-    QgsSLLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, LayerType layerType );
+    QgsSLLayerItem( QgsDataItem *parent, const QString &name, const QString &path, const QString &uri, Qgis::BrowserLayerType layerType );
 
     // QgsDataItem interface
     QVector<QgsDataItem *> createChildren() override;
 };
-
 
 
 class QgsSLConnectionItem : public QgsDataCollectionItem
@@ -73,7 +76,7 @@ namespace SpatiaLiteUtils
 {
   bool createDb( const QString &dbPath, QString &errCause );
   bool deleteLayer( const QString &dbPath, const QString &tableName, QString &errCause );
-}
+} // namespace SpatiaLiteUtils
 
 //! Provider for SpatiaLite root data item
 class QgsSpatiaLiteDataItemProvider : public QgsDataItemProvider
@@ -81,9 +84,7 @@ class QgsSpatiaLiteDataItemProvider : public QgsDataItemProvider
   public:
     QString name() override;
     QString dataProviderKey() const override;
-
-    int capabilities() const override;
-
+    Qgis::DataItemProviderCapabilities capabilities() const override;
     QgsDataItem *createDataItem( const QString &pathIn, QgsDataItem *parentItem ) override;
 };
 

@@ -15,13 +15,16 @@
 
 #include "qgsabstract3dsymbol.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsPropertiesDefinition QgsAbstract3DSymbol::sPropertyDefinitions;
 
 
-QList<QgsWkbTypes::GeometryType> QgsAbstract3DSymbol::compatibleGeometryTypes() const
+QList<Qgis::GeometryType> QgsAbstract3DSymbol::compatibleGeometryTypes() const
 {
-  return QList< QgsWkbTypes::GeometryType >();
+  return QList< Qgis::GeometryType >();
 }
 
 const QgsPropertiesDefinition &QgsAbstract3DSymbol::propertyDefinitions()
@@ -40,20 +43,30 @@ void QgsAbstract3DSymbol::initPropertyDefinitions()
   if ( !sPropertyDefinitions.isEmpty() )
     return;
 
-  QString origin = QStringLiteral( "symbol3d" );
+  const QString origin = u"symbol3d"_s;
 
-  sPropertyDefinitions = QgsPropertiesDefinition
-  {
-    { PropertyHeight, QgsPropertyDefinition( "height", QObject::tr( "Height" ), QgsPropertyDefinition::Double, origin ) },
-    { PropertyExtrusionHeight, QgsPropertyDefinition( "extrusionHeight", QObject::tr( "ExtrusionHeight" ), QgsPropertyDefinition::DoublePositive, origin ) },
+  sPropertyDefinitions = QgsPropertiesDefinition {
+    { static_cast< int >( Property::Height ), QgsPropertyDefinition( "height", QObject::tr( "Height" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::ExtrusionHeight ), QgsPropertyDefinition( "extrusionHeight", QObject::tr( "ExtrusionHeight" ), QgsPropertyDefinition::DoublePositive, origin ) },
+    { static_cast< int >( Property::ScaleX ), QgsPropertyDefinition( "scaleX", QObject::tr( "X-axis scale" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::ScaleY ), QgsPropertyDefinition( "scaleY", QObject::tr( "Y-axis scale" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::ScaleZ ), QgsPropertyDefinition( "scaleZ", QObject::tr( "Z-axis scale" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::TranslationX ), QgsPropertyDefinition( "translationX", QObject::tr( "X-axis translation" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::TranslationY ), QgsPropertyDefinition( "translationY", QObject::tr( "Y-axis translation" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::TranslationZ ), QgsPropertyDefinition( "translationZ", QObject::tr( "Z-axis translation" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::RotationX ), QgsPropertyDefinition( "rotationX", QObject::tr( "X-axis rotation" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::RotationY ), QgsPropertyDefinition( "rotationY", QObject::tr( "Y-axis rotation" ), QgsPropertyDefinition::Double, origin ) },
+    { static_cast< int >( Property::RotationZ ), QgsPropertyDefinition( "rotationZ", QObject::tr( "Z-axis rotation" ), QgsPropertyDefinition::Double, origin ) },
   };
-
 }
 
 bool QgsAbstract3DSymbol::exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const
 {
-  Q_UNUSED( exporter );
-  Q_UNUSED( entity );
-  Q_UNUSED( objectNamePrefix );
+  Q_UNUSED( exporter )
+  Q_UNUSED( entity )
+  Q_UNUSED( objectNamePrefix )
   return false;
 }
+
+void QgsAbstract3DSymbol::setDefaultPropertiesFromLayer( const QgsVectorLayer * )
+{}

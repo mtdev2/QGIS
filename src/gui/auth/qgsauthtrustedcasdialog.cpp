@@ -14,22 +14,27 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsauthtrustedcasdialog.h"
 #include "ui_qgsauthtrustedcasdialog.h"
+#include "qgsauthtrustedcasdialog.h"
 
-#include <QPushButton>
-
-#include "qgssettings.h"
 #include "qgsapplication.h"
 #include "qgsauthcertificateinfo.h"
 #include "qgsauthcertutils.h"
 #include "qgsauthguiutils.h"
 #include "qgsauthmanager.h"
 #include "qgslogger.h"
+#include "qgssettings.h"
+#include "qgssettingsregistrygui.h"
+#include "qgsvariantutils.h"
 
+#include <QPushButton>
+#include <QString>
 
-QgsAuthTrustedCAsDialog::QgsAuthTrustedCAsDialog( QWidget *parent,
-    const QList<QSslCertificate> &trustedCAs )
+#include "moc_qgsauthtrustedcasdialog.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsAuthTrustedCAsDialog::QgsAuthTrustedCAsDialog( QWidget *parent, const QList<QSslCertificate> &trustedCAs )
   : QDialog( parent )
   , mTrustedCAs( trustedCAs )
 {
@@ -47,21 +52,18 @@ QgsAuthTrustedCAsDialog::QgsAuthTrustedCAsDialog( QWidget *parent,
     connect( btnInfoCa, &QToolButton::clicked, this, &QgsAuthTrustedCAsDialog::btnInfoCa_clicked );
     connect( btnGroupByOrg, &QToolButton::toggled, this, &QgsAuthTrustedCAsDialog::btnGroupByOrg_toggled );
 
-    connect( QgsApplication::authManager(), &QgsAuthManager::messageOut,
-             this, &QgsAuthTrustedCAsDialog::authMessageOut );
+    connect( QgsApplication::authManager(), &QgsAuthManager::messageLog, this, &QgsAuthTrustedCAsDialog::authMessageLog );
 
     setupCaCertsTree();
 
-    connect( treeTrustedCAs->selectionModel(), &QItemSelectionModel::selectionChanged,
-             this, &QgsAuthTrustedCAsDialog::selectionChanged );
+    connect( treeTrustedCAs->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsAuthTrustedCAsDialog::selectionChanged );
 
-    connect( treeTrustedCAs, &QTreeWidget::itemDoubleClicked,
-             this, &QgsAuthTrustedCAsDialog::handleDoubleClick );
+    connect( treeTrustedCAs, &QTreeWidget::itemDoubleClicked, this, &QgsAuthTrustedCAsDialog::handleDoubleClick );
 
 
     btnGroupByOrg->setChecked( false );
-    QVariant sortbyval = QgsApplication::authManager()->authSetting( QStringLiteral( "trustedcasortby" ), QVariant( false ) );
-    if ( !sortbyval.isNull() )
+    const QVariant sortbyval = QgsApplication::authManager()->authSetting( u"trustedcasortby"_s, QVariant( false ) );
+    if ( !QgsVariantUtils::isNull( sortbyval ) )
       btnGroupByOrg->setChecked( sortbyval.toBool() );
 
     populateCaCertsView();
@@ -69,47 +71,24 @@ QgsAuthTrustedCAsDialog::QgsAuthTrustedCAsDialog( QWidget *parent,
   }
 }
 
-static void setItemBold_( QTreeWidgetItem *item )
-{
-  item->setFirstColumnSpanned( true );
-  QFont secf( item->font( 0 ) );
-  secf.setBold( true );
-  item->setFont( 0, secf );
-}
-
 void QgsAuthTrustedCAsDialog::setupCaCertsTree()
 {
   treeTrustedCAs->setColumnCount( 3 );
-  treeTrustedCAs->setHeaderLabels(
-    QStringList() << tr( "Common Name" )
-    << tr( "Serial #" )
-    << tr( "Expiry Date" ) );
+  treeTrustedCAs->setHeaderLabels( QStringList() << tr( "Common Name" ) << tr( "Serial #" ) << tr( "Expiry Date" ) );
   treeTrustedCAs->setColumnWidth( 0, 300 );
   treeTrustedCAs->setColumnWidth( 1, 75 );
 
   // add root section
-  mRootCaSecItem = new QTreeWidgetItem(
-    treeTrustedCAs,
-    QStringList( tr( "Authorities/Issuers" ) ),
-    static_cast<int>( QgsAuthTrustedCAsDialog::Section ) );
-  setItemBold_( mRootCaSecItem );
+  mRootCaSecItem = new QTreeWidgetItem( treeTrustedCAs, QStringList( tr( "Authorities/Issuers" ) ), static_cast<int>( QgsAuthTrustedCAsDialog::Section ) );
+  QgsAuthGuiUtils::setItemBold( mRootCaSecItem );
   mRootCaSecItem->setFlags( Qt::ItemIsEnabled );
   mRootCaSecItem->setExpanded( true );
   treeTrustedCAs->insertTopLevelItem( 0, mRootCaSecItem );
 }
 
-static void removeChildren_( QTreeWidgetItem *item )
-{
-  const auto constTakeChildren = item->takeChildren();
-  for ( QTreeWidgetItem *child : constTakeChildren )
-  {
-    delete child;
-  }
-}
-
 void QgsAuthTrustedCAsDialog::populateCaCertsView()
 {
-  removeChildren_( mRootCaSecItem );
+  QgsAuthGuiUtils::removeChildren( mRootCaSecItem );
 
   if ( mTrustedCAs.isEmpty() )
   {
@@ -119,8 +98,7 @@ void QgsAuthTrustedCAsDialog::populateCaCertsView()
   populateCaCertsSection( mRootCaSecItem, mTrustedCAs, QgsAuthTrustedCAsDialog::CaCert );
 }
 
-void QgsAuthTrustedCAsDialog::populateCaCertsSection( QTreeWidgetItem *item, const QList<QSslCertificate> &certs,
-    QgsAuthTrustedCAsDialog::CaType catype )
+void QgsAuthTrustedCAsDialog::populateCaCertsSection( QTreeWidgetItem *item, const QList<QSslCertificate> &certs, QgsAuthTrustedCAsDialog::CaType catype )
 {
   if ( btnGroupByOrg->isChecked() )
   {
@@ -132,9 +110,7 @@ void QgsAuthTrustedCAsDialog::populateCaCertsSection( QTreeWidgetItem *item, con
   }
 }
 
-void QgsAuthTrustedCAsDialog::appendCertsToGroup( const QList<QSslCertificate> &certs,
-    QgsAuthTrustedCAsDialog::CaType catype,
-    QTreeWidgetItem *parent )
+void QgsAuthTrustedCAsDialog::appendCertsToGroup( const QList<QSslCertificate> &certs, QgsAuthTrustedCAsDialog::CaType catype, QTreeWidgetItem *parent )
 {
   if ( certs.empty() )
     return;
@@ -145,15 +121,12 @@ void QgsAuthTrustedCAsDialog::appendCertsToGroup( const QList<QSslCertificate> &
   }
 
   // TODO: find all organizational name, sort and make subsections
-  QMap< QString, QList<QSslCertificate> > orgcerts(
-    QgsAuthCertUtils::certsGroupedByOrg( certs ) );
+  const QMap<QString, QList<QSslCertificate>> orgcerts( QgsAuthCertUtils::certsGroupedByOrg( certs ) );
 
-  QMap< QString, QList<QSslCertificate> >::const_iterator it = orgcerts.constBegin();
+  QMap<QString, QList<QSslCertificate>>::const_iterator it = orgcerts.constBegin();
   for ( ; it != orgcerts.constEnd(); ++it )
   {
-    QTreeWidgetItem *grpitem( new QTreeWidgetItem( parent,
-                              QStringList() << it.key(),
-                              static_cast<int>( QgsAuthTrustedCAsDialog::OrgName ) ) );
+    QTreeWidgetItem *grpitem( new QTreeWidgetItem( parent, QStringList() << it.key(), static_cast<int>( QgsAuthTrustedCAsDialog::OrgName ) ) );
     grpitem->setFirstColumnSpanned( true );
     grpitem->setFlags( Qt::ItemIsEnabled );
     grpitem->setExpanded( true );
@@ -171,9 +144,7 @@ void QgsAuthTrustedCAsDialog::appendCertsToGroup( const QList<QSslCertificate> &
   parent->sortChildren( 0, Qt::AscendingOrder );
 }
 
-void QgsAuthTrustedCAsDialog::appendCertsToItem( const QList<QSslCertificate> &certs,
-    QgsAuthTrustedCAsDialog::CaType catype,
-    QTreeWidgetItem *parent )
+void QgsAuthTrustedCAsDialog::appendCertsToItem( const QList<QSslCertificate> &certs, QgsAuthTrustedCAsDialog::CaType catype, QTreeWidgetItem *parent )
 {
   if ( certs.empty() )
     return;
@@ -183,13 +154,13 @@ void QgsAuthTrustedCAsDialog::appendCertsToItem( const QList<QSslCertificate> &c
     parent = treeTrustedCAs->currentItem();
   }
 
-  QBrush redb( QgsAuthGuiUtils::redColor() );
+  const QBrush redb( QgsAuthGuiUtils::redColor() );
 
   // Columns: Common Name, Serial #, Expiry Date
   const auto constCerts = certs;
   for ( const QSslCertificate &cert : constCerts )
   {
-    QString id( QgsAuthCertUtils::shaHexForCert( cert ) );
+    const QString id( QgsAuthCertUtils::shaHexForCert( cert ) );
 
     QStringList coltxts;
     coltxts << QgsAuthCertUtils::resolvedCertName( cert );
@@ -198,11 +169,11 @@ void QgsAuthTrustedCAsDialog::appendCertsToItem( const QList<QSslCertificate> &c
 
     QTreeWidgetItem *item( new QTreeWidgetItem( parent, coltxts, static_cast<int>( catype ) ) );
 
-    item->setIcon( 0, QgsApplication::getThemeIcon( QStringLiteral( "/mIconCertificate.svg" ) ) );
+    item->setIcon( 0, QgsApplication::getThemeIcon( u"/mIconCertificate.svg"_s ) );
     if ( !QgsAuthCertUtils::certIsViable( cert ) )
     {
       item->setForeground( 2, redb );
-      item->setIcon( 0, QgsApplication::getThemeIcon( QStringLiteral( "/mIconCertificateUntrusted.svg" ) ) );
+      item->setIcon( 0, QgsApplication::getThemeIcon( u"/mIconCertificateUntrusted.svg"_s ) );
     }
 
     item->setData( 0, Qt::UserRole, id );
@@ -216,18 +187,17 @@ void QgsAuthTrustedCAsDialog::showCertInfo( QTreeWidgetItem *item )
   if ( !item )
     return;
 
-  QString digest( item->data( 0, Qt::UserRole ).toString() );
+  const QString digest( item->data( 0, Qt::UserRole ).toString() );
 
-  QMap<QString, QPair<QgsAuthCertUtils::CaCertSource, QSslCertificate> > cacertscache(
-    QgsApplication::authManager()->caCertsCache() );
+  const QMap<QString, QPair<QgsAuthCertUtils::CaCertSource, QSslCertificate>> cacertscache( QgsApplication::authManager()->caCertsCache() );
 
   if ( !cacertscache.contains( digest ) )
   {
-    QgsDebugMsg( QStringLiteral( "Certificate Authority not in CA certs cache" ) );
+    QgsDebugError( u"Certificate Authority not in CA certs cache"_s );
     return;
   }
 
-  QSslCertificate cert( cacertscache.value( digest ).second );
+  const QSslCertificate cert( cacertscache.value( digest ).second );
 
   QgsAuthCertInfoDialog *dlg = new QgsAuthCertInfoDialog( cert, false, this );
   dlg->setWindowModality( Qt::WindowModal );
@@ -250,7 +220,7 @@ void QgsAuthTrustedCAsDialog::checkSelection()
   {
     QTreeWidgetItem *item( treeTrustedCAs->currentItem() );
 
-    switch ( ( QgsAuthTrustedCAsDialog::CaType )item->type() )
+    switch ( ( QgsAuthTrustedCAsDialog::CaType ) item->type() )
     {
       case QgsAuthTrustedCAsDialog::CaCert:
         iscert = true;
@@ -268,7 +238,7 @@ void QgsAuthTrustedCAsDialog::handleDoubleClick( QTreeWidgetItem *item, int col 
   Q_UNUSED( col )
   bool iscert = true;
 
-  switch ( ( QgsAuthTrustedCAsDialog::CaType )item->type() )
+  switch ( ( QgsAuthTrustedCAsDialog::CaType ) item->type() )
   {
     case QgsAuthTrustedCAsDialog::Section:
       iscert = false;
@@ -297,19 +267,16 @@ void QgsAuthTrustedCAsDialog::btnInfoCa_clicked()
 
 void QgsAuthTrustedCAsDialog::btnGroupByOrg_toggled( bool checked )
 {
-  if ( !QgsApplication::authManager()->storeAuthSetting( QStringLiteral( "trustedcasortby" ), QVariant( checked ) ) )
+  if ( !QgsApplication::authManager()->storeAuthSetting( u"trustedcasortby"_s, QVariant( checked ) ) )
   {
-    authMessageOut( QObject::tr( "Could not store sort by preference" ),
-                    QObject::tr( "Trusted Authorities/Issuers" ),
-                    QgsAuthManager::WARNING );
+    authMessageLog( QObject::tr( "Could not store sort by preference" ), QObject::tr( "Trusted Authorities/Issuers" ), Qgis::MessageLevel::Warning );
   }
   populateCaCertsView();
 }
 
-void QgsAuthTrustedCAsDialog::authMessageOut( const QString &message, const QString &authtag, QgsAuthManager::MessageLevel level )
+void QgsAuthTrustedCAsDialog::authMessageLog( const QString &message, const QString &authtag, Qgis::MessageLevel level )
 {
-  int levelint = static_cast<int>( level );
-  messageBar()->pushMessage( authtag, message, ( Qgis::MessageLevel )levelint, 7 );
+  messageBar()->pushMessage( authtag, message, level, 7 );
 }
 
 void QgsAuthTrustedCAsDialog::showEvent( QShowEvent *e )
@@ -328,6 +295,5 @@ QgsMessageBar *QgsAuthTrustedCAsDialog::messageBar()
 
 int QgsAuthTrustedCAsDialog::messageTimeout()
 {
-  QgsSettings settings;
-  return settings.value( QStringLiteral( "qgis/messageTimeout" ), 5 ).toInt();
+  return QgsSettingsRegistryGui::settingsMessageTimeout->value();
 }

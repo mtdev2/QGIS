@@ -18,17 +18,18 @@
 #ifndef QGSPREVIEWEFFECT_H
 #define QGSPREVIEWEFFECT_H
 
-#include <QGraphicsEffect>
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+
+#include <QGraphicsEffect>
 
 /**
  * \ingroup gui
- * A graphics effect which can be applied to a widget to simulate various printing and
+ * \brief A graphics effect which can be applied to a widget to simulate various printing and
  * color blindness modes.
  */
 
-class GUI_EXPORT QgsPreviewEffect: public QGraphicsEffect
+class GUI_EXPORT QgsPreviewEffect : public QGraphicsEffect
 {
     Q_OBJECT
 
@@ -48,7 +49,6 @@ class GUI_EXPORT QgsPreviewEffect: public QGraphicsEffect
      * Sets the mode for the preview effect, which controls how the effect modifies a widgets appearance.
      * \param mode PreviewMode to use to draw the widget
      * \see mode
-     * \since QGIS 2.3
      */
     void setMode( PreviewMode mode );
 
@@ -56,7 +56,6 @@ class GUI_EXPORT QgsPreviewEffect: public QGraphicsEffect
      * Returns the mode used for the preview effect.
      * \returns PreviewMode currently used by the effect
      * \see setMode
-     * \since QGIS 2.3
      */
     PreviewMode mode() const { return mMode; }
 
@@ -64,8 +63,7 @@ class GUI_EXPORT QgsPreviewEffect: public QGraphicsEffect
     void draw( QPainter *painter ) override;
 
   private:
-
-    PreviewMode mMode;
+    PreviewMode mMode = PreviewGrayscale;
 
     QRgb simulateColorBlindness( QRgb &originalColor, PreviewMode type );
     void simulateGrayscale( int &r, int &g, int &b, int &red, int &green, int &blue );

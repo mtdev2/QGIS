@@ -15,26 +15,45 @@
  ***************************************************************************/
 
 #include "qgsnumericformat.h"
-#include "qgsxmlutils.h"
+
 #include "qgsreadwritecontext.h"
+#include "qgsxmlutils.h"
 
 #include <QLocale>
+#include <QString>
+
+#include "moc_qgsnumericformat.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsNumericFormatContext::QgsNumericFormatContext()
 {
-  QLocale l;
-  mThousandsSep = l.groupSeparator();
-  mDecimalSep = l.decimalPoint();
-  mPercent = l.percent();
-  mZeroDigit = l.zeroDigit();
-  mNegativeSign = l.negativeSign();
-  mPositiveSign = l.positiveSign();
-  mExponential = l.exponential();
+  const QLocale l;
+  // With Qt6, these methods return strings to be prepared
+  // for utf-16 surrogates
+  // Do we care? If yes, we need to switch all members of QgsNumericFormatContext to QString
+  mThousandsSep = l.groupSeparator().at( 0 );
+  mDecimalSep = l.decimalPoint().at( 0 );
+  mPercent = l.percent().at( 0 );
+  mZeroDigit = l.zeroDigit().at( 0 );
+  mNegativeSign = l.negativeSign().at( 0 );
+  mPositiveSign = l.positiveSign().at( 0 );
+  mExponential = l.exponential().at( 0 );
+}
+
+QgsExpressionContext QgsNumericFormatContext::expressionContext() const
+{
+  return mExpressionContext;
+}
+
+void QgsNumericFormatContext::setExpressionContext( const QgsExpressionContext &context )
+{
+  mExpressionContext = context;
 }
 
 int QgsNumericFormat::sortKey()
 {
-  return 100;
+  return DEFAULT_SORT_KEY;
 }
 
 double QgsNumericFormat::suggestSampleValue() const
@@ -45,9 +64,9 @@ double QgsNumericFormat::suggestSampleValue() const
 void QgsNumericFormat::writeXml( QDomElement &element, QDomDocument &document, const QgsReadWriteContext &context ) const
 {
   const QVariantMap config = configuration( context );
-  QDomElement configElement = QgsXmlUtils::writeVariant( config, document );
+  const QDomElement configElement = QgsXmlUtils::writeVariant( config, document );
   element.appendChild( configElement );
-  element.setAttribute( QStringLiteral( "id" ), id() );
+  element.setAttribute( u"id"_s, id() );
 }
 
 bool QgsNumericFormat::operator==( const QgsNumericFormat &other ) const
@@ -59,4 +78,3 @@ bool QgsNumericFormat::operator!=( const QgsNumericFormat &other ) const
 {
   return !operator==( other );
 }
-

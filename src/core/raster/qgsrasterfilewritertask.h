@@ -19,39 +19,39 @@
 #define QGSRASTERFILEWRITERTASK_H
 
 #include "qgis_core.h"
-#include "qgstaskmanager.h"
-#include "qgsrasterfilewriter.h"
 #include "qgscoordinatetransformcontext.h"
+#include "qgsrasterfilewriter.h"
 #include "qgsrasterinterface.h"
-#include "qgsrasterpipe.h"
+#include "qgstaskmanager.h"
+
+class QgsRasterPipe;
 
 /**
  * \class QgsRasterFileWriterTask
  * \ingroup core
- * QgsTask task which performs a QgsRasterFileWriter layer saving operation as a background
- * task. This can be used to save a raster layer out to a file without blocking the
+ * \brief QgsTask task which performs a QgsRasterFileWriter layer saving operation as a background
+ * task.
+ *
+ * This can be used to save a raster layer out to a file without blocking the
  * QGIS interface.
  * \see QgsVectorFileWriterTask
  * \see QgsVectorFileExporterTask
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsRasterFileWriterTask : public QgsTask
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsRasterFileWriterTask. Takes a source \a writer,
      * \a columns, \a rows, \a outputExtent and destination \a crs.
      * Ownership of the \a pipe is transferred to the writer task, and will
      * be deleted when the task completes.
-     * \deprecated since QGIS 3.8, use version with transformContext instead
+     * \deprecated QGIS 3.8. Use version with transformContext instead.
      */
-    Q_DECL_DEPRECATED QgsRasterFileWriterTask( const QgsRasterFileWriter &writer, QgsRasterPipe *pipe SIP_TRANSFER,
-        int columns, int rows,
-        const QgsRectangle &outputExtent,
-        const QgsCoordinateReferenceSystem &crs ) SIP_DEPRECATED;
+    Q_DECL_DEPRECATED QgsRasterFileWriterTask(
+      const QgsRasterFileWriter &writer, QgsRasterPipe *pipe SIP_TRANSFER, int columns, int rows, const QgsRectangle &outputExtent, const QgsCoordinateReferenceSystem &crs
+    ) SIP_DEPRECATED;
 
 
     /**
@@ -61,12 +61,17 @@ class CORE_EXPORT QgsRasterFileWriterTask : public QgsTask
      * Ownership of the \a pipe is transferred to the writer task, and will
      * be deleted when the task completes.
      */
-    QgsRasterFileWriterTask( const QgsRasterFileWriter &writer, QgsRasterPipe *pipe SIP_TRANSFER,
-                             int columns, int rows,
-                             const QgsRectangle &outputExtent,
-                             const QgsCoordinateReferenceSystem &crs,
-                             const QgsCoordinateTransformContext &transformContext
-                           );
+    QgsRasterFileWriterTask(
+      const QgsRasterFileWriter &writer,
+      QgsRasterPipe *pipe SIP_TRANSFER,
+      int columns,
+      int rows,
+      const QgsRectangle &outputExtent,
+      const QgsCoordinateReferenceSystem &crs,
+      const QgsCoordinateTransformContext &transformContext
+    );
+
+    ~QgsRasterFileWriterTask() override;
 
     void cancel() override;
 
@@ -81,7 +86,7 @@ class CORE_EXPORT QgsRasterFileWriterTask : public QgsTask
     /**
      * Emitted when an error occurs which prevented the file being written (or if
      * the task is canceled). The writing \a error will be reported.
-     * \deprecated since QGIS 3.10. Use errorOccurred(int, const QString&)
+     * \deprecated QGIS 3.10. Use the signal with the errorMessage string instead.
      */
     void errorOccurred( int error );
 
@@ -94,12 +99,10 @@ class CORE_EXPORT QgsRasterFileWriterTask : public QgsTask
     void errorOccurred( int error, const QString &errorMessage );
 
   protected:
-
     bool run() override;
     void finished( bool result ) override;
 
   private:
-
     QgsRasterFileWriter mWriter;
     int mRows = 0;
     int mColumns = 0;
@@ -111,7 +114,7 @@ class CORE_EXPORT QgsRasterFileWriterTask : public QgsTask
 
     std::unique_ptr< QgsRasterBlockFeedback > mFeedback;
 
-    QgsRasterFileWriter::WriterError mError = QgsRasterFileWriter::NoError;
+    Qgis::RasterFileWriterResult mError = Qgis::RasterFileWriterResult::Success;
 
     QgsCoordinateTransformContext mTransformContext;
 };

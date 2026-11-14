@@ -1,0 +1,499 @@
+/************************************************************************
+ * This file has been generated automatically from                      *
+ *                                                                      *
+ * src/core/mesh/qgsmeshrenderersettings.h                              *
+ *                                                                      *
+ * Do not edit manually ! Edit header and run scripts/sipify.py again   *
+ ************************************************************************/
+
+
+
+
+
+class QgsMeshRendererMeshSettings
+{
+%Docstring(signature="appended")
+Represents a mesh renderer settings for mesh objects.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.2
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+  public:
+    bool isEnabled() const;
+%Docstring
+Returns whether mesh structure rendering is enabled
+%End
+    void setEnabled( bool enabled );
+%Docstring
+Sets whether mesh structure rendering is enabled
+%End
+
+    double lineWidth() const;
+%Docstring
+Returns line width used for rendering (in millimeters)
+%End
+    void setLineWidth( double lineWidth );
+%Docstring
+Sets line width used for rendering (in millimeters)
+%End
+
+    QColor color() const;
+%Docstring
+Returns color used for rendering
+%End
+    void setColor( const QColor &color );
+%Docstring
+Sets color used for rendering of the mesh
+%End
+
+    Qgis::RenderUnit lineWidthUnit() const;
+%Docstring
+Returns units of the width of the mesh frame
+
+.. versionadded:: 3.14
+%End
+
+    void setLineWidthUnit( Qgis::RenderUnit lineWidthUnit );
+%Docstring
+Sets units of the width of the mesh frame
+
+.. versionadded:: 3.14
+%End
+
+    QDomElement writeXml( QDomDocument &doc ) const;
+%Docstring
+Writes configuration to a new DOM element
+%End
+    void readXml( const QDomElement &elem );
+%Docstring
+Reads configuration from the given DOM element
+%End
+
+};
+
+class QgsMeshRendererScalarSettings
+{
+%Docstring(signature="appended")
+Represents a mesh renderer settings for scalar datasets.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.2
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+  public:
+    enum DataResamplingMethod /BaseType=IntEnum/
+    {
+
+      NoResampling,
+
+      NeighbourAverage,
+    };
+
+    QgsColorRampShader colorRampShader() const;
+%Docstring
+Returns color ramp shader function
+%End
+    void setColorRampShader( const QgsColorRampShader &shader );
+%Docstring
+Sets color ramp shader function
+%End
+
+    double classificationMinimum() const;
+%Docstring
+Returns min value used for creation of the color ramp shader
+%End
+    double classificationMaximum() const;
+%Docstring
+Returns max value used for creation of the color ramp shader
+%End
+    void setClassificationMinimumMaximum( double minimum, double maximum );
+%Docstring
+Sets min/max values used for creation of the color ramp shader
+%End
+
+    double opacity() const;
+%Docstring
+Returns opacity
+%End
+    void setOpacity( double opacity );
+%Docstring
+Sets opacity
+%End
+
+    DataResamplingMethod dataResamplingMethod() const;
+%Docstring
+Returns the type of interpolation to use to convert face defined
+datasets to values on vertices
+
+.. versionadded:: 3.12
+%End
+
+    void setDataResamplingMethod( const DataResamplingMethod &dataResamplingMethod );
+%Docstring
+Sets data interpolation method
+
+.. versionadded:: 3.12
+%End
+
+    QgsInterpolatedLineWidth edgeStrokeWidth() const;
+%Docstring
+Returns the stroke width used to render edges scalar dataset
+
+.. versionadded:: 3.14
+%End
+
+    void setEdgeStrokeWidth( const QgsInterpolatedLineWidth &strokeWidth );
+%Docstring
+Sets the stroke width used to render edges scalar dataset
+
+.. versionadded:: 3.14
+%End
+
+    Qgis::RenderUnit edgeStrokeWidthUnit() const;
+%Docstring
+Returns the stroke width unit used to render edges scalar dataset
+
+.. versionadded:: 3.14
+%End
+
+    void setEdgeStrokeWidthUnit( Qgis::RenderUnit edgeStrokeWidthUnit );
+%Docstring
+Sets the stroke width unit used to render edges scalar dataset
+
+.. versionadded:: 3.14
+%End
+
+    void setLimits( Qgis::MeshRangeLimit limits );
+%Docstring
+Sets the range limits type for minimum maximum calculation
+
+.. versionadded:: 3.42
+%End
+
+    Qgis::MeshRangeLimit limits() const;
+%Docstring
+Returns the range limits type for minimum maximum calculation
+
+.. versionadded:: 3.42
+%End
+
+    void setExtent( Qgis::MeshRangeExtent extent );
+%Docstring
+Sets the mesh extent for minimum maximum calculation
+
+.. versionadded:: 3.42
+%End
+
+    Qgis::MeshRangeExtent extent() const;
+%Docstring
+Returns the mesh extent for minimum maximum calculation
+
+.. versionadded:: 3.42
+%End
+
+    QDomElement writeXml( QDomDocument &doc, const QgsReadWriteContext &context = QgsReadWriteContext() ) const;
+%Docstring
+Writes configuration to a new DOM element
+%End
+    void readXml( const QDomElement &elem, const QgsReadWriteContext &context = QgsReadWriteContext() );
+%Docstring
+Reads configuration from the given DOM element
+%End
+
+};
+
+class QgsMeshRendererVectorArrowSettings : QgsVectorFieldArrowSettings
+{
+%Docstring(signature="appended")
+Represents a mesh renderer settings for vector datasets displayed with
+arrows.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.12
+
+.. deprecated:: 4.4
+
+   Use :py:class:`QgsVectorFieldArrowSettings` instead.
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+};
+
+class QgsMeshRendererVectorStreamlineSettings : QgsVectorFieldStreamlineSettings
+{
+%Docstring(signature="appended")
+Represents a streamline renderer settings for vector datasets displayed
+by streamlines.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.12
+
+.. deprecated:: 4.4
+
+   Use :py:class:`QgsVectorFieldStreamlineSettings` instead.
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+};
+
+class QgsMeshRendererVectorTracesSettings : QgsVectorFieldTracesSettings
+{
+%Docstring(signature="appended")
+Represents a trace renderer settings for vector datasets displayed by
+particle traces.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.12
+
+.. deprecated:: 4.4
+
+   Use :py:class:`QgsVectorFieldTracesSettings` instead.
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+};
+
+class QgsMeshRendererVectorWindBarbSettings : QgsVectorFieldWindBarbSettings
+{
+%Docstring(signature="appended")
+Represents a mesh renderer settings for vector datasets displayed with
+wind barbs.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.38
+
+.. deprecated:: 4.4
+
+   Use :py:class:`QgsVectorFieldWindBarbSettings` instead.
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+};
+
+class QgsMeshRendererVectorSettings : QgsVectorFieldSettings
+{
+%Docstring(signature="appended")
+Represents a renderer settings for vector datasets.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.2
+
+.. deprecated:: 4.4
+
+   Use :py:class:`QgsVectorFieldSettings` instead.
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+};
+
+class QgsMeshRendererSettings
+{
+%Docstring(signature="appended")
+Represents all mesh renderer settings.
+
+.. note::
+
+   The API is considered EXPERIMENTAL and can be changed without a notice
+
+.. versionadded:: 3.4
+%End
+
+%TypeHeaderCode
+#include "qgsmeshrenderersettings.h"
+%End
+  public:
+    QgsMeshRendererSettings();
+%Docstring
+Constructs renderer with default single layer averaging method
+%End
+    QgsMeshRendererSettings( const QgsMeshRendererSettings &other );
+
+
+    ~QgsMeshRendererSettings();
+
+    QgsMeshRendererMeshSettings nativeMeshSettings() const;
+%Docstring
+Returns native mesh renderer settings
+%End
+    void setNativeMeshSettings( const QgsMeshRendererMeshSettings &settings );
+%Docstring
+Sets new native mesh renderer settings, triggers repaint
+%End
+
+    QgsMeshRendererMeshSettings triangularMeshSettings() const;
+%Docstring
+Returns triangular mesh renderer settings
+%End
+    void setTriangularMeshSettings( const QgsMeshRendererMeshSettings &settings );
+%Docstring
+Sets new triangular mesh renderer settings
+%End
+
+    QgsMeshRendererMeshSettings edgeMeshSettings() const;
+%Docstring
+Returns edge mesh renderer settings
+
+.. versionadded:: 3.14
+%End
+
+    void setEdgeMeshSettings( const QgsMeshRendererMeshSettings &settings );
+%Docstring
+Sets new edge mesh renderer settings
+
+.. versionadded:: 3.14
+%End
+
+    QgsMeshRendererScalarSettings scalarSettings( int groupIndex ) const;
+%Docstring
+Returns renderer settings
+%End
+
+    void setScalarSettings( int groupIndex, const QgsMeshRendererScalarSettings &settings );
+%Docstring
+Sets new renderer settings
+%End
+
+    bool hasScalarSettings( int groupIndex ) const;
+%Docstring
+Returns whether ``groupIndex`` has existing scalar settings
+
+.. versionadded:: 3.30.2
+%End
+
+    bool removeScalarSettings( int groupIndex );
+%Docstring
+Removes scalar settings with ``groupIndex``
+
+.. versionadded:: 3.30.2
+%End
+
+    QgsVectorFieldSettings vectorSettings( int groupIndex ) const;
+%Docstring
+Returns renderer settings
+%End
+    void setVectorSettings( int groupIndex, const QgsVectorFieldSettings &settings );
+%Docstring
+Sets new renderer settings
+%End
+
+    bool hasVectorSettings( int groupIndex ) const;
+%Docstring
+Returns whether ``groupIndex`` has existing vector settings
+
+.. versionadded:: 3.30.2
+%End
+
+    bool removeVectorSettings( int groupIndex );
+%Docstring
+Removes vector settings for ``groupIndex``
+
+.. versionadded:: 3.30.2
+%End
+
+    QgsMesh3DAveragingMethod *averagingMethod() const;
+%Docstring
+Returns averaging method for conversion of 3d stacked mesh data to 2d
+data
+
+Caller does not own the resulting pointer
+%End
+
+    void setAveragingMethod( QgsMesh3DAveragingMethod *method );
+%Docstring
+Sets averaging method for conversion of 3d stacked mesh data to 2d data
+
+Ownership of the method is not transferred.
+%End
+
+    QDomElement writeXml( QDomDocument &doc, const QgsReadWriteContext &context = QgsReadWriteContext() ) const;
+%Docstring
+Writes configuration to a new DOM element
+%End
+    void readXml( const QDomElement &elem, const QgsReadWriteContext &context = QgsReadWriteContext() );
+%Docstring
+Reads configuration from the given DOM element
+%End
+
+    int activeScalarDatasetGroup() const;
+%Docstring
+Returns the active scalar dataset group
+
+.. versionadded:: 3.14
+%End
+
+    void setActiveScalarDatasetGroup( int activeScalarDatasetGroup );
+%Docstring
+Sets the active scalar dataset group
+
+.. versionadded:: 3.14
+%End
+
+    int activeVectorDatasetGroup() const;
+%Docstring
+Returns the active vector dataset group
+
+.. versionadded:: 3.14
+%End
+
+    void setActiveVectorDatasetGroup( int activeVectorDatasetGroup );
+%Docstring
+Sets the active vector dataset group
+
+.. versionadded:: 3.14
+%End
+
+    bool hasSettings( int datasetGroupIndex ) const;
+%Docstring
+Returns whether the group with ``index`` has render settings (scalar or
+vector)
+
+.. versionadded:: 3.22
+%End
+
+};
+
+/************************************************************************
+ * This file has been generated automatically from                      *
+ *                                                                      *
+ * src/core/mesh/qgsmeshrenderersettings.h                              *
+ *                                                                      *
+ * Do not edit manually ! Edit header and run scripts/sipify.py again   *
+ ************************************************************************/

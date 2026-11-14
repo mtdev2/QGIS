@@ -13,19 +13,21 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgis.h"
+#include "qgsapplication.h"
+#include "qgslayertree.h"
+#include "qgslogger.h"
+#include "qgsmessagelog.h"
+#include "qgsproject.h"
+
 #include <QCommandLineParser>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QString>
 
-#include "qgis.h"
-#include "qgsapplication.h"
-#include "qgsproject.h"
-#include "qgslayertree.h"
-#include "qgsmessagelog.h"
-#include "qgsquickutils.h"
-#include "qgslogger.h"
+using namespace Qt::StringLiterals;
 
 int main( int argc, char *argv[] )
 {
@@ -46,9 +48,9 @@ int main( int argc, char *argv[] )
   QgsApplication::initQgis();
 
   // 2) Load QGIS Project
-  QString dataDir( TEST_DATA_DIR );  // defined in CMakeLists.txt
+  QString dataDir( TEST_DATA_DIR ); // defined in CMakeLists.txt
   QString projectFile = dataDir + "/quickapp_project.qgs";
-  QgsDebugMsg( QStringLiteral( "project file:  %1" ).arg( projectFile ) );
+  QgsDebugMsgLevel( u"project file:  %1"_s.arg( projectFile ), 2 );
   QgsProject project;
   bool res = project.read( projectFile );
   Q_ASSERT( res );
@@ -58,39 +60,34 @@ int main( int argc, char *argv[] )
   engine.rootContext()->setContextProperty( "__project", &project );
   engine.rootContext()->setContextProperty( "__layers", QVariant::fromValue( project.layerTreeRoot()->layerOrder() ) );
 
-  // Set simulated position for desktop builds
-  bool use_simulated_position = true;
-  engine.rootContext()->setContextProperty( "__use_simulated_position", use_simulated_position );
-
-  QQmlComponent component( &engine, QUrl( QStringLiteral( "qrc:/main.qml" ) ) );
+  QQmlComponent component( &engine, QUrl( u"qrc:/main.qml"_s ) );
   QObject *object = component.create();
 
   if ( !component.errors().isEmpty() )
   {
-    QgsDebugMsg( QStringLiteral( "%s" ).arg( QgsApplication::showSettings().toLocal8Bit().data() ) );
+    QgsDebugError( u"%s"_s.arg( QgsApplication::showSettings().toLocal8Bit().data() ) );
 
-    QgsDebugMsg( QStringLiteral( "****************************************" ) );
-    QgsDebugMsg( QStringLiteral( "*****        QML errors:           *****" ) );
-    QgsDebugMsg( QStringLiteral( "****************************************" ) );
+    QgsDebugError( u"****************************************"_s );
+    QgsDebugError( u"*****        QML errors:           *****"_s );
+    QgsDebugError( u"****************************************"_s );
     const QList<QQmlError> errors = component.errors();
     for ( const QQmlError &error : errors )
     {
       Q_UNUSED( error );
-      QgsDebugMsg( error.toString() );
+      QgsDebugError( error.toString() );
     }
-    QgsDebugMsg( QStringLiteral( "****************************************" ) );
-    QgsDebugMsg( QStringLiteral( "****************************************" ) );
+    QgsDebugError( u"****************************************"_s );
+    QgsDebugError( u"****************************************"_s );
   }
 
   if ( object == nullptr )
   {
-    QgsDebugMsg( QStringLiteral( "FATAL ERROR: unable to create main.qml" ) );
+    QgsDebugError( u"FATAL ERROR: unable to create main.qml"_s );
     return EXIT_FAILURE;
   }
 
   // Add some data for debugging if needed
-  QgsApplication::messageLog()->logMessage( QgsQuickUtils().dumpScreenInfo() );
-  QgsDebugMsg( QStringLiteral( "data directory: %1" ).arg( dataDir ) );
+  QgsDebugError( u"data directory: %1"_s.arg( dataDir ) );
 
-  return app.exec();
+  return QgsApplication::exec();
 }

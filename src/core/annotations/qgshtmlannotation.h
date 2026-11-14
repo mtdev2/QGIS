@@ -18,25 +18,22 @@
 #ifndef QGSHTMLANNOTATION_H
 #define QGSHTMLANNOTATION_H
 
+#include "qgis_core.h"
 #include "qgsannotation.h"
 #include "qgsfeature.h"
-
-#include "qgis_core.h"
 
 class QgsWebPage;
 
 /**
  * \class QgsHtmlAnnotation
  * \ingroup core
- * An annotation item that embeds HTML content.
- * \since QGIS 3.0
+ * \brief An annotation item that embeds HTML content.
 */
 
-class CORE_EXPORT QgsHtmlAnnotation: public QgsAnnotation
+class CORE_EXPORT QgsHtmlAnnotation : public QgsAnnotation
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsHtmlAnnotation.
      */
@@ -58,6 +55,17 @@ class CORE_EXPORT QgsHtmlAnnotation: public QgsAnnotation
      */
     QString sourceFile() const { return mHtmlFile; }
 
+    /**
+     * Sets the html source directly (not coming from a file)
+     * \param htmlSource
+     */
+    void setHtmlSource( const QString &htmlSource );
+
+    /**
+     * Returns html source text
+     */
+    QString htmlSource() const { return mHtmlSource; }
+
     void writeXml( QDomElement &elem, QDomDocument &doc, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &itemElem, const QgsReadWriteContext &context ) override;
 
@@ -69,7 +77,6 @@ class CORE_EXPORT QgsHtmlAnnotation: public QgsAnnotation
     static QgsHtmlAnnotation *create() SIP_FACTORY { return new QgsHtmlAnnotation(); }
 
   protected:
-
     void renderAnnotation( QgsRenderContext &context, QSizeF size ) const override;
 
   private slots:
@@ -80,7 +87,6 @@ class CORE_EXPORT QgsHtmlAnnotation: public QgsAnnotation
     QgsWebPage *mWebPage = nullptr;
     QString mHtmlFile;
     QString mHtmlSource;
-
 };
 
 #endif // QGSHTMLANNOTATION_H

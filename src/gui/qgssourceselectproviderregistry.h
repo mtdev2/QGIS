@@ -16,13 +16,12 @@
 #ifndef QGSSOURCESELECTPROVIDERREGISTRY_H
 #define QGSSOURCESELECTPROVIDERREGISTRY_H
 
-#include <QList>
-#include <QWidget>
-
 #include "qgis_gui.h"
 #include "qgis_sip.h"
-
 #include "qgsproviderregistry.h"
+
+#include <QList>
+#include <QObject>
 
 class QgsSourceSelectProvider;
 class QgsProviderGuiRegistry;
@@ -30,28 +29,28 @@ class QgsAbstractDataSourceWidget;
 
 /**
  * \ingroup gui
+ * \brief A registry for QgsSourceSelectProvider source select providers.
+ *
  * This class keeps a list of source select providers that may add items to the QgsDataSourceManagerDialog
  * When created, it automatically adds providers from data provider plugins (e.g. PostGIS, WMS, ...)
  *
  * QgsSourceSelectProviderRegistry is not usually directly created, but rather accessed through
  * QgsGui::sourceSelectProviderRegistry().
  *
- * \since QGIS 3.0
  */
-class GUI_EXPORT QgsSourceSelectProviderRegistry
+class GUI_EXPORT QgsSourceSelectProviderRegistry : public QObject
 {
+    Q_OBJECT
+
   public:
-
     QgsSourceSelectProviderRegistry();
-    ~QgsSourceSelectProviderRegistry();
+    ~QgsSourceSelectProviderRegistry() override;
 
-    //! QgsDataItemProviderRegistry cannot be copied.
     QgsSourceSelectProviderRegistry( const QgsSourceSelectProviderRegistry &rh ) = delete;
-    //! QgsDataItemProviderRegistry cannot be copied.
     QgsSourceSelectProviderRegistry &operator=( const QgsSourceSelectProviderRegistry &rh ) = delete;
 
     //! Gets list of available providers
-    QList< QgsSourceSelectProvider *> providers();
+    QList<QgsSourceSelectProvider *> providers();
 
     //! Add a \a provider implementation. Takes ownership of the object.
     void addProvider( QgsSourceSelectProvider *provider SIP_TRANSFER );
@@ -82,12 +81,23 @@ class GUI_EXPORT QgsSourceSelectProviderRegistry
      *
      * \since QGIS 3.10
      */
-    QgsAbstractDataSourceWidget *createSelectionWidget(
-      const QString &name,
-      QWidget *parent,
-      Qt::WindowFlags fl,
-      QgsProviderRegistry::WidgetMode widgetMode
-    );
+    QgsAbstractDataSourceWidget *createSelectionWidget( const QString &name, QWidget *parent, Qt::WindowFlags fl, QgsProviderRegistry::WidgetMode widgetMode );
+
+  signals:
+
+    /**
+     * Emitted whenever a provider is added to the registry.
+     *
+     * \since QGIS 3.30
+     */
+    void providerAdded( const QString &name );
+
+    /**
+     * Emitted whenever a provider is removed from the registry.
+     *
+     * \since QGIS 3.30
+     */
+    void providerRemoved( const QString &name );
 
   private:
 #ifdef SIP_RUN
@@ -96,7 +106,6 @@ class GUI_EXPORT QgsSourceSelectProviderRegistry
 
     //! available providers. this class owns the pointers
     QList<QgsSourceSelectProvider *> mProviders;
-
 };
 
 #endif // QGSSOURCESELECTPROVIDERREGISTRY_H

@@ -18,13 +18,17 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgsapplication.h"
 #include "qgslayoutobject.h"
 #include "qgslayoutundocommand.h"
-#include "qgsapplication.h"
+
 #include <QIcon>
 #include <QObject>
-#include <QSizeF>
 #include <QPointF>
+#include <QSizeF>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsLayoutFrame;
 class QgsLayoutItem;
@@ -40,20 +44,16 @@ class QgsLayoutItemRenderContext;
 /**
  * \ingroup core
  * \class QgsLayoutMultiFrame
- * Abstract base class for layout items with the ability to distribute the content to
+ * \brief Abstract base class for layout items with the ability to distribute the content to
  * several frames (QgsLayoutFrame items).
- * \since QGIS 3.0
  */
 
-class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutUndoObjectInterface
+class CORE_EXPORT QgsLayoutMultiFrame : public QgsLayoutObject, public QgsLayoutUndoObjectInterface
 {
-#ifdef SIP_RUN
-#include "qgslayoutitemhtml.h"
-#include "qgslayoutitemattributetable.h"
-#include "qgslayoutitemmanualtable.h"
-#include "qgslayoutitemtexttable.h"
-#endif
-
+    //SIP_TYPEHEADER_INCLUDE( "qgslayoutitemhtml.h" );
+    //SIP_TYPEHEADER_INCLUDE( "qgslayoutitemattributetable.h" );
+    //SIP_TYPEHEADER_INCLUDE( "qgslayoutitemmanualtable.h" );
+    //SIP_TYPEHEADER_INCLUDE( "qgslayoutitemtexttable.h" );
 
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
@@ -91,7 +91,8 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
     SIP_END
 #endif
 
-    Q_OBJECT
+    // clang-format off
+  Q_OBJECT
 
   public:
 
@@ -101,27 +102,28 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
     enum ResizeMode
     {
       UseExistingFrames = 0, //!< Don't automatically create new frames, just use existing frames
-      ExtendToNextPage, //!< Creates new full page frames on the following page(s) until the entire multiframe content is visible
-      RepeatOnEveryPage, //!< Repeats the same frame on every page
-      RepeatUntilFinished /*!< creates new frames with the same position and dimensions as the existing frame on the following page(s),
+      ExtendToNextPage,      //!< Creates new full page frames on the following page(s) until the entire multiframe content is visible
+      RepeatOnEveryPage,     //!< Repeats the same frame on every page
+      RepeatUntilFinished    /*!< creates new frames with the same position and dimensions as the existing frame on the following page(s),
                               until the entire multiframe content is visible */
     };
 
-//! Multiframe item undo commands, used for collapsing undo commands
+    //! Multiframe item undo commands, used for collapsing undo commands
     enum UndoCommand
     {
-      UndoHtmlBreakDistance, //!< HTML page break distance
-      UndoHtmlSource, //!< HTML source
-      UndoHtmlStylesheet, //!< HTML stylesheet
-      UndoTableCellStyle, //!< Table cell style
-      UndoTableMaximumFeatures, //!< Maximum features in table
-      UndoTableMargin, //!< Table margins
-      UndoTableHeaderFontColor, //!< Table header font color
+      // clang-format on
+      UndoHtmlBreakDistance,     //!< HTML page break distance
+      UndoHtmlSource,            //!< HTML source
+      UndoHtmlStylesheet,        //!< HTML stylesheet
+      UndoTableCellStyle,        //!< Table cell style
+      UndoTableMaximumFeatures,  //!< Maximum features in table
+      UndoTableMargin,           //!< Table margins
+      UndoTableHeaderFontColor,  //!< Table header font color
       UndoTableContentFontColor, //!< Table content font color
-      UndoTableGridStrokeWidth, //!< Table grid stroke width
-      UndoTableGridColor, //!< Table grid color
-      UndoTableBackgroundColor, //!< Table background color
-      UndoNone = -1, //!< No command suppression
+      UndoTableGridStrokeWidth,  //!< Table grid stroke width
+      UndoTableGridColor,        //!< Table grid color
+      UndoTableBackgroundColor,  //!< Table background color
+      UndoNone = -1,             //!< No command suppression
     };
 
     /**
@@ -151,7 +153,7 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
     /**
      * Returns the item's icon.
      */
-    virtual QIcon icon() const { return QgsApplication::getThemeIcon( QStringLiteral( "/mLayoutItem.svg" ) ); }
+    virtual QIcon icon() const { return QgsApplication::getThemeIcon( u"/mLayoutItem.svg"_s ); }
 
     /**
      * Returns the fixed size for a frame, if desired. If the fixed frame size changes,
@@ -366,7 +368,7 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
      * QgsLayoutObject::AllProperties then all data defined properties for the item will be
      * refreshed.
     */
-    virtual void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::AllProperties );
+    virtual void refreshDataDefinedProperty( QgsLayoutObject::DataDefinedProperty property = QgsLayoutObject::DataDefinedProperty::AllProperties );
 
   signals:
 
@@ -376,8 +378,14 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
      */
     void contentsChanged();
 
-  protected:
+    /**
+     * Emitted whenever the number of background tasks the multi frame is executing changes.
+     *
+     * \since QGIS 4.4
+     */
+    void backgroundTaskCountChanged( int count );
 
+  protected:
     /**
      * Stores multiframe state within an XML DOM element.
      * \param element is the DOM element to store the multiframe's properties in
@@ -404,6 +412,14 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
      * \see readXml()
      */
     virtual bool readPropertiesFromElement( const QDomElement &element, const QDomDocument &document, const QgsReadWriteContext &context );
+
+    /**
+     * Returns TRUE if the multiframe is currently rendering content in a
+     * background thread.
+     *
+     * \since QGIS 4.4
+     */
+    virtual bool renderInProgress() const;
 
     QList<QgsLayoutFrame *> mFrameItems;
 
@@ -434,7 +450,7 @@ class CORE_EXPORT QgsLayoutMultiFrame: public QgsLayoutObject, public QgsLayoutU
     QList< QString > mFrameUuids;
     QList< QString > mFrameTemplateUuids;
 
-//! Unique id
+    //! Unique id
     QString mUuid;
     QString mTemplateUuid;
     friend class QgsLayoutFrame;

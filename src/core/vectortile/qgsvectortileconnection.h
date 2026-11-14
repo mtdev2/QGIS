@@ -17,23 +17,50 @@
 #define QGSVECTORTILECONNECTION_H
 
 #include "qgis_core.h"
+#include "qgssettingstree.h"
+#include "qgssettingstreenode.h"
+
+#include <QString>
+
+#define SIP_NO_FILE
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
-#define SIP_NO_FILE
 
 #include <QStringList>
 
 #include "qgsabstractproviderconnection.h"
+#include "qgshttpheaders.h"
+
+class QgsSettingsEntryString;
+class QgsSettingsEntryInteger;
+class QgsSettingsEntryVariantMap;
 
 class CORE_EXPORT QgsVectorTileProviderConnection : public QgsAbstractProviderConnection
 {
-
   public:
+#ifndef SIP_RUN
+
+    static inline QgsSettingsTreeNamedListNode *sTreeConnectionVectorTile
+      = QgsSettingsTree::sTreeConnections->createNamedListNode( u"vector-tile"_s, Qgis::SettingsTreeNodeOption::NamedListSelectedItemSetting );
+
+    static const QgsSettingsEntryString *settingsUrl;
+    static const QgsSettingsEntryInteger *settingsZmin;
+    static const QgsSettingsEntryInteger *settingsZmax;
+    static const QgsSettingsEntryString *settingsAuthcfg;
+    static const QgsSettingsEntryString *settingsUsername;
+    static const QgsSettingsEntryString *settingsPassword;
+    static const QgsSettingsEntryString *settingsStyleUrl;
+    static const QgsSettingsEntryString *settingsServiceType;
+    static const QgsSettingsEntryVariantMap *settingsHeaders;
+#endif
+
     QgsVectorTileProviderConnection( const QString &name );
     QgsVectorTileProviderConnection( const QString &uri, const QVariantMap &configuration );
 
-    virtual void store( const QString &name ) const override;
-    virtual void remove( const QString &name ) const override;
+    void store( const QString &name ) const override;
+    void remove( const QString &name ) const override;
 
     /**
      * Vector tile service type.
@@ -42,31 +69,30 @@ class CORE_EXPORT QgsVectorTileProviderConnection : public QgsAbstractProviderCo
      */
     enum ServiceType
     {
-      Generic, //!< Generic (XYZ) connection
+      Generic,                 //!< Generic (XYZ) connection
       ArcgisVectorTileService, //!< ArcGIS VectorTileServer connection
     };
 
     //! Represents decoded data of a connection
     struct Data
     {
-      QString url;
-      int zMin = -1;
-      int zMax = -1;
+        QString url;
+        int zMin = -1;
+        int zMax = -1;
 
-      ServiceType serviceType = Generic;
+        ServiceType serviceType = Generic;
 
-      //! Authentication configuration id
-      QString authCfg;
-      //! HTTP Basic username
-      QString username;
-      //! HTTP Basic password
-      QString password;
-      //! Referer
-      QString referer;
+        //! Authentication configuration id
+        QString authCfg;
+        //! HTTP Basic username
+        QString username;
+        //! HTTP Basic password
+        QString password;
+        //! HTTP headers
+        QgsHttpHeaders httpHeaders;
 
-      //! Optional style URL (will override any default styles)
-      QString styleUrl;
-
+        //! Optional style URL (will override any default styles)
+        QString styleUrl;
     };
 
     //! Returns connection data encoded as a string

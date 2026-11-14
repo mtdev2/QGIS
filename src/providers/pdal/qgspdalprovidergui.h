@@ -16,18 +16,17 @@
 #ifndef QGSPDALPROVIDERGUI_H
 #define QGSPDALPROVIDERGUI_H
 
+#include "qgsproviderguimetadata.h"
+
 #include <QList>
 #include <QMainWindow>
 
-#include "qgsproviderguimetadata.h"
-
-class QgsPdalProviderGuiMetadata: public QgsProviderGuiMetadata
+class QgsPdalProviderGuiMetadata : public QgsProviderGuiMetadata
 {
   public:
     QgsPdalProviderGuiMetadata();
 
     QList<QgsSourceSelectProvider *> sourceSelectProviders() override;
-    QList<QgsDataItemGuiProvider *> dataItemGuiProviders() override;
     QList<QgsProjectStorageGuiProvider *> projectStorageGuiProviders() override;
     void registerGui( QMainWindow *mainWindow ) override;
 };

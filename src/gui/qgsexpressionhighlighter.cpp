@@ -15,6 +15,12 @@
 
 #include "qgsexpressionhighlighter.h"
 
+#include <QString>
+
+#include "moc_qgsexpressionhighlighter.cpp"
+
+using namespace Qt::StringLiterals;
+
 QgsExpressionHighlighter::QgsExpressionHighlighter( QTextDocument *parent )
   : QSyntaxHighlighter( parent )
 {
@@ -23,24 +29,23 @@ QgsExpressionHighlighter::QgsExpressionHighlighter( QTextDocument *parent )
   keywordFormat.setForeground( Qt::darkBlue );
   keywordFormat.setFontWeight( QFont::Bold );
   QStringList keywordPatterns;
-  keywordPatterns << QStringLiteral( "\\bCASE\\b" ) << QStringLiteral( "\\bWHEN\\b" ) << QStringLiteral( "\\bTHEN\\b" )
-                  << QStringLiteral( "\\bELSE\\b" ) << QStringLiteral( "\\bEND\\b" );
+  keywordPatterns << u"\\bCASE\\b"_s << u"\\bWHEN\\b"_s << u"\\bTHEN\\b"_s << u"\\bELSE\\b"_s << u"\\bEND\\b"_s;
 
   const auto constKeywordPatterns = keywordPatterns;
   for ( const QString &pattern : constKeywordPatterns )
   {
-    rule.pattern = QRegExp( pattern, Qt::CaseInsensitive );
+    rule.pattern = QRegularExpression( pattern, QRegularExpression::CaseInsensitiveOption );
     rule.format = keywordFormat;
     highlightingRules.append( rule );
   }
 
   quotationFormat.setForeground( Qt::darkGreen );
-  rule.pattern = QRegExp( "\'[^\'\r\n]*\'" );
+  rule.pattern = QRegularExpression( "\'[^\'\r\n]*\'" );
   rule.format = quotationFormat;
   highlightingRules.append( rule );
 
   columnNameFormat.setForeground( Qt::darkRed );
-  rule.pattern = QRegExp( "\"[^\"\r\n]*\"" );
+  rule.pattern = QRegularExpression( "\"[^\"\r\n]*\"" );
   rule.format = columnNameFormat;
   highlightingRules.append( rule );
 }
@@ -54,7 +59,7 @@ void QgsExpressionHighlighter::addFields( const QStringList &fieldList )
   {
     if ( field.isEmpty() ) // this really happened :)
       continue;
-    rule.pattern = QRegExp( "\\b" + field + "\\b" );
+    rule.pattern = QRegularExpression( "\\b" + field + "\\b" );
     rule.format = columnNameFormat;
     highlightingRules.append( rule );
   }
@@ -65,16 +70,16 @@ void QgsExpressionHighlighter::highlightBlock( const QString &text )
   const auto constHighlightingRules = highlightingRules;
   for ( const HighlightingRule &rule : constHighlightingRules )
   {
-    QRegExp expression( rule.pattern );
-    int index = expression.indexIn( text );
-    while ( index >= 0 )
+    const QRegularExpression expression( rule.pattern );
+    QRegularExpressionMatch match = expression.match( text );
+    while ( match.hasMatch() )
     {
-      int length = expression.matchedLength();
+      const int index = match.capturedStart();
+      const int length = match.capturedLength();
       if ( length == 0 )
         break; // avoid infinite loops
       setFormat( index, length, rule.format );
-      index = expression.indexIn( text, index + length );
+      match = expression.match( text, index + length );
     }
   }
 }
-

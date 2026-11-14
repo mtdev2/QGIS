@@ -19,13 +19,14 @@
 #ifndef QGSSERVERCACHEMANAGER_H
 #define QGSSERVERCACHEMANAGER_H
 
-#include "qgsservercachefilter.h"
-#include "qgsaccesscontrol.h"
-#include "qgsserverrequest.h"
-
-#include <QDomDocument>
 #include "qgis_server.h"
 #include "qgis_sip.h"
+#include "qgsaccesscontrol.h"
+#include "qgsservercachefilter.h"
+#include "qgsserverrequest.h"
+#include "qgsserversettings.h"
+
+#include <QDomDocument>
 
 class QgsProject;
 
@@ -45,15 +46,10 @@ class SERVER_EXPORT QgsServerCacheManager
 
   public:
     //! Constructor
-    QgsServerCacheManager();
+    QgsServerCacheManager( const QgsServerSettings &settings = QgsServerSettings() );
 
-    //! Copy constructor
     QgsServerCacheManager( const QgsServerCacheManager &copy );
-
-    //! Assignment operator
     QgsServerCacheManager &operator=( const QgsServerCacheManager &copy );
-
-    //! Destructor
     ~QgsServerCacheManager();
 
     /**
@@ -135,9 +131,10 @@ class SERVER_EXPORT QgsServerCacheManager
     void registerServerCache( QgsServerCacheFilter *serverCache, int priority = 0 );
 
   private:
-    QString getCacheKey( bool &cache, QgsAccessControl *accessControl ) const;
+    QString getCacheKey( bool &cache, QgsAccessControl *accessControl, const QgsServerRequest &request ) const;
     //! The ServerCache plugins registry
     std::unique_ptr<QgsServerCacheFilterMap> mPluginsServerCaches = nullptr;
+    const QgsServerSettings &mSettings;
 };
 
 #endif

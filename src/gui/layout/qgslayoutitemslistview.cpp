@@ -14,14 +14,18 @@
  ***************************************************************************/
 
 #include "qgslayoutitemslistview.h"
+
 #include "qgslayout.h"
-#include "qgslayoutmodel.h"
 #include "qgslayoutdesignerinterface.h"
+#include "qgslayoutitemgroup.h"
+#include "qgslayoutmodel.h"
 #include "qgslayoutview.h"
+
 #include <QHeaderView>
 #include <QMenu>
 #include <QMouseEvent>
 
+#include "moc_qgslayoutitemslistview.cpp"
 
 QgsLayoutItemsListViewModel::QgsLayoutItemsListViewModel( QgsLayoutModel *model, QObject *parent )
   : QSortFilterProxyModel( parent )
@@ -33,6 +37,11 @@ QgsLayoutItemsListViewModel::QgsLayoutItemsListViewModel( QgsLayoutModel *model,
 QgsLayoutItem *QgsLayoutItemsListViewModel::itemFromIndex( const QModelIndex &index ) const
 {
   return mModel->itemFromIndex( mapToSource( index ) );
+}
+
+QModelIndex QgsLayoutItemsListViewModel::indexForItem( QgsLayoutItem *item, const int column ) const
+{
+  return mapFromSource( mModel->indexForItem( item, column ) );
 }
 
 void QgsLayoutItemsListViewModel::setSelected( const QModelIndex &index )
@@ -89,7 +98,16 @@ QgsLayoutItemsListView::QgsLayoutItemsListView( QWidget *parent, QgsLayoutDesign
   setDragDropMode( QAbstractItemView::InternalMove );
   setContextMenuPolicy( Qt::CustomContextMenu );
   setIndentation( 0 );
+
+  // Allow multi selection from the list view
+  setSelectionMode( QAbstractItemView::ExtendedSelection );
+  setSelectionBehavior( QAbstractItemView::SelectRows );
+
   connect( this, &QWidget::customContextMenuRequested, this, &QgsLayoutItemsListView::showContextMenu );
+  if ( mDesigner )
+  {
+    setLayoutView( mDesigner->view() );
+  }
 }
 
 void QgsLayoutItemsListView::setCurrentLayout( QgsLayout *layout )
@@ -100,23 +118,162 @@ void QgsLayoutItemsListView::setCurrentLayout( QgsLayout *layout )
 
   header()->setSectionResizeMode( 0, QHeaderView::Fixed );
   header()->setSectionResizeMode( 1, QHeaderView::Fixed );
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-  setColumnWidth( 0, Qgis::UI_SCALE_FACTOR * fontMetrics().width( QStringLiteral( "xxxx" ) ) );
-  setColumnWidth( 1, Qgis::UI_SCALE_FACTOR * fontMetrics().width( QStringLiteral( "xxxx" ) ) );
-#else
   setColumnWidth( 0, Qgis::UI_SCALE_FACTOR * fontMetrics().horizontalAdvance( 'x' ) * 4 );
   setColumnWidth( 1, Qgis::UI_SCALE_FACTOR * fontMetrics().horizontalAdvance( 'x' ) * 4 );
-#endif
   header()->setSectionsMovable( false );
 
-  connect( selectionModel(), &QItemSelectionModel::currentChanged, mModel, &QgsLayoutItemsListViewModel::setSelected );
+  connect( selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsLayoutItemsListView::updateSelection );
+}
+
+void QgsLayoutItemsListView::keyPressEvent( QKeyEvent *event )
+{
+  if ( event->key() == Qt::Key_Space )
+  {
+    const auto constSelectedIndexes = selectionModel()->selectedIndexes();
+    if ( !constSelectedIndexes.isEmpty() )
+    {
+      const bool isFirstItemVisible = mModel->itemFromIndex( constSelectedIndexes[0] )->isVisible();
+
+      for ( const QModelIndex &index : constSelectedIndexes )
+      {
+        if ( QgsLayoutItem *item = mModel->itemFromIndex( index ) )
+        {
+          item->setVisibility( !isFirstItemVisible );
+        }
+      }
+      //return here, because otherwise it will just invert visibility for each item instead setting all the same
+      return;
+    }
+  }
+
+  QTreeView::keyPressEvent( event );
+}
+
+void QgsLayoutItemsListView::setLayoutView( QgsLayoutView *view )
+{
+  connect( view, &QgsLayoutView::itemFocused, this, &QgsLayoutItemsListView::onItemFocused );
+}
+
+void QgsLayoutItemsListView::updateSelection( const QItemSelection &selected, const QItemSelection &deselected )
+{
+  QSet< QgsLayoutItem * > selectedItems;
+  QSet< QgsLayoutItem * > deselectedItems;
+  // this slot will be called whenever the selected **indexes** change in the view. While logically
+  // that sounds like it will only happen when the actual **selection** changes, it's also trigerred when
+  // the indices which correspond to those selected items is changed. And this happens on Qt6 when the proxy model's
+  // source model emits dataChanged.
+  // To avoid an endless loop here we resolve the actual selected/deselected layout items from their indices, and
+  // abort out early if the actual selected items aren't changed.
+  for ( const QModelIndex &index : selected.indexes() )
+  {
+    if ( QgsLayoutItem *item = mModel->itemFromIndex( index ) )
+    {
+      selectedItems << item;
+    }
+  }
+  for ( const QModelIndex &index : deselected.indexes() )
+  {
+    if ( QgsLayoutItem *item = mModel->itemFromIndex( index ) )
+    {
+      deselectedItems << item;
+    }
+  }
+  if ( selectedItems == deselectedItems )
+  {
+    return; // nothing changed
+  }
+
+  // Do nothing if we are currently updating the selection
+  // because user has selected/deselected some items in the
+  // graphics view
+  if ( !mModel || mUpdatingFromView )
+    return;
+
+  // Set the updating flag
+  mUpdatingSelection = true;
+
+  // Deselect all items from the layout (prevent firing signals, selection will be changed)
+  whileBlocking( mLayout )->deselectAll();
+
+  bool itemSelected = false;
+
+  // Check if the clicked item was selected or deselected
+  if ( selectionModel()->isSelected( selectionModel()->currentIndex() ) )
+  {
+    // It it was selected, set it as the layout's selected item;
+    // This will show the item properties
+    QgsLayoutItem *currentItem = mModel->itemFromIndex( selectionModel()->currentIndex() );
+    mLayout->setSelectedItem( currentItem );
+    itemSelected = true;
+  }
+  for ( QgsLayoutItem *item : selectedItems )
+  {
+    if ( !itemSelected )
+    {
+      // If clicked item was actually deselected, set the first selected item in the list
+      // as the layout's selected item
+      mLayout->setSelectedItem( item );
+      itemSelected = true;
+    }
+    else
+    {
+      item->setSelected( true );
+    }
+
+    // find top level group this item is contained within, and mark the group as selected
+    QgsLayoutItemGroup *group = item->parentGroup();
+    while ( group && group->parentGroup() )
+    {
+      group = group->parentGroup();
+    }
+    if ( group && group != item )
+      group->setSelected( true );
+  }
+  // Reset the updating flag
+  mUpdatingSelection = false;
+}
+
+void QgsLayoutItemsListView::onItemFocused( QgsLayoutItem *focusedItem )
+{
+  // Do nothing if we are in the middle of selecting items in the layoutView
+  if ( !mModel || mUpdatingSelection )
+    return;
+
+  // Set the updating flag
+  mUpdatingFromView = true;
+
+  // Deselect all items in list
+  clearSelection();
+
+  // Set the current index to the focused item
+  QModelIndex index = mModel->indexForItem( focusedItem );
+  if ( index.isValid() )
+  {
+    setCurrentIndex( index );
+  }
+
+  // Select rows in the item list for every selected items in the graphics view
+  const QList<QgsLayoutItem *> selectedItems = mLayout->selectedLayoutItems();
+  for ( QgsLayoutItem *item : selectedItems )
+  {
+    const QModelIndex firstCol = mModel->indexForItem( item );
+    if ( firstCol.isValid() )
+    {
+      // Select the whole row
+      QItemSelection selection;
+      selection.select( firstCol, firstCol.siblingAtColumn( mModel->columnCount( firstCol.parent() ) - 1 ) );
+      selectionModel()->select( selection, QItemSelectionModel::Select );
+    }
+  }
+  // Reset the updating flag
+  mUpdatingFromView = false;
 }
 
 void QgsLayoutItemsListView::showContextMenu( QPoint point )
 {
-  if ( !mModel )
+  if ( !mModel || !mDesigner )
     return;
-  QModelIndex index = indexAt( point );
+  const QModelIndex index = indexAt( point );
   QgsLayoutItem *item = mModel->itemFromIndex( index );
   if ( !item )
     return;
@@ -124,24 +281,15 @@ void QgsLayoutItemsListView::showContextMenu( QPoint point )
   QMenu *menu = new QMenu( this );
 
   QAction *copyAction = new QAction( tr( "Copy Item" ), menu );
-  connect( copyAction, &QAction::triggered, this, [this, item]()
-  {
-    mDesigner->view()->copyItems( QList< QgsLayoutItem * >() << item, QgsLayoutView::ClipboardCopy );
-  } );
+  connect( copyAction, &QAction::triggered, this, [this, item]() { mDesigner->view()->copyItems( QList<QgsLayoutItem *>() << item, QgsLayoutView::ClipboardCopy ); } );
   menu->addAction( copyAction );
   QAction *deleteAction = new QAction( tr( "Delete Item" ), menu );
-  connect( deleteAction, &QAction::triggered, this, [this, item]()
-  {
-    mDesigner->view()->deleteItems( QList< QgsLayoutItem * >() << item );
-  } );
+  connect( deleteAction, &QAction::triggered, this, [this, item]() { mDesigner->view()->deleteItems( QList<QgsLayoutItem *>() << item ); } );
   menu->addAction( deleteAction );
   menu->addSeparator();
 
   QAction *itemPropertiesAction = new QAction( tr( "Item Properties…" ), menu );
-  connect( itemPropertiesAction, &QAction::triggered, this, [this, item]()
-  {
-    mDesigner->showItemOptions( item, true );
-  } );
+  connect( itemPropertiesAction, &QAction::triggered, this, [this, item]() { mDesigner->showItemOptions( item, true ); } );
   menu->addAction( itemPropertiesAction );
 
   menu->popup( mapToGlobal( point ) );

@@ -13,13 +13,28 @@
  *                                                                         *
  ***************************************************************************/
 
+#include "qgsfeature.h"
+#include "qgsgeometry.h"
+#include "qgsgrass.h"
+#include "qgsgrassdatafile.h"
+#include "qgsrectangle.h"
+#include "qgsspatialindex.h"
+
+#include <QByteArray>
+#include <QDataStream>
+#include <QFile>
+#include <QIODevice>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 extern "C"
 {
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <math.h>
 #include <assert.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #ifdef WIN32
 #include <fcntl.h>
 #include <io.h>
@@ -29,19 +44,6 @@ extern "C"
 #include <grass/dbmi.h>
 #include <grass/vector.h>
 }
-
-#include <QByteArray>
-#include <QDataStream>
-#include <QFile>
-#include <QIODevice>
-
-#include "qgsfeature.h"
-#include "qgsgeometry.h"
-#include "qgsrectangle.h"
-#include "qgsrasterblock.h"
-#include "qgsspatialindex.h"
-#include "qgsgrass.h"
-#include "qgsgrassdatafile.h"
 
 static struct line_pnts *gLine = Vect_new_line_struct();
 
@@ -139,20 +141,23 @@ int main( int argc, char **argv )
   QDataStream stdinStream( &stdinFile );
 
   QFile stdoutFile;
-  stdoutFile.open( stdout, QIODevice::WriteOnly | QIODevice::Unbuffered );
+  if ( !stdoutFile.open( stdout, QIODevice::WriteOnly | QIODevice::Unbuffered ) )
+  {
+    G_fatal_error( "Could not open stdout for write" );
+  }
   QDataStream stdoutStream( &stdoutFile );
 
   // global finalName, tmpName are used by checkStream()
   sFinalName = QString( mapOption->answer );
   QDateTime now = QDateTime::currentDateTime();
-  sTmpName = QStringLiteral( "qgis_import_tmp_%1_%2" ).arg( mapOption->answer, now.toString( QStringLiteral( "yyyyMMddhhmmss" ) ) );
+  sTmpName = u"qgis_import_tmp_%1_%2"_s.arg( mapOption->answer, now.toString( u"yyyyMMddhhmmss"_s ) );
 
   qint32 typeQint32;
   stdinStream >> typeQint32;
   checkStream( stdinStream );
-  QgsWkbTypes::Type wkbType = ( QgsWkbTypes::Type )typeQint32;
-  QgsWkbTypes::Type wkbFlatType = QgsWkbTypes::flatType( wkbType );
-  bool isPolygon = QgsWkbTypes::singleType( wkbFlatType ) == QgsWkbTypes::Polygon;
+  Qgis::WkbType wkbType = static_cast<Qgis::WkbType>( typeQint32 );
+  Qgis::WkbType wkbFlatType = QgsWkbTypes::flatType( wkbType );
+  bool isPolygon = QgsWkbTypes::singleType( wkbFlatType ) == Qgis::WkbType::Polygon;
 
   finalMap = QgsGrass::vectNewMapStruct();
   Vect_open_new( finalMap, mapOption->answer, 0 );
@@ -183,12 +188,11 @@ int main( int argc, char **argv )
   }
 
   QgsFields fields;
-  fields.append( QgsField( key, QVariant::Int ) );
+  fields.append( QgsField( key, QMetaType::Type::Int ) );
   fields.extend( srcFields );
 
   struct field_info *fieldInfo = Vect_default_field_info( finalMap, 1, nullptr, GV_1TABLE );
-  if ( Vect_map_add_dblink( finalMap, 1, nullptr, fieldInfo->table, key.toLatin1().data(),
-                            fieldInfo->database, fieldInfo->driver ) != 0 )
+  if ( Vect_map_add_dblink( finalMap, 1, nullptr, fieldInfo->table, key.toLatin1().data(), fieldInfo->database, fieldInfo->driver ) != 0 )
   {
     G_fatal_error( "Cannot add link" );
   }
@@ -231,7 +235,7 @@ int main( int argc, char **argv )
     checkStream( stdinStream );
 #ifndef Q_OS_WIN
     // cannot be used on Windows, see notes in qgis.r.in
-//#if 0
+    //#if 0
     stdoutStream << true; // feature received
     stdoutFile.flush();
 //#endif
@@ -245,19 +249,19 @@ int main( int argc, char **argv )
     if ( !geometry.isNull() )
     {
       // geometry type may be probably different from provider type (e.g. multi x single)
-      QgsWkbTypes::Type geometryType = QgsWkbTypes::flatType( geometry.wkbType() );
+      Qgis::WkbType geometryType = QgsWkbTypes::flatType( geometry.wkbType() );
       if ( !isPolygon )
       {
         Vect_reset_cats( cats );
         Vect_cat_set( cats, 1, static_cast<int>( feature.id() ) + fidToCatPlus );
       }
 
-      if ( geometryType == QgsWkbTypes::Point )
+      if ( geometryType == Qgis::WkbType::Point )
       {
         QgsPointXY point = geometry.asPoint();
         writePoint( map, GV_POINT, point, cats );
       }
-      else if ( geometryType == QgsWkbTypes::MultiPoint )
+      else if ( geometryType == Qgis::WkbType::MultiPoint )
       {
         QgsMultiPointXY multiPoint = geometry.asMultiPoint();
         const auto constMultiPoint = multiPoint;
@@ -266,12 +270,12 @@ int main( int argc, char **argv )
           writePoint( map, GV_POINT, point, cats );
         }
       }
-      else if ( geometryType == QgsWkbTypes::LineString )
+      else if ( geometryType == Qgis::WkbType::LineString )
       {
         QgsPolylineXY polyline = geometry.asPolyline();
         writePolyline( map, GV_LINE, polyline, cats );
       }
-      else if ( geometryType == QgsWkbTypes::MultiLineString )
+      else if ( geometryType == Qgis::WkbType::MultiLineString )
       {
         QgsMultiPolylineXY multiPolyline = geometry.asMultiPolyline();
         const auto constMultiPolyline = multiPolyline;
@@ -280,7 +284,7 @@ int main( int argc, char **argv )
           writePolyline( map, GV_LINE, polyline, cats );
         }
       }
-      else if ( geometryType == QgsWkbTypes::Polygon )
+      else if ( geometryType == Qgis::WkbType::Polygon )
       {
         QgsPolygonXY polygon = geometry.asPolygon();
         const auto constPolygon = polygon;
@@ -289,7 +293,7 @@ int main( int argc, char **argv )
           writePolyline( map, GV_BOUNDARY, polyline, cats );
         }
       }
-      else if ( geometryType == QgsWkbTypes::MultiPolygon )
+      else if ( geometryType == Qgis::WkbType::MultiPolygon )
       {
         QgsMultiPolygonXY multiPolygon = geometry.asMultiPolygon();
         const auto constMultiPolygon = multiPolygon;
@@ -455,7 +459,7 @@ int main( int argc, char **argv )
     {
       QgsPointXY point = it.value().geometry().asPoint();
 
-      if ( it.value().attributes().size() > 0 )
+      if ( it.value().attributeCount() > 0 )
       {
         Vect_reset_cats( cats );
         const auto constAttributes = it.value().attributes();

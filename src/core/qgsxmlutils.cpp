@@ -14,88 +14,128 @@
  ***************************************************************************/
 #include "qgsxmlutils.h"
 
-#include <QDomElement>
-
-#include "qgslogger.h"
-#include "qgsrectangle.h"
-#include "qgsproperty.h"
-#include "qgssymbollayerutils.h"
+#include "qgscolorutils.h"
 #include "qgsprocessingparameters.h"
+#include "qgsproperty.h"
+#include "qgsrectangle.h"
 #include "qgsremappingproxyfeaturesink.h"
+#include "qgsunittypes.h"
 
-QgsUnitTypes::DistanceUnit QgsXmlUtils::readMapUnits( const QDomElement &element )
+#include <QDomElement>
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
+Qgis::DistanceUnit QgsXmlUtils::readMapUnits( const QDomElement &element )
 {
   if ( "unknown" == element.text() )
   {
-    return QgsUnitTypes::DistanceUnknownUnit;
+    return Qgis::DistanceUnit::Unknown;
   }
   else
   {
-    QgsUnitTypes::DistanceUnit unit = QgsUnitTypes::decodeDistanceUnit( element.text() );
-    return unit == QgsUnitTypes::DistanceUnknownUnit ? QgsUnitTypes::DistanceDegrees : unit;
+    const Qgis::DistanceUnit unit = QgsUnitTypes::decodeDistanceUnit( element.text() );
+    return unit == Qgis::DistanceUnit::Unknown ? Qgis::DistanceUnit::Degrees : unit;
   }
+}
+
+QgsBox3D QgsXmlUtils::readBox3D( const QDomElement &element )
+{
+  QgsBox3D aoi;
+
+  const double xmin = element.attribute( u"xmin"_s ).toDouble();
+  aoi.setXMinimum( xmin );
+
+  const double ymin = element.attribute( u"ymin"_s ).toDouble();
+  aoi.setYMinimum( ymin );
+
+  const double zmin = element.attribute( u"zmin"_s ).toDouble();
+  aoi.setZMinimum( zmin );
+
+  const double xmax = element.attribute( u"xmax"_s ).toDouble();
+  aoi.setXMaximum( xmax );
+
+  const double ymax = element.attribute( u"ymax"_s ).toDouble();
+  aoi.setYMaximum( ymax );
+
+  const double zmax = element.attribute( u"zmax"_s ).toDouble();
+  aoi.setZMaximum( zmax );
+
+  return aoi;
 }
 
 QgsRectangle QgsXmlUtils::readRectangle( const QDomElement &element )
 {
   QgsRectangle aoi;
 
-  QDomNode xminNode = element.namedItem( QStringLiteral( "xmin" ) );
-  QDomNode yminNode = element.namedItem( QStringLiteral( "ymin" ) );
-  QDomNode xmaxNode = element.namedItem( QStringLiteral( "xmax" ) );
-  QDomNode ymaxNode = element.namedItem( QStringLiteral( "ymax" ) );
+  const QDomNode xminNode = element.namedItem( u"xmin"_s );
+  const QDomNode yminNode = element.namedItem( u"ymin"_s );
+  const QDomNode xmaxNode = element.namedItem( u"xmax"_s );
+  const QDomNode ymaxNode = element.namedItem( u"ymax"_s );
 
   QDomElement exElement = xminNode.toElement();
-  double xmin = exElement.text().toDouble();
+  const double xmin = exElement.text().toDouble();
   aoi.setXMinimum( xmin );
 
   exElement = yminNode.toElement();
-  double ymin = exElement.text().toDouble();
+  const double ymin = exElement.text().toDouble();
   aoi.setYMinimum( ymin );
 
   exElement = xmaxNode.toElement();
-  double xmax = exElement.text().toDouble();
+  const double xmax = exElement.text().toDouble();
   aoi.setXMaximum( xmax );
 
   exElement = ymaxNode.toElement();
-  double ymax = exElement.text().toDouble();
+  const double ymax = exElement.text().toDouble();
   aoi.setYMaximum( ymax );
 
   return aoi;
 }
 
 
-
-QDomElement QgsXmlUtils::writeMapUnits( QgsUnitTypes::DistanceUnit units, QDomDocument &doc )
+QDomElement QgsXmlUtils::writeMapUnits( Qgis::DistanceUnit units, QDomDocument &doc )
 {
   QString unitsString = QgsUnitTypes::encodeUnit( units );
   // maintain compatibility with old projects
-  if ( units == QgsUnitTypes::DistanceUnknownUnit )
-    unitsString = QStringLiteral( "unknown" );
+  if ( units == Qgis::DistanceUnit::Unknown )
+    unitsString = u"unknown"_s;
 
-  QDomElement unitsNode = doc.createElement( QStringLiteral( "units" ) );
+  QDomElement unitsNode = doc.createElement( u"units"_s );
   unitsNode.appendChild( doc.createTextNode( unitsString ) );
   return unitsNode;
 }
 
-QDomElement QgsXmlUtils::writeRectangle( const QgsRectangle &rect, QDomDocument &doc )
+QDomElement QgsXmlUtils::writeBox3D( const QgsBox3D &box, QDomDocument &doc, const QString &elementName )
 {
-  QDomElement xMin = doc.createElement( QStringLiteral( "xmin" ) );
-  QDomElement yMin = doc.createElement( QStringLiteral( "ymin" ) );
-  QDomElement xMax = doc.createElement( QStringLiteral( "xmax" ) );
-  QDomElement yMax = doc.createElement( QStringLiteral( "ymax" ) );
+  QDomElement elemExtent3D = doc.createElement( elementName );
+  elemExtent3D.setAttribute( u"xMin"_s, box.xMinimum() );
+  elemExtent3D.setAttribute( u"yMin"_s, box.yMinimum() );
+  elemExtent3D.setAttribute( u"zMin"_s, box.zMinimum() );
+  elemExtent3D.setAttribute( u"xMax"_s, box.xMaximum() );
+  elemExtent3D.setAttribute( u"yMax"_s, box.yMaximum() );
+  elemExtent3D.setAttribute( u"zMax"_s, box.zMaximum() );
 
-  QDomText xMinText = doc.createTextNode( qgsDoubleToString( rect.xMinimum() ) );
-  QDomText yMinText = doc.createTextNode( qgsDoubleToString( rect.yMinimum() ) );
-  QDomText xMaxText = doc.createTextNode( qgsDoubleToString( rect.xMaximum() ) );
-  QDomText yMaxText = doc.createTextNode( qgsDoubleToString( rect.yMaximum() ) );
+  return elemExtent3D;
+}
+
+QDomElement QgsXmlUtils::writeRectangle( const QgsRectangle &rect, QDomDocument &doc, const QString &elementName )
+{
+  QDomElement xMin = doc.createElement( u"xmin"_s );
+  QDomElement yMin = doc.createElement( u"ymin"_s );
+  QDomElement xMax = doc.createElement( u"xmax"_s );
+  QDomElement yMax = doc.createElement( u"ymax"_s );
+
+  const QDomText xMinText = doc.createTextNode( qgsDoubleToString( rect.xMinimum() ) );
+  const QDomText yMinText = doc.createTextNode( qgsDoubleToString( rect.yMinimum() ) );
+  const QDomText xMaxText = doc.createTextNode( qgsDoubleToString( rect.xMaximum() ) );
+  const QDomText yMaxText = doc.createTextNode( qgsDoubleToString( rect.yMaximum() ) );
 
   xMin.appendChild( xMinText );
   yMin.appendChild( yMinText );
   xMax.appendChild( xMaxText );
   yMax.appendChild( yMaxText );
 
-  QDomElement extentNode = doc.createElement( QStringLiteral( "extent" ) );
+  QDomElement extentNode = doc.createElement( elementName );
   extentNode.appendChild( xMin );
   extentNode.appendChild( yMin );
   extentNode.appendChild( xMax );
@@ -105,143 +145,153 @@ QDomElement QgsXmlUtils::writeRectangle( const QgsRectangle &rect, QDomDocument 
 
 QDomElement QgsXmlUtils::writeVariant( const QVariant &value, QDomDocument &doc )
 {
-  QDomElement element = doc.createElement( QStringLiteral( "Option" ) );
-  switch ( value.type() )
+  QDomElement element = doc.createElement( u"Option"_s );
+  switch ( value.userType() )
   {
-    case QVariant::Invalid:
+    case QMetaType::Type::UnknownType:
     {
-      element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "invalid" ) );
+      element.setAttribute( u"type"_s, u"invalid"_s );
       break;
     }
 
-    case QVariant::Map:
+    case QMetaType::Type::QVariantMap:
     {
-      QVariantMap map = value.toMap();
+      const QVariantMap map = value.toMap();
 
       for ( auto option = map.constBegin(); option != map.constEnd(); ++option )
       {
         QDomElement optionElement = writeVariant( option.value(), doc );
-        optionElement.setAttribute( QStringLiteral( "name" ), option.key() );
+        optionElement.setAttribute( u"name"_s, option.key() );
         element.appendChild( optionElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "Map" ) );
+        element.setAttribute( u"type"_s, u"Map"_s );
       }
       break;
     }
 
-    case QVariant::List:
+    case QMetaType::Type::QVariantList:
     {
-      QVariantList list = value.toList();
+      const QVariantList list = value.toList();
 
       const auto constList = list;
       for ( const QVariant &value : constList )
       {
-        QDomElement valueElement = writeVariant( value, doc );
+        const QDomElement valueElement = writeVariant( value, doc );
         element.appendChild( valueElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "List" ) );
+        element.setAttribute( u"type"_s, u"List"_s );
       }
       break;
     }
 
-    case QVariant::StringList:
+    case QMetaType::Type::QStringList:
     {
-      QStringList list = value.toStringList();
+      const QStringList list = value.toStringList();
 
       const auto constList = list;
       for ( const QString &value : constList )
       {
-        QDomElement valueElement = writeVariant( value, doc );
+        const QDomElement valueElement = writeVariant( value, doc );
         element.appendChild( valueElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "StringList" ) );
+        element.setAttribute( u"type"_s, u"StringList"_s );
       }
       break;
     }
 
-    case QVariant::Int:
-    case QVariant::UInt:
-    case QVariant::Bool:
-    case QVariant::Double:
-    case QVariant::LongLong:
-    case QVariant::ULongLong:
-    case QVariant::String:
-      element.setAttribute( QStringLiteral( "type" ), QVariant::typeToName( value.type() ) );
-      element.setAttribute( QStringLiteral( "value" ), value.toString() );
-      break;
-
-    case QVariant::Char:
-      element.setAttribute( QStringLiteral( "type" ), QVariant::typeToName( value.type() ) );
-      element.setAttribute( QStringLiteral( "value" ), value.isNull() ? QString() : value.toString() );
-      break;
-
-    case QVariant::Color:
-      element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "color" ) );
-      element.setAttribute( QStringLiteral( "value" ), value.value< QColor >().isValid() ? QgsSymbolLayerUtils::encodeColor( value.value< QColor >() ) : QString() );
-      break;
-
-    case QVariant::DateTime:
-      element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "datetime" ) );
-      element.setAttribute( QStringLiteral( "value" ), value.value< QDateTime >().isValid() ? value.toDateTime().toString( Qt::ISODate ) : QString() );
-      break;
-
-    case QVariant::Date:
-      element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "date" ) );
-      element.setAttribute( QStringLiteral( "value" ), value.value< QDate >().isValid() ? value.toDate().toString( Qt::ISODate ) : QString() );
-      break;
-
-    case QVariant::Time:
-      element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "time" ) );
-      element.setAttribute( QStringLiteral( "value" ), value.value< QTime >().isValid() ? value.toTime().toString( Qt::ISODate ) : QString() );
-      break;
-
-    case QVariant::UserType:
+    case QMetaType::Type::QRect:
     {
-      if ( value.canConvert< QgsProperty >() )
+      element.setAttribute( u"type"_s, "QRect" );
+
+      const QRect rect = value.toRect();
+      element.setAttribute( u"x"_s, rect.x() );
+      element.setAttribute( u"y"_s, rect.y() );
+      element.setAttribute( u"width"_s, rect.width() );
+      element.setAttribute( u"height"_s, rect.height() );
+      break;
+    }
+
+    case QMetaType::Type::Int:
+    case QMetaType::Type::UInt:
+    case QMetaType::Type::Bool:
+    case QMetaType::Type::Double:
+    case QMetaType::Type::LongLong:
+    case QMetaType::Type::ULongLong:
+    case QMetaType::Type::QString:
+      element.setAttribute( u"type"_s, value.metaType().name() );
+      element.setAttribute( u"value"_s, value.toString() );
+      break;
+
+    case QMetaType::Type::QChar:
+      element.setAttribute( u"type"_s, value.metaType().name() );
+      element.setAttribute( u"value"_s, QgsVariantUtils::isNull( value ) ? QString() : QString( value.toChar() ) );
+      break;
+
+    case QMetaType::Type::QColor:
+      element.setAttribute( u"type"_s, u"color"_s );
+      element.setAttribute( u"value"_s, value.value< QColor >().isValid() ? QgsColorUtils::colorToString( value.value< QColor >() ) : QString() );
+      break;
+
+    case QMetaType::Type::QDateTime:
+      element.setAttribute( u"type"_s, u"datetime"_s );
+      element.setAttribute( u"value"_s, value.value< QDateTime >().isValid() ? value.toDateTime().toString( Qt::ISODate ) : QString() );
+      break;
+
+    case QMetaType::Type::QDate:
+      element.setAttribute( u"type"_s, u"date"_s );
+      element.setAttribute( u"value"_s, value.value< QDate >().isValid() ? value.toDate().toString( Qt::ISODate ) : QString() );
+      break;
+
+    case QMetaType::Type::QTime:
+      element.setAttribute( u"type"_s, u"time"_s );
+      element.setAttribute( u"value"_s, value.value< QTime >().isValid() ? value.toTime().toString( Qt::ISODate ) : QString() );
+      break;
+
+    default:
+
+      if ( value.userType() == qMetaTypeId<QgsProperty>() )
       {
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsProperty" ) );
+        element.setAttribute( u"type"_s, u"QgsProperty"_s );
         const QDomElement propertyElem = QgsXmlUtils::writeVariant( value.value< QgsProperty >().toVariant(), doc );
         element.appendChild( propertyElem );
         break;
       }
-      else if ( value.canConvert< QgsCoordinateReferenceSystem >() )
+      else if ( value.userType() == qMetaTypeId<QgsCoordinateReferenceSystem>() )
       {
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsCoordinateReferenceSystem" ) );
+        element.setAttribute( u"type"_s, u"QgsCoordinateReferenceSystem"_s );
         const QgsCoordinateReferenceSystem crs = value.value< QgsCoordinateReferenceSystem >();
         crs.writeXml( element, doc );
         break;
       }
-      else if ( value.canConvert< QgsGeometry >() )
+      else if ( value.userType() == qMetaTypeId< QgsGeometry>() )
       {
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsGeometry" ) );
+        element.setAttribute( u"type"_s, u"QgsGeometry"_s );
         const QgsGeometry geom = value.value< QgsGeometry >();
-        element.setAttribute( QStringLiteral( "value" ), geom.asWkt() );
+        element.setAttribute( u"value"_s, geom.asWkt() );
         break;
       }
-      else if ( value.canConvert< QgsProcessingOutputLayerDefinition >() )
+      else if ( value.userType() == qMetaTypeId<QgsProcessingOutputLayerDefinition>() )
       {
-        QDomElement valueElement = writeVariant( value.value< QgsProcessingOutputLayerDefinition >().toVariant(), doc );
+        const QDomElement valueElement = writeVariant( value.value< QgsProcessingOutputLayerDefinition >().toVariant(), doc );
         element.appendChild( valueElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsProcessingOutputLayerDefinition" ) );
+        element.setAttribute( u"type"_s, u"QgsProcessingOutputLayerDefinition"_s );
         break;
       }
-      else if ( value.canConvert< QgsProcessingFeatureSourceDefinition >() )
+      else if ( value.userType() == qMetaTypeId<QgsProcessingFeatureSourceDefinition>() )
       {
-        QDomElement valueElement = writeVariant( value.value< QgsProcessingFeatureSourceDefinition >().toVariant(), doc );
+        const QDomElement valueElement = writeVariant( value.value< QgsProcessingFeatureSourceDefinition >().toVariant(), doc );
         element.appendChild( valueElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsProcessingFeatureSourceDefinition" ) );
+        element.setAttribute( u"type"_s, u"QgsProcessingFeatureSourceDefinition"_s );
         break;
       }
-      else if ( value.canConvert< QgsRemappingSinkDefinition >() )
+      else if ( value.userType() == qMetaTypeId<QgsRemappingSinkDefinition>() )
       {
-        QDomElement valueElement = writeVariant( value.value< QgsRemappingSinkDefinition >().toVariant(), doc );
+        const QDomElement valueElement = writeVariant( value.value< QgsRemappingSinkDefinition >().toVariant(), doc );
         element.appendChild( valueElement );
-        element.setAttribute( QStringLiteral( "type" ), QStringLiteral( "QgsRemappingSinkDefinition" ) );
+        element.setAttribute( u"type"_s, u"QgsRemappingSinkDefinition"_s );
         break;
       }
-      Q_ASSERT_X( false, "QgsXmlUtils::writeVariant", QStringLiteral( "unsupported user variant type %1" ).arg( QMetaType::typeName( value.userType() ) ).toLocal8Bit() );
-      break;
-    }
-
-    default:
-      Q_ASSERT_X( false, "QgsXmlUtils::writeVariant", QStringLiteral( "unsupported variant type %1" ).arg( QVariant::typeToName( value.type() ) ).toLocal8Bit() );
+      else
+      {
+        Q_ASSERT_X( false, "QgsXmlUtils::writeVariant", u"unsupported %1variant type %2"_s.arg( value.userType() >= QMetaType::Type::User ? "user " : QString() ).arg( value.metaType().name() ).toLocal8Bit() );
+      }
       break;
   }
 
@@ -250,97 +300,107 @@ QDomElement QgsXmlUtils::writeVariant( const QVariant &value, QDomDocument &doc 
 
 QVariant QgsXmlUtils::readVariant( const QDomElement &element )
 {
-  QString type = element.attribute( QStringLiteral( "type" ) );
+  const QString type = element.attribute( u"type"_s );
 
-  if ( type == QLatin1String( "invalid" ) )
+  if ( type == "invalid"_L1 )
   {
     return QVariant();
   }
-  else if ( type == QLatin1String( "int" ) )
+  else if ( type == "int"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).toInt();
+    return element.attribute( u"value"_s ).toInt();
   }
-  else if ( type == QLatin1String( "uint" ) )
+  else if ( type == "uint"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).toUInt();
+    return element.attribute( u"value"_s ).toUInt();
   }
-  else if ( type == QLatin1String( "qlonglong" ) )
+  else if ( type == "qlonglong"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).toLongLong();
+    return element.attribute( u"value"_s ).toLongLong();
   }
-  else if ( type == QLatin1String( "qulonglong" ) )
+  else if ( type == "qulonglong"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).toULongLong();
+    return element.attribute( u"value"_s ).toULongLong();
   }
-  else if ( type == QLatin1String( "double" ) )
+  else if ( type == "double"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).toDouble();
+    return element.attribute( u"value"_s ).toDouble();
   }
-  else if ( type == QLatin1String( "QString" ) )
+  else if ( type == "QString"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) );
+    const QString res = element.attribute( u"value"_s );
+    return res.isEmpty() ? QVariant() : res;
   }
-  else if ( type == QLatin1String( "QChar" ) )
+  else if ( type == "QChar"_L1 )
   {
-    const QString res = element.attribute( QStringLiteral( "value" ) );
-    return res.isEmpty() ? QChar() : res.at( 0 );
+    const QString res = element.attribute( u"value"_s );
+    return res.isEmpty() ? QVariant() : res.at( 0 );
   }
-  else if ( type == QLatin1String( "bool" ) )
+  else if ( type == "bool"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ) == QLatin1String( "true" );
+    return element.attribute( u"value"_s ) == "true"_L1;
   }
-  else if ( type == QLatin1String( "color" ) )
+  else if ( type == "color"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).isEmpty() ? QColor() : QgsSymbolLayerUtils::decodeColor( element.attribute( QStringLiteral( "value" ) ) );
+    return element.attribute( u"value"_s ).isEmpty() ? QVariant() : QgsColorUtils::colorFromString( element.attribute( u"value"_s ) );
   }
-  else if ( type == QLatin1String( "datetime" ) )
+  else if ( type == "datetime"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).isEmpty() ? QDateTime() : QDateTime::fromString( element.attribute( QStringLiteral( "value" ) ), Qt::ISODate );
+    return element.attribute( u"value"_s ).isEmpty() ? QVariant() : QDateTime::fromString( element.attribute( u"value"_s ), Qt::ISODate );
   }
-  else if ( type == QLatin1String( "date" ) )
+  else if ( type == "date"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).isEmpty() ? QDate() : QDate::fromString( element.attribute( QStringLiteral( "value" ) ), Qt::ISODate );
+    return element.attribute( u"value"_s ).isEmpty() ? QVariant() : QDate::fromString( element.attribute( u"value"_s ), Qt::ISODate );
   }
-  else if ( type == QLatin1String( "time" ) )
+  else if ( type == "time"_L1 )
   {
-    return element.attribute( QStringLiteral( "value" ) ).isEmpty() ? QTime() : QTime::fromString( element.attribute( QStringLiteral( "value" ) ), Qt::ISODate );
+    return element.attribute( u"value"_s ).isEmpty() ? QVariant() : QTime::fromString( element.attribute( u"value"_s ), Qt::ISODate );
   }
-  else if ( type == QLatin1String( "Map" ) )
+  else if ( type == "Map"_L1 )
   {
     QVariantMap map;
-    QDomNodeList options = element.childNodes();
+    const QDomNodeList options = element.childNodes();
 
     for ( int i = 0; i < options.count(); ++i )
     {
-      QDomElement elem = options.at( i ).toElement();
-      if ( elem.tagName() == QLatin1String( "Option" ) )
-        map.insert( elem.attribute( QStringLiteral( "name" ) ), readVariant( elem ) );
+      const QDomElement elem = options.at( i ).toElement();
+      if ( elem.tagName() == "Option"_L1 )
+        map.insert( elem.attribute( u"name"_s ), readVariant( elem ) );
     }
     return map;
   }
-  else if ( type == QLatin1String( "List" ) )
+  else if ( type == "List"_L1 )
   {
     QVariantList list;
-    QDomNodeList values = element.childNodes();
+    const QDomNodeList values = element.childNodes();
     for ( int i = 0; i < values.count(); ++i )
     {
-      QDomElement elem = values.at( i ).toElement();
+      const QDomElement elem = values.at( i ).toElement();
       list.append( readVariant( elem ) );
     }
     return list;
   }
-  else if ( type == QLatin1String( "StringList" ) )
+  else if ( type == "StringList"_L1 )
   {
     QStringList list;
-    QDomNodeList values = element.childNodes();
+    const QDomNodeList values = element.childNodes();
     for ( int i = 0; i < values.count(); ++i )
     {
-      QDomElement elem = values.at( i ).toElement();
+      const QDomElement elem = values.at( i ).toElement();
       list.append( readVariant( elem ).toString() );
     }
     return list;
   }
-  else if ( type == QLatin1String( "QgsProperty" ) )
+  else if ( type == "QRect"_L1 )
+  {
+    const int x = element.attribute( "x" ).toInt();
+    const int y = element.attribute( "y" ).toInt();
+    const int width = element.attribute( "width" ).toInt();
+    const int height = element.attribute( "height" ).toInt();
+
+    return QRect( x, y, width, height );
+  }
+  else if ( type == "QgsProperty"_L1 )
   {
     const QDomNodeList values = element.childNodes();
     if ( values.isEmpty() )
@@ -352,17 +412,18 @@ QVariant QgsXmlUtils::readVariant( const QDomElement &element )
 
     return QVariant();
   }
-  else if ( type == QLatin1String( "QgsCoordinateReferenceSystem" ) )
+  else if ( type == "QgsCoordinateReferenceSystem"_L1 )
   {
     QgsCoordinateReferenceSystem crs;
     crs.readXml( element );
-    return crs;
+    return crs.isValid() ? crs : QVariant();
   }
-  else if ( type == QLatin1String( "QgsGeometry" ) )
+  else if ( type == "QgsGeometry"_L1 )
   {
-    return QgsGeometry::fromWkt( element.attribute( "value" ) );
+    const QgsGeometry g = QgsGeometry::fromWkt( element.attribute( "value" ) );
+    return !g.isNull() ? g : QVariant();
   }
-  else if ( type == QLatin1String( "QgsProcessingOutputLayerDefinition" ) )
+  else if ( type == "QgsProcessingOutputLayerDefinition"_L1 )
   {
     QgsProcessingOutputLayerDefinition res;
     const QDomNodeList values = element.childNodes();
@@ -374,7 +435,7 @@ QVariant QgsXmlUtils::readVariant( const QDomElement &element )
 
     return QVariant();
   }
-  else if ( type == QLatin1String( "QgsProcessingFeatureSourceDefinition" ) )
+  else if ( type == "QgsProcessingFeatureSourceDefinition"_L1 )
   {
     QgsProcessingFeatureSourceDefinition res;
     const QDomNodeList values = element.childNodes();
@@ -386,7 +447,7 @@ QVariant QgsXmlUtils::readVariant( const QDomElement &element )
 
     return QVariant();
   }
-  else if ( type == QLatin1String( "QgsRemappingSinkDefinition" ) )
+  else if ( type == "QgsRemappingSinkDefinition"_L1 )
   {
     QgsRemappingSinkDefinition res;
     const QDomNodeList values = element.childNodes();

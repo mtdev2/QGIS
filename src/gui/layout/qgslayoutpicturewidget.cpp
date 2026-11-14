@@ -16,13 +16,15 @@
  ***************************************************************************/
 
 #include "qgslayoutpicturewidget.h"
+
 #include "qgsapplication.h"
+#include "qgsexpressionbuilderdialog.h"
+#include "qgsfilecontentsourcelineedit.h"
+#include "qgslayout.h"
 #include "qgslayoutitemmap.h"
 #include "qgslayoutitempicture.h"
-#include "qgslayout.h"
-#include "qgsexpressionbuilderdialog.h"
-#include "qgssvgcache.h"
 #include "qgssettings.h"
+#include "qgssvgcache.h"
 #include "qgssvgselectorwidget.h"
 
 #include <QDoubleValidator>
@@ -32,13 +34,23 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QProgressDialog>
+#include <QString>
 #include <QSvgRenderer>
+
+#include "moc_qgslayoutpicturewidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsLayoutPictureWidget::QgsLayoutPictureWidget( QgsLayoutItemPicture *picture )
   : QgsLayoutItemBaseWidget( nullptr, picture )
   , mPicture( picture )
 {
   setupUi( this );
+
+  mSvgSelectorWidget->setAllowParameters( true );
+  mSvgSelectorWidget->sourceLineEdit()->setPropertyOverrideToolButtonVisible( true );
+  mSvgSelectorWidget->sourceLineEdit()->setLastPathSettingsKey( u"/UI/lastComposerPictureDir"_s );
+  mSvgSelectorWidget->initParametersModel( layoutObject(), coverageLayer() );
 
   mResizeModeComboBox->addItem( tr( "Zoom" ), QgsLayoutItemPicture::Zoom );
   mResizeModeComboBox->addItem( tr( "Stretch" ), QgsLayoutItemPicture::Stretch );
@@ -56,30 +68,44 @@ QgsLayoutPictureWidget::QgsLayoutPictureWidget( QgsLayoutItemPicture *picture )
   mAnchorPointComboBox->addItem( tr( "Bottom Center" ), QgsLayoutItem::LowerMiddle );
   mAnchorPointComboBox->addItem( tr( "Bottom Right" ), QgsLayoutItem::LowerRight );
 
-  connect( mPictureRotationSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mPictureRotationSpinBox_valueChanged );
+  mClipItemComboBox->setCurrentLayout( picture->layout() );
+  mClipItemComboBox->setItemFlags( QgsLayoutItem::FlagProvidesClipPath );
+
+  connect( mPictureRotationSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mPictureRotationSpinBox_valueChanged );
   connect( mRotationFromComposerMapCheckBox, &QCheckBox::stateChanged, this, &QgsLayoutPictureWidget::mRotationFromComposerMapCheckBox_stateChanged );
   connect( mResizeModeComboBox, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsLayoutPictureWidget::mResizeModeComboBox_currentIndexChanged );
   connect( mAnchorPointComboBox, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsLayoutPictureWidget::mAnchorPointComboBox_currentIndexChanged );
   connect( mFillColorButton, &QgsColorButton::colorChanged, this, &QgsLayoutPictureWidget::mFillColorButton_colorChanged );
   connect( mStrokeColorButton, &QgsColorButton::colorChanged, this, &QgsLayoutPictureWidget::mStrokeColorButton_colorChanged );
-  connect( mStrokeWidthSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mStrokeWidthSpinBox_valueChanged );
-  connect( mPictureRotationOffsetSpinBox, static_cast < void ( QDoubleSpinBox::* )( double ) > ( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mPictureRotationOffsetSpinBox_valueChanged );
+  connect( mStrokeWidthSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mStrokeWidthSpinBox_valueChanged );
+  connect( mPictureRotationOffsetSpinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsLayoutPictureWidget::mPictureRotationOffsetSpinBox_valueChanged );
   connect( mNorthTypeComboBox, static_cast<void ( QComboBox::* )( int )>( &QComboBox::currentIndexChanged ), this, &QgsLayoutPictureWidget::mNorthTypeComboBox_currentIndexChanged );
+  connect( mSvgSelectorWidget, &QgsSvgSelectorWidget::svgSelected, this, &QgsLayoutPictureWidget::sourceChanged );
+
+  connect( mSvgSelectorWidget, &QgsSvgSelectorWidget::svgParametersChanged, this, &QgsLayoutPictureWidget::setSvgDynamicParameters );
   connect( mRadioSVG, &QRadioButton::toggled, this, &QgsLayoutPictureWidget::modeChanged );
   connect( mRadioRaster, &QRadioButton::toggled, this, &QgsLayoutPictureWidget::modeChanged );
-  connect( mSvgSourceLineEdit, &QgsSvgSourceLineEdit::sourceChanged, this, &QgsLayoutPictureWidget::svgSourceChanged );
-  connect( mImageSourceLineEdit, &QgsImageSourceLineEdit::sourceChanged, this, &QgsLayoutPictureWidget::rasterSourceChanged );
 
-  mSvgSourceLineEdit->setLastPathSettingsKey( QStringLiteral( "/UI/lastComposerPictureDir" ) );
+  connect( mClipToItemCheckBox, &QGroupBox::toggled, this, [this]( bool active ) {
+    mPicture->beginCommand( tr( "Toggle Picture Clipping" ) );
+    mPicture->setClipToItem( active );
+    mPicture->endCommand();
+  } );
+
+  connect( mClipItemComboBox, &QgsLayoutItemComboBox::itemChanged, this, [this]( QgsLayoutItem *item ) {
+    mPicture->beginCommand( tr( "Change Picture Clipping Item" ) );
+    mPicture->setClippingItem( item );
+    mPicture->endCommand();
+  } );
 
   setPanelTitle( tr( "Picture Properties" ) );
 
   mFillColorButton->setAllowOpacity( true );
   mFillColorButton->setColorDialogTitle( tr( "Select Fill Color" ) );
-  mFillColorButton->setContext( QStringLiteral( "composer" ) );
+  mFillColorButton->setContext( u"composer"_s );
   mStrokeColorButton->setAllowOpacity( true );
   mStrokeColorButton->setColorDialogTitle( tr( "Select Stroke Color" ) );
-  mStrokeColorButton->setContext( QStringLiteral( "composer" ) );
+  mStrokeColorButton->setContext( u"composer"_s );
 
   mFillColorDDBtn->registerLinkedWidget( mFillColorButton );
   mStrokeColorDDBtn->registerLinkedWidget( mStrokeColorButton );
@@ -90,20 +116,6 @@ QgsLayoutPictureWidget::QgsLayoutPictureWidget( QgsLayoutItemPicture *picture )
   mNorthTypeComboBox->blockSignals( false );
   mPictureRotationOffsetSpinBox->setClearValue( 0.0 );
   mPictureRotationSpinBox->setClearValue( 0.0 );
-
-  viewGroups->setHeaderHidden( true );
-#if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
-  mIconSize = std::max( 30, static_cast< int >( std::round( Qgis::UI_SCALE_FACTOR * fontMetrics().width( 'X' ) * 4 ) ) );
-#else
-  mIconSize = std::max( 30, static_cast< int >( std::round( Qgis::UI_SCALE_FACTOR * fontMetrics().horizontalAdvance( 'X' ) * 4 ) ) );
-#endif
-  viewImages->setGridSize( QSize( mIconSize * 1.2, mIconSize * 1.2 ) );
-  viewImages->setUniformItemSizes( false );
-  populateList();
-
-  connect( viewImages->selectionModel(), &QItemSelectionModel::currentChanged, this, &QgsLayoutPictureWidget::setSvgName );
-  connect( viewGroups->selectionModel(), &QItemSelectionModel::currentChanged, this, &QgsLayoutPictureWidget::populateIcons );
-
 
   //add widget for general composer item properties
   mItemPropertiesWidget = new QgsLayoutItemPropertiesWidget( this, picture );
@@ -122,15 +134,10 @@ QgsLayoutPictureWidget::QgsLayoutPictureWidget( QgsLayoutItemPicture *picture )
   connect( mPicture, &QgsLayoutItemPicture::pictureRotationChanged, this, &QgsLayoutPictureWidget::setPicRotationSpinValue );
 
   //connections for data defined buttons
-  mSourceDDBtn->registerEnabledWidget( mImageSourceLineEdit, false );
-  mSourceDDBtn->registerEnabledWidget( mSvgSourceLineEdit, false );
-
-  registerDataDefinedButton( mSourceDDBtn, QgsLayoutObject::PictureSource );
-  registerDataDefinedButton( mFillColorDDBtn, QgsLayoutObject::PictureSvgBackgroundColor );
-  registerDataDefinedButton( mStrokeColorDDBtn, QgsLayoutObject::PictureSvgStrokeColor );
-  registerDataDefinedButton( mStrokeWidthDDBtn, QgsLayoutObject::PictureSvgStrokeWidth );
-
-  updatePictureTypeWidgets();
+  registerDataDefinedButton( mSvgSelectorWidget->propertyOverrideToolButton(), QgsLayoutObject::DataDefinedProperty::PictureSource );
+  registerDataDefinedButton( mFillColorDDBtn, QgsLayoutObject::DataDefinedProperty::PictureSvgBackgroundColor );
+  registerDataDefinedButton( mStrokeColorDDBtn, QgsLayoutObject::DataDefinedProperty::PictureSvgStrokeColor );
+  registerDataDefinedButton( mStrokeWidthDDBtn, QgsLayoutObject::DataDefinedProperty::PictureSvgStrokeWidth );
 }
 
 void QgsLayoutPictureWidget::setMasterLayout( QgsMasterLayoutInterface *masterLayout )
@@ -157,16 +164,14 @@ void QgsLayoutPictureWidget::mResizeModeComboBox_currentIndexChanged( int )
   }
 
   mPicture->beginCommand( tr( "Change Resize Mode" ) );
-  mPicture->setResizeMode( static_cast< QgsLayoutItemPicture::ResizeMode >( mResizeModeComboBox->currentData().toInt() ) );
+  mPicture->setResizeMode( static_cast<QgsLayoutItemPicture::ResizeMode>( mResizeModeComboBox->currentData().toInt() ) );
   mPicture->endCommand();
 
   //disable picture rotation for non-zoom modes
-  mRotationGroupBox->setEnabled( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom ||
-                                 mPicture->resizeMode() == QgsLayoutItemPicture::ZoomResizeFrame );
+  mRotationGroupBox->setEnabled( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom || mPicture->resizeMode() == QgsLayoutItemPicture::ZoomResizeFrame );
 
   //disable anchor point control for certain zoom modes
-  if ( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom ||
-       mPicture->resizeMode() == QgsLayoutItemPicture::Clip )
+  if ( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom || mPicture->resizeMode() == QgsLayoutItemPicture::Clip )
   {
     mAnchorPointComboBox->setEnabled( true );
   }
@@ -184,7 +189,7 @@ void QgsLayoutPictureWidget::mAnchorPointComboBox_currentIndexChanged( int )
   }
 
   mPicture->beginCommand( tr( "Change Placement" ) );
-  mPicture->setPictureAnchor( static_cast< QgsLayoutItem::ReferencePoint >( mAnchorPointComboBox->currentData().toInt() ) );
+  mPicture->setPictureAnchor( static_cast<QgsLayoutItem::ReferencePoint>( mAnchorPointComboBox->currentData().toInt() ) );
   mPicture->endCommand();
 }
 
@@ -199,7 +204,7 @@ bool QgsLayoutPictureWidget::setNewItem( QgsLayoutItem *item )
     disconnect( mPicture, &QgsLayoutItemPicture::pictureRotationChanged, this, &QgsLayoutPictureWidget::setPicRotationSpinValue );
   }
 
-  mPicture = qobject_cast< QgsLayoutItemPicture * >( item );
+  mPicture = qobject_cast<QgsLayoutItemPicture *>( item );
   mItemPropertiesWidget->setItem( mPicture );
 
   if ( mPicture )
@@ -232,7 +237,7 @@ void QgsLayoutPictureWidget::mRotationFromComposerMapCheckBox_stateChanged( int 
   }
   else
   {
-    QgsLayoutItemMap *map = qobject_cast< QgsLayoutItemMap * >( mComposerMapComboBox->currentItem() );
+    QgsLayoutItemMap *map = qobject_cast<QgsLayoutItemMap *>( mComposerMapComboBox->currentItem() );
     mPicture->setLinkedMap( map );
     mPictureRotationSpinBox->setEnabled( false );
     mNorthTypeComboBox->setEnabled( true );
@@ -256,7 +261,7 @@ void QgsLayoutPictureWidget::mapChanged( QgsLayoutItem *item )
     return;
   }
 
-  QgsLayoutItemMap *map = qobject_cast< QgsLayoutItemMap *>( item );
+  QgsLayoutItemMap *map = qobject_cast<QgsLayoutItemMap *>( item );
   if ( !map )
   {
     return;
@@ -290,6 +295,8 @@ void QgsLayoutPictureWidget::setGuiElementValues()
     mFillColorButton->blockSignals( true );
     mStrokeColorButton->blockSignals( true );
     mStrokeWidthSpinBox->blockSignals( true );
+    mClipToItemCheckBox->blockSignals( true );
+    mClipItemComboBox->blockSignals( true );
 
     mPictureRotationSpinBox->setValue( mPicture->pictureRotation() );
 
@@ -316,13 +323,11 @@ void QgsLayoutPictureWidget::setGuiElementValues()
 
     mResizeModeComboBox->setCurrentIndex( mResizeModeComboBox->findData( mPicture->resizeMode() ) );
     //disable picture rotation for non-zoom modes
-    mRotationGroupBox->setEnabled( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom ||
-                                   mPicture->resizeMode() == QgsLayoutItemPicture::ZoomResizeFrame );
+    mRotationGroupBox->setEnabled( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom || mPicture->resizeMode() == QgsLayoutItemPicture::ZoomResizeFrame );
 
     mAnchorPointComboBox->setCurrentIndex( mAnchorPointComboBox->findData( mPicture->pictureAnchor() ) );
     //disable anchor point control for certain zoom modes
-    if ( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom ||
-         mPicture->resizeMode() == QgsLayoutItemPicture::Clip )
+    if ( mPicture->resizeMode() == QgsLayoutItemPicture::Zoom || mPicture->resizeMode() == QgsLayoutItemPicture::Clip )
     {
       mAnchorPointComboBox->setEnabled( true );
     }
@@ -331,38 +336,27 @@ void QgsLayoutPictureWidget::setGuiElementValues()
       mAnchorPointComboBox->setEnabled( false );
     }
 
-    whileBlocking( mRadioSVG )->setChecked( mPicture->mode() == QgsLayoutItemPicture::FormatSVG );
-    whileBlocking( mRadioRaster )->setChecked( mPicture->mode() == QgsLayoutItemPicture::FormatRaster );
-    updatePictureTypeWidgets();
-
-    if ( mRadioSVG->isChecked() )
+    switch ( mPicture->originalMode() )
     {
-      whileBlocking( mSvgSourceLineEdit )->setSource( mPicture->picturePath() );
+      case Qgis::PictureFormat::SVG:
+      case Qgis::PictureFormat::Unknown:
+        mRadioSVG->setChecked( true );
+        break;
+      case Qgis::PictureFormat::Raster:
+        mRadioRaster->setChecked( true );
+        break;
+    }
 
-      mBlockSvgModelChanges++;
-      QAbstractItemModel *m = viewImages->model();
-      QItemSelectionModel *selModel = viewImages->selectionModel();
-      for ( int i = 0; i < m->rowCount(); i++ )
-      {
-        QModelIndex idx( m->index( i, 0 ) );
-        if ( m->data( idx ).toString() == mPicture->picturePath() )
-        {
-          selModel->select( idx, QItemSelectionModel::SelectCurrent );
-          selModel->setCurrentIndex( idx, QItemSelectionModel::SelectCurrent );
-          break;
-        }
-      }
-      mBlockSvgModelChanges--;
-    }
-    else if ( mRadioRaster->isChecked() )
-    {
-      whileBlocking( mImageSourceLineEdit )->setSource( mPicture->picturePath() );
-    }
+    mSvgSelectorWidget->setSvgPath( mPicture->picturePath() );
+    mSvgSelectorWidget->setSvgParameters( mPicture->svgDynamicParameters() );
 
     updateSvgParamGui( false );
     mFillColorButton->setColor( mPicture->svgFillColor() );
     mStrokeColorButton->setColor( mPicture->svgStrokeColor() );
     mStrokeWidthSpinBox->setValue( mPicture->svgStrokeWidth() );
+
+    mClipToItemCheckBox->setChecked( mPicture->clipToItem() );
+    mClipItemComboBox->setItem( mPicture->clippingItem() );
 
     mRotationFromComposerMapCheckBox->blockSignals( false );
     mPictureRotationSpinBox->blockSignals( false );
@@ -374,6 +368,8 @@ void QgsLayoutPictureWidget::setGuiElementValues()
     mFillColorButton->blockSignals( false );
     mStrokeColorButton->blockSignals( false );
     mStrokeWidthSpinBox->blockSignals( false );
+    mClipToItemCheckBox->blockSignals( false );
+    mClipItemComboBox->blockSignals( false );
 
     populateDataDefinedButtons();
   }
@@ -384,23 +380,36 @@ void QgsLayoutPictureWidget::updateSvgParamGui( bool resetValues )
   if ( !mPicture )
     return;
 
-  QString picturePath = mPicture->picturePath();
+  const QString picturePath = mPicture->picturePath();
 
   //activate gui for svg parameters only if supported by the svg file
   bool hasFillParam, hasFillOpacityParam, hasStrokeParam, hasStrokeWidthParam, hasStrokeOpacityParam;
   QColor defaultFill, defaultStroke;
   double defaultStrokeWidth, defaultFillOpacity, defaultStrokeOpacity;
   bool hasDefaultFillColor, hasDefaultFillOpacity, hasDefaultStrokeColor, hasDefaultStrokeWidth, hasDefaultStrokeOpacity;
-  QgsApplication::svgCache()->containsParams( picturePath, hasFillParam, hasDefaultFillColor, defaultFill,
-      hasFillOpacityParam, hasDefaultFillOpacity, defaultFillOpacity,
-      hasStrokeParam, hasDefaultStrokeColor, defaultStroke,
-      hasStrokeWidthParam, hasDefaultStrokeWidth, defaultStrokeWidth,
-      hasStrokeOpacityParam, hasDefaultStrokeOpacity, defaultStrokeOpacity );
+  QgsApplication::svgCache()->containsParams(
+    picturePath,
+    hasFillParam,
+    hasDefaultFillColor,
+    defaultFill,
+    hasFillOpacityParam,
+    hasDefaultFillOpacity,
+    defaultFillOpacity,
+    hasStrokeParam,
+    hasDefaultStrokeColor,
+    defaultStroke,
+    hasStrokeWidthParam,
+    hasDefaultStrokeWidth,
+    defaultStrokeWidth,
+    hasStrokeOpacityParam,
+    hasDefaultStrokeOpacity,
+    defaultStrokeOpacity
+  );
 
   if ( resetValues )
   {
     QColor fill = mFillColorButton->color();
-    double newOpacity = hasFillOpacityParam ? fill.alphaF() : 1.0;
+    const double newOpacity = hasFillOpacityParam ? fill.alphaF() : 1.0;
     if ( hasDefaultFillColor )
     {
       fill = defaultFill;
@@ -409,11 +418,12 @@ void QgsLayoutPictureWidget::updateSvgParamGui( bool resetValues )
     mFillColorButton->setColor( fill );
   }
   mFillColorButton->setEnabled( hasFillParam );
+  mFillColorDDBtn->setEnabled( hasFillParam );
   mFillColorButton->setAllowOpacity( hasFillOpacityParam );
   if ( resetValues )
   {
     QColor stroke = mStrokeColorButton->color();
-    double newOpacity = hasStrokeOpacityParam ? stroke.alphaF() : 1.0;
+    const double newOpacity = hasStrokeOpacityParam ? stroke.alphaF() : 1.0;
     if ( hasDefaultStrokeColor )
     {
       stroke = defaultStroke;
@@ -422,12 +432,14 @@ void QgsLayoutPictureWidget::updateSvgParamGui( bool resetValues )
     mStrokeColorButton->setColor( stroke );
   }
   mStrokeColorButton->setEnabled( hasStrokeParam );
+  mStrokeColorDDBtn->setEnabled( hasStrokeParam );
   mStrokeColorButton->setAllowOpacity( hasStrokeOpacityParam );
   if ( hasDefaultStrokeWidth && resetValues )
   {
     mStrokeWidthSpinBox->setValue( defaultStrokeWidth );
   }
   mStrokeWidthSpinBox->setEnabled( hasStrokeWidthParam );
+  mStrokeWidthDDBtn->setEnabled( hasStrokeWidthParam );
 }
 
 void QgsLayoutPictureWidget::mFillColorButton_colorChanged( const QColor &color )
@@ -465,114 +477,60 @@ void QgsLayoutPictureWidget::mPictureRotationOffsetSpinBox_valueChanged( double 
 void QgsLayoutPictureWidget::mNorthTypeComboBox_currentIndexChanged( int index )
 {
   mPicture->beginCommand( tr( "Change Picture North Mode" ) );
-  mPicture->setNorthMode( static_cast< QgsLayoutItemPicture::NorthMode >( mNorthTypeComboBox->itemData( index ).toInt() ) );
+  mPicture->setNorthMode( static_cast<QgsLayoutItemPicture::NorthMode>( mNorthTypeComboBox->itemData( index ).toInt() ) );
   mPicture->endCommand();
   mPicture->update();
 }
 
-void QgsLayoutPictureWidget::modeChanged()
+void QgsLayoutPictureWidget::modeChanged( bool checked )
 {
-  const QgsLayoutItemPicture::Format newFormat = mRadioSVG->isChecked() ? QgsLayoutItemPicture::FormatSVG : QgsLayoutItemPicture::FormatRaster;
-  if ( mPicture && mPicture->mode() != newFormat )
-  {
-    whileBlocking( mSvgSourceLineEdit )->setSource( QString() );
-    whileBlocking( mImageSourceLineEdit )->setSource( QString() );
-    mPicture->beginCommand( tr( "Change Picture Type" ) );
-    mPicture->setPicturePath( QString(), newFormat );
-    mPicture->endCommand();
-  }
-  updatePictureTypeWidgets();
-}
-
-void QgsLayoutPictureWidget::updatePictureTypeWidgets()
-{
-  mRasterFrame->setVisible( mRadioRaster->isChecked() );
-  mSVGFrame->setVisible( mRadioSVG->isChecked() );
-  mSVGParamsGroupBox->setVisible( mRadioSVG->isChecked() );
-
-  // need to move the data defined button to the appropriate frame -- we can't have two buttons linked to the one property!
-  if ( mRadioSVG->isChecked() )
-    mSvgDDBtnFrame->layout()->addWidget( mSourceDDBtn );
-  else
-    mRasterDDBtnFrame->layout()->addWidget( mSourceDDBtn );
-}
-
-void QgsLayoutPictureWidget::populateList()
-{
-  QAbstractItemModel *oldModel = viewGroups->model();
-  QgsSvgSelectorGroupsModel *g = new QgsSvgSelectorGroupsModel( viewGroups );
-  viewGroups->setModel( g );
-  delete oldModel;
-
-  // Set the tree expanded at the first level
-  int rows = g->rowCount( g->indexFromItem( g->invisibleRootItem() ) );
-  for ( int i = 0; i < rows; i++ )
-  {
-    viewGroups->setExpanded( g->indexFromItem( g->item( i ) ), true );
-  }
-
-  // Initially load the icons in the List view without any grouping
-  oldModel = viewImages->model();
-  QgsSvgSelectorListModel *m = new QgsSvgSelectorListModel( viewImages, mIconSize );
-  viewImages->setModel( m );
-
-  delete oldModel;
-}
-
-void QgsLayoutPictureWidget::populateIcons( const QModelIndex &idx )
-{
-  QString path = idx.data( Qt::UserRole + 1 ).toString();
-
-  QAbstractItemModel *oldModel = viewImages->model();
-  QgsSvgSelectorListModel *m = new QgsSvgSelectorListModel( viewImages, path, mIconSize );
-  viewImages->setModel( m );
-  delete oldModel;
-
-  connect( viewImages->selectionModel(), &QItemSelectionModel::currentChanged, this, &QgsLayoutPictureWidget::setSvgName );
-}
-
-void QgsLayoutPictureWidget::setSvgName( const QModelIndex &idx )
-{
-  if ( mBlockSvgModelChanges )
+  if ( !checked )
     return;
 
-  QString name = idx.data( Qt::UserRole ).toString();
-  whileBlocking( mSvgSourceLineEdit )->setSource( name );
-  svgSourceChanged( name );
+  const bool svg = mRadioSVG->isChecked();
+  const Qgis::PictureFormat newFormat = svg ? Qgis::PictureFormat::SVG : Qgis::PictureFormat::Raster;
+
+  if ( svg )
+    mSvgSelectorWidget->sourceLineEdit()->setMode( QgsPictureSourceLineEditBase::Svg );
+  else
+    mSvgSelectorWidget->sourceLineEdit()->setMode( QgsPictureSourceLineEditBase::Image );
+
+  mSvgSelectorWidget->setBrowserVisible( svg );
+  mSvgSelectorWidget->setAllowParameters( svg );
+  mSVGParamsGroupBox->setVisible( svg );
+
+  if ( mPicture && mPicture->mode() != newFormat )
+  {
+    mPicture->beginCommand( tr( "Change Picture Type" ) );
+    mPicture->setMode( newFormat );
+    mPicture->endCommand();
+  }
 }
 
-void QgsLayoutPictureWidget::svgSourceChanged( const QString &source )
+void QgsLayoutPictureWidget::sourceChanged( const QString &source )
 {
   if ( mPicture )
   {
     mPicture->beginCommand( tr( "Change Picture" ) );
-    mPicture->setPicturePath( source, QgsLayoutItemPicture::FormatSVG );
+    mPicture->setPicturePath( source, mRadioSVG->isChecked() ? Qgis::PictureFormat::SVG : Qgis::PictureFormat::Raster );
     mPicture->update();
     mPicture->endCommand();
     updateSvgParamGui();
   }
 }
 
-void QgsLayoutPictureWidget::rasterSourceChanged( const QString &source )
+void QgsLayoutPictureWidget::setSvgDynamicParameters( const QMap<QString, QgsProperty> &parameters )
 {
-  if ( mPicture )
-  {
-    mPicture->beginCommand( tr( "Change Picture" ) );
-    mPicture->setPicturePath( source, QgsLayoutItemPicture::FormatRaster );
-    mPicture->update();
-    mPicture->endCommand();
-  }
+  mPicture->beginCommand( tr( "Set SVG parameters" ) );
+  mPicture->setSvgDynamicParameters( parameters );
+  mPicture->update();
+  mPicture->endCommand();
 }
 
 void QgsLayoutPictureWidget::populateDataDefinedButtons()
 {
-  updateDataDefinedButton( mSourceDDBtn );
+  updateDataDefinedButton( mSvgSelectorWidget->propertyOverrideToolButton() );
   updateDataDefinedButton( mFillColorDDBtn );
   updateDataDefinedButton( mStrokeColorDDBtn );
   updateDataDefinedButton( mStrokeWidthDDBtn );
-
-  //initial state of controls - disable related controls when dd buttons are active
-  mImageSourceLineEdit->setEnabled( !mSourceDDBtn->isActive() );
-  mSvgSourceLineEdit->setEnabled( !mSourceDDBtn->isActive() );
 }
-

@@ -13,25 +13,28 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <fstream>
-
-#include <QFileInfo>
-#include <QDir>
-
-#include "zip.h"
-
-#include "qgsmessagelog.h"
 #include "qgsziputils.h"
-#include "qgslogger.h"
 
+#include <fstream>
 #include <iostream>
+#include <zip.h>
+#include <zlib.h>
+
+#include "qgslogger.h"
+#include "qgsmessagelog.h"
+
+#include <QDir>
+#include <QFileInfo>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 bool QgsZipUtils::isZipFile( const QString &filename )
 {
-  return QFileInfo( filename ).suffix().compare( QLatin1String( "qgz" ), Qt::CaseInsensitive ) == 0;
+  return QFileInfo( filename ).suffix().compare( "qgz"_L1, Qt::CaseInsensitive ) == 0;
 }
 
-bool QgsZipUtils::unzip( const QString &zipFilename, const QString &dir, QStringList &files )
+bool QgsZipUtils::unzip( const QString &zipFilename, const QString &dir, QStringList &files, bool checkConsistency )
 {
   files.clear();
 
@@ -63,11 +66,11 @@ bool QgsZipUtils::unzip( const QString &zipFilename, const QString &dir, QString
 
   int rc = 0;
   const QByteArray fileNamePtr = zipFilename.toUtf8();
-  struct zip *z = zip_open( fileNamePtr.constData(), ZIP_CHECKCONS, &rc );
+  struct zip *z = zip_open( fileNamePtr.constData(), checkConsistency ? ZIP_CHECKCONS : 0, &rc );
 
   if ( rc == ZIP_ER_OK && z )
   {
-    int count = zip_get_num_files( z );
+    const int count = zip_get_num_entries( z, ZIP_FL_UNCHANGED );
     if ( count != -1 )
     {
       struct zip_stat stat;
@@ -75,14 +78,25 @@ bool QgsZipUtils::unzip( const QString &zipFilename, const QString &dir, QString
       for ( int i = 0; i < count; i++ )
       {
         zip_stat_index( z, i, 0, &stat );
-        size_t len = stat.size;
+        const size_t len = stat.size;
 
         struct zip_file *file = zip_fopen_index( z, i, 0 );
-        std::unique_ptr< char[] > buf( new char[len] );
+        const std::unique_ptr< char[] > buf( new char[len] );
         if ( zip_fread( file, buf.get(), len ) != -1 )
         {
-          QString fileName( stat.name );
-          QFileInfo newFile( QDir( dir ), fileName );
+          const QString fileName( stat.name );
+          if ( fileName.endsWith( "/" ) )
+          {
+            continue;
+          }
+
+          const QFileInfo newFile( QDir( dir ), fileName );
+
+          if ( !QString( QDir::cleanPath( newFile.absolutePath() ) + u"/"_s ).startsWith( QDir( dir ).absolutePath() + u"/"_s ) )
+          {
+            QgsMessageLog::logMessage( QObject::tr( "Skipped file %1 outside of the directory %2" ).arg( newFile.absoluteFilePath(), QDir( dir ).absolutePath() ) );
+            continue;
+          }
 
           // Create path for a new file if it does not exist.
           if ( !newFile.absoluteDir().exists() )
@@ -129,7 +143,7 @@ bool QgsZipUtils::unzip( const QString &zipFilename, const QString &dir, QString
   return true;
 }
 
-bool QgsZipUtils::zip( const QString &zipFilename, const QStringList &files )
+bool QgsZipUtils::zip( const QString &zipFilename, const QStringList &files, bool overwrite )
 {
   if ( zipFilename.isEmpty() )
   {
@@ -139,13 +153,13 @@ bool QgsZipUtils::zip( const QString &zipFilename, const QStringList &files )
 
   int rc = 0;
   const QByteArray zipFileNamePtr = zipFilename.toUtf8();
-  struct zip *z = zip_open( zipFileNamePtr.constData(), ZIP_CREATE, &rc );
+  struct zip *z = zip_open( zipFileNamePtr.constData(), overwrite ? ( ZIP_CREATE | ZIP_TRUNCATE ) : ZIP_CREATE, &rc );
 
   if ( rc == ZIP_ER_OK && z )
   {
     for ( const auto &file : files )
     {
-      QFileInfo fileInfo( file );
+      const QFileInfo fileInfo( file );
       if ( !fileInfo.exists() )
       {
         QgsMessageLog::logMessage( QObject::tr( "Error input file does not exist: '%1'" ).arg( file ) );
@@ -182,7 +196,202 @@ bool QgsZipUtils::zip( const QString &zipFilename, const QStringList &files )
   }
   else
   {
-    QgsMessageLog::logMessage( QObject::tr( "Error creating zip archive '%1': %2" ).arg( zipFilename, zip_strerror( z ) ) );
+    QgsMessageLog::logMessage( QObject::tr( "Error creating zip archive '%1': %2" ).arg( zipFilename, z ? zip_strerror( z ) : zipFilename ) );
+    return false;
+  }
+
+  return true;
+}
+
+bool QgsZipUtils::decodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut )
+{
+  return decodeGzip( bytesIn.constData(), bytesIn.count(), bytesOut );
+}
+
+bool QgsZipUtils::decodeGzip( const char *bytesIn, std::size_t size, QByteArray &bytesOut )
+{
+  unsigned char *bytesInPtr = reinterpret_cast<unsigned char *>( const_cast<char *>( bytesIn ) );
+  uint bytesInLeft = static_cast<uint>( size );
+
+  const uint CHUNK = 16384;
+  unsigned char out[CHUNK];
+  const int DEC_MAGIC_NUM_FOR_GZIP = 16;
+
+  // allocate inflate state
+  z_stream strm;
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
+  strm.opaque = Z_NULL;
+  strm.avail_in = 0;
+  strm.next_in = Z_NULL;
+
+  int ret = inflateInit2( &strm, MAX_WBITS + DEC_MAGIC_NUM_FOR_GZIP );
+  if ( ret != Z_OK )
+  {
+    inflateEnd( &strm );
+    return false;
+  }
+
+  while ( ret != Z_STREAM_END ) // done when inflate() says it's done
+  {
+    // prepare next chunk
+    const uint bytesToProcess = std::min( CHUNK, bytesInLeft );
+    strm.next_in = bytesInPtr;
+    strm.avail_in = bytesToProcess;
+    bytesInPtr += bytesToProcess;
+    bytesInLeft -= bytesToProcess;
+
+    if ( bytesToProcess == 0 )
+      break; // we end with an error - no more data but inflate() wants more data
+
+    // run inflate() on input until output buffer not full
+    do
+    {
+      strm.avail_out = CHUNK;
+      strm.next_out = out;
+      ret = inflate( &strm, Z_NO_FLUSH );
+      Q_ASSERT( ret != Z_STREAM_ERROR ); // state not clobbered
+      if ( ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR )
+      {
+        inflateEnd( &strm );
+        return false;
+      }
+      const unsigned have = CHUNK - strm.avail_out;
+      bytesOut.append( QByteArray::fromRawData( reinterpret_cast<const char *>( out ), static_cast<int>( have ) ) );
+    } while ( strm.avail_out == 0 );
+  }
+
+  inflateEnd( &strm );
+  return ret == Z_STREAM_END || ( ret == Z_OK && bytesInLeft == 0 );
+}
+
+bool QgsZipUtils::encodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut )
+{
+  unsigned char *bytesInPtr = reinterpret_cast<unsigned char *>( const_cast<char *>( bytesIn.constData() ) );
+  const uint bytesInLeft = static_cast<uint>( bytesIn.count() );
+
+  const uint CHUNK = 16384;
+  unsigned char out[CHUNK];
+  const int DEC_MAGIC_NUM_FOR_GZIP = 16;
+
+  // allocate deflate state
+  z_stream strm;
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
+  strm.opaque = Z_NULL;
+
+  int ret = deflateInit2( &strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + DEC_MAGIC_NUM_FOR_GZIP, 8, Z_DEFAULT_STRATEGY );
+  if ( ret != Z_OK )
+    return false;
+
+  strm.avail_in = bytesInLeft;
+  strm.next_in = bytesInPtr;
+
+  // run deflate() on input until output buffer not full, finish
+  // compression if all of source has been read in
+  do
+  {
+    strm.avail_out = CHUNK;
+    strm.next_out = out;
+    ret = deflate( &strm, Z_FINISH );  // no bad return value
+    Q_ASSERT( ret != Z_STREAM_ERROR ); // state not clobbered
+
+    const unsigned have = CHUNK - strm.avail_out;
+    bytesOut.append( QByteArray::fromRawData( reinterpret_cast<const char *>( out ), static_cast<int>( have ) ) );
+  } while ( strm.avail_out == 0 );
+  Q_ASSERT( ret == Z_STREAM_END ); // stream will be complete
+
+  // clean up and return
+  deflateEnd( &strm );
+  return true;
+}
+
+const QStringList QgsZipUtils::files( const QString &zip )
+{
+  if ( zip.isEmpty() && !QFileInfo::exists( zip ) )
+  {
+    return QStringList();
+  }
+  QStringList files;
+
+  int rc = 0;
+  const QByteArray fileNamePtr = zip.toUtf8();
+  struct zip *z = zip_open( fileNamePtr.constData(), 0, &rc );
+
+  if ( rc == ZIP_ER_OK && z )
+  {
+    const int count = zip_get_num_entries( z, ZIP_FL_UNCHANGED );
+    if ( count != -1 )
+    {
+      struct zip_stat stat;
+
+      for ( int i = 0; i < count; i++ )
+      {
+        zip_stat_index( z, i, 0, &stat );
+        files << QString( stat.name );
+      }
+    }
+
+    zip_close( z );
+  }
+
+  return files;
+}
+
+bool QgsZipUtils::extractFileFromZip( const QString &zipFilename, const QString &filenameInZip, QByteArray &bytesOut )
+{
+  if ( !QFileInfo::exists( zipFilename ) )
+  {
+    QgsMessageLog::logMessage( QObject::tr( "Error zip file does not exist: '%1'" ).arg( zipFilename ) );
+    return false;
+  }
+
+  if ( filenameInZip.isEmpty() )
+  {
+    QgsMessageLog::logMessage( QObject::tr( "Error file name in zip is empty" ) );
+    return false;
+  }
+
+  int err = 0;
+  const QByteArray zipFilenamePtr = zipFilename.toUtf8();
+  struct zip *z = zip_open( zipFilenamePtr.constData(), 0, &err );
+  if ( !z )
+  {
+    zip_error_t error;
+    zip_error_init_with_code( &error, err );
+    QgsMessageLog::logMessage( QObject::tr( "Error opening zip archive '%1': %2" ).arg( zipFilename, zip_error_strerror( &error ) ) );
+    zip_error_fini( &error );
+    return false;
+  }
+
+  const QByteArray filenameInZipPtr = filenameInZip.toUtf8();
+  struct zip_stat st;
+  zip_stat_init( &st );
+  if ( zip_stat( z, filenameInZipPtr.constData(), 0, &st ) != 0 )
+  {
+    QgsMessageLog::logMessage( QObject::tr( "File '%1' not found in zip archive '%2': %3" ).arg( filenameInZip, zipFilename, zip_strerror( z ) ) );
+    zip_close( z );
+    return false;
+  }
+
+  zip_file *zf = zip_fopen( z, filenameInZipPtr.constData(), 0 );
+  if ( !zf )
+  {
+    QgsMessageLog::logMessage( QObject::tr( "Could not open file '%1' in zip archive '%2': %3" ).arg( filenameInZip, zipFilename, zip_strerror( z ) ) );
+    zip_close( z );
+    return false;
+  }
+
+  bytesOut.resize( static_cast<int>( st.size ) );
+  zip_int64_t readBytes = zip_fread( zf, bytesOut.data(), st.size );
+
+  zip_fclose( zf );
+  zip_close( z );
+
+  // If successful, the number of bytes actually read is returned.
+  if ( static_cast<zip_uint64_t>( readBytes ) != st.size )
+  {
+    QgsMessageLog::logMessage( QObject::tr( "Error reading file '%1' from zip archive '%2'." ).arg( filenameInZip, zipFilename ) );
     return false;
   }
 

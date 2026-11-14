@@ -17,16 +17,15 @@
 #ifndef QGSHANARESULTSET_H
 #define QGSHANARESULTSET_H
 
-#include "qgsgeometry.h"
-
 #include <memory>
+#include <odbc/Forwards.h>
+#include <odbc/ResultSet.h>
+#include <odbc/ResultSetMetaDataUnicode.h>
+
+#include "qgsgeometry.h"
 
 #include <QString>
 #include <QVariant>
-
-#include "odbc/Forwards.h"
-#include "odbc/ResultSet.h"
-#include "odbc/ResultSetMetaDataUnicode.h"
 
 class QgsHanaResultSet;
 typedef std::unique_ptr<QgsHanaResultSet> QgsHanaResultSetRef;
@@ -37,25 +36,27 @@ class QgsHanaResultSet
     friend class QgsHanaConnection;
 
   private:
-    QgsHanaResultSet( odbc::ResultSetRef &&resultSet );
+    QgsHanaResultSet( NS_ODBC::ResultSetRef &&resultSet );
 
   public:
-    static QgsHanaResultSetRef create( odbc::PreparedStatementRef &stmt );
-    static QgsHanaResultSetRef create( odbc::StatementRef &stmt, const QString &sql );
+    static QgsHanaResultSetRef create( NS_ODBC::PreparedStatementRef &stmt );
+    static QgsHanaResultSetRef create( NS_ODBC::StatementRef &stmt, const QString &sql );
 
     void close();
     bool next();
 
     double getDouble( unsigned short columnIndex );
+    int getInt( unsigned short columnIndex );
+    short getShort( unsigned short columnIndex );
     QString getString( unsigned short columnIndex );
     QVariant getValue( unsigned short columnIndex );
     QgsGeometry getGeometry( unsigned short columnIndex );
 
-    odbc::ResultSetMetaDataUnicode &getMetadata() { return *mMetadata; }
+    NS_ODBC::ResultSetMetaDataUnicode &getMetadata() { return *mMetadata; }
 
   private:
-    odbc::ResultSetRef mResultSet;
-    odbc::ResultSetMetaDataUnicodeRef mMetadata;
+    NS_ODBC::ResultSetRef mResultSet;
+    NS_ODBC::ResultSetMetaDataUnicodeRef mMetadata;
 };
 
 #endif // QGSHANARESULTSET_H

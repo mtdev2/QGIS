@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for QgsSearchWidgetWrapper.
 
 .. note:: This program is free software; you can redistribute it and/or modify
@@ -6,94 +5,141 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 """
-__author__ = 'Nyall Dawson'
-__date__ = '2016-05'
-__copyright__ = 'Copyright 2016, The QGIS Project'
 
-import qgis  # NOQA
+__author__ = "Nyall Dawson"
+__date__ = "2016-05"
+__copyright__ = "Copyright 2016, The QGIS Project"
 
-from qgis.gui import (QgsSearchWidgetWrapper,
-                      QgsDefaultSearchWidgetWrapper,
-                      QgsValueMapSearchWidgetWrapper,
-                      QgsValueRelationSearchWidgetWrapper,
-                      QgsCheckboxSearchWidgetWrapper,
-                      QgsDateTimeSearchWidgetWrapper,
-                      QgsRelationReferenceSearchWidgetWrapper)
-from qgis.core import (QgsVectorLayer,
-                       QgsFeature,
-                       QgsProject,
-                       QgsRelation
-                       )
-from qgis.PyQt.QtCore import QDateTime, QDate, QTime
+import unittest
+
+from qgis.core import QgsFeature, QgsProject, QgsRelation, QgsVectorLayer
+from qgis.gui import (
+    QgsCheckboxSearchWidgetWrapper,
+    QgsDateTimeSearchWidgetWrapper,
+    QgsDefaultSearchWidgetWrapper,
+    QgsRelationReferenceSearchWidgetWrapper,
+    QgsSearchWidgetWrapper,
+    QgsValueMapSearchWidgetWrapper,
+    QgsValueRelationSearchWidgetWrapper,
+)
+from qgis.PyQt.QtCore import QDate, QDateTime, QLocale, QTime
 from qgis.PyQt.QtWidgets import QWidget
-
-from qgis.testing import start_app, unittest
+from qgis.testing import QgisTestCase, start_app
 
 start_app()
 
 
-class PyQgsSearchWidgetWrapper(unittest.TestCase):
-
+class PyQgsSearchWidgetWrapper(QgisTestCase):
     def testFlagToString(self):
         # test converting QgsSearchWidgetWrapper.FilterFlag to string
-        tests = [QgsSearchWidgetWrapper.EqualTo,
-                 QgsSearchWidgetWrapper.NotEqualTo,
-                 QgsSearchWidgetWrapper.GreaterThan,
-                 QgsSearchWidgetWrapper.LessThan,
-                 QgsSearchWidgetWrapper.GreaterThanOrEqualTo,
-                 QgsSearchWidgetWrapper.LessThanOrEqualTo,
-                 QgsSearchWidgetWrapper.Between,
-                 QgsSearchWidgetWrapper.CaseInsensitive,
-                 QgsSearchWidgetWrapper.Contains,
-                 QgsSearchWidgetWrapper.DoesNotContain,
-                 QgsSearchWidgetWrapper.IsNull,
-                 QgsSearchWidgetWrapper.IsNotNull,
-                 QgsSearchWidgetWrapper.IsNotBetween
-                 ]
+        tests = [
+            QgsSearchWidgetWrapper.FilterFlag.EqualTo,
+            QgsSearchWidgetWrapper.FilterFlag.NotEqualTo,
+            QgsSearchWidgetWrapper.FilterFlag.GreaterThan,
+            QgsSearchWidgetWrapper.FilterFlag.LessThan,
+            QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo,
+            QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo,
+            QgsSearchWidgetWrapper.FilterFlag.Between,
+            QgsSearchWidgetWrapper.FilterFlag.CaseInsensitive,
+            QgsSearchWidgetWrapper.FilterFlag.Contains,
+            QgsSearchWidgetWrapper.FilterFlag.DoesNotContain,
+            QgsSearchWidgetWrapper.FilterFlag.IsNull,
+            QgsSearchWidgetWrapper.FilterFlag.IsNotNull,
+            QgsSearchWidgetWrapper.FilterFlag.IsNotBetween,
+        ]
         for t in tests:
-            self.assertTrue(len(QgsSearchWidgetWrapper.toString(t)) > 0)
+            self.assertGreater(len(QgsSearchWidgetWrapper.toString(t)), 0)
 
     def testExclusiveFlags(self):
         # test flag exclusive/non exclusive
         exclusive = QgsSearchWidgetWrapper.exclusiveFilterFlags()
         non_exclusive = QgsSearchWidgetWrapper.nonExclusiveFilterFlags()
         for e in exclusive:
-            self.assertFalse(e in non_exclusive)
+            self.assertNotIn(e, non_exclusive)
 
 
-class PyQgsDefaultSearchWidgetWrapper(unittest.TestCase):
+class PyQgsDefaultSearchWidgetWrapper(QgisTestCase):
+    @classmethod
+    def setUpClass(cls):
+        QLocale.setDefault(QLocale(QLocale.Language.English))
+        super().setUpClass()
 
     def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer&field=flddate:datetime",
-                               "test", "memory")
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldtxt:string&field=fldint:integer&field=flddate:datetime&field=flddouble:double",
+            "test",
+            "memory",
+        )
 
         parent = QWidget()
         w = QgsDefaultSearchWidgetWrapper(layer, 0)
         w.initWidget(parent)
 
         line_edit = w.lineEdit()
-        line_edit.setText('test')
+        line_edit.setText("test")
         case_sensitive = w.caseSensitiveCheckBox()
 
         case_sensitive.setChecked(False)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), 'lower("fldtxt")=lower(\'test\')')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), 'lower("fldtxt")<>lower(\'test\')')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "lower(\"fldtxt\")=lower('test')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "lower(\"fldtxt\")<>lower('test')",
+        )
         case_sensitive.setChecked(True)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'test\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'test\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='test'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'test'",
+        )
         case_sensitive.setChecked(False)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.Contains), '"fldtxt" ILIKE \'%test%\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.DoesNotContain), 'NOT ("fldtxt" ILIKE \'%test%\')')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.StartsWith), '"fldtxt" ILIKE \'test%\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EndsWith), '"fldtxt" ILIKE \'%test\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.Contains),
+            "\"fldtxt\" ILIKE '%test%'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.DoesNotContain),
+            "NOT (\"fldtxt\" ILIKE '%test%')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.StartsWith),
+            "\"fldtxt\" ILIKE 'test%'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EndsWith),
+            "\"fldtxt\" ILIKE '%test'",
+        )
         case_sensitive.setChecked(True)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.Contains), '"fldtxt" LIKE \'%test%\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.DoesNotContain), 'NOT ("fldtxt" LIKE \'%test%\')')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.StartsWith), '"fldtxt" LIKE \'test%\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EndsWith), '"fldtxt" LIKE \'%test\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.Contains),
+            "\"fldtxt\" LIKE '%test%'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.DoesNotContain),
+            "NOT (\"fldtxt\" LIKE '%test%')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.StartsWith),
+            "\"fldtxt\" LIKE 'test%'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EndsWith),
+            "\"fldtxt\" LIKE '%test'",
+        )
         case_sensitive.setChecked(False)
 
         # numeric field
@@ -103,13 +149,77 @@ class PyQgsDefaultSearchWidgetWrapper(unittest.TestCase):
 
         # may need updating if widget layout changes:
         line_edit = w.lineEdit()
-        line_edit.setText('5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldint"<>5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThan), '"fldint">5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThan), '"fldint"<5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThanOrEqualTo), '"fldint">=5.5')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThanOrEqualTo), '"fldint"<=5.5')
+        line_edit.setText("5.5")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            '"fldint"=5.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldint"<>5.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            '"fldint">5.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            '"fldint"<5.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            '"fldint">=5.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            '"fldint"<=5.5',
+        )
+
+        # remove locale specific formattings
+        line_edit.setText("5,000")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            '"fldint"<5000',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            '"fldint">=5000',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            '"fldint"<=5000',
+        )
+        line_edit.setText("10,000,000")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            '"fldint"<10000000',
+        )
+
+        # numeric field (double)
+        parent = QWidget()
+        w = QgsDefaultSearchWidgetWrapper(layer, 3)
+        w.initWidget(parent)
+
+        # remove locale specific formattings
+        line_edit = w.lineEdit()
+        line_edit.setText("5,000.5")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            '"flddouble"<5000.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            '"flddouble">=5000.5',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            '"flddouble"<=5000.5',
+        )
+        line_edit.setText("10,000.5555555555")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            '"flddouble"<10000.5555555555',
+        )
 
         # date/time/datetime
         parent = QWidget()
@@ -118,76 +228,203 @@ class PyQgsDefaultSearchWidgetWrapper(unittest.TestCase):
 
         # may need updating if widget layout changes:
         line_edit = w.lineEdit()
-        line_edit.setText('2015-06-03')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"flddate"=\'2015-06-03\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"flddate"<>\'2015-06-03\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThan), '"flddate">\'2015-06-03\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThan), '"flddate"<\'2015-06-03\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThanOrEqualTo), '"flddate">=\'2015-06-03\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThanOrEqualTo), '"flddate"<=\'2015-06-03\'')
+        line_edit.setText("2015-06-03")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"flddate\"='2015-06-03'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"flddate\"<>'2015-06-03'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"flddate\">'2015-06-03'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"flddate\"<'2015-06-03'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"flddate\">='2015-06-03'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"flddate\"<='2015-06-03'",
+        )
+
+    def testSetExpression(self):
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldint:integer&field=flddouble:double",
+            "test",
+            "memory",
+        )
+        # numeric field
+        parent = QWidget()
+        w = QgsDefaultSearchWidgetWrapper(layer, 0)
+        w.initWidget(parent)
+
+        line_edit = w.lineEdit()
+
+        line_edit.setText("10000")
+        self.assertEqual(
+            w.expression(),
+            "\"fldint\" = '10000'",
+        )
+        line_edit.setText("10,000")
+        self.assertEqual(
+            w.expression(),
+            "\"fldint\" = '10000'",
+        )
+        line_edit.setText("10,000,000")
+        self.assertEqual(
+            w.expression(),
+            "\"fldint\" = '10000000'",
+        )
+
+        w = QgsDefaultSearchWidgetWrapper(layer, 1)
+        w.initWidget(parent)
+
+        line_edit = w.lineEdit()
+
+        line_edit.setText("10000")
+        self.assertEqual(
+            w.expression(),
+            "\"flddouble\" = '10000'",
+        )
+        line_edit.setText("10,000")
+        self.assertEqual(
+            w.expression(),
+            "\"flddouble\" = '10000'",
+        )
+        line_edit.setText("10000.5")
+        self.assertEqual(
+            w.expression(),
+            "\"flddouble\" = '10000.5'",
+        )
+        line_edit.setText("10,000.5")
+        self.assertEqual(
+            w.expression(),
+            "\"flddouble\" = '10000.5'",
+        )
+        line_edit.setText("10,000.5555555555")
+        self.assertEqual(
+            w.expression(),
+            "\"flddouble\" = '10000.5555555555'",
+        )
 
 
-class PyQgsValueMapSearchWidgetWrapper(unittest.TestCase):
-
+class PyQgsValueMapSearchWidgetWrapper(QgisTestCase):
     def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer", "test", "memory")
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldtxt:string&field=fldint:integer", "test", "memory"
+        )
 
         w = QgsValueMapSearchWidgetWrapper(layer, 0)
-        config = {"map": [{"val1": 1},
-                          {"val2": 200}]}
+        config = {"map": [{"val1": 1}, {"val2": 200}]}
         w.setConfig(config)
         c = w.widget()
 
         # first, set it to the "select value" item
         c.setCurrentIndex(0)
 
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), ""
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo), ""
+        )
 
         c.setCurrentIndex(1)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'1\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'1\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='1'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'1'",
+        )
         c.setCurrentIndex(2)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'200\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'200\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='200'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'200'",
+        )
 
         # try with numeric field
         w = QgsValueMapSearchWidgetWrapper(layer, 1)
         w.setConfig(config)
         c = w.widget()
         c.setCurrentIndex(1)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=1')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldint"<>1')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=1'
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldint"<>1',
+        )
 
 
-class PyQgsValueRelationSearchWidgetWrapper(unittest.TestCase):
-
+class PyQgsValueRelationSearchWidgetWrapper(QgisTestCase):
     def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer", "test", "memory")
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldtxt:string&field=fldint:integer", "test", "memory"
+        )
         # setup value relation
-        parent_layer = QgsVectorLayer("Point?field=stringkey:string&field=intkey:integer&field=display:string", "parent", "memory")
+        parent_layer = QgsVectorLayer(
+            "Point?field=stringkey:string&field=intkey:integer&field=display:string",
+            "parent",
+            "memory",
+        )
         f1 = QgsFeature(parent_layer.fields(), 1)
-        f1.setAttributes(['a', 1, 'value a'])
+        f1.setAttributes(["a", 1, "value a"])
         f2 = QgsFeature(parent_layer.fields(), 2)
-        f2.setAttributes(['b', 2, 'value b'])
+        f2.setAttributes(["b", 2, "value b"])
         f3 = QgsFeature(parent_layer.fields(), 3)
-        f3.setAttributes(['c', 3, 'value c'])
+        f3.setAttributes(["c", 3, "value c"])
         parent_layer.dataProvider().addFeatures([f1, f2, f3])
         QgsProject.instance().addMapLayers([layer, parent_layer])
 
-        config = {"Layer": parent_layer.id(),
-                  "Key": 'stringkey',
-                  "Value": 'display'}
+        config = {"Layer": parent_layer.id(), "Key": "stringkey", "Value": "display"}
 
         w = QgsValueRelationSearchWidgetWrapper(layer, 0)
         w.setConfig(config)
@@ -196,207 +433,704 @@ class PyQgsValueRelationSearchWidgetWrapper(unittest.TestCase):
         # first, set it to the "select value" item
         c.setCurrentIndex(0)
 
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), ""
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo), ""
+        )
 
         c.setCurrentIndex(1)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'a\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'a\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='a'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'a'",
+        )
         c.setCurrentIndex(2)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'b\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'b\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='b'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'b'",
+        )
 
         # try with numeric field
         w = QgsValueRelationSearchWidgetWrapper(layer, 1)
-        config['Key'] = 'intkey'
+        config["Key"] = "intkey"
         w.setConfig(config)
         c = w.widget()
-        c.setCurrentIndex(c.findText('value c'))
+        c.setCurrentIndex(c.findText("value c"))
         self.assertEqual(c.currentIndex(), 3)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=3')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldint"<>3')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=3'
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldint"<>3',
+        )
 
         # try with allow null set
         w = QgsValueRelationSearchWidgetWrapper(layer, 1)
-        config['AllowNull'] = True
+        config["AllowNull"] = True
         w.setConfig(config)
         c = w.widget()
-        c.setCurrentIndex(c.findText('value c'))
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=3')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldint"<>3')
+        c.setCurrentIndex(c.findText("value c"))
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=3'
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldint"<>3',
+        )
 
         # try with line edit
         w = QgsValueRelationSearchWidgetWrapper(layer, 1)
-        config['UseCompleter'] = True
+        config["UseCompleter"] = True
         w.setConfig(config)
         l = w.widget()
-        l.setText('value b')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=2')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldint"<>2')
+        l.setText("value b")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=2'
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldint"<>2',
+        )
 
 
-class PyQgsCheckboxSearchWidgetWrapper(unittest.TestCase):
-
+class PyQgsCheckboxSearchWidgetWrapper(QgisTestCase):
     def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer", "test", "memory")
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldtxt:string&field=fldint:integer&field=fieldbool:bool",
+            "test",
+            "memory",
+        )
 
         w = QgsCheckboxSearchWidgetWrapper(layer, 0)
-        config = {"CheckedState": 5,
-                  "UncheckedState": 9}
+        config = {"CheckedState": 5, "UncheckedState": 9}
         w.setConfig(config)
         c = w.widget()
 
         # first check with string field type
-        c.setChecked(True)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'5\'')
+        w.initWidget(c)
         c.setChecked(False)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'9\'')
+        c.setChecked(True)
+        self.assertEqual(w.expression(), """"fldtxt" = '5'""")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='5'",
+        )
+        c.setChecked(False)
+        self.assertEqual(w.expression(), """"fldtxt" = '9'""")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='9'",
+        )
 
         # try with numeric field
         w = QgsCheckboxSearchWidgetWrapper(layer, 1)
         w.setConfig(config)
         c = w.widget()
-        c.setChecked(True)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=5')
+        w.initWidget(c)
         c.setChecked(False)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldint" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldint" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldint"=9')
+        c.setChecked(True)
+        self.assertEqual(w.expression(), """"fldint" = 5""")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=5'
+        )
+        c.setChecked(False)
+        self.assertEqual(w.expression(), """"fldint" = 9""")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldint" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldint" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo), '"fldint"=9'
+        )
+
+        # Check boolean expression
+        parent = QWidget()
+        w = QgsCheckboxSearchWidgetWrapper(layer, 2)
+        # boolean fields should ignore CheckedState/UncheckedState config
+        config = {"CheckedState": 5, "UncheckedState": 9}
+        w.setConfig(config)
+        c = w.widget()
+        w.initWidget(c)
+        # need to trigger a change signal first:
+        c.setChecked(False)
+        c.setChecked(True)
+        self.assertEqual(w.expression(), '"fieldbool" = TRUE')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            '"fieldbool"=true',
+        )
+        c.setChecked(False)
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            '"fieldbool"=false',
+        )
+        self.assertEqual(w.expression(), '"fieldbool" = FALSE')
 
 
-class PyQgsDateTimeSearchWidgetWrapper(unittest.TestCase):
+class PyQgsDateTimeSearchWidgetWrapper(QgisTestCase):
+    def test_value_string_field(self):
+        layer = QgsVectorLayer(
+            "Point?field=date:string&field=time:string&field=datetime:string",
+            "test",
+            "memory",
+        )
 
-    def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=date:date&field=time:time&field=datetime:datetime", "test", "memory")
+        # date field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 0)
+        config = {"field_format": "yyyy-MM-dd", "display_format": "yyyy-MM-dd"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime()))
+        self.assertEqual(w.value(), "2013-04-05")
+        self.assertEqual(w.expression(), "\"date\" = '2013-04-05'")
+
+        # using dd/MM/yyyy format
+        w = QgsDateTimeSearchWidgetWrapper(layer, 0)
+        config = {"field_format": "dd/MM/yyyy", "display_format": "dd/MM/yyyy"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime()))
+        self.assertEqual(w.value(), "05/04/2013")
+        self.assertEqual(w.expression(), "\"date\" = '05/04/2013'")
+
+        # time field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 1)
+        config = {"field_format": "hh:mm:ss", "display_format": "hh:mm:ss"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setTime(QTime(13, 14, 15))
+        self.assertEqual(w.value(), "13:14:15")
+        self.assertEqual(w.expression(), "\"time\" = '13:14:15'")
+
+        # datetime field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 2)
+        config = {
+            "field_format": "yyyy-MM-dd HH:mm:ss",
+            "display_format": "yyyy-MM-dd HH:mm:ss",
+        }
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(12, 13, 14)))
+        self.assertEqual(w.value(), "2013-04-05 12:13:14")
+        self.assertEqual(w.expression(), "\"datetime\" = '2013-04-05 12:13:14'")
+
+        # using ISO format
+        w = QgsDateTimeSearchWidgetWrapper(layer, 2)
+        config = {"field_iso_format": True}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(12, 13, 14)))
+        self.assertEqual(w.value(), "2013-04-05T12:13:14")
+        self.assertEqual(w.expression(), "\"datetime\" = '2013-04-05T12:13:14'")
+
+    def test_value_date_time_field(self):
+        layer = QgsVectorLayer(
+            "Point?field=date:date&field=time:time&field=datetime:datetime",
+            "test",
+            "memory",
+        )
+
+        # date field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 0)
+        # NOTE: field formats should be ignored for native date/time fields
+        config = {"field_format": "dd/MM/yyyy", "display_format": "dd/MM/yyyy"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime()))
+        self.assertEqual(w.value(), QDate(2013, 4, 5))
+        # should always be in ISO format!
+        self.assertEqual(w.expression(), "\"date\" = to_date('2013-04-05')")
+
+        # time field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 1)
+        config = {"field_format": "hh-mm-ss", "display_format": "hh-mm-ss"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setTime(QTime(13, 14, 15))
+        self.assertEqual(w.value(), QTime(13, 14, 15))
+        self.assertEqual(w.expression(), "\"time\" = to_time('13:14:15')")
+
+        # datetime field
+        w = QgsDateTimeSearchWidgetWrapper(layer, 2)
+        config = {
+            "field_format": "yyyy-MM-ddZZZZHH:mm:ss",
+            "display_format": "yyyy-MM-ddZZZZHH:mm:ss",
+        }
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(12, 13, 14)))
+        self.assertEqual(w.value(), QDateTime(QDate(2013, 4, 5), QTime(12, 13, 14)))
+        self.assertEqual(
+            w.expression(), "\"datetime\" = to_datetime('2013-04-05T12:13:14')"
+        )
+
+    def testCreateExpressionStringFields(self):
+        """Test creating an expression using the widget with string fields"""
+        layer = QgsVectorLayer(
+            "Point?field=date:string&field=time:string&field=datetime:string",
+            "test",
+            "memory",
+        )
 
         w = QgsDateTimeSearchWidgetWrapper(layer, 0)
-        config = {"field_format": 'yyyy-MM-dd',
-                  "display_format": 'yyyy-MM-dd'}
+        config = {"field_format": "yyyy-MM-dd", "display_format": "yyyy-MM-dd"}
         w.setConfig(config)
         c = w.widget()
 
         # first check with date field type
         c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime()))
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"date" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"date" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"date"=\'2013-04-05\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"date"<>\'2013-04-05\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThan), '"date">\'2013-04-05\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThan), '"date"<\'2013-04-05\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThanOrEqualTo), '"date">=\'2013-04-05\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThanOrEqualTo), '"date"<=\'2013-04-05\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"date" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"date" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"date\"='2013-04-05'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"date\"<>'2013-04-05'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"date\">'2013-04-05'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"date\"<'2013-04-05'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"date\">='2013-04-05'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"date\"<='2013-04-05'",
+        )
 
         # time field type
         w = QgsDateTimeSearchWidgetWrapper(layer, 1)
-        config = {"field_format": 'HH:mm:ss',
-                  "display_format": 'HH:mm:ss'}
+        config = {"field_format": "HH:mm:ss", "display_format": "HH:mm:ss"}
         w.setConfig(config)
         c = w.widget()
 
         c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(13, 14, 15)))
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"time" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"time" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"time"=\'13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"time"<>\'13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThan), '"time">\'13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThan), '"time"<\'13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThanOrEqualTo), '"time">=\'13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThanOrEqualTo), '"time"<=\'13:14:15\'')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"time" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"time" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"time\"='13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"time\"<>'13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"time\">'13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"time\"<'13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"time\">='13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"time\"<='13:14:15'",
+        )
 
         # datetime field type
         w = QgsDateTimeSearchWidgetWrapper(layer, 2)
-        config = {"field_format": 'yyyy-MM-dd HH:mm:ss',
-                  "display_format": 'yyyy-MM-dd HH:mm:ss'}
+        config = {
+            "field_format": "yyyy-MM-dd HH:mm:ss",
+            "display_format": "yyyy-MM-dd HH:mm:ss",
+        }
         w.setConfig(config)
         c = w.widget()
 
         c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(13, 14, 15)))
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"datetime" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"datetime" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"datetime"=\'2013-04-05 13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"datetime"<>\'2013-04-05 13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThan), '"datetime">\'2013-04-05 13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThan), '"datetime"<\'2013-04-05 13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.GreaterThanOrEqualTo), '"datetime">=\'2013-04-05 13:14:15\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.LessThanOrEqualTo), '"datetime"<=\'2013-04-05 13:14:15\'')
-
-
-class PyQgsRelationReferenceSearchWidgetWrapper(unittest.TestCase):
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"datetime" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"datetime" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"datetime\"='2013-04-05 13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"datetime\"<>'2013-04-05 13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"datetime\">'2013-04-05 13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"datetime\"<'2013-04-05 13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"datetime\">='2013-04-05 13:14:15'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"datetime\"<='2013-04-05 13:14:15'",
+        )
 
     def testCreateExpression(self):
-        """ Test creating an expression using the widget"""
-        layer = QgsVectorLayer("Point?field=fldtxt:string&field=fldint:integer", "test", "memory")
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=date:date&field=time:time&field=datetime:datetime",
+            "test",
+            "memory",
+        )
+
+        w = QgsDateTimeSearchWidgetWrapper(layer, 0)
+        # NOTE : field formats should be ignored when using native date/time field types
+        config = {"field_format": "dd/MM/yyyy", "display_format": "dd/MM/yyyy"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime()))
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"date" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"date" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"date\"=to_date('2013-04-05')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"date\"<>to_date('2013-04-05')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"date\">to_date('2013-04-05')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"date\"<to_date('2013-04-05')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"date\">=to_date('2013-04-05')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"date\"<=to_date('2013-04-05')",
+        )
+
+        # time field type
+        w = QgsDateTimeSearchWidgetWrapper(layer, 1)
+        config = {"field_format": "HH - mm - ss", "display_format": "HH - mm - ss"}
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(13, 14, 15)))
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"time" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"time" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"time\"=to_time('13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"time\"<>to_time('13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"time\">to_time('13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"time\"<to_time('13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"time\">=to_time('13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"time\"<=to_time('13:14:15')",
+        )
+
+        # datetime field type
+        w = QgsDateTimeSearchWidgetWrapper(layer, 2)
+        config = {
+            "field_format": "yyyy-MM-ddZZZZHH:mm:ss",
+            "display_format": "yyyy-MM-ddZZZZHH:mm:ss",
+        }
+        w.setConfig(config)
+        c = w.widget()
+
+        c.setDateTime(QDateTime(QDate(2013, 4, 5), QTime(13, 14, 15)))
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"datetime" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"datetime" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"datetime\"=to_datetime('2013-04-05T13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"datetime\"<>to_datetime('2013-04-05T13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThan),
+            "\"datetime\">to_datetime('2013-04-05T13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThan),
+            "\"datetime\"<to_datetime('2013-04-05T13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.GreaterThanOrEqualTo),
+            "\"datetime\">=to_datetime('2013-04-05T13:14:15')",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.LessThanOrEqualTo),
+            "\"datetime\"<=to_datetime('2013-04-05T13:14:15')",
+        )
+
+
+class PyQgsRelationReferenceSearchWidgetWrapper(QgisTestCase):
+    def testCreateExpression(self):
+        """Test creating an expression using the widget"""
+        layer = QgsVectorLayer(
+            "Point?field=fldtxt:string&field=fldint:integer", "test", "memory"
+        )
         # setup value relation
-        parent_layer = QgsVectorLayer("Point?field=stringkey:string&field=intkey:integer&field=display:string", "parent", "memory")
+        parent_layer = QgsVectorLayer(
+            "Point?field=stringkey:string&field=intkey:integer&field=display:string",
+            "parent",
+            "memory",
+        )
         f1 = QgsFeature(parent_layer.fields(), 1)
-        f1.setAttributes(['a', 1, 'value a'])
+        f1.setAttributes(["a", 1, "value a"])
         f2 = QgsFeature(parent_layer.fields(), 2)
-        f2.setAttributes(['b', 2, 'value b'])
+        f2.setAttributes(["b", 2, "value b"])
         f3 = QgsFeature(parent_layer.fields(), 3)
-        f3.setAttributes(['c', 3, 'value c'])
+        f3.setAttributes(["c", 3, "value c"])
         parent_layer.dataProvider().addFeatures([f1, f2, f3])
         QgsProject.instance().addMapLayers([layer, parent_layer])
 
         relationManager = QgsProject.instance().relationManager()
         relation = QgsRelation()
-        relation.setId('relation')
+        relation.setId("relation")
         relation.setReferencingLayer(layer.id())
         relation.setReferencedLayer(parent_layer.id())
-        relation.addFieldPair('fldtxt', 'stringkey')
+        relation.addFieldPair("fldtxt", "stringkey")
         self.assertTrue(relation.isValid())
 
         relationManager.addRelation(relation)
 
         # Everything valid
-        config = {'Relation': relation.id(), 'AllowNULL': True}
+        config = {"Relation": relation.id(), "AllowNULL": True}
 
         w = QgsRelationReferenceSearchWidgetWrapper(layer, 0, None)
         w.setConfig(config)
 
-        w.widget().setForeignKey('a')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'a\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'a\'')
+        w.widget().setForeignKey("a")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='a'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'a'",
+        )
 
-        w.widget().setForeignKey('b')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'b\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'b\'')
+        w.widget().setForeignKey("b")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='b'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'b'",
+        )
 
-        w.widget().setForeignKey('c')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt"=\'c\'')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt"<>\'c\'')
+        w.widget().setForeignKey("c")
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            "\"fldtxt\"='c'",
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            "\"fldtxt\"<>'c'",
+        )
 
         w.widget().setForeignKey(None)
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNull), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.IsNotNull), '"fldtxt" IS NOT NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.EqualTo), '"fldtxt" IS NULL')
-        self.assertEqual(w.createExpression(QgsSearchWidgetWrapper.NotEqualTo), '"fldtxt" IS NOT NULL')
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNull),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.IsNotNull),
+            '"fldtxt" IS NOT NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.EqualTo),
+            '"fldtxt" IS NULL',
+        )
+        self.assertEqual(
+            w.createExpression(QgsSearchWidgetWrapper.FilterFlag.NotEqualTo),
+            '"fldtxt" IS NOT NULL',
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

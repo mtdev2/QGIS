@@ -14,32 +14,36 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QTreeWidgetItemIterator>
-
 #include "qgsnewdatabasetablenamewidget.h"
+
+#include "qgsabstractdatabaseproviderconnection.h"
 #include "qgsapplication.h"
-#include "qgsdataitemproviderregistry.h"
+#include "qgsdatacollectionitem.h"
 #include "qgsdataitemprovider.h"
-#include "qgsproviderregistry.h"
+#include "qgsdataitemproviderregistry.h"
+#include "qgsgui.h"
 #include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
 #include "qgssettings.h"
-#include "qgsguiutils.h"
 
 #include <QDialogButtonBox>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QString>
+#include <QTreeWidgetItemIterator>
+
+#include "moc_qgsnewdatabasetablenamewidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 // List of data item provider keys that are filesystem based
-QStringList QgsNewDatabaseTableNameWidget::FILESYSTEM_BASED_DATAITEM_PROVIDERS { QStringLiteral( "GPKG" ), QStringLiteral( "spatialite" ) };
+QStringList QgsNewDatabaseTableNameWidget::FILESYSTEM_BASED_DATAITEM_PROVIDERS { u"GPKG"_s, u"spatialite"_s };
 
-QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget(
-  QgsBrowserGuiModel *browserModel,
-  const QStringList &providersFilter,
-  QWidget *parent )
+QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget( QgsBrowserGuiModel *browserModel, const QStringList &providersFilter, QWidget *parent )
   : QgsPanelWidget( parent )
 {
-
   // Initialize the browser
-  if ( ! browserModel )
+  if ( !browserModel )
   {
     mBrowserModel = new QgsBrowserGuiModel( this );
     mBrowserModel->initialize();
@@ -64,11 +68,11 @@ QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget(
     {
       continue;
     }
-    if ( ! QgsProviderRegistry::instance()->providerMetadata( provider->dataProviderKey() ) )
+    if ( !QgsProviderRegistry::instance()->providerMetadata( provider->dataProviderKey() ) )
     {
       continue;
     }
-    if ( provider->capabilities() & QgsDataProvider::DataCapability::Database )
+    if ( provider->capabilities() & Qgis::DataItemProviderCapability::Databases )
     {
       if ( providersFilter.isEmpty() || providersFilter.contains( provider->dataProviderKey() ) )
       {
@@ -78,12 +82,12 @@ QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget(
     }
   }
 
-  mBrowserToolbar->setIconSize( QgsGuiUtils::iconSize( true ) );
+  mBrowserToolbar->setIconSize( QgsGui::iconSize( Qgis::UserInterfaceIconType::DockedToolbar ) );
 
   mBrowserProxyModel.setBrowserModel( mBrowserModel );
   // If a filter was specified but the data provider could not be found
   // this makes sure no providers are shown instead of ALL of them
-  if ( ! providersFilter.isEmpty() && shownDataItemProvidersFilter.isEmpty() )
+  if ( !providersFilter.isEmpty() && shownDataItemProvidersFilter.isEmpty() )
   {
     shownDataItemProvidersFilter = providersFilter;
   }
@@ -94,21 +98,16 @@ QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget(
   mBrowserTreeView->setBrowserModel( mBrowserModel );
 
   // Connections
-  connect( mNewTableName, &QLineEdit::textChanged, this, [ = ]
-  {
+  connect( mNewTableName, &QLineEdit::textChanged, this, [this] {
     mTableName = mNewTableName->text();
     emit tableNameChanged( mTableName );
     updateUri();
     validate();
   } );
 
-  connect( mActionRefresh, &QAction::triggered, this, [ = ]
-  {
-    refreshModel( QModelIndex() );
-  } );
+  connect( mActionRefresh, &QAction::triggered, this, [this] { refreshModel( QModelIndex() ); } );
 
-  connect( mBrowserTreeView, &QgsBrowserTreeView::clicked, this, [ = ]( const QModelIndex & index )
-  {
+  connect( mBrowserTreeView, &QgsBrowserTreeView::clicked, this, [this]( const QModelIndex &index ) {
     if ( index.isValid() )
     {
       if ( const QgsDataItem *dataItem = mBrowserProxyModel.dataItem( index ) )
@@ -127,18 +126,17 @@ QgsNewDatabaseTableNameWidget::QgsNewDatabaseTableNameWidget(
             validationRequired = true;
           }
 
-          if ( collectionItem->layerCollection( ) )
+          if ( collectionItem->layerCollection() )
           {
             mIsFilePath = FILESYSTEM_BASED_DATAITEM_PROVIDERS.contains( collectionItem->providerKey() );
             // Data items for filesystem based items are in the form gpkg://path/to/file.gpkg
-            mSchemaName = mIsFilePath ? collectionItem->path().remove( QRegularExpression( QStringLiteral( "^[A-z]+:/" ) ) ) : collectionItem->name(); // it may be cleared
+            mSchemaName = mIsFilePath ? collectionItem->path().remove( QRegularExpression( u"^[A-z]+:/"_s ) ) : collectionItem->name(); // it may be cleared
             mConnectionName = mIsFilePath ? collectionItem->name() : collectionItem->parent()->name();
             if ( oldSchema != mSchemaName )
             {
               emit schemaNameChanged( mSchemaName );
               // Store last viewed item
-              QgsSettings().setValue( QStringLiteral( "newDatabaseTableNameWidgetLastSelectedItem" ),
-                                      mBrowserProxyModel.data( index, QgsBrowserGuiModel::PathRole ).toString(), QgsSettings::Section::Gui );
+              QgsSettings().setValue( u"newDatabaseTableNameWidgetLastSelectedItem"_s, mBrowserProxyModel.data( index, static_cast<int>( QgsBrowserModel::CustomRole::Path ) ).toString(), QgsSettings::Section::Gui );
               validationRequired = true;
             }
           }
@@ -166,29 +164,28 @@ void QgsNewDatabaseTableNameWidget::setAcceptButtonVisible( bool visible )
 
 void QgsNewDatabaseTableNameWidget::refreshModel( const QModelIndex &index )
 {
-
   QgsDataItem *item = mBrowserModel->dataItem( index );
 
-  if ( item && ( item->capabilities2() & QgsDataItem::Fertile ) )
+  if ( item && ( item->capabilities2() & Qgis::BrowserItemCapability::Fertile ) )
   {
     mBrowserModel->refresh( index );
   }
 
   for ( int i = 0; i < mBrowserModel->rowCount( index ); i++ )
   {
-    QModelIndex idx = mBrowserModel->index( i, 0, index );
-    QModelIndex proxyIdx = mBrowserProxyModel.mapFromSource( idx );
+    const QModelIndex idx = mBrowserModel->index( i, 0, index );
+    const QModelIndex proxyIdx = mBrowserProxyModel.mapFromSource( idx );
     QgsDataItem *child = mBrowserModel->dataItem( idx );
 
     // Check also expanded descendants so that the whole expanded path does not get collapsed if one item is collapsed.
     // Fast items (usually root items) are refreshed so that when collapsed, it is obvious they are if empty (no expand symbol).
-    if ( mBrowserTreeView->isExpanded( proxyIdx ) || mBrowserTreeView->hasExpandedDescendant( proxyIdx ) || ( child && child->capabilities2() & QgsDataItem::Fast ) )
+    if ( mBrowserTreeView->isExpanded( proxyIdx ) || mBrowserTreeView->hasExpandedDescendant( proxyIdx ) || ( child && child->capabilities2() & Qgis::BrowserItemCapability::Fast ) )
     {
       refreshModel( idx );
     }
     else
     {
-      if ( child && ( child->capabilities2() & QgsDataItem::Fertile ) )
+      if ( child && ( child->capabilities2() & Qgis::BrowserItemCapability::Fertile ) )
       {
         child->depopulate();
       }
@@ -205,13 +202,13 @@ void QgsNewDatabaseTableNameWidget::updateUri()
     QgsAbstractProviderConnection *conn { dataProviderMetadata->findConnection( mConnectionName ) };
     if ( conn )
     {
-      QVariantMap uriParts { dataProviderMetadata->decodeUri( conn->uri() ) };
-      uriParts[ QStringLiteral( "layerName" ) ] = mTableName;
-      uriParts[ QStringLiteral( "schema" ) ] = mSchemaName;
-      uriParts[ QStringLiteral( "table" ) ] = mTableName;
+      QVariantMap uriParts = dataProviderMetadata->decodeUri( conn->uri() );
+      uriParts[u"layerName"_s] = mTableName;
+      uriParts[u"schema"_s] = mSchemaName;
+      uriParts[u"table"_s] = mTableName;
       if ( mIsFilePath )
       {
-        uriParts[ QStringLiteral( "dbname" ) ] = mSchemaName;
+        uriParts[u"dbname"_s] = mSchemaName;
       }
       mUri = dataProviderMetadata->encodeUri( uriParts );
     }
@@ -255,26 +252,20 @@ void QgsNewDatabaseTableNameWidget::validate()
 {
   const bool wasValid { mIsValid };
   // Check table uniqueness
-  mIsValid = ! mDataProviderKey.isEmpty() &&
-             mShownProviders.contains( mDataProviderKey ) &&
-             ! mSchemaName.isEmpty() &&
-             ! mTableName.isEmpty() &&
-             ! tableNames( ).contains( mTableName );
+  mIsValid = !mDataProviderKey.isEmpty() && mShownProviders.contains( mDataProviderKey ) && !mSchemaName.isEmpty() && !mTableName.isEmpty() && !tableNames().contains( mTableName );
 
   mValidationError.clear();
 
   // Whether to show it red
   bool isError { false };
 
-  if ( ! mIsValid )
+  if ( !mIsValid )
   {
     if ( mTableName.isEmpty() && mSchemaName.isEmpty() )
     {
       mValidationError = tr( "Select a database schema and enter a unique name for the new table" );
     }
-    else if ( ! mTableName.isEmpty() &&
-              ! mSchemaName.isEmpty() &&
-              tableNames( ).contains( mTableName ) )
+    else if ( !mTableName.isEmpty() && !mSchemaName.isEmpty() && tableNames().contains( mTableName ) )
     {
       isError = true;
       mValidationError = tr( "A table named '%1' already exists" ).arg( mTableName );
@@ -287,7 +278,7 @@ void QgsNewDatabaseTableNameWidget::validate()
     {
       mValidationError = tr( "Enter a unique name for the new table" );
     }
-    else if ( tableNames( ).contains( mTableName ) )
+    else if ( tableNames().contains( mTableName ) )
     {
       mValidationError = tr( "A table named '%1' already exists" ).arg( mTableName );
     }
@@ -297,12 +288,10 @@ void QgsNewDatabaseTableNameWidget::validate()
     }
   }
 
-  mValidationResults->setStyleSheet( isError ?
-                                     QStringLiteral( "* { color: red; }" ) :
-                                     QString() );
+  mValidationResults->setStyleSheet( isError ? u"* { color: red; }"_s : QString() );
 
   mValidationResults->setText( mValidationError );
-  mValidationResults->setVisible( ! mIsValid );
+  mValidationResults->setVisible( !mIsValid );
   if ( wasValid != mIsValid )
   {
     emit validationChanged( mIsValid );
@@ -312,14 +301,14 @@ void QgsNewDatabaseTableNameWidget::validate()
 QStringList QgsNewDatabaseTableNameWidget::tableNames()
 {
   QStringList tableNames;
-  QModelIndex index { mBrowserTreeView->currentIndex() };
+  const QModelIndex index { mBrowserTreeView->currentIndex() };
   if ( index.isValid() )
   {
     QgsDataItem *dataItem { mBrowserProxyModel.dataItem( index ) };
     if ( dataItem )
     {
       const QString dataProviderKey { QgsApplication::dataItemProviderRegistry()->dataProviderKey( dataItem->providerKey() ) };
-      if ( ! dataProviderKey.isEmpty() )
+      if ( !dataProviderKey.isEmpty() )
       {
         QgsProviderMetadata *metadata { QgsProviderRegistry::instance()->providerMetadata( dataProviderKey ) };
         if ( metadata )
@@ -342,7 +331,7 @@ QStringList QgsNewDatabaseTableNameWidget::tableNames()
                 {
                   tableNames.push_back( tp.tableName() );
                 }
-                mTableNamesCache[ cacheKey ] = tableNames;
+                mTableNamesCache[cacheKey] = tableNames;
               }
             }
           }
@@ -366,19 +355,14 @@ QString QgsNewDatabaseTableNameWidget::validationError() const
 void QgsNewDatabaseTableNameWidget::showEvent( QShowEvent *e )
 {
   QWidget::showEvent( e );
-  QString lastSelectedPath( QgsSettings().value( QStringLiteral( "newDatabaseTableNameWidgetLastSelectedItem" ),
-                            QString(), QgsSettings::Section::Gui ).toString() );
-  if ( ! lastSelectedPath.isEmpty() )
+  const QString lastSelectedPath( QgsSettings().value( u"newDatabaseTableNameWidgetLastSelectedItem"_s, QString(), QgsSettings::Section::Gui ).toString() );
+  if ( !lastSelectedPath.isEmpty() )
   {
-    QModelIndexList items = mBrowserProxyModel.match(
-                              mBrowserProxyModel.index( 0, 0 ),
-                              QgsBrowserGuiModel::PathRole,
-                              QVariant::fromValue( lastSelectedPath ),
-                              1,
-                              Qt::MatchRecursive );
-    if ( items.count( ) > 0 )
+    const QModelIndexList items
+      = mBrowserProxyModel.match( mBrowserProxyModel.index( 0, 0 ), static_cast<int>( QgsBrowserModel::CustomRole::Path ), QVariant::fromValue( lastSelectedPath ), 1, Qt::MatchRecursive );
+    if ( items.count() > 0 )
     {
-      QModelIndex expandIndex = items.at( 0 );
+      const QModelIndex expandIndex = items.at( 0 );
       if ( expandIndex.isValid() )
       {
         mBrowserTreeView->scrollTo( expandIndex, QgsBrowserTreeView::ScrollHint::PositionAtTop );

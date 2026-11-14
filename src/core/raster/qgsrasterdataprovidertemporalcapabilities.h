@@ -20,13 +20,14 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsrange.h"
 #include "qgsdataprovidertemporalcapabilities.h"
+#include "qgsinterval.h"
+#include "qgsrange.h"
 
 /**
  * \class QgsRasterDataProviderTemporalCapabilities
  * \ingroup core
- * Implementation of data provider temporal properties for QgsRasterDataProviders.
+ * \brief Implementation of data provider temporal properties for QgsRasterDataProviders.
  *
  * Data provider temporal capabilities reflect the temporal capabilities of a QgsDataProvider.
  * Unlike QgsMapLayerTemporalProperties, these settings are not user-configurable,
@@ -37,7 +38,6 @@
 class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProviderTemporalCapabilities
 {
   public:
-
     /**
      * Constructor for QgsRasterDataProviderTemporalProperties.
      *
@@ -46,47 +46,72 @@ class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProv
     QgsRasterDataProviderTemporalCapabilities( bool enabled = false );
 
     /**
-     * Method to use when resolving a temporal range to a data provider layer or band.
-     **/
-    enum IntervalHandlingMethod
-    {
-      MatchUsingWholeRange, //!< Use an exact match to the whole temporal range
-      MatchExactUsingStartOfRange, //!< Match the start of the temporal range to a corresponding layer or band, and only use exact matching results
-      MatchExactUsingEndOfRange, //!< Match the end of the temporal range to a corresponding layer or band, and only use exact matching results
-      FindClosestMatchToStartOfRange, //! Match the start of the temporal range to the least previous closest datetime.
-      FindClosestMatchToEndOfRange //! Match the end of the temporal range to the least previous closest datetime.
-    };
-    // TODO -- add other methods
+     * Returns the capability flags for the provider.
+     *
+     * \since QGIS 3.28
+     */
+    Qgis::RasterTemporalCapabilityFlags flags() const;
+
+    /**
+     * Sets the capability flags for the provider.
+     *
+     * \since QGIS 3.28
+     */
+    void setFlags( Qgis::RasterTemporalCapabilityFlags flags );
 
     /**
      * Returns the desired method to use when resolving a temporal interval to matching
      * layers or bands in the data provider.
      *
      *\see setIntervalHandlingMethod()
-    **/
-    IntervalHandlingMethod intervalHandlingMethod() const;
+    */
+    Qgis::TemporalIntervalMatchMethod intervalHandlingMethod() const;
 
     /**
      * Sets the desired \a method to use when resolving a temporal interval to matching
      * layers or bands in the data provider.
      *
      *\see intervalHandlingMethod()
-    **/
-    void setIntervalHandlingMethod( IntervalHandlingMethod method );
+    */
+    void setIntervalHandlingMethod( Qgis::TemporalIntervalMatchMethod method );
 
     /**
-     * Sets the datetime \a range extent from which temporal data is available from the provider.
+     * Sets the overall datetime \a range extent from which temporal data is available from the provider.
      *
      * \see availableTemporalRange()
     */
     void setAvailableTemporalRange( const QgsDateTimeRange &range );
 
     /**
-     * Returns the datetime range extent from which temporal data is available from the provider.
+     * Returns the overall datetime range extent from which temporal data is available from the provider.
      *
      * \see setAvailableTemporalRange()
     */
     const QgsDateTimeRange &availableTemporalRange() const;
+
+    /**
+     * Sets a list of all valid datetime \a ranges for which temporal data is available from the provider.
+     *
+     * As opposed to setAvailableTemporalRange(), this method is useful when a provider
+     * contains a set of non-contiguous datetime ranges.
+     *
+     * \see allAvailableTemporalRanges()
+     * \see setAvailableTemporalRange()
+     * \since QGIS 3.20
+    */
+    void setAllAvailableTemporalRanges( const QList< QgsDateTimeRange > &ranges );
+
+    /**
+     * Returns a list of all valid datetime ranges for which temporal data is available from the provider.
+     *
+     * As opposed to availableTemporalRange(), this method is useful when a provider
+     * contains a set of non-contiguous datetime ranges.
+     *
+     * \see setAllAvailableTemporalRanges()
+     * \see availableTemporalRange()
+     * \since QGIS 3.20
+    */
+    QList< QgsDateTimeRange > allAvailableTemporalRanges() const;
 
     /**
      * Sets the available reference datetime \a range. This is to be used for
@@ -110,7 +135,23 @@ class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProv
     */
     const QgsDateTimeRange &requestedTemporalRange() const;
 
-  private:
+    /**
+     * Returns the default time step interval corresponding to the available
+     * datetime values for the provider.
+     *
+     * \see setDefaultInterval()
+     * \since QGIS 3.20
+     */
+    QgsInterval defaultInterval() const;
+
+    /**
+     * Sets the default time step \a interval corresponding to the available
+     * datetime values for the provider.
+     *
+     * \see defaultInterval()
+     * \since QGIS 3.20
+     */
+    void setDefaultInterval( const QgsInterval &interval );
 
     /**
      * Sets the requested temporal \a range to retrieve when
@@ -122,8 +163,9 @@ class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProv
      *
      * \see requestedTemporalRange()
     */
-    void setRequestedTemporalRange( const QgsDateTimeRange &range );
+    void setRequestedTemporalRange( const QgsDateTimeRange &range ) SIP_SKIP;
 
+  private:
     /**
      * Represents available data provider datetime range.
      *
@@ -134,6 +176,12 @@ class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProv
      */
     QgsDateTimeRange mAvailableTemporalRange;
 
+    /**
+     * A list of all valid temporal ranges for the provider. Used when a provider
+     * has a non-contiguous set of available temporal ranges.
+     */
+    QList< QgsDateTimeRange > mAllAvailableTemporalRanges;
+
     //! Represents the requested temporal range.
     QgsDateTimeRange mRequestedRange;
 
@@ -142,12 +190,15 @@ class CORE_EXPORT QgsRasterDataProviderTemporalCapabilities : public QgsDataProv
      */
     QgsDateTimeRange mAvailableReferenceRange;
 
+    QgsInterval mDefaultInterval;
+
     //! Interval handling method
-    IntervalHandlingMethod mIntervalMatchMethod = MatchUsingWholeRange;
+    Qgis::TemporalIntervalMatchMethod mIntervalMatchMethod = Qgis::TemporalIntervalMatchMethod::MatchUsingWholeRange;
+
+    Qgis::RasterTemporalCapabilityFlags mFlags;
 
     friend class QgsRasterLayerRenderer;
     friend class TestQgsRasterDataProviderTemporalCapabilities;
-
 };
 
 #endif // QGSRASTERDATAPROVIDERTEMPORALCAPABILITIES_H

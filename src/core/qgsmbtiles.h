@@ -16,9 +16,9 @@
 #ifndef QGSMBTILES_H
 #define QGSMBTILES_H
 
-#include "qgis_core.h"
+#include <sqlite3.h>
 
-#include "sqlite3.h"
+#include "qgis_core.h"
 #include "qgssqliteutils.h"
 
 #define SIP_NO_FILE
@@ -28,7 +28,7 @@ class QgsRectangle;
 
 /**
  * \ingroup core
- * Utility class for reading and writing MBTiles files (which are SQLite3 databases).
+ * \brief Utility class for reading and writing MBTiles files (which are SQLite3 databases).
  *
  * See the specification for more details:
  * https://github.com/mapbox/mbtiles-spec/blob/master/1.3/spec.md
@@ -48,44 +48,81 @@ class CORE_EXPORT QgsMbTiles
     bool isOpen() const;
 
     /**
+     * Finalizes the database after writing all tiles.
+     *
+     * This must be called if the database was created using a deferred index.
+     *
+     * \since QGIS 4.4
+     */
+    bool finalize();
+
+    /**
      * Creates a new MBTiles file and initializes it with metadata and tiles tables.
      * It is up to the caller to set appropriate metadata entries and add tiles afterwards.
-     * Returns TRUE on success. If the file exists already, returns FALSE.
+     *
+     * \param deferIndexCreation can be set to TRUE to defer creation of the tile_index. This results
+     * in much faster tile writes, as the index will not be updated after every tile write. If set to
+     * TRUE, a call to finalize() must be made before closing the database. (Since QGIS 4.4)
+     *
+     * \returns TRUE on success. If the file exists already, returns FALSE.
      */
-    bool create();
+    bool create( bool deferIndexCreation = false );
 
     //! Requests metadata value for the given key
-    QString metadataValue( const QString &key );
+    QString metadataValue( const QString &key ) const;
 
     /**
      * Sets metadata value for the given key. Does not overwrite existing entries.
      * \note the database has to be opened in read-write mode (currently only when opened with create()
      */
-    void setMetadataValue( const QString &key, const QString &value );
+    void setMetadataValue( const QString &key, const QString &value ) const;
 
     //! Returns bounding box from metadata, given in WGS 84 (if available)
-    QgsRectangle extent();
+    QgsRectangle extent() const;
 
     //! Returns raw tile data for given tile
-    QByteArray tileData( int z, int x, int y );
+    QByteArray tileData( int z, int x, int y ) const;
 
     //! Returns tile decoded as a raster image (if stored in a known format like JPG or PNG)
-    QImage tileDataAsImage( int z, int x, int y );
+    QImage tileDataAsImage( int z, int x, int y ) const;
 
     /**
      * Adds tile data for the given tile coordinates. Does not overwrite existing entries.
      * \note the database has to be opened in read-write mode (currently only when opened with create()
      */
-    void setTileData( int z, int x, int y, const QByteArray &data );
+    void setTileData( int z, int x, int y, const QByteArray &data ) const;
 
-    //! Decodes gzip byte stream, returns true on success. Useful for reading vector tiles.
-    static bool decodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut );
-    //! Encodes gzip byte stream, returns true on success. Useful for writing vector tiles.
-    static bool encodeGzip( const QByteArray &bytesIn, QByteArray &bytesOut );
+    /**
+     * Struct representing a raw image tile.
+     * \since QGIS 4.4
+     */
+    struct TileData
+    {
+        int z = 0;
+        int x = 0;
+        int y = 0;
+        QByteArray data;
+    };
+
+    /**
+     * Adds a batch of tile data within a single SQLite transaction.
+     * \note the database has to be opened in read-write mode (currently only when opened with create())
+     * \since QGIS 4.4
+     */
+    void setTileData( const QList<TileData> &tiles ) const;
+
+    /**
+     * Returns the latest error message obtained from the database.
+     *
+     * \since QGIS 4.4
+     */
+    QString lastError() const { return mLastError; }
 
   private:
     QString mFilename;
     sqlite3_database_unique_ptr mDatabase;
+    bool mDeferredIndexCreation = false;
+    mutable QString mLastError;
 };
 
 

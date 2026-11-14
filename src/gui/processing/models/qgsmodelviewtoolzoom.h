@@ -16,26 +16,25 @@
 #ifndef QGSMODELVIEWTOOLZOOM_H
 #define QGSMODELVIEWTOOLZOOM_H
 
-#include "qgis_sip.h"
-#include "qgis_gui.h"
-#include "qgsmodelviewtool.h"
-#include "qgsmodelviewrubberband.h"
 #include <memory>
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgsmodelviewrubberband.h"
+#include "qgsmodelviewtool.h"
 
 #define SIP_NO_FILE
 
 /**
  * \ingroup gui
- * Model view tool for zooming into and out of the model.
+ * \brief Model view tool for zooming into and out of the model.
  * \since QGIS 3.14
  */
 class GUI_EXPORT QgsModelViewToolZoom : public QgsModelViewTool
 {
-
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsModelViewToolZoom.
      */
@@ -49,22 +48,19 @@ class GUI_EXPORT QgsModelViewToolZoom : public QgsModelViewTool
     void deactivate() override;
 
   protected:
-
     //! Will be TRUE will marquee zoom operation is in progress
     bool mMarqueeZoom = false;
 
   private:
-
     //! Start position for mouse press
     QPoint mMousePressStartPos;
 
     QPointF mRubberBandStartPos;
 
     //! Rubber band item
-    std::unique_ptr< QgsModelViewRectangularRubberBand > mRubberBand;
+    std::unique_ptr<QgsModelViewRectangularRubberBand> mRubberBand;
 
     void startMarqueeZoom( QPointF scenePoint );
-
 };
 
 #endif // QGSMODELVIEWTOOLZOOM_H

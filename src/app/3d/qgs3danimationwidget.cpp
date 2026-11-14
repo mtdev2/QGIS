@@ -15,20 +15,26 @@
 
 #include "qgs3danimationwidget.h"
 
+#include <memory>
+
+#include "qgs3danimationexportdialog.h"
 #include "qgs3danimationsettings.h"
+#include "qgs3dmapsettings.h"
+#include "qgs3dutils.h"
 #include "qgsapplication.h"
 #include "qgscameracontroller.h"
-#include "qgs3danimationexportdialog.h"
-#include "qgs3dmapsettings.h"
-#include "qgsoffscreen3dengine.h"
-#include "qgs3dmapscene.h"
-#include "qgs3dutils.h"
 #include "qgsfeedback.h"
+#include "qgsproxyprogresstask.h"
 
 #include <QInputDialog>
 #include <QMessageBox>
-#include <QTimer>
 #include <QProgressDialog>
+#include <QString>
+#include <QTimer>
+
+#include "moc_qgs3danimationwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 Qgs3DAnimationWidget::Qgs3DAnimationWidget( QWidget *parent )
   : QWidget( parent )
@@ -52,18 +58,15 @@ Qgs3DAnimationWidget::Qgs3DAnimationWidget( QWidget *parent )
   connect( btnEditKeyframe, &QToolButton::clicked, this, &Qgs3DAnimationWidget::onEditKeyframe );
   connect( btnDuplicateKeyframe, &QToolButton::clicked, this, &Qgs3DAnimationWidget::onDuplicateKeyframe );
   connect( btnExportAnimation, &QToolButton::clicked, this, &Qgs3DAnimationWidget::onExportAnimation );
-  connect( cboInterpolation, qgis::overload<int>::of( &QComboBox::currentIndexChanged ), this, &Qgs3DAnimationWidget::onInterpolationChanged );
+  connect( cboInterpolation, qOverload<int>( &QComboBox::currentIndexChanged ), this, &Qgs3DAnimationWidget::onInterpolationChanged );
 
   btnPlayPause->setCheckable( true );
   connect( btnPlayPause, &QToolButton::clicked, this, &Qgs3DAnimationWidget::onPlayPause );
 
   connect( sliderTime, &QSlider::valueChanged, this, &Qgs3DAnimationWidget::onSliderValueChanged );
 
-  connect( cboKeyframe, qgis::overload<int>::of( &QComboBox::currentIndexChanged ), this, &Qgs3DAnimationWidget::onKeyframeChanged );
+  connect( cboKeyframe, qOverload<int>( &QComboBox::currentIndexChanged ), this, &Qgs3DAnimationWidget::onKeyframeChanged );
 }
-
-Qgs3DAnimationWidget::~Qgs3DAnimationWidget() = default;
-
 
 void Qgs3DAnimationWidget::setCameraController( QgsCameraController *cameraController )
 {
@@ -81,8 +84,8 @@ void Qgs3DAnimationWidget::setAnimation( const Qgs3DAnimationSettings &animSetti
   cboKeyframe->addItem( tr( "<none>" ) );
   for ( const Qgs3DAnimationSettings::Keyframe &keyframe : animSettings.keyFrames() )
   {
-    cboKeyframe->addItem( QStringLiteral( "%1 s" ).arg( keyframe.time ) );
-    int lastIndex = cboKeyframe->count() - 1;
+    cboKeyframe->addItem( u"%1 s"_s.arg( keyframe.time ) );
+    const int lastIndex = cboKeyframe->count() - 1;
     cboKeyframe->setItemData( lastIndex, QVariant::fromValue<Qgs3DAnimationSettings::Keyframe>( keyframe ), Qt::UserRole + 1 );
   }
 
@@ -91,7 +94,7 @@ void Qgs3DAnimationWidget::setAnimation( const Qgs3DAnimationSettings &animSetti
 
 void Qgs3DAnimationWidget::initializeController( const Qgs3DAnimationSettings &animSettings )
 {
-  mAnimationSettings.reset( new Qgs3DAnimationSettings( animSettings ) );
+  mAnimationSettings = std::make_unique<Qgs3DAnimationSettings>( animSettings );
 
   sliderTime->setMaximum( animSettings.duration() * 100 );
 }
@@ -117,7 +120,7 @@ void Qgs3DAnimationWidget::setDefaultAnimation()
   Qgs3DAnimationSettings::Keyframes kf;
   Qgs3DAnimationSettings::Keyframe f1, f2;
   f1.time = 0;
-  f1.point = mCameraController->lookingAtPoint();
+  f1.point = mCameraController->lookingAtMapPoint();
   f1.dist = mCameraController->distance();
   f1.pitch = mCameraController->pitch();
   f1.yaw = mCameraController->yaw();
@@ -194,29 +197,23 @@ void Qgs3DAnimationWidget::onExportAnimation()
   if ( dialog.exec() == QDialog::Accepted )
   {
     QgsFeedback progressFeedback;
+    auto progressTask = std::make_unique<QgsScopedProxyProgressTask>( tr( "Exporting animation" ) );
 
     QProgressDialog progressDialog( tr( "Exporting frames..." ), tr( "Abort" ), 0, 100, this );
     progressDialog.setWindowModality( Qt::WindowModal );
     QString error;
 
-    connect( &progressFeedback, &QgsFeedback::progressChanged, this,
-             [&progressDialog, &progressFeedback]
-    {
-      progressDialog.setValue( static_cast<int>( progressFeedback.progress() ) );
+    connect( &progressFeedback, &QgsFeedback::progressChanged, this, [&progressDialog, &progressTask]( double progress ) {
+      progressDialog.setValue( static_cast<int>( progress ) );
+      progressTask->setProgress( progress );
       QCoreApplication::processEvents();
     } );
 
     connect( &progressDialog, &QProgressDialog::canceled, &progressFeedback, &QgsFeedback::cancel );
 
-    bool success = Qgs3DUtils::exportAnimation(
-                     animation(),
-                     *mMap,
-                     dialog.fps(),
-                     dialog.outputDirectory(),
-                     dialog.fileNameExpression(),
-                     dialog.frameSize(),
-                     error,
-                     &progressFeedback );
+    const bool success = Qgs3DUtils::exportAnimation( animation(), *mMap, dialog.fps(), dialog.outputDirectory(), dialog.fileNameExpression(), dialog.frameSize(), error, &progressFeedback );
+
+    progressTask.reset();
 
     progressDialog.hide();
     if ( !success )
@@ -234,8 +231,8 @@ void Qgs3DAnimationWidget::onSliderValueChanged()
   if ( cboKeyframe->currentIndex() != 0 )
     cboKeyframe->setCurrentIndex( 0 );
 
-  Qgs3DAnimationSettings::Keyframe kf = mAnimationSettings->interpolate( sliderTime->value() / 100. );
-  mCameraController->setLookingAtPoint( kf.point, kf.dist, kf.pitch, kf.yaw );
+  const Qgs3DAnimationSettings::Keyframe kf = mAnimationSettings->interpolate( sliderTime->value() / 100. );
+  mCameraController->setLookingAtMapPoint( kf.point, kf.dist, kf.pitch, kf.yaw );
 }
 
 void Qgs3DAnimationWidget::onCameraChanged()
@@ -244,9 +241,9 @@ void Qgs3DAnimationWidget::onCameraChanged()
     return;
 
   // update keyframe's camera position/rotation
-  int i = cboKeyframe->currentIndex();
+  const int i = cboKeyframe->currentIndex();
   Qgs3DAnimationSettings::Keyframe kf = cboKeyframe->itemData( i, Qt::UserRole + 1 ).value<Qgs3DAnimationSettings::Keyframe>();
-  kf.point = mCameraController->lookingAtPoint();
+  kf.point = mCameraController->lookingAtMapPoint();
   kf.dist = mCameraController->distance();
   kf.pitch = mCameraController->pitch();
   kf.yaw = mCameraController->yaw();
@@ -257,7 +254,7 @@ void Qgs3DAnimationWidget::onCameraChanged()
 
 void Qgs3DAnimationWidget::onKeyframeChanged()
 {
-  bool hasKeyframe = cboKeyframe->currentIndex() > 0;
+  const bool hasKeyframe = cboKeyframe->currentIndex() > 0;
   btnRemoveKeyframe->setEnabled( hasKeyframe );
   btnEditKeyframe->setEnabled( hasKeyframe );
   btnDuplicateKeyframe->setEnabled( hasKeyframe );
@@ -266,10 +263,10 @@ void Qgs3DAnimationWidget::onKeyframeChanged()
     return;
 
   // jump to the camera view of the keyframe
-  Qgs3DAnimationSettings::Keyframe kf = cboKeyframe->itemData( cboKeyframe->currentIndex(), Qt::UserRole + 1 ).value<Qgs3DAnimationSettings::Keyframe>();
+  const Qgs3DAnimationSettings::Keyframe kf = cboKeyframe->itemData( cboKeyframe->currentIndex(), Qt::UserRole + 1 ).value<Qgs3DAnimationSettings::Keyframe>();
 
   whileBlocking( sliderTime )->setValue( kf.time * 100 );
-  mCameraController->setLookingAtPoint( kf.point, kf.dist, kf.pitch, kf.yaw );
+  mCameraController->setLookingAtMapPoint( kf.point, kf.dist, kf.pitch, kf.yaw );
 }
 
 int Qgs3DAnimationWidget::findIndexForKeyframe( float time )
@@ -286,7 +283,7 @@ int Qgs3DAnimationWidget::findIndexForKeyframe( float time )
 
 float Qgs3DAnimationWidget::askForKeyframeTime( float defaultTime, bool *ok )
 {
-  double t = QInputDialog::getDouble( this, tr( "Keyframe time" ), tr( "Keyframe time [seconds]:" ), defaultTime, 0, 9999, 2, ok );
+  const double t = QInputDialog::getDouble( this, tr( "Keyframe time" ), tr( "Keyframe time [seconds]:" ), defaultTime, 0, 9999, 2, ok );
   if ( !*ok )
     return 0;
 
@@ -308,30 +305,31 @@ float Qgs3DAnimationWidget::askForKeyframeTime( float defaultTime, bool *ok )
 void Qgs3DAnimationWidget::onAddKeyframe()
 {
   bool ok;
-  float t = askForKeyframeTime( sliderTime->value() / 100., &ok );
+  const float t = askForKeyframeTime( sliderTime->value() / 100., &ok );
   if ( !ok )
     return;
 
-  int index = findIndexForKeyframe( t );
+  const int index = findIndexForKeyframe( t );
 
   Qgs3DAnimationSettings::Keyframe kf;
   kf.time = t;
-  kf.point = mCameraController->lookingAtPoint();
+  kf.point = mCameraController->lookingAtMapPoint();
   kf.dist = mCameraController->distance();
   kf.pitch = mCameraController->pitch();
   kf.yaw = mCameraController->yaw();
 
-  cboKeyframe->insertItem( index + 1, QStringLiteral( "%1 s" ).arg( kf.time ) );
+  cboKeyframe->insertItem( index + 1, u"%1 s"_s.arg( kf.time ) );
   cboKeyframe->setItemData( index + 1, QVariant::fromValue<Qgs3DAnimationSettings::Keyframe>( kf ), Qt::UserRole + 1 );
 
   initializeController( animation() );
 
   cboKeyframe->setCurrentIndex( index + 1 );
+  QgsProject::instance()->setDirty( true );
 }
 
 void Qgs3DAnimationWidget::onRemoveKeyframe()
 {
-  int index = cboKeyframe->currentIndex();
+  const int index = cboKeyframe->currentIndex();
   if ( index <= 0 )
     return;
 
@@ -339,18 +337,19 @@ void Qgs3DAnimationWidget::onRemoveKeyframe()
   cboKeyframe->removeItem( index );
 
   initializeController( animation() );
+  QgsProject::instance()->setDirty( true );
 }
 
 void Qgs3DAnimationWidget::onEditKeyframe()
 {
-  int index = cboKeyframe->currentIndex();
+  const int index = cboKeyframe->currentIndex();
   if ( index <= 0 )
     return;
 
   Qgs3DAnimationSettings::Keyframe kf = cboKeyframe->itemData( index, Qt::UserRole + 1 ).value<Qgs3DAnimationSettings::Keyframe>();
 
   bool ok;
-  float t = askForKeyframeTime( kf.time, &ok );
+  const float t = askForKeyframeTime( kf.time, &ok );
   if ( !ok )
     return;
 
@@ -360,11 +359,11 @@ void Qgs3DAnimationWidget::onEditKeyframe()
   initializeController( animation() );
 
   // figure out position of this keyframe
-  int newIndex = findIndexForKeyframe( t );
+  const int newIndex = findIndexForKeyframe( t );
 
   kf.time = t;
 
-  cboKeyframe->insertItem( newIndex + 1, QStringLiteral( "%1 s" ).arg( kf.time ) );
+  cboKeyframe->insertItem( newIndex + 1, u"%1 s"_s.arg( kf.time ) );
   cboKeyframe->setItemData( newIndex + 1, QVariant::fromValue<Qgs3DAnimationSettings::Keyframe>( kf ), Qt::UserRole + 1 );
 
   initializeController( animation() );
@@ -374,23 +373,23 @@ void Qgs3DAnimationWidget::onEditKeyframe()
 
 void Qgs3DAnimationWidget::onDuplicateKeyframe()
 {
-  int index = cboKeyframe->currentIndex();
+  const int index = cboKeyframe->currentIndex();
   if ( index <= 0 )
     return;
 
   Qgs3DAnimationSettings::Keyframe kf = cboKeyframe->itemData( index, Qt::UserRole + 1 ).value<Qgs3DAnimationSettings::Keyframe>();
 
   bool ok;
-  float t = askForKeyframeTime( kf.time, &ok );
+  const float t = askForKeyframeTime( kf.time, &ok );
   if ( !ok )
     return;
 
   // figure out position of this keyframe
-  int newIndex = findIndexForKeyframe( t );
+  const int newIndex = findIndexForKeyframe( t );
 
   kf.time = t;
 
-  cboKeyframe->insertItem( newIndex + 1, QStringLiteral( "%1 s" ).arg( kf.time ) );
+  cboKeyframe->insertItem( newIndex + 1, u"%1 s"_s.arg( kf.time ) );
   cboKeyframe->setItemData( newIndex + 1, QVariant::fromValue<Qgs3DAnimationSettings::Keyframe>( kf ), Qt::UserRole + 1 );
 
   initializeController( animation() );

@@ -13,32 +13,34 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
-
 #include "qgsauxiliarystorage.h"
 #include "qgsexpressioncontext.h"
+#include "qgsexpressioncontextutils.h"
 #include "qgsproject.h"
 #include "qgsprojectstorage.h"
 #include "qgsprojectstorageregistry.h"
+#include "qgstest.h"
 #include "qgsvectorlayer.h"
-#include "qgsexpressioncontextutils.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQgsProjectStorage : public QObject
 {
     Q_OBJECT
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init();// will be called before each testfunction is executed.
-    void cleanup();// will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
+    void init();            // will be called before each testfunction is executed.
+    void cleanup();         // will be called after every testfunction.
 
     void testMemoryStorage();
+    void testSupportedUri();
 };
 
 void TestQgsProjectStorage::init()
-{
-}
+{}
 
 void TestQgsProjectStorage::cleanup()
 {
@@ -47,13 +49,6 @@ void TestQgsProjectStorage::cleanup()
 
 void TestQgsProjectStorage::initTestCase()
 {
-  // Runs once before any tests are run
-
-  // Set up the QgsSettings environment
-  QCoreApplication::setOrganizationName( QStringLiteral( "QGIS" ) );
-  QCoreApplication::setOrganizationDomain( QStringLiteral( "qgis.org" ) );
-  QCoreApplication::setApplicationName( QStringLiteral( "QGIS-TEST" ) );
-
   QgsApplication::init();
   QgsApplication::initQgis();
 }
@@ -70,10 +65,7 @@ void TestQgsProjectStorage::cleanupTestCase()
 class MemoryStorage : public QgsProjectStorage
 {
   public:
-    QString type() override
-    {
-      return QStringLiteral( "memory" );
-    }
+    QString type() override { return u"memory"_s; }
 
     QStringList listProjects( const QString &uri ) override
     {
@@ -83,19 +75,19 @@ class MemoryStorage : public QgsProjectStorage
 
     bool readProject( const QString &uri, QIODevice *ioDevice, QgsReadWriteContext &context ) override
     {
-      QgsReadWriteContextCategoryPopper popper( context.enterCategory( "memory storage" ) );
+      const QgsReadWriteContextCategoryPopper popper( context.enterCategory( "memory storage" ) );
 
       QStringList lst = uri.split( ":" );
       Q_ASSERT( lst.count() == 2 );
-      QString projectName = lst[1];
+      const QString projectName = lst[1];
 
       if ( !mProjects.contains( projectName ) )
       {
-        context.pushMessage( "project not found", Qgis::Critical );
+        context.pushMessage( "project not found", Qgis::MessageLevel::Critical );
         return false;
       }
 
-      QByteArray content = mProjects[projectName];
+      const QByteArray content = mProjects[projectName];
       ioDevice->write( content );
       ioDevice->seek( 0 );
       return true;
@@ -106,7 +98,7 @@ class MemoryStorage : public QgsProjectStorage
       Q_UNUSED( context );
       QStringList lst = uri.split( ":" );
       Q_ASSERT( lst.count() == 2 );
-      QString projectName = lst[1];
+      const QString projectName = lst[1];
 
       mProjects[projectName] = ioDevice->readAll();
 
@@ -121,7 +113,7 @@ class MemoryStorage : public QgsProjectStorage
     {
       QStringList lst = uri.split( ":" );
       Q_ASSERT( lst.count() == 2 );
-      QString projectName = lst[1];
+      const QString projectName = lst[1];
 
       if ( !mProjects.contains( projectName ) )
         return false;
@@ -135,7 +127,7 @@ class MemoryStorage : public QgsProjectStorage
     {
       QStringList lst = uri.split( ":" );
       Q_ASSERT( lst.count() == 2 );
-      QString projectName = lst[1];
+      const QString projectName = lst[1];
       if ( !mProjects.contains( projectName ) )
         return false;
 
@@ -151,9 +143,9 @@ class MemoryStorage : public QgsProjectStorage
 
 void TestQgsProjectStorage::testMemoryStorage()
 {
-  QString dataDir( TEST_DATA_DIR ); // defined in CmakeLists.txt
-  QString layerPath = dataDir + "/points.shp";
-  QgsVectorLayer *layer1 = new QgsVectorLayer( layerPath, QStringLiteral( "points" ), QStringLiteral( "ogr" ) );
+  const QString dataDir( TEST_DATA_DIR ); // defined in CmakeLists.txt
+  const QString layerPath = dataDir + "/points.shp";
+  QgsVectorLayer *layer1 = new QgsVectorLayer( layerPath, u"points"_s, u"ogr"_s );
   QVERIFY( layer1->isValid() );
 
   MemoryStorage *memStorage = new MemoryStorage;
@@ -170,15 +162,15 @@ void TestQgsProjectStorage::testMemoryStorage()
   prj1.setFileName( "memory:project1" );
 
   // let's use the aux storage as well - so that the project will include aux database as well
-  int fldCnt0 = layer1->fields().count();
+  const int fldCnt0 = layer1->fields().count();
   QgsAuxiliaryLayer *layerAux = prj1.auxiliaryStorage()->createAuxiliaryLayer( layer1->fields().at( 0 ), layer1 );
   layer1->setAuxiliaryLayer( layerAux );
-  layerAux->addAttribute( QgsField( "fld_aux", QVariant::Int ) );
+  layerAux->addAttribute( QgsField( "fld_aux", QMetaType::Type::Int ) );
   layerAux->commitChanges();
   QCOMPARE( fldCnt0, 6 );
   QCOMPARE( layer1->fields().count(), 7 );
 
-  bool writeOk = prj1.write();
+  const bool writeOk = prj1.write();
 
   QVERIFY( writeOk );
   QCOMPARE( memStorage->listProjects( QString() ).count(), 1 );
@@ -191,7 +183,7 @@ void TestQgsProjectStorage::testMemoryStorage()
 
   QgsProject prj2;
   prj2.setFileName( "memory:project1" );
-  bool readOk = prj2.read();
+  const bool readOk = prj2.read();
 
   QVERIFY( readOk );
   QCOMPARE( prj2.mapLayers().count(), 1 );
@@ -213,32 +205,43 @@ void TestQgsProjectStorage::testMemoryStorage()
 
   QgsProject prj3;
   prj3.setFileName( "memory:nooooooooo!" );
-  bool readInvalidOk = prj3.read();
+  const bool readInvalidOk = prj3.read();
   QVERIFY( !readInvalidOk );
 
   // test metadata access
 
   QgsProjectStorage::Metadata meta1;
-  bool readMetaOk = memStorage->readProjectStorageMetadata( "memory:project1", meta1 );
+  const bool readMetaOk = memStorage->readProjectStorageMetadata( "memory:project1", meta1 );
   QVERIFY( readMetaOk );
   QCOMPARE( meta1.name, QString( "project1" ) );
   QVERIFY( meta1.lastModified.secsTo( QDateTime::currentDateTime() ) < 1 );
 
   QgsProjectStorage::Metadata metaX;
-  bool readMetaInvalidOk = memStorage->readProjectStorageMetadata( "memory:projectXYZ", metaX );
+  const bool readMetaInvalidOk = memStorage->readProjectStorageMetadata( "memory:projectXYZ", metaX );
   QVERIFY( !readMetaInvalidOk );
 
   // test removal
 
-  bool removeInvalidOk = memStorage->removeProject( "memory:projectXYZ" );
+  const bool removeInvalidOk = memStorage->removeProject( "memory:projectXYZ" );
   QVERIFY( !removeInvalidOk );
   QCOMPARE( memStorage->listProjects( QString() ).count(), 1 );
 
-  bool removeOk = memStorage->removeProject( "memory:project1" );
+  const bool removeOk = memStorage->removeProject( "memory:project1" );
   QVERIFY( removeOk );
   QCOMPARE( memStorage->listProjects( QString() ).count(), 0 );
 
   QgsApplication::projectStorageRegistry()->unregisterProjectStorage( memStorage );
+}
+
+void TestQgsProjectStorage::testSupportedUri()
+{
+  QgsProjectStorage *gpkgStorage = QgsApplication::projectStorageRegistry()->projectStorageFromType( u"geopackage"_s );
+  QVERIFY( gpkgStorage );
+
+  QVERIFY( gpkgStorage->isSupportedUri( u"%1/mixed_layers.gpkg"_s.arg( TEST_DATA_DIR ) ) );
+  QVERIFY( !gpkgStorage->isSupportedUri( u"%1/mixed_types.TAB"_s.arg( TEST_DATA_DIR ) ) );
+
+  QCOMPARE( QgsApplication::projectStorageRegistry()->projectStorageFromUri( u"%1/mixed_layers.gpkg"_s.arg( TEST_DATA_DIR ) )->type(), u"geopackage"_s );
 }
 
 

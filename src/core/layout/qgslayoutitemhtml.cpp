@@ -14,26 +14,38 @@
  ***************************************************************************/
 
 #include "qgslayoutitemhtml.h"
-#include "qgslayoutframe.h"
-#include "qgslayout.h"
-#include "qgsnetworkaccessmanager.h"
-#include "qgsmessagelog.h"
-#include "qgsexpression.h"
-#include "qgslogger.h"
-#include "qgsnetworkcontentfetcher.h"
-#include "qgsvectorlayer.h"
-#include "qgsproject.h"
-#include "qgsdistancearea.h"
-#include "qgsjsonutils.h"
-#include "qgsmapsettings.h"
-#include "qgswebpage.h"
-#include "qgswebframe.h"
-#include "qgslayoutitemmap.h"
 
+#include "qgsdistancearea.h"
+#include "qgsexpression.h"
+#include "qgsjsonutils.h"
+#include "qgslayout.h"
+#include "qgslayoutframe.h"
+#include "qgslayoutitemlabel.h"
+#include "qgslayoutitemmap.h"
+#include "qgslayoutrendercontext.h"
+#include "qgslayoutreportcontext.h"
+#include "qgslogger.h"
+#include "qgsmapsettings.h"
+#include "qgsmessagelog.h"
+#include "qgsnetworkaccessmanager.h"
+#include "qgsnetworkcontentfetcher.h"
+#include "qgsproject.h"
+#include "qgsvectorlayer.h"
+#include "qgswebframe.h"
+#include "qgswebpage.h"
+
+#include <QAbstractTextDocumentLayout>
 #include <QCoreApplication>
-#include <QPainter>
 #include <QImage>
 #include <QNetworkReply>
+#include <QPainter>
+#include <QString>
+#include <QThread>
+#include <QUrl>
+
+#include "moc_qgslayoutitemhtml.cpp"
+
+using namespace Qt::StringLiterals;
 
 // clazy:excludeall=lambda-in-connect
 
@@ -45,7 +57,7 @@ QgsLayoutItemHtml::QgsLayoutItemHtml( QgsLayout *layout )
   // only possible on the main thread!
   if ( QThread::currentThread() == QApplication::instance()->thread() )
   {
-    mWebPage = qgis::make_unique< QgsWebPage >();
+    mWebPage = std::make_unique< QgsWebPage >();
   }
   else
   {
@@ -87,12 +99,39 @@ int QgsLayoutItemHtml::type() const
 
 QIcon QgsLayoutItemHtml::icon() const
 {
-  return QgsApplication::getThemeIcon( QStringLiteral( "/mLayoutItemHtml.svg" ) );
+  return QgsApplication::getThemeIcon( u"/mLayoutItemHtml.svg"_s );
 }
 
 QgsLayoutItemHtml *QgsLayoutItemHtml::create( QgsLayout *layout )
 {
   return new QgsLayoutItemHtml( layout );
+}
+
+QgsLayoutItemHtml *QgsLayoutItemHtml::createFromLabel( QgsLayoutItemLabel *label )
+{
+  QgsLayoutItemHtml *html = new QgsLayoutItemHtml( label->layout() );
+  QgsLayoutFrame *frame = new QgsLayoutFrame( label->layout(), html );
+  frame->setVisible( label->isVisible() );
+  frame->setLocked( label->isLocked() );
+  frame->setItemOpacity( label->itemOpacity() );
+  frame->setRotation( label->rotation() );
+  frame->setReferencePoint( label->referencePoint() );
+  frame->attemptMove( label->positionWithUnits() );
+  frame->attemptResize( label->sizeWithUnits() );
+  frame->setZValue( label->zValue() );
+  frame->setParentGroup( label->parentGroup() );
+  frame->setBackgroundColor( label->backgroundColor() );
+  frame->setFrameEnabled( label->frameEnabled() );
+  frame->setFrameJoinStyle( label->frameJoinStyle() );
+  frame->setFrameStrokeWidth( label->frameStrokeWidth() );
+  frame->setFrameStrokeColor( label->frameStrokeColor() );
+  html->addFrame( frame );
+  html->setContentMode( QgsLayoutItemHtml::ManualHtml );
+  html->setHtml( label->currentText() );
+  html->setUserStylesheetEnabled( true );
+  html->setUserStylesheet( label->createStylesheet() );
+  html->loadHtml();
+  return html;
 }
 
 void QgsLayoutItemHtml::setUrl( const QUrl &url )
@@ -130,7 +169,7 @@ void QgsLayoutItemHtml::loadHtml( const bool useCache, const QgsExpressionContex
     return;
   }
 
-  QgsExpressionContext scopedContext = createExpressionContext();
+  const QgsExpressionContext scopedContext = createExpressionContext();
   const QgsExpressionContext *evalContext = context ? context : &scopedContext;
 
   QString loadedHtml;
@@ -138,16 +177,15 @@ void QgsLayoutItemHtml::loadHtml( const bool useCache, const QgsExpressionContex
   {
     case QgsLayoutItemHtml::Url:
     {
-
       QString currentUrl = mUrl.toString();
 
       //data defined url set?
       bool ok = false;
-      currentUrl = mDataDefinedProperties.valueAsString( QgsLayoutObject::SourceUrl, *evalContext, currentUrl, &ok );
+      currentUrl = mDataDefinedProperties.valueAsString( QgsLayoutObject::DataDefinedProperty::SourceUrl, *evalContext, currentUrl, &ok );
       if ( ok )
       {
         currentUrl = currentUrl.trimmed();
-        QgsDebugMsg( QStringLiteral( "exprVal Source Url:%1" ).arg( currentUrl ) );
+        QgsDebugMsgLevel( u"exprVal Source Url:%1"_s.arg( currentUrl ), 2 );
       }
       if ( currentUrl.isEmpty() )
       {
@@ -179,26 +217,30 @@ void QgsLayoutItemHtml::loadHtml( const bool useCache, const QgsExpressionContex
   bool loaded = false;
 
   QEventLoop loop;
-  connect( mWebPage.get(), &QWebPage::loadFinished, &loop, [&loaded, &loop ] { loaded = true; loop.quit(); } );
-  connect( mFetcher, &QgsNetworkContentFetcher::finished, &loop, [&loaded, &loop ] { loaded = true; loop.quit(); } );
+  connect( mWebPage.get(), &QWebPage::loadFinished, &loop, [&loaded, &loop] {
+    loaded = true;
+    loop.quit();
+  } );
+  connect( mFetcher, &QgsNetworkContentFetcher::finished, &loop, [&loaded, &loop] {
+    loaded = true;
+    loop.quit();
+  } );
 
   //reset page size. otherwise viewport size increases but never decreases again
   mWebPage->setViewportSize( QSize( maxFrameWidth() * mHtmlUnitsToLayoutUnits, 0 ) );
 
   //set html, using the specified url as base if in Url mode or the project file if in manual mode
-  const QUrl baseUrl = mContentMode == QgsLayoutItemHtml::Url ?
-                       QUrl( mActualFetchedUrl ) :
-                       QUrl::fromLocalFile( mLayout->project()->absoluteFilePath() );
+  const QUrl baseUrl = mContentMode == QgsLayoutItemHtml::Url ? QUrl( mActualFetchedUrl ) : QUrl::fromLocalFile( mLayout->project()->absoluteFilePath() );
 
   mWebPage->mainFrame()->setHtml( loadedHtml, baseUrl );
 
   //set user stylesheet
   QWebSettings *settings = mWebPage->settings();
-  if ( mEnableUserStylesheet && ! mUserStylesheet.isEmpty() )
+  if ( mEnableUserStylesheet && !mUserStylesheet.isEmpty() )
   {
     QByteArray ba;
     ba.append( mUserStylesheet.toUtf8() );
-    QUrl cssFileURL = QUrl( QString( "data:text/css;charset=utf-8;base64," + ba.toBase64() ) );
+    const QUrl cssFileURL = QUrl( QString( "data:text/css;charset=utf-8;base64," + ba.toBase64() ) );
     settings->setUserStyleSheetUrl( cssFileURL );
   }
   else
@@ -208,17 +250,6 @@ void QgsLayoutItemHtml::loadHtml( const bool useCache, const QgsExpressionContex
 
   if ( !loaded )
     loop.exec( QEventLoop::ExcludeUserInputEvents );
-
-  //inject JSON feature
-  if ( !mAtlasFeatureJSON.isEmpty() )
-  {
-    JavascriptExecutorLoop jsLoop;
-
-    mWebPage->mainFrame()->addToJavaScriptWindowObject( QStringLiteral( "loop" ), &jsLoop );
-    mWebPage->mainFrame()->evaluateJavaScript( QStringLiteral( "if ( typeof setFeature === \"function\" ) { try{ setFeature(%1); } catch (err) { loop.reportError(err.message); } }; loop.done();" ).arg( mAtlasFeatureJSON ) );
-
-    jsLoop.execIfNotDone();
-  }
 
   recalculateFrameSizes();
   //trigger a repaint
@@ -247,7 +278,7 @@ void QgsLayoutItemHtml::recalculateFrameSizes()
   QSize contentsSize = mWebPage->mainFrame()->contentsSize();
 
   //find maximum frame width
-  double maxWidth = maxFrameWidth();
+  const double maxWidth = maxFrameWidth();
   //set content width to match maximum frame width
   contentsSize.setWidth( maxWidth * mHtmlUnitsToLayoutUnits );
 
@@ -285,7 +316,10 @@ QString QgsLayoutItemHtml::fetchHtml( const QUrl &url )
   //pause until HTML fetch
   bool loaded = false;
   QEventLoop loop;
-  connect( mFetcher, &QgsNetworkContentFetcher::finished, &loop, [&loaded, &loop ] { loaded = true; loop.quit(); } );
+  connect( mFetcher, &QgsNetworkContentFetcher::finished, &loop, [&loaded, &loop] {
+    loaded = true;
+    loop.quit();
+  } );
   mFetcher->fetchContent( url );
 
   if ( !loaded )
@@ -301,17 +335,39 @@ QSizeF QgsLayoutItemHtml::totalSize() const
   return mSize;
 }
 
-void QgsLayoutItemHtml::render( QgsLayoutItemRenderContext &context, const QRectF &renderExtent, const int )
+void QgsLayoutItemHtml::render( QgsLayoutItemRenderContext &context, const QRectF &renderExtent, const int frameIndex )
 {
-  if ( !mWebPage )
-    return;
+  Q_UNUSED( renderExtent )
+  if ( mLayout->renderContext().isPreviewRender() )
+  {
+    if ( QgsLayoutFrame *currentFrame = frame( frameIndex ) )
+    {
+      QPainter *painter = context.renderContext().painter();
 
-  QPainter *painter = context.renderContext().painter();
-  QgsScopedQPainterState painterState( painter );
-  // painter is scaled to dots, so scale back to layout units
-  painter->scale( context.renderContext().scaleFactor() / mHtmlUnitsToLayoutUnits, context.renderContext().scaleFactor() / mHtmlUnitsToLayoutUnits );
-  painter->translate( 0.0, -renderExtent.top() * mHtmlUnitsToLayoutUnits );
-  mWebPage->mainFrame()->render( painter, QRegion( renderExtent.left(), renderExtent.top() * mHtmlUnitsToLayoutUnits, renderExtent.width() * mHtmlUnitsToLayoutUnits, renderExtent.height() * mHtmlUnitsToLayoutUnits ) );
+      // painter is scaled to dots, so scale back to layout units
+      const QRectF painterRect = QRectF(
+        currentFrame->rect().left() * context.renderContext().scaleFactor(),
+        currentFrame->rect().top() * context.renderContext().scaleFactor(),
+        currentFrame->rect().width() * context.renderContext().scaleFactor(),
+        currentFrame->rect().height() * context.renderContext().scaleFactor()
+      );
+
+      painter->setBrush( QBrush( QColor( 255, 125, 125, 125 ) ) );
+      painter->setPen( Qt::NoPen );
+      painter->drawRect( painterRect );
+      painter->setBrush( Qt::NoBrush );
+
+      painter->setPen( QColor( 200, 0, 0, 255 ) );
+      QTextDocument td;
+      td.setTextWidth( painterRect.width() );
+      td.setHtml(
+        u"<span style=\"color: rgb(200,0,0);\"><b>%1</b><br>%2</span>"_s.arg( tr( "WebKit not available!" ), tr( "The item cannot be rendered because this QGIS install was built without WebKit support." ) )
+      );
+      painter->setClipRect( painterRect );
+      QAbstractTextDocumentLayout::PaintContext ctx;
+      td.documentLayout()->draw( painter, ctx );
+    }
+  }
 }
 
 double QgsLayoutItemHtml::htmlUnitsToLayoutUnits()
@@ -321,7 +377,7 @@ double QgsLayoutItemHtml::htmlUnitsToLayoutUnits()
     return 1.0;
   }
 
-  return mLayout->convertToLayoutUnits( QgsLayoutMeasurement( mLayout->renderContext().dpi() / 72.0, QgsUnitTypes::LayoutMillimeters ) ); //webkit seems to assume a standard dpi of 96
+  return mLayout->convertToLayoutUnits( QgsLayoutMeasurement( mLayout->renderContext().dpi() / 72.0, Qgis::LayoutUnit::Millimeters ) ); //webkit seems to assume a standard dpi of 96
 }
 
 bool candidateSort( QPair<int, int> c1, QPair<int, int> c2 )
@@ -344,7 +400,7 @@ double QgsLayoutItemHtml::findNearbyPageBreak( double yPos )
   }
 
   //convert yPos to pixels
-  int idealPos = yPos * htmlUnitsToLayoutUnits();
+  const int idealPos = yPos * htmlUnitsToLayoutUnits();
 
   //if ideal break pos is past end of page, there's nothing we need to do
   if ( idealPos >= mRenderedPage.height() )
@@ -352,7 +408,7 @@ double QgsLayoutItemHtml::findNearbyPageBreak( double yPos )
     return yPos;
   }
 
-  int maxSearchDistance = mMaxBreakDistance * htmlUnitsToLayoutUnits();
+  const int maxSearchDistance = mMaxBreakDistance * htmlUnitsToLayoutUnits();
 
   //loop through all lines just before ideal break location, up to max distance
   //of maxSearchDistance
@@ -362,7 +418,7 @@ double QgsLayoutItemHtml::findNearbyPageBreak( double yPos )
   bool previousPixelTransparent = false;
   QRgb pixelColor;
   QList< QPair<int, int> > candidates;
-  int minRow = std::max( idealPos - maxSearchDistance, 0 );
+  const int minRow = std::max( idealPos - maxSearchDistance, 0 );
   for ( int candidateRow = idealPos; candidateRow >= minRow; --candidateRow )
   {
     changes = 0;
@@ -395,9 +451,9 @@ double QgsLayoutItemHtml::findNearbyPageBreak( double yPos )
   //we do this so that the spacing between text lines is likely to be split in half
   //otherwise the html will be broken immediately above a line of text, which
   //looks a little messy
-  int maxCandidateRow = candidates[0].first;
+  const int maxCandidateRow = candidates[0].first;
   int minCandidateRow = maxCandidateRow + 1;
-  int minCandidateChanges = candidates[0].second;
+  const int minCandidateChanges = candidates[0].second;
 
   QList< QPair<int, int> >::iterator it;
   for ( it = candidates.begin(); it != candidates.end(); ++it )
@@ -457,34 +513,34 @@ QString QgsLayoutItemHtml::displayName() const
 
 bool QgsLayoutItemHtml::writePropertiesToElement( QDomElement &htmlElem, QDomDocument &, const QgsReadWriteContext & ) const
 {
-  htmlElem.setAttribute( QStringLiteral( "contentMode" ), QString::number( static_cast< int >( mContentMode ) ) );
-  htmlElem.setAttribute( QStringLiteral( "url" ), mUrl.toString() );
-  htmlElem.setAttribute( QStringLiteral( "html" ), mHtml );
-  htmlElem.setAttribute( QStringLiteral( "evaluateExpressions" ), mEvaluateExpressions ? "true" : "false" );
-  htmlElem.setAttribute( QStringLiteral( "useSmartBreaks" ), mUseSmartBreaks ? "true" : "false" );
-  htmlElem.setAttribute( QStringLiteral( "maxBreakDistance" ), QString::number( mMaxBreakDistance ) );
-  htmlElem.setAttribute( QStringLiteral( "stylesheet" ), mUserStylesheet );
-  htmlElem.setAttribute( QStringLiteral( "stylesheetEnabled" ), mEnableUserStylesheet ? "true" : "false" );
+  htmlElem.setAttribute( u"contentMode"_s, QString::number( static_cast< int >( mContentMode ) ) );
+  htmlElem.setAttribute( u"url"_s, mUrl.toString() );
+  htmlElem.setAttribute( u"html"_s, mHtml );
+  htmlElem.setAttribute( u"evaluateExpressions"_s, mEvaluateExpressions ? "true" : "false" );
+  htmlElem.setAttribute( u"useSmartBreaks"_s, mUseSmartBreaks ? "true" : "false" );
+  htmlElem.setAttribute( u"maxBreakDistance"_s, QString::number( mMaxBreakDistance ) );
+  htmlElem.setAttribute( u"stylesheet"_s, mUserStylesheet );
+  htmlElem.setAttribute( u"stylesheetEnabled"_s, mEnableUserStylesheet ? "true" : "false" );
   return true;
 }
 
 bool QgsLayoutItemHtml::readPropertiesFromElement( const QDomElement &itemElem, const QDomDocument &, const QgsReadWriteContext & )
 {
   bool contentModeOK;
-  mContentMode = static_cast< QgsLayoutItemHtml::ContentMode >( itemElem.attribute( QStringLiteral( "contentMode" ) ).toInt( &contentModeOK ) );
+  mContentMode = static_cast< QgsLayoutItemHtml::ContentMode >( itemElem.attribute( u"contentMode"_s ).toInt( &contentModeOK ) );
   if ( !contentModeOK )
   {
     mContentMode = QgsLayoutItemHtml::Url;
   }
-  mEvaluateExpressions = itemElem.attribute( QStringLiteral( "evaluateExpressions" ), QStringLiteral( "true" ) ) == QLatin1String( "true" );
-  mUseSmartBreaks = itemElem.attribute( QStringLiteral( "useSmartBreaks" ), QStringLiteral( "true" ) ) == QLatin1String( "true" );
-  mMaxBreakDistance = itemElem.attribute( QStringLiteral( "maxBreakDistance" ), QStringLiteral( "10" ) ).toDouble();
-  mHtml = itemElem.attribute( QStringLiteral( "html" ) );
-  mUserStylesheet = itemElem.attribute( QStringLiteral( "stylesheet" ) );
-  mEnableUserStylesheet = itemElem.attribute( QStringLiteral( "stylesheetEnabled" ), QStringLiteral( "false" ) ) == QLatin1String( "true" );
+  mEvaluateExpressions = itemElem.attribute( u"evaluateExpressions"_s, u"true"_s ) == "true"_L1;
+  mUseSmartBreaks = itemElem.attribute( u"useSmartBreaks"_s, u"true"_s ) == "true"_L1;
+  mMaxBreakDistance = itemElem.attribute( u"maxBreakDistance"_s, u"10"_s ).toDouble();
+  mHtml = itemElem.attribute( u"html"_s );
+  mUserStylesheet = itemElem.attribute( u"stylesheet"_s );
+  mEnableUserStylesheet = itemElem.attribute( u"stylesheetEnabled"_s, u"false"_s ) == "true"_L1;
 
   //finally load the set url
-  QString urlString = itemElem.attribute( QStringLiteral( "url" ) );
+  const QString urlString = itemElem.attribute( u"url"_s );
   if ( !urlString.isEmpty() )
   {
     mUrl = urlString;
@@ -548,10 +604,10 @@ void QgsLayoutItemHtml::refreshExpressionContext()
 
 void QgsLayoutItemHtml::refreshDataDefinedProperty( const QgsLayoutObject::DataDefinedProperty property )
 {
-  QgsExpressionContext context = createExpressionContext();
+  const QgsExpressionContext context = createExpressionContext();
 
   //updates data defined properties and redraws item to match
-  if ( property == QgsLayoutObject::SourceUrl || property == QgsLayoutObject::AllProperties )
+  if ( property == QgsLayoutObject::DataDefinedProperty::SourceUrl || property == QgsLayoutObject::DataDefinedProperty::AllProperties )
   {
     loadHtml( true, &context );
   }

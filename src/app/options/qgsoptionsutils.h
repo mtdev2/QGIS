@@ -21,7 +21,7 @@ class QgsOptionsWidgetFactory;
 /**
  * \ingroup app
  *
- * Manages lifetime of a QgsOptionsWidgetFactory, automatically
+ * \brief Manages lifetime of a QgsOptionsWidgetFactory, automatically
  * registering and unregistering it as required.
  *
  * \since QGIS 3.16
@@ -29,13 +29,15 @@ class QgsOptionsWidgetFactory;
 class QgsScopedOptionsWidgetFactory
 {
   public:
-    QgsScopedOptionsWidgetFactory();
+    QgsScopedOptionsWidgetFactory( std::unique_ptr<QgsOptionsWidgetFactory> &&factory );
+    QgsScopedOptionsWidgetFactory( QgsScopedOptionsWidgetFactory &&other );
+
     ~QgsScopedOptionsWidgetFactory();
 
-    void reset( std::unique_ptr< QgsOptionsWidgetFactory > factory = nullptr );
+    void reset( std::unique_ptr<QgsOptionsWidgetFactory> factory = nullptr );
 
   private:
-    std::unique_ptr< QgsOptionsWidgetFactory > mFactory;
+    std::unique_ptr<QgsOptionsWidgetFactory> mFactory;
 };
 
 

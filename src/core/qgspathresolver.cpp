@@ -14,22 +14,32 @@
  ***************************************************************************/
 
 #include "qgspathresolver.h"
-#include "qgslocalizeddatapathregistry.h"
 
 #include "qgis.h"
 #include "qgsapplication.h"
+#include "qgsgdalutils.h"
+#include "qgslocalizeddatapathregistry.h"
+
+#include <QDir>
 #include <QFileInfo>
+#include <QString>
 #include <QUrl>
 #include <QUuid>
 
+using namespace Qt::StringLiterals;
+
+#if defined( Q_OS_WIN )
+#include <QRegularExpression>
+#endif
 
 typedef std::vector< std::pair< QString, std::function< QString( const QString & ) > > > CustomResolvers;
 Q_GLOBAL_STATIC( CustomResolvers, sCustomResolvers )
+Q_GLOBAL_STATIC( CustomResolvers, sCustomWriters )
 
-QgsPathResolver::QgsPathResolver( const QString &baseFileName )
+QgsPathResolver::QgsPathResolver( const QString &baseFileName, const QString &attachmentDir )
   : mBaseFileName( baseFileName )
-{
-}
+  , mAttachmentDir( attachmentDir )
+{}
 
 
 QString QgsPathResolver::readPath( const QString &f ) const
@@ -44,16 +54,30 @@ QString QgsPathResolver::readPath( const QString &f ) const
     return QString();
 
   QString src = filename;
-  if ( src.startsWith( QLatin1String( "inbuilt:" ) ) )
+  if ( src.startsWith( "inbuilt:"_L1 ) )
   {
     // strip away "inbuilt:" prefix, replace with actual  inbuilt data folder path
-    return QgsApplication::pkgDataPath() + QStringLiteral( "/resources" ) + src.mid( 8 );
+    return QgsApplication::pkgDataPath() + u"/resources"_s + src.mid( 8 );
   }
 
-  if ( src.startsWith( QLatin1String( "localized:" ) ) )
+  if ( src.startsWith( "localized:"_L1 ) )
   {
+    QStringList parts = src.split( "|" );
     // strip away "localized:" prefix, replace with actual  inbuilt data folder path
-    return QgsApplication::localizedDataPathRegistry()->globalPath( src.mid( 10 ) ) ;
+    parts[0] = QgsApplication::localizedDataPathRegistry()->globalPath( parts[0].mid( 10 ) );
+    if ( !parts[0].isEmpty() )
+    {
+      return parts.join( "|" );
+    }
+    else
+    {
+      return QString();
+    }
+  }
+  if ( src.startsWith( "attachment:"_L1 ) )
+  {
+    // resolve attachment w.r.t. temporary path where project archive is extracted
+    return QDir( mAttachmentDir ).absoluteFilePath( src.mid( 11 ) );
   }
 
   if ( mBaseFileName.isNull() )
@@ -62,24 +86,22 @@ QString QgsPathResolver::readPath( const QString &f ) const
   }
 
   // if this is a VSIFILE, remove the VSI prefix and append to final result
-  QString vsiPrefix = qgsVsiPrefix( src );
-  if ( ! vsiPrefix.isEmpty() )
+  QString vsiPrefix = QgsGdalUtils::vsiPrefixForPath( src );
+  if ( !vsiPrefix.isEmpty() )
   {
     // unfortunately qgsVsiPrefix returns prefix also for files like "/x/y/z.gz"
     // so we need to check if we really have the prefix
-    if ( src.startsWith( QLatin1String( "/vsi" ), Qt::CaseInsensitive ) )
+    if ( src.startsWith( "/vsi"_L1, Qt::CaseInsensitive ) )
       src.remove( 0, vsiPrefix.size() );
     else
       vsiPrefix.clear();
   }
 
   // relative path should always start with ./ or ../
-  if ( !src.startsWith( QLatin1String( "./" ) ) && !src.startsWith( QLatin1String( "../" ) ) )
+  if ( !src.startsWith( "./"_L1 ) && !src.startsWith( "../"_L1 ) )
   {
-#if defined(Q_OS_WIN)
-    if ( src.startsWith( "\\\\" ) ||
-         src.startsWith( "//" ) ||
-         ( src[0].isLetter() && src[1] == ':' ) )
+#if defined( Q_OS_WIN )
+    if ( src.startsWith( "\\\\" ) || src.startsWith( "//" ) || ( src[0].isLetter() && src[1] == ':' ) )
     {
       // UNC or absolute path
       return vsiPrefix + src;
@@ -97,12 +119,12 @@ QString QgsPathResolver::readPath( const QString &f ) const
     // where the source file had to exist and only the project directory was stripped
     // from the filename.
 
-    QFileInfo pfi( mBaseFileName );
-    QString home = pfi.absolutePath();
+    const QFileInfo pfi( mBaseFileName );
+    const QString home = pfi.absolutePath();
     if ( home.isEmpty() )
       return vsiPrefix + src;
 
-    QFileInfo fi( home + '/' + src );
+    const QFileInfo fi( home + '/' + src );
 
     if ( !fi.exists() )
     {
@@ -110,7 +132,7 @@ QString QgsPathResolver::readPath( const QString &f ) const
     }
     else
     {
-      return vsiPrefix + fi.canonicalFilePath();
+      return vsiPrefix + QDir::cleanPath( fi.absoluteFilePath() );
     }
   }
 
@@ -122,7 +144,17 @@ QString QgsPathResolver::readPath( const QString &f ) const
     return vsiPrefix + src;
   }
 
-#if defined(Q_OS_WIN)
+#if defined( Q_OS_WIN )
+
+  // delimiter saved with pre 3.2x QGIS versions might be unencoded
+  thread_local const QRegularExpression delimiterRe( R"re(delimiter=([^&]+))re" );
+  const QRegularExpressionMatch match = delimiterRe.match( srcPath );
+  if ( match.hasMatch() )
+  {
+    const QString delimiter = match.captured( 0 ).replace( '\\', "%5C"_L1 );
+    srcPath.replace( match.captured( 0 ), delimiter );
+  }
+
   srcPath.replace( '\\', '/' );
   projPath.replace( '\\', '/' );
 
@@ -132,15 +164,10 @@ QString QgsPathResolver::readPath( const QString &f ) const
   // Make sure the path is absolute (see GH #33200)
   projPath = QFileInfo( projPath ).absoluteFilePath();
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  QStringList srcElems = srcPath.split( '/', QString::SkipEmptyParts );
-  QStringList projElems = projPath.split( '/', QString::SkipEmptyParts );
-#else
-  QStringList srcElems = srcPath.split( '/', Qt::SkipEmptyParts );
+  const QStringList srcElems = srcPath.split( '/', Qt::SkipEmptyParts );
   QStringList projElems = projPath.split( '/', Qt::SkipEmptyParts );
-#endif
 
-#if defined(Q_OS_WIN)
+#if defined( Q_OS_WIN )
   if ( uncPath )
   {
     projElems.insert( 0, "" );
@@ -153,23 +180,23 @@ QString QgsPathResolver::readPath( const QString &f ) const
 
   // append source path elements
   projElems << srcElems;
-  projElems.removeAll( QStringLiteral( "." ) );
+  projElems.removeAll( u"."_s );
 
   // resolve ..
   int pos;
-  while ( ( pos = projElems.indexOf( QLatin1String( ".." ) ) ) > 0 )
+  while ( ( pos = projElems.indexOf( ".."_L1 ) ) > 0 )
   {
     // remove preceding element and ..
     projElems.removeAt( pos - 1 );
     projElems.removeAt( pos - 1 );
   }
 
-#if !defined(Q_OS_WIN)
+#if !defined( Q_OS_WIN )
   // make path absolute
   projElems.prepend( QString() );
 #endif
 
-  return vsiPrefix + projElems.join( QLatin1Char( '/' ) );
+  return vsiPrefix + projElems.join( '/'_L1 );
 }
 
 QString QgsPathResolver::setPathPreprocessor( const std::function<QString( const QString & )> &processor )
@@ -182,28 +209,55 @@ QString QgsPathResolver::setPathPreprocessor( const std::function<QString( const
 bool QgsPathResolver::removePathPreprocessor( const QString &id )
 {
   const size_t prevCount = sCustomResolvers()->size();
-  sCustomResolvers()->erase( std::remove_if( sCustomResolvers()->begin(), sCustomResolvers()->end(), [id]( std::pair< QString, std::function< QString( const QString & ) > > &a )
-  {
-    return a.first == id;
-  } ), sCustomResolvers()->end() );
+  sCustomResolvers()->erase(
+    std::remove_if( sCustomResolvers()->begin(), sCustomResolvers()->end(), [id]( std::pair< QString, std::function< QString( const QString & ) > > &a ) { return a.first == id; } ),
+    sCustomResolvers()->end()
+  );
   return prevCount != sCustomResolvers()->size();
 }
 
-QString QgsPathResolver::writePath( const QString &src ) const
+QString QgsPathResolver::setPathWriter( const std::function<QString( const QString & )> &writer )
 {
+  QString id = QUuid::createUuid().toString();
+  sCustomWriters()->emplace_back( std::make_pair( id, writer ) );
+  return id;
+}
+
+bool QgsPathResolver::removePathWriter( const QString &id )
+{
+  const size_t prevCount = sCustomWriters()->size();
+  sCustomWriters()->erase(
+    std::remove_if( sCustomWriters()->begin(), sCustomWriters()->end(), [id]( std::pair< QString, std::function< QString( const QString & ) > > &a ) { return a.first == id; } ), sCustomWriters()->end()
+  );
+  return prevCount != sCustomWriters()->size();
+}
+
+QString QgsPathResolver::writePath( const QString &s ) const
+{
+  QString src = s;
   if ( src.isEmpty() )
   {
     return src;
   }
 
-  QString localizedPath = QgsApplication::localizedDataPathRegistry()->localizedPath( src );
+  const QString localizedPath = QgsApplication::localizedDataPathRegistry()->localizedPath( src );
   if ( !localizedPath.isEmpty() )
-    return QStringLiteral( "localized:" ) + localizedPath;
+    return u"localized:"_s + localizedPath;
 
-  if ( src.startsWith( QgsApplication::pkgDataPath() + QStringLiteral( "/resources" ) ) )
+  const CustomResolvers customWriters = *sCustomWriters();
+  for ( const auto &writer : customWriters )
+    src = writer.second( src );
+
+  if ( src.startsWith( QgsApplication::pkgDataPath() + u"/resources"_s ) )
   {
     // replace inbuilt data folder path with "inbuilt:" prefix
-    return QStringLiteral( "inbuilt:" ) + src.mid( QgsApplication::pkgDataPath().length() + 10 );
+    return u"inbuilt:"_s + src.mid( QgsApplication::pkgDataPath().length() + 10 );
+  }
+
+  if ( !mAttachmentDir.isEmpty() && src.startsWith( mAttachmentDir ) )
+  {
+    // Replace attachment dir with "attachment:" prefix
+    return u"attachment:"_s + QFileInfo( src ).fileName();
   }
 
   if ( mBaseFileName.isEmpty() )
@@ -212,8 +266,9 @@ QString QgsPathResolver::writePath( const QString &src ) const
   }
 
   // Get projPath even if project has not been created yet
-  QFileInfo pfi( QFileInfo( mBaseFileName ).path() );
-  QString projPath = pfi.canonicalFilePath();
+  const QFileInfo pfi( QFileInfo( mBaseFileName ).path() );
+  // readPath does not resolve symlink, so writePath should not either
+  QString projPath = pfi.absoluteFilePath();
 
   // If project directory doesn't exit, fallback to absoluteFilePath : symbolic
   // links won't be handled correctly, but that's OK as the path is "virtual".
@@ -226,23 +281,30 @@ QString QgsPathResolver::writePath( const QString &src ) const
   }
 
   // Check if it is a publicSource uri and clean it
-  QUrl url { src };
+  const QUrl url { src };
   QString srcPath { src };
   QString urlQuery;
 
-  if ( url.isLocalFile( ) )
+  if ( url.isLocalFile() )
   {
     srcPath = url.path();
     urlQuery = url.query();
   }
 
-  QFileInfo srcFileInfo( srcPath );
+  const QFileInfo srcFileInfo( srcPath );
+  // Guard against relative paths: If srcPath is already relative, QFileInfo will match
+  // files in the working directory, instead of project directory. Avoid by returning early.
+  if ( !srcFileInfo.isAbsolute() )
+  {
+    return srcPath;
+  }
   if ( srcFileInfo.exists() )
-    srcPath = srcFileInfo.canonicalFilePath();
+    // Do NOT resolve symlinks, but do remove '..' and '.'
+    srcPath = QDir::cleanPath( srcFileInfo.absoluteFilePath() );
 
   // if this is a VSIFILE, remove the VSI prefix and append to final result
-  QString vsiPrefix = qgsVsiPrefix( src );
-  if ( ! vsiPrefix.isEmpty() )
+  const QString vsiPrefix = QgsGdalUtils::vsiPrefixForPath( src );
+  if ( !vsiPrefix.isEmpty() )
   {
     srcPath.remove( 0, vsiPrefix.size() );
   }
@@ -268,22 +330,15 @@ QString QgsPathResolver::writePath( const QString &src ) const
   const Qt::CaseSensitivity cs = Qt::CaseSensitive;
 #endif
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-  QStringList projElems = projPath.split( '/', QString::SkipEmptyParts );
-  QStringList srcElems = srcPath.split( '/', QString::SkipEmptyParts );
-#else
   QStringList projElems = projPath.split( '/', Qt::SkipEmptyParts );
   QStringList srcElems = srcPath.split( '/', Qt::SkipEmptyParts );
-#endif
 
-  projElems.removeAll( QStringLiteral( "." ) );
-  srcElems.removeAll( QStringLiteral( "." ) );
+  projElems.removeAll( u"."_s );
+  srcElems.removeAll( u"."_s );
 
   // remove common part
   int n = 0;
-  while ( !srcElems.isEmpty() &&
-          !projElems.isEmpty() &&
-          srcElems[0].compare( projElems[0], cs ) == 0 )
+  while ( !srcElems.isEmpty() && !projElems.isEmpty() && srcElems[0].compare( projElems[0], cs ) == 0 )
   {
     srcElems.removeFirst();
     projElems.removeFirst();
@@ -301,19 +356,19 @@ QString QgsPathResolver::writePath( const QString &src ) const
     // go up to the common directory
     for ( int i = 0; i < projElems.size(); i++ )
     {
-      srcElems.insert( 0, QStringLiteral( ".." ) );
+      srcElems.insert( 0, u".."_s );
     }
   }
   else
   {
     // let it start with . nevertheless,
     // so relative path always start with either ./ or ../
-    srcElems.insert( 0, QStringLiteral( "." ) );
+    srcElems.insert( 0, u"."_s );
   }
 
   // Append url query if any
-  QString returnPath { vsiPrefix + srcElems.join( QLatin1Char( '/' ) ) };
-  if ( ! urlQuery.isEmpty() )
+  QString returnPath { vsiPrefix + srcElems.join( '/'_L1 ) };
+  if ( !urlQuery.isEmpty() )
   {
     returnPath.append( '?' );
     returnPath.append( urlQuery );

@@ -16,8 +16,8 @@
 #ifndef QGSBINARYWIDGETWRAPPER_H
 #define QGSBINARYWIDGETWRAPPER_H
 
-#include "qgseditorwidgetwrapper.h"
 #include "qgis_gui.h"
+#include "qgseditorwidgetwrapper.h"
 
 class QLabel;
 class QToolButton;
@@ -28,7 +28,7 @@ SIP_NO_FILE
 /**
  * \ingroup gui
  * \class QgsBinaryWidgetWrapper
- * Widget wrapper for binary (BLOB) fields.
+ * \brief Widget wrapper for binary (BLOB) fields.
  * \note not available in Python bindings
  * \since QGIS 3.6
  */
@@ -36,7 +36,6 @@ class GUI_EXPORT QgsBinaryWidgetWrapper : public QgsEditorWidgetWrapper
 {
     Q_OBJECT
   public:
-
     /**
      * Constructor for QgsBinaryWidgetWrapper.
      *

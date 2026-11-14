@@ -17,19 +17,18 @@
 #ifndef QGSATTRIBUTETABLEDIALOG_H_
 #define QGSATTRIBUTETABLEDIALOG_H_
 
-#include <QDialog>
-#include <QModelIndex>
-#include <QItemSelectionModel>
+#include "ui_qgsattributetabledialog.h"
 
 #include <ctime>
 
-#include "ui_qgsattributetabledialog.h"
-#include "qgssearchwidgetwrapper.h"
-#include "qgsdockwidget.h"
+#include "qgis.h"
 #include "qgis_app.h"
-#include "qgsstoredexpressionmanager.h"
+#include "qgsattributetableconfig.h"
 
-class QDialogButtonBox;
+#include <QDialog>
+#include <QItemSelectionModel>
+#include <QModelIndex>
+
 class QPushButton;
 class QLineEdit;
 class QComboBox;
@@ -38,12 +37,38 @@ class QgsAttributeTableModel;
 class QgsAttributeTableFilterModel;
 class QgsRubberBand;
 struct QgsStoredExpression;
+class QgsDockableWidgetHelper;
+template<class T> class QgsSettingsEntryEnumFlag;
 
 class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttributeTableDialog, private QgsExpressionContextGenerator
 {
     Q_OBJECT
 
   public:
+    static const QgsSettingsEntryEnumFlag<QgsAttributeTableConfig::AddFeatureMethod> *settingsDefaultAddFeatureMethod SIP_SKIP;
+
+    //! Settings entry autosize columns by default when opening attribute table
+    static const QgsSettingsEntryBool *settingsAutosizeAttributeTable SIP_SKIP;
+
+    //! Settings entry whether attribute tables are docked by default
+    static const QgsSettingsEntryBool *settingsAttributeTableDefaultDocked SIP_SKIP;
+
+    /**
+     * Initial attribute table view used when opening the dialog.
+     *
+     * Mirrors QgsDualView::ViewMode but adds a sentinel value to
+     * mean "reuse the view last used in the dialog".
+     */
+    enum InitialView
+    {
+      RememberLast = -1,                              //!< Reuse the view last used in the dialog
+      AttributeTable = QgsDualView::AttributeTable,   //!< Table layout
+      AttributeEditor = QgsDualView::AttributeEditor, //!< Form layout
+    };
+    Q_ENUM( InitialView )
+
+    //! Settings entry for the initial attribute table view (table, form or remember last)
+    static const QgsSettingsEntryEnumFlag<QgsAttributeTableDialog::InitialView> *settingsAttributeTableInitialView SIP_SKIP;
 
     /**
      * Constructor
@@ -52,9 +77,29 @@ class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttrib
      * \param parent parent object
      * \param flags window flags
      */
-    QgsAttributeTableDialog( QgsVectorLayer *layer, QgsAttributeTableFilterModel::FilterMode initialMode = QgsAttributeTableFilterModel::ShowAll, QWidget *parent = nullptr, Qt::WindowFlags flags = Qt::Window );
+    QgsAttributeTableDialog(
+      QgsVectorLayer *layer,
+      Qgis::AttributeTableFilterMode initialMode = Qgis::AttributeTableFilterMode::ShowAll,
+      QWidget *parent = nullptr,
+      Qt::WindowFlags flags = Qt::Window,
+      bool *initiallyDocked = nullptr,
+      const QString &filterExpression = QString()
+    );
+    ~QgsAttributeTableDialog() override;
 
     QgsExpressionContext createExpressionContext() const override;
+
+    /**
+     * Writes the dialog's state to an XML element.
+     */
+    QDomElement writeXml( QDomDocument &document );
+
+    /**
+     * Reads the dialog's state from an XML element.
+     */
+    void readXml( const QDomElement &element );
+
+    QgsDockableWidgetHelper *dockableWidgetHelper() { return mDockableWidgetHelper; }
 
   public slots:
 
@@ -67,9 +112,13 @@ class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttrib
      * Sets the filter expression to filter visible features
      * \param filterString filter query string. QgsExpression compatible.
      */
-    void setFilterExpression( const QString &filterString,
-                              QgsAttributeForm::FilterType type = QgsAttributeForm::ReplaceFilter,
-                              bool alwaysShowFilter = false );
+    void setFilterExpression( const QString &filterString, QgsAttributeForm::FilterType type = QgsAttributeForm::ReplaceFilter, bool alwaysShowFilter = false );
+
+    /**
+     * Set the view \a mode (e.g. attribute table or attribute editor).
+     * \since QGIS 3.24
+     */
+    void setView( QgsDualView::ViewMode mode );
 
   private slots:
 
@@ -168,9 +217,13 @@ class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttrib
     void mMainView_currentChanged( int );
 
     /**
+     * Opens online help
+     */
+    void mActionHelp_triggered();
+
+    /**
      * add feature
      */
-    void mActionAddFeature_triggered();
     void mActionAddFeatureViaAttributeTable_triggered();
     void mActionAddFeatureViaAttributeForm_triggered();
 
@@ -195,14 +248,11 @@ class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttrib
     void saveEdits( QgsMapLayer *layer );
 
   protected:
-
     /*
      * Handle KeyPress event of the window
      * \param event
      */
     void keyPressEvent( QKeyEvent *event ) override;
-
-    bool eventFilter( QObject *object, QEvent *ev ) override;
 
   private slots:
 
@@ -212,34 +262,31 @@ class APP_EXPORT QgsAttributeTableDialog : public QDialog, private Ui::QgsAttrib
     void viewModeChanged( QgsAttributeEditorContext::Mode mode );
     void formFilterSet( const QString &filter, QgsAttributeForm::FilterType type );
     void showContextMenu( QgsActionMenu *menu, QgsFeatureId fid );
-    void toggleDockMode( bool docked );
     void updateLayerModifiedActions();
+    void zoomToFeature( QgsFeatureId fid );
 
   private:
     QMenu *mMenuActions = nullptr;
     QToolButton *mActionFeatureActions = nullptr;
+    QToolButton *mAddFeatureButton = nullptr;
 
-    QgsDockWidget *mDock = nullptr;
     QDialog *mDialog = nullptr;
 
-    QPointer< QgsVectorLayer > mLayer = nullptr;
-    QStringList mVisibleFields;
-
+    QPointer<QgsVectorLayer> mLayer = nullptr;
     void updateMultiEditButtonState();
     void deleteFeature( QgsFeatureId fid );
+    void toggleShortcuts( bool enable );
+
+    QList<QPointer<QgsVectorLayer>> mReferencingLayers;
+
+    QAction *mActionDockUndock = nullptr;
+    QgsDockableWidgetHelper *mDockableWidgetHelper = nullptr;
+
+    // For testability
+    void addAttribute( const QgsField &field );
+    void removeAttributes( const QList<int> &attributes );
 
     friend class TestQgsAttributeTable;
-};
-
-
-class QgsAttributeTableDock : public QgsDockWidget
-{
-    Q_OBJECT
-
-  public:
-    QgsAttributeTableDock( const QString &title, QWidget *parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags() );
-
-    void closeEvent( QCloseEvent *ev ) override;
 };
 
 

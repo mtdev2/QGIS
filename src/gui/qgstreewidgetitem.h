@@ -19,24 +19,23 @@
 #ifndef QGSTREEWIDGETITEM_H
 #define QGSTREEWIDGETITEM_H
 
-#include <QTreeWidgetItem>
-#include "qgis_sip.h"
-#include <QObject>
 #include "qgis_gui.h"
+#include "qgis_sip.h"
+
+#include <QObject>
+#include <QTreeWidgetItem>
 
 /**
  * \ingroup gui
  * \class QgsTreeWidgetItem
- * QTreeWidgetItem subclass with custom handling for item sorting.
+ * \brief QTreeWidgetItem subclass with custom handling for item sorting.
  *
  * QgsTreeWidgetItem allows for items to be sorted using a specified user role, and
  * also correctly handles sorting numeric or mixed text and numeric values.
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsTreeWidgetItem : public QTreeWidgetItem
 {
   public:
-
     /**
      * Constructor for QgsTreeWidgetItem
      * \param view parent QTreeWidget view
@@ -144,27 +143,23 @@ class GUI_EXPORT QgsTreeWidgetItem : public QTreeWidgetItem
     bool operator>=( const QTreeWidgetItem &other ) const { return !( *this < other ); }
 
   private:
-
     enum ItemDataRole
     {
       CustomSortRole = Qt::UserRole + 1001,
       AlwaysOnTopPriorityRole = Qt::UserRole + 1002,
     };
-
 };
 
 /**
  * \ingroup gui
  * \class QgsTreeWidgetItemObject
- * Custom QgsTreeWidgetItem with extra signals when item is edited.
- * \since QGIS 3.0
+ * \brief Custom QgsTreeWidgetItem with extra signals when the item is edited.
  */
-class GUI_EXPORT QgsTreeWidgetItemObject: public QObject, public QgsTreeWidgetItem
+class GUI_EXPORT QgsTreeWidgetItemObject : public QObject, public QgsTreeWidgetItem
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsTreeWidgetItemObject
      * \param type item type

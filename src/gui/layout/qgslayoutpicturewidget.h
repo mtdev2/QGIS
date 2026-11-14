@@ -19,22 +19,24 @@
 #define QGSLAYOUTPICTUREWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "ui_qgslayoutpicturewidgetbase.h"
 
 #include "qgis_gui.h"
-#include "ui_qgslayoutpicturewidgetbase.h"
 #include "qgslayoutitemwidget.h"
+
+#define SIP_NO_FILE
 
 class QgsLayoutItemPicture;
 
 /**
  * \ingroup gui
- * A widget for configuring layout picture items.
+ * \brief A widget for configuring layout picture items.
  *
  * \note This class is not a part of public API
  * \since QGIS 3.12
  */
-class GUI_EXPORT QgsLayoutPictureWidget: public QgsLayoutItemBaseWidget, private Ui::QgsLayoutPictureWidgetBase
+class GUI_EXPORT QgsLayoutPictureWidget : public QgsLayoutItemBaseWidget, private Ui::QgsLayoutPictureWidgetBase
 {
     Q_OBJECT
 
@@ -51,7 +53,6 @@ class GUI_EXPORT QgsLayoutPictureWidget: public QgsLayoutItemBaseWidget, private
     void mAnchorPointComboBox_currentIndexChanged( int index );
 
   protected:
-
     bool setNewItem( QgsLayoutItem *item ) override;
 
   protected slots:
@@ -70,19 +71,14 @@ class GUI_EXPORT QgsLayoutPictureWidget: public QgsLayoutItemBaseWidget, private
     void mStrokeWidthSpinBox_valueChanged( double d );
     void mPictureRotationOffsetSpinBox_valueChanged( double d );
     void mNorthTypeComboBox_currentIndexChanged( int index );
-    void modeChanged();
-    void updatePictureTypeWidgets();
 
-    void populateList();
-    void populateIcons( const QModelIndex &idx );
-    void setSvgName( const QModelIndex &idx );
-    void svgSourceChanged( const QString &source );
-    void rasterSourceChanged( const QString &source );
+    void sourceChanged( const QString &source );
+    void setSvgDynamicParameters( const QMap<QString, QgsProperty> &parameters );
+    void modeChanged( bool checked );
+
   private:
-    QPointer< QgsLayoutItemPicture > mPicture;
+    QPointer<QgsLayoutItemPicture> mPicture;
     QgsLayoutItemPropertiesWidget *mItemPropertiesWidget = nullptr;
-    int mIconSize = 30;
-    int mBlockSvgModelChanges = 0;
 
     void updateSvgParamGui( bool resetValues = true );
 };

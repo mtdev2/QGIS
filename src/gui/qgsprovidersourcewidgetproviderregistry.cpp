@@ -15,10 +15,11 @@
  ***************************************************************************/
 
 #include "qgsprovidersourcewidgetproviderregistry.h"
-#include "qgsprovidersourcewidgetprovider.h"
-#include "qgsproviderguiregistry.h"
 
 #include <memory>
+
+#include "qgsproviderguiregistry.h"
+#include "qgsprovidersourcewidgetprovider.h"
 
 QgsProviderSourceWidgetProviderRegistry::QgsProviderSourceWidgetProviderRegistry() = default;
 
@@ -39,7 +40,7 @@ void QgsProviderSourceWidgetProviderRegistry::addProvider( QgsProviderSourceWidg
 
 bool QgsProviderSourceWidgetProviderRegistry::removeProvider( QgsProviderSourceWidgetProvider *provider )
 {
-  int index = mProviders.indexOf( provider );
+  const int index = mProviders.indexOf( provider );
   if ( index >= 0 )
   {
     delete mProviders.takeAt( index );
@@ -69,7 +70,7 @@ void QgsProviderSourceWidgetProviderRegistry::initializeFromProviderGuiRegistry(
 QgsProviderSourceWidgetProvider *QgsProviderSourceWidgetProviderRegistry::providerByName( const QString &name )
 {
   const QList<QgsProviderSourceWidgetProvider *> providerList = providers();
-  for ( QgsProviderSourceWidgetProvider *provider :  providerList )
+  for ( QgsProviderSourceWidgetProvider *provider : providerList )
   {
     if ( provider->name() == name )
     {

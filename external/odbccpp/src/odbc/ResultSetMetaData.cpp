@@ -7,7 +7,7 @@
 //------------------------------------------------------------------------------
 using namespace std;
 //------------------------------------------------------------------------------
-namespace odbc {
+NS_ODBC_START
 //------------------------------------------------------------------------------
 ResultSetMetaData::ResultSetMetaData(StatementBase* stmt)
     : ResultSetMetaDataBase(stmt)
@@ -27,6 +27,16 @@ string ResultSetMetaData::getSchemaName(unsigned short columnIndex)
 string ResultSetMetaData::getTableName(unsigned short columnIndex)
 {
     return getStringColAttribute(columnIndex, SQL_DESC_TABLE_NAME);
+}
+//------------------------------------------------------------------------------
+string ResultSetMetaData::getBaseTableName(unsigned short columnIndex)
+{
+    return getStringColAttribute(columnIndex, SQL_DESC_BASE_TABLE_NAME);
+}
+//------------------------------------------------------------------------------
+string ResultSetMetaData::getBaseColumnName(unsigned short columnIndex)
+{
+    return getStringColAttribute(columnIndex, SQL_DESC_BASE_COLUMN_NAME);
 }
 //------------------------------------------------------------------------------
 string ResultSetMetaData::getColumnLabel(unsigned short columnIndex)
@@ -63,4 +73,4 @@ string ResultSetMetaData::getStringColAttribute(unsigned short columnIndex,
     return string(&buffer[0]);
 }
 //------------------------------------------------------------------------------
-} // namespace odbc
+NS_ODBC_END

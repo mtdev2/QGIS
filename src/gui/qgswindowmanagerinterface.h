@@ -16,11 +16,12 @@
 #ifndef QGSWINDOWMANAGERINTERFACE_H
 #define QGSWINDOWMANAGERINTERFACE_H
 
-#include "qgis_sip.h"
 #include "qgis_gui.h"
+#include "qgis_sip.h"
 
 class QgsVectorLayer;
 class QgsRasterLayer;
+class QWidget;
 
 ///@cond NOT_STABLE
 
@@ -37,7 +38,6 @@ class QgsRasterLayer;
 class GUI_EXPORT QgsWindowManagerInterface
 {
   public:
-
     //! Standard QGIS dialogs
     enum StandardDialog
     {
@@ -55,7 +55,6 @@ class GUI_EXPORT QgsWindowManagerInterface
      * created or is not supported by the window manager implementation.
      */
     virtual QWidget *openStandardDialog( StandardDialog dialog ) = 0;
-
 };
 
 ///@endcond

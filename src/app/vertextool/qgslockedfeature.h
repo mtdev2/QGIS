@@ -16,10 +16,11 @@
 #ifndef QGSLOCKEDFEATURE_H
 #define QGSLOCKEDFEATURE_H
 
-#include <QObject>
-
-#include "qgsgeometry.h"
+#include "qgis_app.h"
 #include "qgsfeatureid.h"
+#include "qgsgeometry.h"
+
+#include <QObject>
 
 class QgsMapCanvas;
 class QgsVectorLayer;
@@ -31,15 +32,14 @@ class QgsVertexEntry;
 /**
  * Class that keeps the selected feature
  */
-class QgsLockedFeature: public QObject
+class APP_EXPORT QgsLockedFeature : public QObject
 {
     Q_OBJECT
 
   public:
-
     /**
      * Creates a locked feature
-     * \param featureId id of feature which was selected
+     * \param id id of feature which was selected
      * \param layer vector layer in which feature is selected
      * \param canvas mapCanvas on which we are working
      */
@@ -81,13 +81,13 @@ class QgsLockedFeature: public QObject
      * \param vertexNr number of vertex for which we are getting info
      * \returns TRUE if vertex is selected, FALSE otherwise
      */
-    bool isSelected( int vertexNr );
+    bool isSelected( int vertexNr ) const;
 
     /**
      * Getting feature Id of feature selected
      * \returns feature id of selected feature
      */
-    QgsFeatureId featureId();
+    QgsFeatureId featureId() const;
 
     /**
      * Getting vertex map of vertices
@@ -145,7 +145,6 @@ class QgsLockedFeature: public QObject
     void beforeRollBack();
 
   private:
-
     /**
      * Deletes whole vertex map.
      */
@@ -176,8 +175,8 @@ class QgsLockedFeature: public QObject
 
     QgsGeometryValidator *mValidator = nullptr;
     QString mTip;
-    QList< QgsGeometry::Error > mGeomErrors;
-    QList< QgsVertexMarker * > mGeomErrorMarkers;
+    QList<QgsGeometry::Error> mGeomErrors;
+    QList<QgsVertexMarker *> mGeomErrorMarkers;
 };
 
 #endif

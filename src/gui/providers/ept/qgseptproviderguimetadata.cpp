@@ -15,21 +15,18 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
 #include "qgseptproviderguimetadata.h"
-#include "qgseptdataitemguiprovider.h"
+
+#include "qgsapplication.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
 QgsEptProviderGuiMetadata::QgsEptProviderGuiMetadata()
-  : QgsProviderGuiMetadata( QStringLiteral( "ept" ) )
-{
-}
-
-QList<QgsDataItemGuiProvider *> QgsEptProviderGuiMetadata::dataItemGuiProviders()
-{
-  return QList<QgsDataItemGuiProvider *>()
-         << new QgsEptDataItemGuiProvider;
-}
+  : QgsProviderGuiMetadata( u"ept"_s )
+{}
 
 ///@endcond

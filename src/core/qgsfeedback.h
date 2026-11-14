@@ -16,14 +16,15 @@
 #ifndef QGSFEEDBACK_H
 #define QGSFEEDBACK_H
 
-#include <QObject>
-
 #include "qgis_core.h"
 #include "qgis_sip.h"
 
+#include <QObject>
+
 /**
  * \ingroup core
- * Base class for feedback objects to be used for cancellation of something running in a worker thread.
+ * \brief Base class for feedback objects to be used for cancellation of something running in a worker thread.
+ *
  * The class may be used as is or it may be subclassed for extended functionality
  * for a particular operation (e.g. report progress or pass some data for preview).
  *
@@ -38,7 +39,6 @@
  * subclass and available with QgsMapLayerRenderer::feedback() method. When a map rendering job
  * gets canceled, the cancel() method is called on the feedback object of all layers.
  *
- * \since QGIS 3.0
  */
 class CORE_EXPORT QgsFeedback : public QObject
 {
@@ -49,15 +49,18 @@ class CORE_EXPORT QgsFeedback : public QObject
       : QObject( parent )
     {}
 
+    ~QgsFeedback() override;
+
+    // clang-format off
     //! Tells whether the operation has been canceled already
-    bool isCanceled() const { return mCanceled; }
+    bool isCanceled() const SIP_HOLDGIL { return mCanceled; }
+    // clang-format on
 
     /**
      * Sets the current progress for the feedback object. The \a progress
      * argument is in percentage and valid values range from 0-100.
      * \see progress()
      * \see progressChanged()
-     * \since QGIS 3.0
      */
     void setProgress( double progress )
     {
@@ -74,9 +77,45 @@ class CORE_EXPORT QgsFeedback : public QObject
      * is in percentage and ranges from 0-100.
      * \see setProgress()
      * \see progressChanged()
-     * \since QGIS 3.0
      */
-    double progress() const { return mProgress; }
+    double progress() const SIP_HOLDGIL { return mProgress; }
+
+    /**
+     * Returns the current processed objects count reported by the feedback object. Depending on how the
+     * feedback object is used processed count reporting may not be supported. The returned value
+     * is an unsigned long integer and starts from 0.
+     * \see setProcessedCount()
+     * \see processedCountChanged()
+     * \since QGIS 3.24
+     */
+    unsigned long long processedCount() const SIP_HOLDGIL { return mProcessedCount; }
+
+    /**
+     * Sets the current processed objects count for the feedback object. The \a processedCount
+     * argument is an unsigned long integer and starts from 0.
+     * \see processedCount()
+     * \see processedCountChanged()
+     * \since QGIS 3.24
+     */
+    void setProcessedCount( unsigned long long processedCount )
+    {
+      mProcessedCount = processedCount;
+      emit processedCountChanged( processedCount );
+    }
+
+    /**
+     * Returns a feedback object whose [0, 100] progression range will
+     * be mapped to \a parentFeedback [\a startPercentage, \a endPercentage].
+     *
+     * Cancellation on the returned feedback causes cancellation of the
+     * parent feedback.
+     *
+     * \a parentFeedback must be kept alive while the returned feedback is used.
+     *
+     * \since QGIS 4.0
+     */
+    static std::unique_ptr<QgsFeedback> createScaledFeedback(
+      QgsFeedback *parentFeedback, double startPercentage, double endPercentage );
 
   public slots:
 
@@ -99,15 +138,26 @@ class CORE_EXPORT QgsFeedback : public QObject
      * argument is in percentage and ranges from 0-100.
      * \see setProgress()
      * \see progress()
-     * \since QGIS 3.0
      */
     void progressChanged( double progress );
+
+    /**
+     * Emitted when the feedback object reports a change in the number of processed objects.
+     * Depending on how the feedback object is used processed count reporting may not be supported. The \a processedCount
+     * argument is an unsigned long integer and starts from 0.
+     * \see setProgress()
+     * \see progress()
+     * \since QGIS 3.24
+     */
+    void processedCountChanged( unsigned long long processedCount );
 
   private:
     //! Whether the operation has been canceled already. False by default.
     bool mCanceled = false;
 
     double mProgress = 0.0;
+    unsigned long long mProcessedCount = 0;
 };
+
 
 #endif // QGSFEEDBACK_H

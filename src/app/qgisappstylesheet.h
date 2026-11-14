@@ -18,16 +18,17 @@
 #ifndef QGISAPPSTYLESHEET_H
 #define QGISAPPSTYLESHEET_H
 
-#include <QObject>
+#include "qgis_app.h"
+
 #include <QFont>
 #include <QMap>
-#include "qgis_app.h"
+#include <QObject>
 
 /**
  * \class QgisAppStyleSheet
  * \brief Adjustable stylesheet for the QGIS application
  */
-class APP_EXPORT QgisAppStyleSheet: public QObject
+class APP_EXPORT QgisAppStyleSheet : public QObject
 {
     Q_OBJECT
 
@@ -38,37 +39,71 @@ class APP_EXPORT QgisAppStyleSheet: public QObject
     QMap<QString, QVariant> defaultOptions();
 
     /**
-     * Generate stylesheet
+     * Build and apply a stylesheet.
+     *
+     * The stylesheet will be set as the application stylesheet via QgsGui::setApplicationStyleSheet().
+     *
      * \param opts generated default option values, or a changed copy of them
-     * \note on success emits appStyleSheetChanged
      */
-    void buildStyleSheet( const QMap<QString, QVariant> &opts );
+    void applyStyleSheet( const QMap<QString, QVariant> &opts );
+
+    /**
+     * Applies an updated stylesheet using current user settings.
+     */
+    void updateStyleSheet();
+
+    /**
+     * Sets a new user font \a size. Set to -1 to force the default Qt font size to be used.
+     */
+    void setUserFontSize( double size );
+
+    /**
+     * Sets a new user font \a family. Set to an empty string to force the default Qt font family to be used.
+     */
+    void setUserFontFamily( const QString &family );
 
     //! Save changed default option keys/values to user settings
     void saveToSettings( const QMap<QString, QVariant> &opts );
 
     //! Gets reference font for initial qApp
-    QFont defaultFont() { return mDefaultFont; }
-
-  signals:
+    QFont defaultFont() const { return mDefaultFont; }
 
     /**
-     * Signal the successful stylesheet build results
-     * \note connect to (app|widget)->setStyleSheet or similar custom slot
+     * Returns the user set font size override value, or -1 if not set and the Qt default font size should be used.
      */
-    void appStyleSheetChanged( const QString &appStyleSheet );
+    double userFontSize() const { return mUserFontSize; }
+
+    /**
+     * Returns the user set font family override value, or an empty if not set and the Qt default font family should be used.
+     */
+    QString userFontFamily() const { return mUserFontFamily; }
+
+    /**
+     * Returns the application font size to use. This will match userFontSize() if the user
+     * has set a custom font size, or the defaultFont() font size otherwise.
+     */
+    double fontSize() const { return mUserFontSize > 0 ? mUserFontSize : mDefaultFont.pointSizeF(); }
+
+    /**
+     * Returns the application font family. This will match userFontFamily() if the user
+     * has set a custom font, or the defaultFont() family otherwise.
+     */
+    QString fontFamily() const { return !mUserFontFamily.isEmpty() ? mUserFontFamily : mDefaultFont.family(); }
 
   private:
     //! Sets active configuration values
     void setActiveValues();
 
     // qt styles
-    QString mStyle; // active style name (lowercase)
+    QString mStyle;         // active style name (lowercase)
     bool mMacStyle = false; // macintosh (aqua)
     bool mOxyStyle = false; // oxygen
 
     // default font saved for reference
     QFont mDefaultFont;
+
+    double mUserFontSize = -1;
+    QString mUserFontFamily;
 
     // platforms, specific
     bool mWinOS = false;

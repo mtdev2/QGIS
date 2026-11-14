@@ -44,7 +44,7 @@ MDAL::DriverAsciiDat::~DriverAsciiDat( ) = default;
 
 bool MDAL::DriverAsciiDat::canReadDatasets( const std::string &uri )
 {
-  std::ifstream in( uri, std::ifstream::in );
+  std::ifstream in = MDAL::openInputFile( uri );
   std::string line;
   if ( !MDAL::getHeaderLine( in, line ) )
   {
@@ -136,7 +136,7 @@ void MDAL::DriverAsciiDat::loadOldFormat( std::ifstream &in,
   }
   while ( std::getline( in, line ) );
 
-  if ( !group || group->datasets.size() == 0 )
+  if ( group->datasets.size() == 0 )
   {
     MDAL::Log::error( MDAL_Status::Err_UnknownFormat, name(), "Dataset group is not valid (null) or has zero datasets" );
     return;
@@ -277,6 +277,12 @@ void MDAL::DriverAsciiDat::loadNewFormat(
     }
     else if ( cardType == "TS" && items.size() >= 3 )
     {
+      if ( !group )
+      {
+        MDAL::Log::error( MDAL_Status::Err_UnknownFormat, name(), "TS card for no active dataset!" );
+        return;
+      }
+
       double rawTime = toDouble( items[2] );
       MDAL::RelativeTimestamp t( rawTime, MDAL::parseDurationTimeUnit( group->getMetadata( "TIMEUNITS" ) ) );
 
@@ -335,7 +341,7 @@ void MDAL::DriverAsciiDat::load( const std::string &datFile, MDAL::Mesh *mesh )
     return;
   }
 
-  std::ifstream in( mDatFile, std::ifstream::in );
+  std::ifstream in = MDAL::openInputFile( mDatFile );
   std::string line;
   if ( !std::getline( in, line ) )
   {
@@ -496,7 +502,7 @@ bool MDAL::DriverAsciiDat::persist( MDAL::DatasetGroup *group )
     return true;
   }
 
-  std::ofstream out( uri, std::ofstream::out );
+  std::ofstream out = MDAL::openOutputFile( uri, std::ofstream::out );
 
   // implementation based on information from:
   // https://www.xmswiki.com/wiki/SMS:ASCII_Dataset_Files_*.dat

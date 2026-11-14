@@ -20,13 +20,14 @@
 #define QGSSERVICEREGISTRY_H
 
 #include "qgsconfig.h"
+
+#include <memory>
+
 #include "qgis.h"
+#include "qgsservicenativeloader.h"
 
 #include <QHash>
 #include <QString>
-
-#include "qgsservicenativeloader.h"
-#include <memory>
 
 class QgsService;
 class QgsServerRequest;
@@ -35,8 +36,7 @@ class QgsServerInterface;
 
 /**
  * \ingroup server
- * QgsServiceRegistry
- * Class defining the registry manager for QGIS server services
+ * \brief A registry manager for QGIS server services.
  *
  * This class provides methods for registering and retrieving
  * services.
@@ -44,17 +44,11 @@ class QgsServerInterface;
  * IMPORTANT: The registry hold ownership of registered services and
  * will call 'delete'  on cleanup
  *
- * \since QGIS 3.0
  */
 class SERVER_EXPORT QgsServiceRegistry
 {
-
   public:
-
-    //! Constructor
     QgsServiceRegistry() = default;
-
-    //! Destructor
     ~QgsServiceRegistry();
 
     /**
@@ -143,12 +137,11 @@ class SERVER_EXPORT QgsServiceRegistry
     void cleanUp();
 
   private:
-
     // XXX consider using QMap because of the few numbers of
     // elements to handle
-    typedef QHash<QString, std::shared_ptr<QgsService> > ServiceTable;
-    typedef QHash<QString, std::shared_ptr<QgsServerApi> > ApiTable;
-    typedef QHash<QString, QPair<QString, QString> > VersionTable;
+    typedef QHash<QString, std::shared_ptr<QgsService>> ServiceTable;
+    typedef QHash<QString, std::shared_ptr<QgsServerApi>> ApiTable;
+    typedef QHash<QString, QPair<QString, QString>> VersionTable;
 
     QgsServiceNativeLoader mNativeLoader;
 
@@ -156,8 +149,6 @@ class SERVER_EXPORT QgsServiceRegistry
     VersionTable mServiceVersions;
     ApiTable mApis;
     VersionTable mApiVersions;
-
 };
 
 #endif
-

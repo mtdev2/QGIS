@@ -15,21 +15,31 @@
 
 #include "qgsvaluemapconfigdlg.h"
 
-#include "qgsattributetypeloaddialog.h"
-#include "qgsvaluemapfieldformatter.h"
 #include "qgsapplication.h"
+#include "qgsattributetypeloaddialog.h"
 #include "qgssettings.h"
+#include "qgsvaluemapfieldformatter.h"
 
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QTextStream>
 #include <QClipboard>
+#include <QFileDialog>
 #include <QKeyEvent>
+#include <QMessageBox>
+#include <QMimeData>
+#include <QRegularExpression>
+#include <QString>
+#include <QTextStream>
+
+#include "moc_qgsvaluemapconfigdlg.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsValueMapConfigDlg::QgsValueMapConfigDlg( QgsVectorLayer *vl, int fieldIdx, QWidget *parent )
   : QgsEditorConfigWidget( vl, fieldIdx, parent )
 {
   setupUi( this );
+
+  mValueMapErrorsLabel->setVisible( false );
+  mValueMapErrorsLabel->setStyleSheet( u"QLabel { color : red; }"_s );
 
   tableWidget->insertRow( 0 );
 
@@ -75,7 +85,7 @@ QVariantMap QgsValueMapConfigDlg::config()
   }
 
   QVariantMap cfg;
-  cfg.insert( QStringLiteral( "map" ), valueList );
+  cfg.insert( u"map"_s, valueList );
   return cfg;
 }
 
@@ -87,27 +97,29 @@ void QgsValueMapConfigDlg::setConfig( const QVariantMap &config )
     tableWidget->removeRow( i );
   }
 
-  QList<QVariant> valueList = config.value( QStringLiteral( "map" ) ).toList();
+  QList<QVariant> valueList = config.value( u"map"_s ).toList();
+  QList<QPair<QString, QVariant>> orderedList;
 
   if ( valueList.count() > 0 )
   {
-    for ( int i = 0, row = 0; i < valueList.count(); i++, row++ )
+    for ( int i = 0; i < valueList.count(); i++ )
     {
-      setRow( row, valueList[i].toMap().constBegin().value().toString(), valueList[i].toMap().constBegin().key() );
+      orderedList.append( qMakePair( valueList[i].toMap().constBegin().value().toString(), valueList[i].toMap().constBegin().key() ) );
     }
   }
   else
   {
-    int row = 0;
-    QVariantMap values = config.value( QStringLiteral( "map" ) ).toMap();
-    for ( QVariantMap::ConstIterator mit = values.constBegin(); mit != values.constEnd(); mit++, row++ )
+    const QVariantMap values = config.value( u"map"_s ).toMap();
+    for ( QVariantMap::ConstIterator mit = values.constBegin(); mit != values.constEnd(); mit++ )
     {
-      if ( mit.value().isNull() )
-        setRow( row, mit.key(), QString() );
+      if ( QgsVariantUtils::isNull( mit.value() ) )
+        orderedList.append( qMakePair( mit.key(), QVariant() ) );
       else
-        setRow( row, mit.value().toString(), mit.key() );
+        orderedList.append( qMakePair( mit.value().toString(), mit.key() ) );
     }
   }
+
+  updateMap( orderedList, false );
 }
 
 void QgsValueMapConfigDlg::vCellChanged( int row, int column )
@@ -117,6 +129,23 @@ void QgsValueMapConfigDlg::vCellChanged( int row, int column )
   {
     tableWidget->insertRow( row + 1 );
   } //else check type
+
+  if ( layer()->fields().exists( field() ) )
+  {
+    // check cell value
+    QTableWidgetItem *item = tableWidget->item( row, 0 );
+    if ( item && item->data( Qt::ItemDataRole::UserRole ) != QgsValueMapFieldFormatter::NULL_VALUE )
+    {
+      const QString validValue = checkValueLength( item->text() );
+      if ( validValue.length() != item->text().length() )
+      {
+        const QString errorMessage = tr( "Value '%1' has been trimmed (maximum field length: %2)" ).arg( item->text(), QString::number( layer()->fields().field( field() ).length() ) );
+        item->setText( validValue );
+        mValueMapErrorsLabel->setVisible( true );
+        mValueMapErrorsLabel->setText( u"%1<br>%2"_s.arg( errorMessage, mValueMapErrorsLabel->text() ) );
+      }
+    }
+  }
 
   emit changed();
 }
@@ -131,16 +160,16 @@ void QgsValueMapConfigDlg::removeSelectedButtonPushed()
   {
     if ( list[i]->column() == 0 )
     {
-      int row = list[i]->row();
+      const int row = list[i]->row();
       if ( !rowsToRemove.contains( row ) )
       {
         rowsToRemove.insert( row );
       }
     }
   }
-  for ( i = 0; i < rowsToRemove.size(); i++ )
+  for ( const int rowToRemoved : rowsToRemove )
   {
-    tableWidget->removeRow( rowsToRemove.values().at( i ) - removed );
+    tableWidget->removeRow( rowToRemoved - removed );
     removed++;
   }
   emit changed();
@@ -149,7 +178,7 @@ void QgsValueMapConfigDlg::removeSelectedButtonPushed()
 void QgsValueMapConfigDlg::updateMap( const QMap<QString, QVariant> &map, bool insertNull )
 {
   QList<QPair<QString, QVariant>> orderedMap;
-  auto end = map.constEnd();
+  const auto end = map.constEnd();
   for ( auto it = map.constBegin(); it != end; ++it )
   {
     orderedMap.append( qMakePair( it.key(), it.value() ) );
@@ -161,6 +190,8 @@ void QgsValueMapConfigDlg::updateMap( const QMap<QString, QVariant> &map, bool i
 void QgsValueMapConfigDlg::updateMap( const QList<QPair<QString, QVariant>> &list, bool insertNull )
 {
   tableWidget->clearContents();
+  mValueMapErrorsLabel->setVisible( false );
+
   for ( int i = tableWidget->rowCount() - 1; i > 0; i-- )
   {
     tableWidget->removeRow( i );
@@ -169,23 +200,71 @@ void QgsValueMapConfigDlg::updateMap( const QList<QPair<QString, QVariant>> &lis
 
   if ( insertNull )
   {
-    setRow( row, QgsValueMapFieldFormatter::NULL_VALUE, QStringLiteral( "<NULL>" ) );
+    setRow( row, QgsValueMapFieldFormatter::NULL_VALUE, u"<NULL>"_s );
     ++row;
   }
 
+  constexpr int maxOverflowErrors { 5 };
+  QStringList reportedErrors;
+  const bool hasField { layer()->fields().exists( field() ) };
+  const QgsField mappedField { hasField ? layer()->fields().field( field() ) : QgsField() };
+
   for ( const auto &pair : list )
   {
-    if ( pair.second.isNull() )
+    if ( QgsVariantUtils::isNull( pair.second ) )
       setRow( row, pair.first, QString() );
     else
-      setRow( row, pair.first, pair.second.toString() );
+    {
+      const QString value { pair.first };
+      // Check value
+      const QString validValue = checkValueLength( value );
+
+      if ( validValue.length() != value.length() )
+      {
+        if ( reportedErrors.length() < maxOverflowErrors )
+        {
+          reportedErrors.push_back( tr( "Value '%1' has been trimmed (maximum field length: %2)" ).arg( value, QString::number( mappedField.length() ) ) );
+        }
+        else if ( reportedErrors.length() == maxOverflowErrors )
+        {
+          reportedErrors.push_back( tr( "Only first %1 errors have been reported." ).arg( maxOverflowErrors ) );
+        }
+      }
+
+      setRow( row, validValue, pair.second.toString() );
+
+      // Show errors if any
+      if ( !reportedErrors.isEmpty() )
+      {
+        mValueMapErrorsLabel->setVisible( true );
+        mValueMapErrorsLabel->setText( reportedErrors.join( "<br>"_L1 ) );
+      }
+    }
     ++row;
   }
 }
 
+QString QgsValueMapConfigDlg::checkValueLength( const QString &value )
+{
+  if ( value == QgsValueMapFieldFormatter::NULL_VALUE || value == QgsApplication::nullRepresentation() )
+  {
+    return value;
+  }
+
+  if ( layer()->fields().exists( field() ) )
+  {
+    const QgsField mappedField { layer()->fields().field( field() ) };
+    if ( mappedField.length() > 0 && value.length() > mappedField.length() )
+    {
+      return value.mid( 0, mappedField.length() );
+    }
+  }
+  return value;
+}
+
 void QgsValueMapConfigDlg::populateComboBox( QComboBox *comboBox, const QVariantMap &config, bool skipNull )
 {
-  const QList<QVariant> valueList = config.value( QStringLiteral( "map" ) ).toList();
+  const QList<QVariant> valueList = config.value( u"map"_s ).toList();
 
   if ( !valueList.empty() )
   {
@@ -201,7 +280,7 @@ void QgsValueMapConfigDlg::populateComboBox( QComboBox *comboBox, const QVariant
   }
   else
   {
-    const QVariantMap map = config.value( QStringLiteral( "map" ) ).toMap();
+    const QVariantMap map = config.value( u"map"_s ).toMap();
     for ( auto it = map.constBegin(); it != map.constEnd(); ++it )
     {
       if ( skipNull && it.value() == QgsValueMapFieldFormatter::NULL_VALUE )
@@ -230,7 +309,6 @@ bool QgsValueMapConfigDlg::eventFilter( QObject *watched, QEvent *event )
 
 void QgsValueMapConfigDlg::setRow( int row, const QString &value, const QString &description )
 {
-  QgsSettings settings;
   QTableWidgetItem *valueCell = nullptr;
   QTableWidgetItem *descriptionCell = new QTableWidgetItem( description );
   tableWidget->insertRow( row );
@@ -239,6 +317,7 @@ void QgsValueMapConfigDlg::setRow( int row, const QString &value, const QString 
     QFont cellFont;
     cellFont.setItalic( true );
     valueCell = new QTableWidgetItem( QgsApplication::nullRepresentation() );
+    valueCell->setData( Qt::ItemDataRole::UserRole, QgsValueMapFieldFormatter::NULL_VALUE );
     valueCell->setFont( cellFont );
     valueCell->setFlags( Qt::ItemIsSelectable | Qt::ItemIsEnabled );
     descriptionCell->setFont( cellFont );
@@ -259,7 +338,7 @@ void QgsValueMapConfigDlg::copySelectionToClipboard()
 
   QString clipboardText;
   QModelIndex previous = indexes.first();
-  std::unique_ptr<QMimeData> mimeData = qgis::make_unique<QMimeData>();
+  auto mimeData = std::make_unique<QMimeData>();
   for ( const QModelIndex &current : indexes )
   {
     const QString text = model->data( current ).toString();
@@ -274,13 +353,13 @@ void QgsValueMapConfigDlg::copySelectionToClipboard()
     clipboardText.append( text );
     previous = current;
   }
-  mimeData->setData( QStringLiteral( "text/plain" ), clipboardText.toUtf8() );
+  mimeData->setData( u"text/plain"_s, clipboardText.toUtf8() );
   QApplication::clipboard()->setMimeData( mimeData.release() );
 }
 
 void QgsValueMapConfigDlg::addNullButtonPushed()
 {
-  setRow( tableWidget->rowCount() - 1, QgsValueMapFieldFormatter::NULL_VALUE, QStringLiteral( "<NULL>" ) );
+  setRow( tableWidget->rowCount() - 1, QgsValueMapFieldFormatter::NULL_VALUE, u"<NULL>"_s );
 }
 
 void QgsValueMapConfigDlg::loadFromLayerButtonPushed()
@@ -294,68 +373,47 @@ void QgsValueMapConfigDlg::loadFromLayerButtonPushed()
 
 void QgsValueMapConfigDlg::loadFromCSVButtonPushed()
 {
-  QgsSettings settings;
+  const QgsSettings settings;
 
-  QString fileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Value Map from File" ), QDir::homePath() );
+  const QString fileName = QFileDialog::getOpenFileName( nullptr, tr( "Load Value Map from File" ), QDir::homePath() );
   if ( fileName.isNull() )
     return;
+  loadMapFromCSV( fileName );
+}
 
-  QFile f( fileName );
+void QgsValueMapConfigDlg::loadMapFromCSV( const QString &filePath )
+{
+  QFile f( filePath );
 
   if ( !f.open( QIODevice::ReadOnly ) )
   {
-    QMessageBox::information( nullptr,
-                              tr( "Load Value Map from File" ),
-                              tr( "Could not open file %1\nError was: %2" ).arg( fileName, f.errorString() ),
-                              QMessageBox::Cancel );
+    QMessageBox::information( nullptr, tr( "Load Value Map from File" ), tr( "Could not open file %1\nError was: %2" ).arg( filePath, f.errorString() ), QMessageBox::Cancel );
     return;
   }
 
   QTextStream s( &f );
   s.setAutoDetectUnicode( true );
 
-  QRegExp re0( "^([^;]*);(.*)$" );
-  re0.setMinimal( true );
-  QRegExp re1( "^([^,]*),(.*)$" );
-  re1.setMinimal( true );
-
+  const thread_local QRegularExpression re( "(?:^\"|[;,]\")(\"\"|[\\w\\W]*?)(?=\"[;,]|\"$)|(?:^(?!\")|[;,](?!\"))([^;,]*?)(?=$|[;,])|(\\r\\n|\\n)" );
   QList<QPair<QString, QVariant>> map;
-
   while ( !s.atEnd() )
   {
-    QString l = s.readLine().trimmed();
-
-    QString key;
-    QString val;
-
-    if ( re0.indexIn( l ) >= 0 && re0.captureCount() == 2 )
+    const QString l = s.readLine().trimmed();
+    QRegularExpressionMatchIterator matches = re.globalMatch( l );
+    QStringList ceils;
+    while ( matches.hasNext() && ceils.size() < 2 )
     {
-      key = re0.cap( 1 ).trimmed();
-      val = re0.cap( 2 ).trimmed();
+      const QRegularExpressionMatch match = matches.next();
+      ceils << match.capturedTexts().last().trimmed().replace( "\"\""_L1, "\""_L1 );
     }
-    else if ( re1.indexIn( l ) >= 0 && re1.captureCount() == 2 )
-    {
-      key = re1.cap( 1 ).trimmed();
-      val = re1.cap( 2 ).trimmed();
-    }
-    else
+
+    if ( ceils.size() != 2 )
       continue;
 
-    if ( ( key.startsWith( '\"' ) && key.endsWith( '\"' ) ) ||
-         ( key.startsWith( '\'' ) && key.endsWith( '\'' ) ) )
-    {
-      key = key.mid( 1, key.length() - 2 );
-    }
-
-    if ( ( val.startsWith( '\"' ) && val.endsWith( '\"' ) ) ||
-         ( val.startsWith( '\'' ) && val.endsWith( '\'' ) ) )
-    {
-      val = val.mid( 1, val.length() - 2 );
-    }
-
+    QString key = ceils[0];
+    QString val = ceils[1];
     if ( key == QgsApplication::nullRepresentation() )
       key = QgsValueMapFieldFormatter::NULL_VALUE;
-
     map.append( qMakePair( key, val ) );
   }
 

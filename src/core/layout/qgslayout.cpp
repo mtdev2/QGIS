@@ -15,23 +15,48 @@
  ***************************************************************************/
 
 #include "qgslayout.h"
-#include "qgslayoutitem.h"
-#include "qgslayoutmodel.h"
-#include "qgslayoutpagecollection.h"
+
+#include <memory>
+
+#include "qgscompositionconverter.h"
+#include "qgsexpressioncontextutils.h"
+#include "qgslayoutframe.h"
 #include "qgslayoutguidecollection.h"
-#include "qgsreadwritecontext.h"
-#include "qgsproject.h"
-#include "qgslayoutitemundocommand.h"
+#include "qgslayoutitem.h"
 #include "qgslayoutitemgroup.h"
 #include "qgslayoutitemgroupundocommand.h"
-#include "qgslayoutmultiframe.h"
+#include "qgslayoutitemhtml.h"
+#include "qgslayoutitemlabel.h"
 #include "qgslayoutitemmap.h"
+#include "qgslayoutitemundocommand.h"
+#include "qgslayoutmodel.h"
+#include "qgslayoutmultiframe.h"
+#include "qgslayoutpagecollection.h"
+#include "qgslayoutrendercontext.h"
+#include "qgslayoutreportcontext.h"
 #include "qgslayoutundostack.h"
-#include "qgscompositionconverter.h"
-#include "qgsvectorlayer.h"
-#include "qgsexpressioncontextutils.h"
-#include "qgsstyleentityvisitor.h"
+#include "qgsproject.h"
+#include "qgsreadwritecontext.h"
 #include "qgsruntimeprofiler.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingstree.h"
+#include "qgsstyleentityvisitor.h"
+#include "qgsunittypes.h"
+
+#include <QString>
+
+#include "moc_qgslayout.cpp"
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryStringList *QgsLayout::settingsSearchPathForTemplates
+  = new QgsSettingsEntryStringList( u"search-paths-for-templates"_s, QgsSettingsTree::sTreeLayout, QStringList(), QObject::tr( "Search path for templates" ) );
+
+const QgsSettingsEntryString *QgsLayout::settingsLayoutDefaultFont
+  = new QgsSettingsEntryString( u"default-font"_s, QgsSettingsTree::sTreeLayout, QString(), QObject::tr( "Default font family for new layout items" ) );
+
+const QgsSettingsEntryString *QgsLayout::settingsLayoutDefaultNorthArrow
+  = new QgsSettingsEntryString( u"default-north-arrow"_s, QgsSettingsTree::sTreeLayout, u":/images/north_arrows/layout_default_north_arrow.svg"_s, QObject::tr( "Default north arrow SVG path" ) );
 
 QgsLayout::QgsLayout( QgsProject *project )
   : mProject( project )
@@ -44,7 +69,7 @@ QgsLayout::QgsLayout( QgsProject *project )
 {
   // just to make sure - this should be the default, but maybe it'll change in some future Qt version...
   setBackgroundBrush( Qt::NoBrush );
-  mItemsModel.reset( new QgsLayoutModel( this ) );
+  mItemsModel = std::make_unique<QgsLayoutModel>( this );
 }
 
 QgsLayout::~QgsLayout()
@@ -65,7 +90,7 @@ QgsLayout::~QgsLayout()
   while ( deleted )
   {
     deleted = false;
-    for ( QGraphicsItem *item : qgis::as_const( itemList ) )
+    for ( QGraphicsItem *item : std::as_const( itemList ) )
     {
       if ( dynamic_cast< QgsLayoutItem * >( item ) && !dynamic_cast< QgsLayoutItemPage *>( item ) )
       {
@@ -88,7 +113,7 @@ QgsLayout *QgsLayout::clone() const
   QDomElement elem = writeXml( currentDoc, context );
   currentDoc.appendChild( elem );
 
-  std::unique_ptr< QgsLayout > newLayout = qgis::make_unique< QgsLayout >( mProject );
+  auto newLayout = std::make_unique< QgsLayout >( mProject );
   bool ok = false;
   newLayout->loadFromTemplate( currentDoc, context, true, &ok );
   if ( !ok )
@@ -103,7 +128,7 @@ void QgsLayout::initializeDefaults()
 {
   // default to a A4 landscape page
   QgsLayoutItemPage *page = new QgsLayoutItemPage( this );
-  page->setPageSize( QgsLayoutSize( 297, 210, QgsUnitTypes::LayoutMillimeters ) );
+  page->setPageSize( QgsLayoutSize( 297, 210, Qgis::LayoutUnit::Millimeters ) );
   mPageCollection->addPage( page );
   mUndoStack->stack()->clear();
 }
@@ -239,7 +264,7 @@ QgsLayoutItem *QgsLayout::itemByUuid( const QString &uuid, bool includeTemplateU
 {
   QList<QgsLayoutItem *> itemList;
   layoutItems( itemList );
-  for ( QgsLayoutItem *item : qgis::as_const( itemList ) )
+  for ( QgsLayoutItem *item : std::as_const( itemList ) )
   {
     if ( item->uuid() == uuid )
       return item;
@@ -254,7 +279,7 @@ QgsLayoutItem *QgsLayout::itemByTemplateUuid( const QString &uuid ) const
 {
   QList<QgsLayoutItem *> itemList;
   layoutItems( itemList );
-  for ( QgsLayoutItem *item : qgis::as_const( itemList ) )
+  for ( QgsLayoutItem *item : std::as_const( itemList ) )
   {
     if ( item->mTemplateUuid == uuid )
       return item;
@@ -290,18 +315,26 @@ QgsLayoutMultiFrame *QgsLayout::multiFrameByUuid( const QString &uuid, bool incl
   return nullptr;
 }
 
-QgsLayoutItem *QgsLayout::layoutItemAt( QPointF position, const bool ignoreLocked ) const
+QgsLayoutItem *QgsLayout::layoutItemAt( QPointF position, const bool ignoreLocked, double searchTolerance ) const
 {
-  return layoutItemAt( position, nullptr, ignoreLocked );
+  return layoutItemAt( position, nullptr, ignoreLocked, searchTolerance );
 }
 
-QgsLayoutItem *QgsLayout::layoutItemAt( QPointF position, const QgsLayoutItem *belowItem, const bool ignoreLocked ) const
+QgsLayoutItem *QgsLayout::layoutItemAt( QPointF position, const QgsLayoutItem *belowItem, const bool ignoreLocked, double searchTolerance ) const
 {
   //get a list of items which intersect the specified position, in descending z order
-  const QList<QGraphicsItem *> itemList = items( position, Qt::IntersectsItemShape, Qt::DescendingOrder );
+  QList<QGraphicsItem *> itemList;
+  if ( searchTolerance == 0 )
+  {
+    itemList = items( position, Qt::IntersectsItemShape, Qt::DescendingOrder );
+  }
+  else
+  {
+    itemList = items( QRectF( position.x() - searchTolerance, position.y() - searchTolerance, 2 * searchTolerance, 2 * searchTolerance ), Qt::IntersectsItemShape, Qt::DescendingOrder );
+  }
 
   bool foundBelowItem = false;
-  for ( QGraphicsItem *graphicsItem : itemList )
+  for ( QGraphicsItem *graphicsItem : std::as_const( itemList ) )
   {
     QgsLayoutItem *layoutItem = dynamic_cast<QgsLayoutItem *>( graphicsItem );
     QgsLayoutItemPage *paperItem = dynamic_cast<QgsLayoutItemPage *>( layoutItem );
@@ -309,8 +342,14 @@ QgsLayoutItem *QgsLayout::layoutItemAt( QPointF position, const QgsLayoutItem *b
     {
       // If we are not checking for a an item below a specified item, or if we've
       // already found that item, then we've found our target
-      if ( ( ! belowItem || foundBelowItem ) && ( !ignoreLocked || !layoutItem->isLocked() ) )
+      if ( ( !belowItem || foundBelowItem ) && ( !ignoreLocked || !layoutItem->isLocked() ) )
       {
+        // If ignoreLocked and item is part of a locked group, return the next item below
+        if ( ignoreLocked && layoutItem->parentGroup() && layoutItem->parentGroup()->isLocked() )
+        {
+          return layoutItemAt( position, layoutItem, ignoreLocked, searchTolerance );
+        }
+
         return layoutItem;
       }
       else
@@ -341,17 +380,17 @@ QPointF QgsLayout::convertToLayoutUnits( const QgsLayoutPoint &point ) const
   return mRenderContext->measurementConverter().convert( point, mUnits ).toQPointF();
 }
 
-QgsLayoutMeasurement QgsLayout::convertFromLayoutUnits( const double length, const QgsUnitTypes::LayoutUnit unit ) const
+QgsLayoutMeasurement QgsLayout::convertFromLayoutUnits( const double length, const Qgis::LayoutUnit unit ) const
 {
   return mRenderContext->measurementConverter().convert( QgsLayoutMeasurement( length, mUnits ), unit );
 }
 
-QgsLayoutSize QgsLayout::convertFromLayoutUnits( QSizeF size, const QgsUnitTypes::LayoutUnit unit ) const
+QgsLayoutSize QgsLayout::convertFromLayoutUnits( QSizeF size, const Qgis::LayoutUnit unit ) const
 {
   return mRenderContext->measurementConverter().convert( QgsLayoutSize( size.width(), size.height(), mUnits ), unit );
 }
 
-QgsLayoutPoint QgsLayout::convertFromLayoutUnits( QPointF point, const QgsUnitTypes::LayoutUnit unit ) const
+QgsLayoutPoint QgsLayout::convertFromLayoutUnits( QPointF point, const Qgis::LayoutUnit unit ) const
 {
   return mRenderContext->measurementConverter().convert( QgsLayoutPoint( point.x(), point.y(), mUnits ), unit );
 }
@@ -408,7 +447,7 @@ void QgsLayout::setCustomProperty( const QString &key, const QVariant &value )
 {
   mCustomProperties.setValue( key, value );
 
-  if ( key.startsWith( QLatin1String( "variable" ) ) )
+  if ( key.startsWith( "variable"_L1 ) )
     emit variablesChanged();
 }
 
@@ -438,7 +477,7 @@ QgsLayoutItemMap *QgsLayout::referenceMap() const
   layoutItems( maps );
   QgsLayoutItemMap *largestMap = nullptr;
   double largestMapArea = 0;
-  for ( QgsLayoutItemMap *map : qgis::as_const( maps ) )
+  for ( QgsLayoutItemMap *map : std::as_const( maps ) )
   {
     double area = map->rect().width() * map->rect().height();
     if ( area > largestMapArea )
@@ -508,7 +547,6 @@ QRectF QgsLayout::layoutBounds( bool ignorePages, double margin ) const
   }
 
   return bounds;
-
 }
 
 QRectF QgsLayout::pageItemBounds( int page, bool visibleOnly ) const
@@ -559,7 +597,7 @@ void QgsLayout::removeLayoutItem( QgsLayoutItem *item )
   if ( !mUndoStack->isBlocked() )
   {
     mUndoStack->beginMacro( tr( "Delete Items" ) );
-    deleteCommand.reset( new QgsLayoutItemDeleteUndoCommand( item, tr( "Delete Item" ) ) );
+    deleteCommand = std::make_unique<QgsLayoutItemDeleteUndoCommand>( item, tr( "Delete Item" ) );
   }
   removeLayoutItemPrivate( item );
   if ( deleteCommand )
@@ -576,6 +614,8 @@ void QgsLayout::addMultiFrame( QgsLayoutMultiFrame *multiFrame )
 
   if ( !mMultiFrames.contains( multiFrame ) )
     mMultiFrames << multiFrame;
+
+  connect( multiFrame, &QgsLayoutMultiFrame::backgroundTaskCountChanged, this, &QgsLayout::multiFrameBackgroundTaskCountChanged );
 }
 
 void QgsLayout::removeMultiFrame( QgsLayoutMultiFrame *multiFrame )
@@ -631,27 +671,27 @@ QList< QgsLayoutItem * > QgsLayout::loadFromTemplate( const QDomDocument &docume
   }
 
   // remove all uuid attributes since we don't want duplicates UUIDS
-  QDomNodeList itemsNodes = doc.elementsByTagName( QStringLiteral( "LayoutItem" ) );
+  QDomNodeList itemsNodes = doc.elementsByTagName( u"LayoutItem"_s );
   for ( int i = 0; i < itemsNodes.count(); ++i )
   {
     QDomNode itemNode = itemsNodes.at( i );
     if ( itemNode.isElement() )
     {
-      itemNode.toElement().removeAttribute( QStringLiteral( "uuid" ) );
+      itemNode.toElement().removeAttribute( u"uuid"_s );
     }
   }
-  QDomNodeList multiFrameNodes = doc.elementsByTagName( QStringLiteral( "LayoutMultiFrame" ) );
+  QDomNodeList multiFrameNodes = doc.elementsByTagName( u"LayoutMultiFrame"_s );
   for ( int i = 0; i < multiFrameNodes.count(); ++i )
   {
     QDomNode multiFrameNode = multiFrameNodes.at( i );
     if ( multiFrameNode.isElement() )
     {
-      multiFrameNode.toElement().removeAttribute( QStringLiteral( "uuid" ) );
-      QDomNodeList frameNodes = multiFrameNode.toElement().elementsByTagName( QStringLiteral( "childFrame" ) );
+      multiFrameNode.toElement().removeAttribute( u"uuid"_s );
+      QDomNodeList frameNodes = multiFrameNode.toElement().elementsByTagName( u"childFrame"_s );
       QDomNode itemNode = frameNodes.at( i );
       if ( itemNode.isElement() )
       {
-        itemNode.toElement().removeAttribute( QStringLiteral( "uuid" ) );
+        itemNode.toElement().removeAttribute( u"uuid"_s );
       }
     }
   }
@@ -694,21 +734,19 @@ const QgsLayoutUndoStack *QgsLayout::undoStack() const
 }
 
 ///@cond PRIVATE
-class QgsLayoutUndoCommand: public QgsAbstractLayoutUndoCommand
+class QgsLayoutUndoCommand : public QgsAbstractLayoutUndoCommand
 {
   public:
-
     QgsLayoutUndoCommand( QgsLayout *layout, const QString &text, int id, QUndoCommand *parent SIP_TRANSFERTHIS = nullptr )
       : QgsAbstractLayoutUndoCommand( text, id, parent )
       , mLayout( layout )
     {}
 
   protected:
-
     void saveState( QDomDocument &stateDoc ) const override
     {
       stateDoc.clear();
-      QDomElement documentElement = stateDoc.createElement( QStringLiteral( "UndoState" ) );
+      QDomElement documentElement = stateDoc.createElement( u"UndoState"_s );
       mLayout->writeXmlLayoutSettings( documentElement, stateDoc, QgsReadWriteContext() );
       stateDoc.appendChild( documentElement );
     }
@@ -725,7 +763,6 @@ class QgsLayoutUndoCommand: public QgsAbstractLayoutUndoCommand
     }
 
   private:
-
     QgsLayout *mLayout = nullptr;
 };
 ///@endcond
@@ -744,7 +781,7 @@ QgsLayoutItemGroup *QgsLayout::groupItems( const QList<QgsLayoutItem *> &items )
   }
 
   mUndoStack->beginMacro( tr( "Group Items" ) );
-  std::unique_ptr< QgsLayoutItemGroup > itemGroup( new QgsLayoutItemGroup( this ) );
+  auto itemGroup = std::make_unique<QgsLayoutItemGroup>( this );
   for ( QgsLayoutItem *item : items )
   {
     itemGroup->addItem( item );
@@ -752,12 +789,13 @@ QgsLayoutItemGroup *QgsLayout::groupItems( const QList<QgsLayoutItem *> &items )
   QgsLayoutItemGroup *returnGroup = itemGroup.get();
   addLayoutItem( itemGroup.release() );
 
-  std::unique_ptr< QgsLayoutItemGroupUndoCommand > c( new QgsLayoutItemGroupUndoCommand( QgsLayoutItemGroupUndoCommand::Grouped, returnGroup, this, tr( "Group Items" ) ) );
+  auto c = std::make_unique<QgsLayoutItemGroupUndoCommand>( QgsLayoutItemGroupUndoCommand::Grouped, returnGroup, this, tr( "Group Items" ) );
   mUndoStack->push( c.release() );
   mProject->setDirty( true );
 
   mUndoStack->endMacro();
 
+  // cppcheck-suppress returnDanglingLifetime
   return returnGroup;
 }
 
@@ -772,7 +810,7 @@ QList<QgsLayoutItem *> QgsLayout::ungroupItems( QgsLayoutItemGroup *group )
   mUndoStack->beginMacro( tr( "Ungroup Items" ) );
   // Call this before removing group items so it can keep note
   // of contents
-  std::unique_ptr< QgsLayoutItemGroupUndoCommand > c( new QgsLayoutItemGroupUndoCommand( QgsLayoutItemGroupUndoCommand::Ungrouped, group, this, tr( "Ungroup Items" ) ) );
+  auto c = std::make_unique<QgsLayoutItemGroupUndoCommand>( QgsLayoutItemGroupUndoCommand::Ungrouped, group, this, tr( "Ungroup Items" ) );
   mUndoStack->push( c.release() );
 
   mProject->setDirty( true );
@@ -815,18 +853,15 @@ void QgsLayout::refresh()
 void QgsLayout::writeXmlLayoutSettings( QDomElement &element, QDomDocument &document, const QgsReadWriteContext & ) const
 {
   mCustomProperties.writeXml( element, document );
-  element.setAttribute( QStringLiteral( "units" ), QgsUnitTypes::encodeUnit( mUnits ) );
-  element.setAttribute( QStringLiteral( "worldFileMap" ), mWorldFileMapId );
-  element.setAttribute( QStringLiteral( "printResolution" ), mRenderContext->dpi() );
+  element.setAttribute( u"units"_s, QgsUnitTypes::encodeUnit( mUnits ) );
+  element.setAttribute( u"worldFileMap"_s, mWorldFileMapId );
+  element.setAttribute( u"printResolution"_s, mRenderContext->dpi() );
 }
 
 QDomElement QgsLayout::writeXml( QDomDocument &document, const QgsReadWriteContext &context ) const
 {
-  QDomElement element = document.createElement( QStringLiteral( "Layout" ) );
-  auto save = [&]( const QgsLayoutSerializableObject * object )->bool
-  {
-    return object->writeXml( element, document, context );
-  };
+  QDomElement element = document.createElement( u"Layout"_s );
+  auto save = [&]( const QgsLayoutSerializableObject *object ) -> bool { return object->writeXml( element, document, context ); };
   save( &mSnapper );
   save( &mGridSettings );
   save( mPageCollection.get() );
@@ -858,9 +893,9 @@ QDomElement QgsLayout::writeXml( QDomDocument &document, const QgsReadWriteConte
 bool QgsLayout::readXmlLayoutSettings( const QDomElement &layoutElement, const QDomDocument &, const QgsReadWriteContext & )
 {
   mCustomProperties.readXml( layoutElement );
-  setUnits( QgsUnitTypes::decodeLayoutUnit( layoutElement.attribute( QStringLiteral( "units" ) ) ) );
-  mWorldFileMapId = layoutElement.attribute( QStringLiteral( "worldFileMap" ) );
-  mRenderContext->setDpi( layoutElement.attribute( QStringLiteral( "printResolution" ), QStringLiteral( "300" ) ).toDouble() );
+  setUnits( QgsUnitTypes::decodeLayoutUnit( layoutElement.attribute( u"units"_s ) ) );
+  mWorldFileMapId = layoutElement.attribute( u"worldFileMap"_s );
+  mRenderContext->setDpi( layoutElement.attribute( u"printResolution"_s, u"300"_s ).toDouble() );
   emit changed();
 
   return true;
@@ -872,6 +907,7 @@ void QgsLayout::addLayoutItemPrivate( QgsLayoutItem *item )
   updateBounds();
   mItemsModel->rebuildZList();
   connect( item, &QgsLayoutItem::backgroundTaskCountChanged, this, &QgsLayout::itemBackgroundTaskCountChanged );
+  emit itemAdded( item );
 }
 
 void QgsLayout::removeLayoutItemPrivate( QgsLayoutItem *item )
@@ -899,13 +935,13 @@ QPointF QgsLayout::minPointFromXml( const QDomElement &elem ) const
 {
   double minX = std::numeric_limits<double>::max();
   double minY = std::numeric_limits<double>::max();
-  const QDomNodeList itemList = elem.elementsByTagName( QStringLiteral( "LayoutItem" ) );
+  const QDomNodeList itemList = elem.elementsByTagName( u"LayoutItem"_s );
   bool found = false;
   for ( int i = 0; i < itemList.size(); ++i )
   {
     const QDomElement currentItemElem = itemList.at( i ).toElement();
 
-    QgsLayoutPoint pos = QgsLayoutPoint::decodePoint( currentItemElem.attribute( QStringLiteral( "position" ) ) );
+    QgsLayoutPoint pos = QgsLayoutPoint::decodePoint( currentItemElem.attribute( u"position"_s ) );
     QPointF layoutPoint = convertToLayoutUnits( pos );
 
     minX = std::min( minX, layoutPoint.x() );
@@ -948,19 +984,16 @@ void QgsLayout::updateZValues( const bool addUndoCommands )
 
 bool QgsLayout::readXml( const QDomElement &layoutElement, const QDomDocument &document, const QgsReadWriteContext &context )
 {
-  if ( layoutElement.nodeName() != QLatin1String( "Layout" ) )
+  if ( layoutElement.nodeName() != "Layout"_L1 )
   {
     return false;
   }
 
-  auto restore = [&]( QgsLayoutSerializableObject * object )->bool
-  {
-    return object->readXml( layoutElement, document, context );
-  };
+  auto restore = [&]( QgsLayoutSerializableObject *object ) -> bool { return object->readXml( layoutElement, document, context ); };
 
   std::unique_ptr< QgsScopedRuntimeProfile > profile;
-  if ( QgsApplication::profiler()->groupIsActive( QStringLiteral( "projectload" ) ) )
-    profile = qgis::make_unique< QgsScopedRuntimeProfile >( tr( "Read layout settings" ), QStringLiteral( "projectload" ) );
+  if ( QgsApplication::profiler()->groupIsActive( u"projectload"_s ) )
+    profile = std::make_unique< QgsScopedRuntimeProfile >( tr( "Read layout settings" ), u"projectload"_s );
 
   blockSignals( true ); // defer changed signal to end
   readXmlLayoutSettings( layoutElement, document, context );
@@ -1013,17 +1046,17 @@ QList< QgsLayoutItem * > QgsLayout::addItemsFromXml( const QDomElement &parentEl
   }
 
   std::unique_ptr< QgsScopedRuntimeProfile > profile;
-  if ( QgsApplication::profiler()->groupIsActive( QStringLiteral( "projectload" ) ) )
-    profile = qgis::make_unique< QgsScopedRuntimeProfile >( tr( "Read items" ), QStringLiteral( "projectload" ) );
+  if ( QgsApplication::profiler()->groupIsActive( u"projectload"_s ) )
+    profile = std::make_unique< QgsScopedRuntimeProfile >( tr( "Read items" ), u"projectload"_s );
 
   // multiframes
 
   //TODO - fix this. pasting multiframe frame items has no effect
-  const QDomNodeList multiFrameList = parentElement.elementsByTagName( QStringLiteral( "LayoutMultiFrame" ) );
+  const QDomNodeList multiFrameList = parentElement.elementsByTagName( u"LayoutMultiFrame"_s );
   for ( int i = 0; i < multiFrameList.size(); ++i )
   {
     const QDomElement multiFrameElem = multiFrameList.at( i ).toElement();
-    const int itemType = multiFrameElem.attribute( QStringLiteral( "type" ) ).toInt();
+    const int itemType = multiFrameElem.attribute( u"type"_s ).toInt();
 
     if ( profile )
     {
@@ -1064,10 +1097,10 @@ QList< QgsLayoutItem * > QgsLayout::addItemsFromXml( const QDomElement &parentEl
   for ( int i = 0; i < layoutItemList.size(); ++i )
   {
     const QDomElement currentItemElem = layoutItemList.at( i ).toElement();
-    if ( currentItemElem.nodeName() != QLatin1String( "LayoutItem" ) )
+    if ( currentItemElem.nodeName() != "LayoutItem"_L1 )
       continue;
 
-    const int itemType = currentItemElem.attribute( QStringLiteral( "type" ) ).toInt();
+    const int itemType = currentItemElem.attribute( u"type"_s ).toInt();
 
     if ( profile )
     {
@@ -1089,12 +1122,48 @@ QList< QgsLayoutItem * > QgsLayout::addItemsFromXml( const QDomElement &parentEl
     {
       if ( pasteInPlace )
       {
-        QgsLayoutPoint posOnPage = QgsLayoutPoint::decodePoint( currentItemElem.attribute( QStringLiteral( "positionOnPage" ) ) );
+        QgsLayoutPoint posOnPage = QgsLayoutPoint::decodePoint( currentItemElem.attribute( u"positionOnPage"_s ) );
         item->attemptMove( posOnPage, true, false, pageNumber );
       }
       else
       {
         item->attemptMoveBy( pasteShiftPos.x(), pasteShiftPos.y() );
+      }
+    }
+
+    // When restoring items on project load saved with QGIS < 3.32, convert HTML-enabled labels into HTML items
+    if ( !position && QgsProjectVersion( 3, 31, 0 ) > mProject->lastSaveVersion() )
+    {
+      if ( QgsLayoutItemLabel *label = qobject_cast<QgsLayoutItemLabel *>( item.get() ) )
+      {
+        if ( label->mode() == QgsLayoutItemLabel::ModeHtml )
+        {
+          QgsTextFormat textFormat = label->textFormat();
+          if ( textFormat.lineHeightUnit() == Qgis::RenderUnit::Percentage )
+          {
+            // The line-height property handles height differently in webkit, adjust accordingly
+            textFormat.setLineHeight( textFormat.lineHeight() + 0.22 );
+            label->setTextFormat( textFormat );
+          }
+          QgsLayoutMultiFrame *html = QgsLayoutItemHtml::createFromLabel( label );
+          addMultiFrame( html );
+          if ( item->isGroupMember() )
+          {
+            if ( QgsLayoutItemGroup *group = item->parentGroup() )
+            {
+              QList<QgsLayoutItem *> groupItems = group->items();
+              groupItems.removeAll( item.get() );
+              group->removeItems();
+              for ( QgsLayoutItem *groupItem : std::as_const( groupItems ) )
+              {
+                group->addItem( groupItem );
+              }
+              group->addItem( html->frame( 0 ) );
+            }
+          }
+          newMultiFrames << html;
+          continue;
+        }
       }
     }
 
@@ -1113,28 +1182,28 @@ QList< QgsLayoutItem * > QgsLayout::addItemsFromXml( const QDomElement &parentEl
   {
     profile->switchTask( tr( "Finalize restore" ) );
   }
-  for ( QgsLayoutItem *item : qgis::as_const( newItems ) )
+  for ( QgsLayoutItem *item : std::as_const( newItems ) )
   {
     if ( profile )
-      itemProfile = qgis::make_unique< QgsScopedRuntimeProfile >( item->displayName(), QStringLiteral( "projectload" ) );
+      itemProfile = std::make_unique< QgsScopedRuntimeProfile >( item->displayName(), u"projectload"_s );
     item->finalizeRestoreFromXml();
     if ( itemProfile )
       itemProfile.reset();
   }
-  for ( QgsLayoutMultiFrame *mf : qgis::as_const( newMultiFrames ) )
+  for ( QgsLayoutMultiFrame *mf : std::as_const( newMultiFrames ) )
   {
     if ( profile )
-      itemProfile = qgis::make_unique< QgsScopedRuntimeProfile >( mf->displayName(), QStringLiteral( "projectload" ) );
+      itemProfile = std::make_unique< QgsScopedRuntimeProfile >( mf->displayName(), u"projectload"_s );
     mf->finalizeRestoreFromXml();
     if ( itemProfile )
       itemProfile.reset();
   }
 
-  for ( QgsLayoutItem *item : qgis::as_const( newItems ) )
+  for ( QgsLayoutItem *item : std::as_const( newItems ) )
   {
     item->mTemplateUuid.clear();
   }
-  for ( QgsLayoutMultiFrame *mf : qgis::as_const( newMultiFrames ) )
+  for ( QgsLayoutMultiFrame *mf : std::as_const( newMultiFrames ) )
   {
     mf->mTemplateUuid.clear();
   }
@@ -1169,6 +1238,35 @@ void QgsLayout::itemBackgroundTaskCountChanged( int count )
   // sum up new count of background tasks
   int total = 0;
   for ( auto it = mBackgroundTaskCount.constBegin(); it != mBackgroundTaskCount.constEnd(); ++it )
+  {
+    total += it.value();
+  }
+  for ( auto it = mMultiFrameBackgroundTaskCount.constBegin(); it != mMultiFrameBackgroundTaskCount.constEnd(); ++it )
+  {
+    total += it.value();
+  }
+
+  emit backgroundTaskCountChanged( total );
+}
+
+void QgsLayout::multiFrameBackgroundTaskCountChanged( int count )
+{
+  QgsLayoutMultiFrame *multiFrame = qobject_cast<QgsLayoutMultiFrame *>( sender() );
+  if ( !multiFrame )
+    return;
+
+  if ( count > 0 )
+    mMultiFrameBackgroundTaskCount.insert( multiFrame, count );
+  else
+    mMultiFrameBackgroundTaskCount.remove( multiFrame );
+
+  // sum up new count of background tasks
+  int total = 0;
+  for ( auto it = mBackgroundTaskCount.constBegin(); it != mBackgroundTaskCount.constEnd(); ++it )
+  {
+    total += it.value();
+  }
+  for ( auto it = mMultiFrameBackgroundTaskCount.constBegin(); it != mMultiFrameBackgroundTaskCount.constEnd(); ++it )
   {
     total += it.value();
   }

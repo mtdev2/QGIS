@@ -16,6 +16,7 @@
  ***************************************************************************/
 
 #include "qgslayermetadatavalidator.h"
+
 #include "qgslayermetadata.h"
 #include "qgsprojectmetadata.h"
 
@@ -74,7 +75,7 @@ bool QgsNativeMetadataBaseValidator::validate( const QgsAbstractMetadataBase *me
   }
 
   // validate keywords
-  QgsAbstractMetadataBase::KeywordMap keywords = metadata->keywords();
+  const QgsAbstractMetadataBase::KeywordMap keywords = metadata->keywords();
   QgsAbstractMetadataBase::KeywordMap::const_iterator keywordIt = keywords.constBegin();
   index = 0;
   for ( ; keywordIt != keywords.constEnd(); ++keywordIt )

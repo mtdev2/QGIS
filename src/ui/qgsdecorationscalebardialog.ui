@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>565</width>
+    <width>596</width>
     <height>337</height>
    </rect>
   </property>
@@ -197,7 +197,7 @@
         <property name="text">
          <string>Font of bar</string>
         </property>
-       </widget>      
+       </widget>
       </item>
       <item row="4" column="1">
        <widget class="QgsFontButton" name="mButtonFontStyle">
@@ -210,7 +210,7 @@
         <property name="text">
          <string>Font</string>
         </property>
-       </widget>      
+       </widget>
       </item>
       <item row="5" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -307,6 +307,9 @@
           <property name="maximum">
            <number>100</number>
           </property>
+          <property name="toolTip">
+           <string>Horizontal offset on the map canvas from the placement anchor</string>
+          </property>
          </widget>
         </item>
         <item>
@@ -350,6 +353,9 @@
           </property>
           <property name="maximum">
            <number>100</number>
+          </property>
+          <property name="toolTip">
+           <string>Vertical offset on the map canvas from the placement anchor</string>
           </property>
          </widget>
         </item>
@@ -417,7 +423,7 @@
         </property>
        </widget>
       </item>
-      <item row="9" colspan="2">
+      <item row="9" column="0" colspan="2">
        <spacer name="verticalSpacer">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -428,7 +434,7 @@
           <height>40</height>
          </size>
         </property>
-       </spacer>       
+       </spacer>
       </item>
      </layout>
     </widget>
@@ -438,20 +444,15 @@
  <layoutdefault spacing="6" margin="11"/>
  <customwidgets>
   <customwidget>
+   <class>QgsSpinBox</class>
+   <extends>QSpinBox</extends>
+   <header>qgsspinbox.h</header>
+  </customwidget>
+  <customwidget>
    <class>QgsColorButton</class>
    <extends>QToolButton</extends>
    <header>qgscolorbutton.h</header>
    <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>QgsFontButton</class>
-   <extends>QToolButton</extends>
-   <header>qgsfontbutton.h</header>
-  </customwidget>
-  <customwidget>
-   <class>QgsSpinBox</class>
-   <extends>QSpinBox</extends>
-   <header>qgsspinbox.h</header>
   </customwidget>
   <customwidget>
    <class>QgsUnitSelectionWidget</class>
@@ -459,19 +460,24 @@
    <header>qgsunitselectionwidget.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>QgsFontButton</class>
+   <extends>QToolButton</extends>
+   <header>qgsfontbutton.h</header>
+  </customwidget>
  </customwidgets>
  <tabstops>
   <tabstop>grpEnable</tabstop>
   <tabstop>cboStyle</tabstop>
   <tabstop>pbnChangeColor</tabstop>
   <tabstop>pbnChangeOutlineColor</tabstop>
+  <tabstop>mButtonFontStyle</tabstop>
   <tabstop>spnSize</tabstop>
   <tabstop>chkSnapping</tabstop>
   <tabstop>cboPlacement</tabstop>
   <tabstop>spnHorizontal</tabstop>
   <tabstop>spnVertical</tabstop>
   <tabstop>wgtUnitSelection</tabstop>
-  <tabstop>buttonBox</tabstop>
  </tabstops>
  <resources/>
  <connections/>

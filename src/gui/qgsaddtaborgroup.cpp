@@ -16,109 +16,142 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgsapplication.h"
-#include "qgsvectorlayer.h"
 #include "qgsaddtaborgroup.h"
-#include "qgssettings.h"
 
-#include <QTreeWidgetItem>
+#include "qgshelp.h"
+#include "qgssettingsentryimpl.h"
+#include "qgssettingstree.h"
+#include "qgsvectorlayer.h"
+
 #include <QComboBox>
 #include <QRadioButton>
+#include <QString>
 
-QgsAddTabOrGroup::QgsAddTabOrGroup( QgsVectorLayer *lyr, const QList < TabPair > &tabList, QTreeWidgetItem *currentTab, QWidget *parent )
+#include "moc_qgsaddtaborgroup.cpp"
+
+using namespace Qt::StringLiterals;
+
+const QgsSettingsEntryInteger *QgsAddAttributeFormContainerDialog::settingsDefaultTabColumnCount
+  = new QgsSettingsEntryInteger( u"default-tab-column-count"_s, QgsSettingsTree::sTreeAttributeForm, 1, QObject::tr( "Default column count for tab containers in attribute forms" ) );
+
+const QgsSettingsEntryInteger *QgsAddAttributeFormContainerDialog::settingsDefaultGroupColumnCount
+  = new QgsSettingsEntryInteger( u"default-group-column-count"_s, QgsSettingsTree::sTreeAttributeForm, 1, QObject::tr( "Default column count for group box containers in attribute forms" ) );
+
+QgsAddAttributeFormContainerDialog::QgsAddAttributeFormContainerDialog( QgsVectorLayer *layer, const QList<ContainerPair> &existingContainerList, QModelIndex &currentItemIndex, QWidget *parent )
   : QDialog( parent )
-  , mLayer( lyr )
-  , mTabs( tabList )
+  , mLayer( layer )
+  , mExistingContainers( existingContainerList )
 {
   setupUi( this );
-  connect( mGroupButton, &QRadioButton::toggled, this, &QgsAddTabOrGroup::mGroupButton_toggled );
-  connect( mTabButton, &QRadioButton::toggled, this, &QgsAddTabOrGroup::mTabButton_toggled );
 
-  mTabButton->setChecked( true );
-  mTabList->setEnabled( false );
-  if ( !mTabs.isEmpty() )
+  mTypeCombo->addItem( tr( "Tab" ), QVariant::fromValue( Qgis::AttributeEditorContainerType::Tab ) );
+  mTypeCombo->addItem( tr( "Group Box" ), QVariant::fromValue( Qgis::AttributeEditorContainerType::GroupBox ) );
+  mTypeCombo->addItem( tr( "Row" ), QVariant::fromValue( Qgis::AttributeEditorContainerType::Row ) );
+
+  mTypeCombo->setCurrentIndex( mTypeCombo->findData( QVariant::fromValue( Qgis::AttributeEditorContainerType::Tab ) ) );
+
+  mParentCombo->addItem( QString() );
+  if ( !mExistingContainers.isEmpty() )
   {
     int i = 0;
-    const auto constMTabs = mTabs;
-    for ( const TabPair &tab : constMTabs )
+    for ( const ContainerPair &container : std::as_const( mExistingContainers ) )
     {
-      mTabList->addItem( tab.first, i );
-      if ( tab.second == currentTab )
+      mParentCombo->addItem( container.first, i );
+      if ( currentItemIndex.isValid() && container.second == currentItemIndex )
       {
-        mTabList->setCurrentIndex( i );
-        mGroupButton->setChecked( true );
+        mParentCombo->setCurrentIndex( i + 1 ); // Take empty item into account
+        mTypeCombo->setCurrentIndex( mTypeCombo->findData( QVariant::fromValue( Qgis::AttributeEditorContainerType::GroupBox ) ) );
       }
       ++i;
     }
   }
-  else
-  {
-    mGroupButton->setEnabled( false );
-  }
 
-  connect( buttonBox, &QDialogButtonBox::helpRequested, this, &QgsAddTabOrGroup::showHelp );
+  connect( buttonBox, &QDialogButtonBox::helpRequested, this, &QgsAddAttributeFormContainerDialog::showHelp );
 
-  mColumnCountSpinBox->setValue( QgsSettings().value( QStringLiteral( "/qgis/attributeForm/defaultTabColumnCount" ), 1 ).toInt() );
+  mColumnCountSpinBox->setValue( settingsDefaultTabColumnCount->value() );
 
   setWindowTitle( tr( "Add Container for %1" ).arg( mLayer->name() ) );
+
+  connect( mTypeCombo, qOverload<int>( &QComboBox::currentIndexChanged ), this, &QgsAddAttributeFormContainerDialog::containerTypeChanged );
+  containerTypeChanged();
 }
 
-QString QgsAddTabOrGroup::name()
+QString QgsAddAttributeFormContainerDialog::name()
 {
   return mName->text();
 }
 
-QTreeWidgetItem *QgsAddTabOrGroup::tab()
+QModelIndex QgsAddAttributeFormContainerDialog::parentContainerItem() const
 {
-  TabPair tab = mTabs.at( mTabList->currentData().toInt() );
+  if ( containerType() == Qgis::AttributeEditorContainerType::Tab )
+    return QModelIndex();
+
+  if ( !mParentCombo->currentData().isValid() )
+    return QModelIndex();
+
+  const ContainerPair tab = mExistingContainers.at( mParentCombo->currentData().toInt() );
   return tab.second;
 }
 
-int QgsAddTabOrGroup::columnCount() const
+int QgsAddAttributeFormContainerDialog::columnCount() const
 {
   return mColumnCountSpinBox->value();
 }
 
-bool QgsAddTabOrGroup::tabButtonIsChecked()
+Qgis::AttributeEditorContainerType QgsAddAttributeFormContainerDialog::containerType() const
 {
-  return mTabButton->isChecked();
+  return mTypeCombo->currentData().value<Qgis::AttributeEditorContainerType>();
 }
 
-void QgsAddTabOrGroup::accept()
+void QgsAddAttributeFormContainerDialog::accept()
 {
   if ( mColumnCountSpinBox->value() > 0 )
   {
-    if ( mGroupButton->isChecked() )
+    switch ( containerType() )
     {
-      QgsSettings().setValue( QStringLiteral( "/qgis/attributeForm/defaultGroupColumnCount" ), mColumnCountSpinBox->value() );
-    }
-    else
-    {
-      QgsSettings().setValue( QStringLiteral( "/qgis/attributeForm/defaultTabColumnCount" ), mColumnCountSpinBox->value() );
+      case Qgis::AttributeEditorContainerType::GroupBox:
+        settingsDefaultGroupColumnCount->setValue( mColumnCountSpinBox->value() );
+        break;
+      case Qgis::AttributeEditorContainerType::Tab:
+        settingsDefaultTabColumnCount->setValue( mColumnCountSpinBox->value() );
+        break;
+      case Qgis::AttributeEditorContainerType::Row:
+        break;
     }
   }
 
   QDialog::accept();
 }
 
-void QgsAddTabOrGroup::mGroupButton_toggled( bool checked )
+void QgsAddAttributeFormContainerDialog::showHelp()
 {
-  mTabList->setEnabled( checked );
+  QgsHelp::openHelp( u"working_with_vector/vector_properties.html#the-drag-and-drop-designer"_s );
+}
 
-  if ( checked )
+void QgsAddAttributeFormContainerDialog::containerTypeChanged()
+{
+  const Qgis::AttributeEditorContainerType type = mTypeCombo->currentData().value<Qgis::AttributeEditorContainerType>();
+  switch ( type )
   {
-    mColumnCountSpinBox->setValue( QgsSettings().value( QStringLiteral( "/qgis/attributeForm/defaultGroupColumnCount" ), 1 ).toInt() );
+    case Qgis::AttributeEditorContainerType::GroupBox:
+      mParentCombo->show();
+      mLabelParent->show();
+      mColumnsLabel->show();
+      mColumnCountSpinBox->show();
+      mColumnCountSpinBox->setValue( settingsDefaultGroupColumnCount->value() );
+      break;
+    case Qgis::AttributeEditorContainerType::Tab:
+      mParentCombo->hide();
+      mLabelParent->hide();
+      mColumnsLabel->show();
+      mColumnCountSpinBox->show();
+      mColumnCountSpinBox->setValue( settingsDefaultTabColumnCount->value() );
+      break;
+    case Qgis::AttributeEditorContainerType::Row:
+      mParentCombo->show();
+      mLabelParent->show();
+      mColumnsLabel->hide();
+      mColumnCountSpinBox->hide();
+      break;
   }
-}
-
-void QgsAddTabOrGroup::mTabButton_toggled( bool checked )
-{
-  mTabList->setEnabled( !checked );
-  if ( checked )
-    mColumnCountSpinBox->setValue( QgsSettings().value( QStringLiteral( "/qgis/attributeForm/defaultTabColumnCount" ), 1 ).toInt() );
-}
-
-void QgsAddTabOrGroup::showHelp()
-{
-  QgsHelp::openHelp( QStringLiteral( "working_with_vector/vector_properties.html#the-drag-and-drop-designer" ) );
 }

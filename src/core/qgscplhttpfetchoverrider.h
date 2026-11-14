@@ -16,20 +16,19 @@
 #ifndef QGSCPLHTTPFETCHOVERRIDER_H
 #define QGSCPLHTTPFETCHOVERRIDER_H
 
-#define SIP_NO_FILE
+
+#include <cpl_http.h>
+#include <gdal.h>
+
+#include "qgis_core.h"
 
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QString>
-#include "qgsnetworkaccessmanager.h" // for QgsSetRequestInitiatorClass
 
-#include "cpl_http.h"
-#include "gdal.h"
+#define SIP_NO_FILE
 
 class QgsFeedback;
-
-#ifndef SIP_RUN
-#define QgsSetCPLHTTPFetchOverriderInitiatorClass(overrider, _class) QgsSetRequestInitiatorClass(overrider, _class)
-#endif
 
 /**
  * \ingroup core
@@ -41,33 +40,41 @@ class QgsFeedback;
  * \note not available in Python bindings
  * \since QGIS 3.18
  */
-class QgsCPLHTTPFetchOverrider
+class CORE_EXPORT QgsCPLHTTPFetchOverrider
 {
   public:
     //! Installs the redirection for the current thread
     explicit QgsCPLHTTPFetchOverrider( const QString &authCfg = QString(), QgsFeedback *feedback = nullptr );
 
-    //! Destructor
     ~QgsCPLHTTPFetchOverrider();
 
     //! Define attribute that must be forwarded to the actual QNetworkRequest
     void setAttribute( QNetworkRequest::Attribute code, const QVariant &value );
 
-  private:
+    /**
+     * Sets the \a feedback cancellation object for the redirection.
+     *
+     * \since QGIS 3.32
+     */
+    void setFeedback( QgsFeedback *feedback );
 
-#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(3,2,0)
-    static CPLHTTPResult *callback( const char *pszURL,
-                                    CSLConstList papszOptions,
-                                    GDALProgressFunc pfnProgress,
-                                    void *pProgressArg,
-                                    CPLHTTPFetchWriteFunc pfnWrite,
-                                    void *pWriteArg,
-                                    void *pUserData );
+    /**
+     * Returns the thread associated with the overrider.
+     *
+     * \since QGIS 3.32
+     */
+    QThread *thread() const;
+
+  private:
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 2, 0 )
+    static CPLHTTPResult *callback( const char *pszURL, CSLConstList papszOptions, GDALProgressFunc pfnProgress, void *pProgressArg, CPLHTTPFetchWriteFunc pfnWrite, void *pWriteArg, void *pUserData );
 #endif
 
     QString mAuthCfg;
 
     QgsFeedback *mFeedback = nullptr;
+
+    QPointer< QThread > mThread;
 
     std::map<QNetworkRequest::Attribute, QVariant> mAttributes;
 };

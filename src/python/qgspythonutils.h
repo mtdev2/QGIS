@@ -24,27 +24,25 @@
 #include <QString>
 #include <QStringList>
 
-
 class QgisInterface;
-#ifdef  HAVE_SERVER_PYTHON_PLUGINS
+#ifdef HAVE_SERVER_PYTHON_PLUGINS
 class QgsServerInterface;
 #endif
 
 
 /**
- All calls to Python functions in QGIS come here.
- This class is a singleton.
-
- Default path for Python plugins is:
- - QgsApplication::qgisSettingsDirPath() + "/python/plugins"
- - QgsApplication::pkgDataPath() + "/python/plugins"
-
+ * All calls to Python functions in QGIS come here.
+ * This class is a singleton.
+ *
+ * Default path for Python plugins is:
+ *
+ * - QgsApplication::qgisSettingsDirPath() + "/python/plugins"
+ * - QgsApplication::pkgDataPath() + "/python/plugins"
+ *
  */
-
 class PYTHON_EXPORT QgsPythonUtils
 {
   public:
-
     virtual ~QgsPythonUtils() = default;
 
     /**
@@ -61,8 +59,11 @@ class PYTHON_EXPORT QgsPythonUtils
      * NULLPTR if no interface is available.
      *
      * If \a installErrorHook is true then the custom QGIS GUI error hook will be used.
+     *
+     * Since QGIS 3.24, the \a faultHandlerLogPath argument can be used to specify a file path
+     * for Python's faulthandler to dump tracebacks in if Python code causes QGIS to crash.
      */
-    virtual void initPython( QgisInterface *iface, bool installErrorHook ) = 0;
+    virtual void initPython( QgisInterface *iface, bool installErrorHook, const QString &faultHandlerLogPath = QString() ) = 0;
 
 #ifdef HAVE_SERVER_PYTHON_PLUGINS
 
@@ -98,9 +99,21 @@ class PYTHON_EXPORT QgsPythonUtils
     virtual QString runStringUnsafe( const QString &command, bool single = true ) = 0;
 
     /**
+     * Runs a Python \a filename, showing an error message if one occurred.
+     * \returns TRUE if no error occurred
+     */
+    virtual bool runFile( const QString &filename, const QString &messageOnError = QString() ) = 0;
+
+    /**
      * Evaluates a Python \a command and stores the result in a the \a result string.
      */
     virtual bool evalString( const QString &command, QString &result ) = 0;
+
+    /**
+     * Sets sys.argv to the given Python \a arguments, showing an error message if one occurred.
+     * \returns TRUE if no error occurred
+     */
+    virtual bool setArgv( const QStringList &arguments, const QString &messageOnError = QString() ) = 0;
 
     /**
      * Gets information about error to the supplied arguments
@@ -173,6 +186,17 @@ class PYTHON_EXPORT QgsPythonUtils
     virtual bool startProcessingPlugin( const QString &packageName ) = 0;
 
     /**
+     * Finalizes the startup of the Processing plugin.
+     *
+     * \warning This should only be called after the startProcessingPlugin() method has been called
+     * for every installed and enabled plugin.
+     *
+     * \see startProcessingPlugin()
+     * \since QGIS 3.36
+     */
+    virtual bool finalizeProcessingStartup() = 0;
+
+    /**
      * Helper function to return some information about a plugin.
      *
      * \param function metadata component to return. Must match one of the strings: name, type, version, description, hasProcessingProvider.
@@ -182,7 +206,8 @@ class PYTHON_EXPORT QgsPythonUtils
     /**
      * Returns TRUE if a plugin implements a Processing provider.
      *
-     * This is determined by checking the plugin metadata for the "hasProcessingProvider=yes" line.
+     * This is determined by checking the plugin metadata for the "hasProcessingProvider=yes"
+     * or "hasProcessingProvider=true" line.
      *
      * \see startProcessingPlugin()
      * \since QGIS 3.8
@@ -203,6 +228,11 @@ class PYTHON_EXPORT QgsPythonUtils
      */
     virtual bool unloadPlugin( const QString &packageName ) = 0;
 
+    /**
+     * Initialize GDAL Python, turning on its exceptions.
+     * \since QGIS 3.38
+     */
+    virtual void initGDAL() = 0;
 };
 
 #endif

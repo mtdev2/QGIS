@@ -19,12 +19,11 @@
 #ifndef QGSVECTORLAYERTEMPORALPROPERTIES_H
 #define QGSVECTORLAYERTEMPORALPROPERTIES_H
 
+#include "qgis.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgsrange.h"
 #include "qgsmaplayertemporalproperties.h"
-#include "qgsrasterdataprovidertemporalcapabilities.h"
-#include "qgsunittypes.h"
+#include "qgsrange.h"
 
 class QgsVectorLayer;
 class QgsFields;
@@ -32,15 +31,14 @@ class QgsFields;
 /**
  * \class QgsVectorLayerTemporalContext
  * \ingroup core
- * Encapsulates the context in which a QgsVectorLayer's temporal capabilities
- * will be applied
+ * \brief Encapsulates the context in which a QgsVectorLayer's temporal capabilities
+ * will be applied.
  *
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsVectorLayerTemporalContext
 {
   public:
-
     /**
      * Returns the associated layer.
      *
@@ -56,14 +54,13 @@ class CORE_EXPORT QgsVectorLayerTemporalContext
     void setLayer( QgsVectorLayer *layer );
 
   private:
-
     QgsVectorLayer *mLayer = nullptr;
 };
 
 /**
  * \class QgsVectorLayerTemporalProperties
  * \ingroup core
- * Implementation of map layer temporal properties for vector layers.
+ * \brief Implementation of map layer temporal properties for vector layers.
  *
  * \since QGIS 3.14
  */
@@ -72,7 +69,6 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsVectorLayerTemporalProperties, with the specified \a parent object.
      *
@@ -84,31 +80,34 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
     QgsDateTimeRange calculateTemporalExtent( QgsMapLayer *layer ) const override SIP_SKIP;
 
     /**
-     * Mode of the vector temporal properties
-     **/
-    enum TemporalMode
-    {
-      ModeFixedTemporalRange = 0, //!< Mode when temporal properties have fixed start and end datetimes.
-      ModeFeatureDateTimeInstantFromField, //!< Mode when features have a datetime instant taken from a single field
-      ModeFeatureDateTimeStartAndEndFromFields, //!< Mode when features have separate fields for start and end times
-      ModeFeatureDateTimeStartAndDurationFromFields, //!< Mode when features have a field for start time and a field for event duration
-      ModeFeatureDateTimeStartAndEndFromExpressions, //!< Mode when features use expressions for start and end times
-      ModeRedrawLayerOnly, //!< Redraw the layer when temporal range changes, but don't apply any filtering. Useful when symbology or rule based renderer expressions depend on the time range.
-    };
-
-    /**
      * Returns the temporal properties mode.
      *
      *\see setMode()
-    **/
-    TemporalMode mode() const;
+    */
+    Qgis::VectorTemporalMode mode() const;
 
     /**
      * Sets the temporal properties \a mode.
      *
      *\see mode()
-    **/
-    void setMode( TemporalMode mode );
+    */
+    void setMode( Qgis::VectorTemporalMode mode );
+
+    /**
+     * Returns the temporal limit mode (to include or exclude begin/end limits).
+     *
+     * \see setLimitMode()
+     * \since QGIS 3.22
+    */
+    Qgis::VectorTemporalLimitMode limitMode() const;
+
+    /**
+     * Sets the temporal \a limit mode (to include or exclude begin/end limits).
+     *
+     * \see limitMode()
+     * \since QGIS 3.22
+    */
+    void setLimitMode( Qgis::VectorTemporalLimitMode mode );
 
     /**
      * Returns flags associated to the temporal property.
@@ -134,7 +133,7 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
      * QgsVectorLayerTemporalProperties::ModeFixedTemporalRange
      *
      * \see setFixedTemporalRange()
-    **/
+    */
     const QgsDateTimeRange &fixedTemporalRange() const;
 
     /**
@@ -256,14 +255,14 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
      *
      * \see setDurationUnits()
      */
-    QgsUnitTypes::TemporalUnit durationUnits() const;
+    Qgis::TemporalUnit durationUnits() const;
 
     /**
      * Sets the \a units of the event's duration.
      *
      * \see durationUnits()
      */
-    void setDurationUnits( QgsUnitTypes::TemporalUnit units );
+    void setDurationUnits( Qgis::TemporalUnit units );
 
     /**
      * Returns the fixed duration length, which contains the duration of the event.
@@ -338,9 +337,11 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
     void setDefaultsFromDataProviderTemporalCapabilities( const QgsDataProviderTemporalCapabilities *capabilities ) override;
 
   private:
-
     //! Temporal layer mode.
-    TemporalMode mMode = ModeFixedTemporalRange;
+    Qgis::VectorTemporalMode mMode = Qgis::VectorTemporalMode::FixedTemporalRange;
+
+    //! How to handle the limits of the timeframe (include or exclude)
+    Qgis::VectorTemporalLimitMode mLimitMode = Qgis::VectorTemporalLimitMode::IncludeBeginExcludeEnd;
 
     //! Represents fixed temporal range.
     QgsDateTimeRange mFixedRange;
@@ -348,7 +349,7 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
     QString mStartFieldName;
     QString mEndFieldName;
     QString mDurationFieldName;
-    QgsUnitTypes::TemporalUnit mDurationUnit = QgsUnitTypes::TemporalMinutes;
+    Qgis::TemporalUnit mDurationUnit = Qgis::TemporalUnit::Minutes;
 
     double mFixedDuration = 0;
 
@@ -356,7 +357,6 @@ class CORE_EXPORT QgsVectorLayerTemporalProperties : public QgsMapLayerTemporalP
 
     QString mStartExpression;
     QString mEndExpression;
-
 };
 
 #endif // QGSVECTORLAYERTEMPORALPROPERTIES_H

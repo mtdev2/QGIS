@@ -16,8 +16,9 @@
 #ifndef QGSMAPLAYERSTYLEGUIUTILS_H
 #define QGSMAPLAYERSTYLEGUIUTILS_H
 
-#include <QObject>
 #include "qgis_gui.h"
+
+#include <QObject>
 
 #define SIP_NO_FILE
 
@@ -30,7 +31,7 @@ class QMenu;
 /**
  * \ingroup gui
  * \class QgsMapLayerStyleGuiUtils
- * Various GUI utility functions for dealing with map layer's style manager
+ * \brief Various GUI utility functions for dealing with map layer's style manager
  * \note not available in Python bindings
  * \since QGIS 3.12 (in the GUI API)
  */
@@ -40,7 +41,6 @@ class GUI_EXPORT QgsMapLayerStyleGuiUtils : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * \brief returns a singleton instance of this class
      */
@@ -60,7 +60,7 @@ class GUI_EXPORT QgsMapLayerStyleGuiUtils : public QObject
 
   public slots:
 
-  private :
+  private:
     QAction *actionAddStyle( QgsMapLayer *layer, QObject *parent = nullptr );
     QAction *actionRemoveStyle( QgsMapLayer *layer, QObject *parent = nullptr );
     QAction *actionRenameStyle( QgsMapLayer *layer, QObject *parent = nullptr );

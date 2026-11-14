@@ -16,10 +16,6 @@
 #ifndef QGSFIELDEXPRESSIONWIDGET_H
 #define QGSFIELDEXPRESSIONWIDGET_H
 
-#include <QColor>
-#include <QComboBox>
-#include <QToolButton>
-#include <QWidget>
 #include <memory>
 
 #include "qgis_gui.h"
@@ -28,6 +24,10 @@
 #include "qgsexpressioncontext.h"
 #include "qgsfieldproxymodel.h"
 
+#include <QColor>
+#include <QComboBox>
+#include <QToolButton>
+#include <QWidget>
 
 class QgsMapLayer;
 class QgsVectorLayer;
@@ -36,9 +36,11 @@ class QgsExpressionContextGenerator;
 
 /**
  * \ingroup gui
- * \brief The QgsFieldExpressionWidget class reates a widget to choose fields and edit expressions
+ * \brief A widget for selection of layer fields or expression creation.
+ *
  * It contains a combo box to display the fields and expression and a button to open the expression dialog.
  * The combo box is editable, allowing expressions to be edited inline.
+ *
  * The validity of the expression is checked live on key press, invalid expressions are displayed in red.
  * The expression will be added to the model (and the fieldChanged signals emitted)
  * only when editing in the line edit is finished (focus lost, enter key pressed).
@@ -50,9 +52,9 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
     Q_PROPERTY( QgsFieldProxyModel::Filters filters READ filters WRITE setFilters )
     Q_PROPERTY( bool allowEmptyFieldName READ allowEmptyFieldName WRITE setAllowEmptyFieldName )
     Q_PROPERTY( bool allowEvalErrors READ allowEvalErrors WRITE setAllowEvalErrors NOTIFY allowEvalErrorsChanged )
+    Q_PROPERTY( bool buttonVisible READ buttonVisible WRITE setButtonVisible NOTIFY buttonVisibleChanged )
 
   public:
-
     /**
      * \brief QgsFieldExpressionWidget creates a widget with a combo box to display the fields and expression and a button to open the expression dialog
      */
@@ -71,7 +73,7 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
     void appendScope( QgsExpressionContextScope *scope SIP_TRANSFER );
 
     //! Returns the title used for the expression dialog
-    const QString expressionDialogTitle() { return mExpressionDialogTitle; }
+    QString expressionDialogTitle() const { return mExpressionDialogTitle; }
 
     //! setFilters allows filtering according to the type of field
     void setFilters( QgsFieldProxyModel::Filters filters );
@@ -124,7 +126,6 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      * Returns the currently selected field or expression. If a field is currently selected, the returned
      * value will be converted to a valid expression referencing this field (ie enclosing the field name with
      * appropriate quotations).
-     * \since QGIS 2.14
      */
     QString asExpression() const;
 
@@ -135,7 +136,6 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      *
      * Alias for asExpression()
      *
-     * \since QGIS 3.0
      */
     QString expression() const;
 
@@ -150,15 +150,67 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      * an expression context for the widget.
      * \param generator A QgsExpressionContextGenerator class that will be used to
      *                  create an expression context when required.
-     * \since QGIS 3.0
      */
     void registerExpressionContextGenerator( const QgsExpressionContextGenerator *generator );
+
+#ifndef SIP_RUN
+
+    /**
+     * Sets the widget to run using a custom preview generator.
+     *
+     * In this mode, the widget will call a callback function to generate a new QgsExpressionContext
+     * as the previewed object changes. This can be used to provide custom preview values for different
+     * objects (i.e. for objects which aren't vector layer features).
+     *
+     * \param label The label to display for the combo box presenting choices of objects. This should be a representative name, eg "Band" if the widget is showing choices of raster layer bands
+     * \param choices A list of choices to present to the user. Each choice is a pair of a human-readable label and a QVariant representing the object to preview.
+     * \param previewContextGenerator A function which takes a QVariant representing the object to preview, and returns a QgsExpressionContext to use for previewing the object.
+     *
+     * \since QGIS 3.38
+     */
+    void setCustomPreviewGenerator( const QString &label, const QList<QPair<QString, QVariant>> &choices, const std::function<QgsExpressionContext( const QVariant & )> &previewContextGenerator );
+#else
+
+    /**
+     * Sets the widget to run using a custom preview generator.
+     *
+     * In this mode, the widget will call a callback function to generate a new QgsExpressionContext
+     * as the previewed object changes. This can be used to provide custom preview values for different
+     * objects (i.e. for objects which aren't vector layer features).
+     *
+     * \param label The label to display for the combo box presenting choices of objects. This should be a representative name, eg "Band" if the widget is showing choices of raster layer bands
+     * \param choices A list of choices to present to the user. Each choice is a pair of a human-readable label and a QVariant representing the object to preview.
+     * \param previewContextGenerator A function which takes a QVariant representing the object to preview, and returns a QgsExpressionContext to use for previewing the object.
+     *
+     * \since QGIS 3.38
+     */
+    void setCustomPreviewGenerator( const QString &label, const QList<QPair<QString, QVariant>> &choices, SIP_PYCALLABLE );
+    //%MethodCode
+    Py_XINCREF( a2 );
+    Py_BEGIN_ALLOW_THREADS sipCpp->setCustomPreviewGenerator( *a0, *a1, [a2]( const QVariant &value ) -> QgsExpressionContext {
+      QgsExpressionContext res;
+      SIP_BLOCK_THREADS
+      PyObject *s = sipCallMethod( NULL, a2, "D", &value, sipType_QVariant, NULL );
+      int state;
+      int sipIsError = 0;
+      QgsExpressionContext *t1 = reinterpret_cast<QgsExpressionContext *>( sipConvertToType( s, sipType_QgsExpressionContext, 0, SIP_NOT_NONE, &state, &sipIsError ) );
+      if ( sipIsError == 0 )
+      {
+        res = QgsExpressionContext( *t1 );
+      }
+      sipReleaseType( t1, sipType_QgsExpressionContext, state );
+      SIP_UNBLOCK_THREADS
+      return res;
+    } );
+
+    Py_END_ALLOW_THREADS
+    //%End
+#endif
 
     /**
      * Allow accepting expressions with evaluation errors. This can be useful when we are not able to
      * provide an expression context of which we are sure it's completely populated.
      *
-     * \since QGIS 3.0
      */
     bool allowEvalErrors() const;
 
@@ -166,9 +218,26 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      * Allow accepting expressions with evaluation errors. This can be useful when we are not able to
      * provide an expression context of which we are sure it's completely populated.
      *
-     * \since QGIS 3.0
      */
     void setAllowEvalErrors( bool allowEvalErrors );
+
+    /**
+     * Returns the visibility of the button
+     *
+     * If button is hidden, the widget essentially becomes an editable combo box
+     *
+     * \since QGIS 3.36
+     */
+    bool buttonVisible() const;
+
+    /**
+     * Set the visibility of the button
+     *
+     * If button is hidden, the widget essentially becomes an editable combo box
+     *
+     * \since QGIS 3.36
+     */
+    void setButtonVisible( bool visible );
 
   signals:
     //! Emitted when the currently selected field changes.
@@ -181,9 +250,15 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      * Allow accepting expressions with evaluation errors. This can be useful when we are not able to
      * provide an expression context of which we are sure it's completely populated.
      *
-     * \since QGIS 3.0
      */
     void allowEvalErrorsChanged();
+
+    /**
+     * Emitted when the button visibility changes
+     *
+     * \since QGIS 3.36
+     */
+    void buttonVisibleChanged();
 
   public slots:
 
@@ -209,7 +284,6 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
      * Sets the current expression text and if applicable also the field.
      * Alias for setField.
      *
-     * \since QGIS 3.0
      */
     void setExpression( const QString &expression );
 
@@ -255,6 +329,10 @@ class GUI_EXPORT QgsFieldExpressionWidget : public QWidget
     const QgsExpressionContextGenerator *mExpressionContextGenerator = nullptr;
     QString mBackupExpression;
     bool mAllowEvalErrors = false;
+
+    QString mCustomPreviewLabel;
+    QList<QPair<QString, QVariant>> mCustomChoices;
+    std::function<QgsExpressionContext( const QVariant & )> mPreviewContextGenerator;
 
     friend class TestQgsFieldExpressionWidget;
 };

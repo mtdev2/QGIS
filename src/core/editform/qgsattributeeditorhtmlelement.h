@@ -19,18 +19,15 @@
 #include "qgis_core.h"
 #include "qgsattributeeditorelement.h"
 
-
-
 /**
  * \ingroup core
- * An attribute editor widget that will represent arbitrary HTML code.
+ * \brief An attribute editor widget that will represent arbitrary HTML code.
  *
  * \since QGIS 3.4
  */
 class CORE_EXPORT QgsAttributeEditorHtmlElement : public QgsAttributeEditorElement
 {
   public:
-
     /**
      * Creates a new element which can display HTML
      *
@@ -38,7 +35,7 @@ class CORE_EXPORT QgsAttributeEditorHtmlElement : public QgsAttributeEditorEleme
      * \param parent       The parent (used as container)
     */
     QgsAttributeEditorHtmlElement( const QString &name, QgsAttributeEditorElement *parent )
-      : QgsAttributeEditorElement( AeTypeHtmlElement, name, parent )
+      : QgsAttributeEditorElement( Qgis::AttributeEditorType::HtmlElement, name, parent )
     {}
 
     QgsAttributeEditorElement *clone( QgsAttributeEditorElement *parent ) const override SIP_FACTORY;
@@ -57,7 +54,7 @@ class CORE_EXPORT QgsAttributeEditorHtmlElement : public QgsAttributeEditorEleme
 
   private:
     void saveConfiguration( QDomElement &elem, QDomDocument &doc ) const override;
-    void loadConfiguration( const QDomElement &element,  const QString &layerId, const QgsReadWriteContext &context, const QgsFields &fields ) override;
+    void loadConfiguration( const QDomElement &element, const QString &layerId, const QgsReadWriteContext &context, const QgsFields &fields ) override;
     QString typeIdentifier() const override;
     QString mHtmlCode;
 };

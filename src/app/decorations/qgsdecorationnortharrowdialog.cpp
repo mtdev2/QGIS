@@ -11,20 +11,26 @@
  ***************************************************************************/
 
 #include "qgsdecorationnortharrowdialog.h"
+
+#include <cmath>
+
 #include "qgsdecorationnortharrow.h"
-#include "qgslogger.h"
+#include "qgsgui.h"
 #include "qgshelp.h"
 #include "qgsproject.h"
-#include "qgssymbollayerutils.h"
 #include "qgssvgcache.h"
 #include "qgssvgselectorwidget.h"
-#include "qgsgui.h"
+#include "qgssymbollayerutils.h"
 
-#include <QPainter>
-#include <cmath>
 #include <QDialogButtonBox>
+#include <QPainter>
 #include <QPushButton>
+#include <QString>
 #include <QSvgRenderer>
+
+#include "moc_qgsdecorationnortharrowdialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorthArrow &deco, QWidget *parent )
   : QDialog( parent )
@@ -52,12 +58,11 @@ QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorth
   spinAngle->setEnabled( !mDeco.mAutomatic );
   sliderRotation->setEnabled( !mDeco.mAutomatic );
 
-  connect( cboxAutomatic, &QAbstractButton::toggled, this, [ = ]( bool checked )
-  {
+  connect( cboxAutomatic, &QAbstractButton::toggled, this, [this]( bool checked ) {
     spinAngle->setEnabled( !checked );
     sliderRotation->setEnabled( !checked );
   } );
-  connect( spinAngle, static_cast < void ( QSpinBox::* )( int ) > ( &QSpinBox::valueChanged ), this, &QgsDecorationNorthArrowDialog::spinAngle_valueChanged );
+  connect( spinAngle, static_cast<void ( QSpinBox::* )( int )>( &QSpinBox::valueChanged ), this, &QgsDecorationNorthArrowDialog::spinAngle_valueChanged );
   connect( sliderRotation, &QSlider::valueChanged, this, &QgsDecorationNorthArrowDialog::sliderRotation_valueChanged );
 
   // placement
@@ -67,8 +72,7 @@ QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorth
   cboPlacement->addItem( tr( "Bottom Left" ), QgsDecorationItem::BottomLeft );
   cboPlacement->addItem( tr( "Bottom Center" ), QgsDecorationItem::BottomCenter );
   cboPlacement->addItem( tr( "Bottom Right" ), QgsDecorationItem::BottomRight );
-  connect( cboPlacement, qgis::overload<int>::of( &QComboBox::currentIndexChanged ), this, [ = ]( int )
-  {
+  connect( cboPlacement, qOverload<int>( &QComboBox::currentIndexChanged ), this, [this]( int ) {
     spinHorizontal->setMinimum( cboPlacement->currentData() == QgsDecorationItem::TopCenter || cboPlacement->currentData() == QgsDecorationItem::BottomCenter ? -100 : 0 );
   } );
   cboPlacement->setCurrentIndex( cboPlacement->findData( mDeco.placement() ) );
@@ -76,7 +80,7 @@ QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorth
   spinHorizontal->setClearValue( 0 );
   spinHorizontal->setValue( mDeco.mMarginHorizontal );
   spinVertical->setValue( mDeco.mMarginVertical );
-  wgtUnitSelection->setUnits( QgsUnitTypes::RenderUnitList() << QgsUnitTypes::RenderMillimeters << QgsUnitTypes::RenderPercentage << QgsUnitTypes::RenderPixels );
+  wgtUnitSelection->setUnits( { Qgis::RenderUnit::Millimeters, Qgis::RenderUnit::Percentage, Qgis::RenderUnit::Pixels } );
   wgtUnitSelection->setUnit( mDeco.mMarginUnit );
 
   // enabled
@@ -84,14 +88,13 @@ QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorth
 
   mSvgPathLineEdit->setText( mDeco.mSvgPath );
   connect( mSvgPathLineEdit, &QLineEdit::textChanged, this, &QgsDecorationNorthArrowDialog::updateSvgPath );
-  connect( mSvgSelectorBtn, &QPushButton::clicked, this, [ = ]
-  {
+  connect( mSvgSelectorBtn, &QPushButton::clicked, this, [this] {
     QgsSvgSelectorDialog svgDlg( this );
     svgDlg.setWindowTitle( tr( "Select SVG file" ) );
     svgDlg.svgSelector()->setSvgPath( mSvgPathLineEdit->text().trimmed() );
     if ( svgDlg.exec() == QDialog::Accepted )
     {
-      QString svgPath = svgDlg.svgSelector()->currentSvgPath();
+      const QString svgPath = svgDlg.svgSelector()->currentSvgPath();
       if ( !svgPath.isEmpty() )
       {
         updateSvgPath( svgPath );
@@ -101,21 +104,21 @@ QgsDecorationNorthArrowDialog::QgsDecorationNorthArrowDialog( QgsDecorationNorth
 
   pbnChangeColor->setAllowOpacity( true );
   pbnChangeColor->setColor( mDeco.mColor );
-  pbnChangeColor->setContext( QStringLiteral( "gui" ) );
+  pbnChangeColor->setContext( u"gui"_s );
   pbnChangeColor->setColorDialogTitle( tr( "Select North Arrow Fill Color" ) );
   pbnChangeOutlineColor->setAllowOpacity( true );
   pbnChangeOutlineColor->setColor( mDeco.mOutlineColor );
-  pbnChangeOutlineColor->setContext( QStringLiteral( "gui" ) );
+  pbnChangeOutlineColor->setContext( u"gui"_s );
   pbnChangeOutlineColor->setColorDialogTitle( tr( "Select North Arrow Outline Color" ) );
-  connect( pbnChangeColor, &QgsColorButton::colorChanged, this, [ = ]( QColor ) { drawNorthArrow(); } );
-  connect( pbnChangeOutlineColor, &QgsColorButton::colorChanged, this, [ = ]( QColor ) { drawNorthArrow(); } );
+  connect( pbnChangeColor, &QgsColorButton::colorChanged, this, [this]( QColor ) { drawNorthArrow(); } );
+  connect( pbnChangeOutlineColor, &QgsColorButton::colorChanged, this, [this]( QColor ) { drawNorthArrow(); } );
 
   drawNorthArrow();
 }
 
 void QgsDecorationNorthArrowDialog::showHelp()
 {
-  QgsHelp::openHelp( QStringLiteral( "introduction/general_tools.html#north-arrow" ) );
+  QgsHelp::openHelp( u"map_views/map_view.html#northarrow-decoration"_s );
 }
 
 void QgsDecorationNorthArrowDialog::buttonBox_accepted()
@@ -148,7 +151,7 @@ void QgsDecorationNorthArrowDialog::apply()
   mDeco.mOutlineColor = pbnChangeOutlineColor->color();
   mDeco.mSize = spinSize->value();
   mDeco.mRotationInt = sliderRotation->value();
-  mDeco.setPlacement( static_cast< QgsDecorationItem::Placement>( cboPlacement->currentData().toInt() ) );
+  mDeco.setPlacement( static_cast<QgsDecorationItem::Placement>( cboPlacement->currentData().toInt() ) );
   mDeco.mMarginUnit = wgtUnitSelection->unit();
   mDeco.setEnabled( grpEnable->isChecked() );
   mDeco.mAutomatic = cboxAutomatic->isChecked();
@@ -165,8 +168,8 @@ void QgsDecorationNorthArrowDialog::updateSvgPath( const QString &svgPath )
   }
   mDeco.mSvgPath = svgPath;
 
-  QString resolvedPath = QgsSymbolLayerUtils::svgSymbolNameToPath( svgPath, QgsProject::instance()->pathResolver() );
-  bool validSvg = QFileInfo::exists( resolvedPath );
+  const QString resolvedPath = QgsSymbolLayerUtils::svgSymbolNameToPath( svgPath, QgsProject::instance()->pathResolver() );
+  const bool validSvg = QFileInfo::exists( resolvedPath );
 
   // draw red text for path field if invalid (path can't be resolved)
   mSvgPathLineEdit->setStyleSheet( QString( !validSvg ? "QLineEdit{ color: rgb(225, 0, 0); }" : "" ) );
@@ -177,8 +180,8 @@ void QgsDecorationNorthArrowDialog::updateSvgPath( const QString &svgPath )
 
 void QgsDecorationNorthArrowDialog::drawNorthArrow()
 {
-  int rotation = spinAngle->value();
-  double maxLength = 64;
+  const int rotation = spinAngle->value();
+  const double maxLength = 64;
   QSvgRenderer svg;
 
   const QByteArray &svgContent = QgsApplication::svgCache()->svgContent( mDeco.svgPath(), maxLength, pbnChangeColor->color(), pbnChangeOutlineColor->color(), 1.0, 1.0 );
@@ -187,7 +190,7 @@ void QgsDecorationNorthArrowDialog::drawNorthArrow()
   if ( svg.isValid() )
   {
     QSize size( maxLength, maxLength );
-    QRectF viewBox = svg.viewBoxF();
+    const QRectF viewBox = svg.viewBoxF();
     if ( viewBox.height() > viewBox.width() )
     {
       size.setWidth( maxLength * viewBox.width() / viewBox.height() );
@@ -197,7 +200,7 @@ void QgsDecorationNorthArrowDialog::drawNorthArrow()
       size.setHeight( maxLength * viewBox.height() / viewBox.width() );
     }
 
-    QPixmap  myPainterPixmap( maxLength, maxLength );
+    QPixmap myPainterPixmap( maxLength, maxLength );
     myPainterPixmap.fill( Qt::transparent );
 
     QPainter myQPainter;
@@ -205,43 +208,35 @@ void QgsDecorationNorthArrowDialog::drawNorthArrow()
 
     myQPainter.setRenderHint( QPainter::SmoothPixmapTransform );
 
-    double centerXDouble = size.width() / 2.0;
-    double centerYDouble = size.height() / 2.0;
+    const double centerXDouble = size.width() / 2.0;
+    const double centerYDouble = size.height() / 2.0;
     //save the current canvas rotation
-    myQPainter.save();
     myQPainter.translate( ( maxLength - size.width() ) / 2, ( maxLength - size.height() ) / 2 );
 
     //rotate the canvas
     myQPainter.rotate( rotation );
     //work out how to shift the image so that it appears in the center of the canvas
     //(x cos a + y sin a - x, -x sin a + y cos a - y)
-    double myRadiansDouble = ( M_PI / 180 ) * rotation;
-    int xShift = static_cast<int>( (
-                                     ( centerXDouble * std::cos( myRadiansDouble ) ) +
-                                     ( centerYDouble * std::sin( myRadiansDouble ) )
-                                   ) - centerXDouble );
-    int yShift = static_cast<int>( (
-                                     ( -centerXDouble * std::sin( myRadiansDouble ) ) +
-                                     ( centerYDouble * std::cos( myRadiansDouble ) )
-                                   ) - centerYDouble );
+    const double myRadiansDouble = ( M_PI / 180 ) * rotation;
+    const int xShift = static_cast<int>( ( ( centerXDouble * std::cos( myRadiansDouble ) ) + ( centerYDouble * std::sin( myRadiansDouble ) ) ) - centerXDouble );
+    const int yShift = static_cast<int>( ( ( -centerXDouble * std::sin( myRadiansDouble ) ) + ( centerYDouble * std::cos( myRadiansDouble ) ) ) - centerYDouble );
 
     //draw the pixmap in the proper position
     myQPainter.translate( xShift, yShift );
     svg.render( &myQPainter, QRectF( 0, 0, size.width(), size.height() ) );
 
     //unrotate the canvas again
-    myQPainter.restore();
     myQPainter.end();
 
     pixmapLabel->setPixmap( myPainterPixmap );
   }
   else
   {
-    QPixmap  myPainterPixmap( 200, 200 );
+    QPixmap myPainterPixmap( 200, 200 );
     myPainterPixmap.fill( Qt::transparent );
     QPainter myQPainter;
     myQPainter.begin( &myPainterPixmap );
-    QFont myQFont( QStringLiteral( "time" ), 12, QFont::Bold );
+    const QFont myQFont( u"time"_s, 12, QFont::Bold );
     myQPainter.setFont( myQFont );
     myQPainter.setPen( Qt::red );
     myQPainter.drawText( 10, 20, tr( "Pixmap not found" ) );

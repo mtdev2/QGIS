@@ -16,22 +16,29 @@
  ***************************************************************************/
 
 #include "qgsgdalproviderbase.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 ///@cond PRIVATE
 
-#define CPL_SUPRESS_CPLUSPLUS  //#spellok
+#define CPL_SUPRESS_CPLUSPLUS //#spellok
 #include <cpl_conv.h>
 #include <cpl_string.h>
 
 #include "qgsapplication.h"
 #include "qgslogger.h"
 #include "qgsgdalproviderbase.h"
-#include "qgssettings.h"
+#include "qgsgdalutils.h"
 
 #include <mutex>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
+#include <QFileInfo>
 
 QgsGdalProviderBase::QgsGdalProviderBase()
 {
-
   // first get the GDAL driver manager
   QgsGdalProviderBase::registerGdalDrivers();
 }
@@ -41,23 +48,29 @@ QgsGdalProviderBase::QgsGdalProviderBase()
  * \param list a pointer the object that will hold the color table
  * \return TRUE of a color table was able to be read, FALSE otherwise
  */
-QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDatasetH gdalDataset, int bandNumber )const
+QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDatasetH gdalDataset, int bandNumber ) const
 {
   QList<QgsColorRampShader::ColorRampItem> ct;
 
   //Invalid band number, segfault prevention
   if ( 0 >= bandNumber )
   {
-    QgsDebugMsg( QStringLiteral( "Invalid parameter" ) );
+    QgsDebugError( u"Invalid parameter"_s );
     return ct;
   }
 
   GDALRasterBandH myGdalBand = GDALGetRasterBand( gdalDataset, bandNumber );
+  if ( !myGdalBand )
+  {
+    QgsDebugError( u"Could not get raster band %1"_s.arg( bandNumber ) );
+    return ct;
+  }
+
   GDALColorTableH myGdalColorTable = GDALGetRasterColorTable( myGdalBand );
 
   if ( myGdalColorTable )
   {
-    QgsDebugMsgLevel( QStringLiteral( "Color table found" ), 2 );
+    QgsDebugMsgLevel( u"Color table found"_s, 2 );
 
     // load category labels
     char **categoryNames = GDALGetRasterCategoryNames( myGdalBand );
@@ -72,10 +85,10 @@ QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDa
       }
     }
 
-    int myEntryCount = GDALGetColorEntryCount( myGdalColorTable );
-    GDALColorInterp myColorInterpretation = GDALGetRasterColorInterpretation( myGdalBand );
+    const int myEntryCount = GDALGetColorEntryCount( myGdalColorTable );
+    const GDALColorInterp myColorInterpretation = GDALGetRasterColorInterpretation( myGdalBand );
     QgsDebugMsgLevel( "Color Interpretation: " + QString::number( static_cast< int >( myColorInterpretation ) ), 2 );
-    GDALPaletteInterp myPaletteInterpretation  = GDALGetPaletteInterpretation( myGdalColorTable );
+    const GDALPaletteInterp myPaletteInterpretation = GDALGetPaletteInterpretation( myGdalColorTable );
     QgsDebugMsgLevel( "Palette Interpretation: " + QString::number( static_cast< int >( myPaletteInterpretation ) ), 2 );
 
     const GDALColorEntry *myColorEntry = nullptr;
@@ -109,15 +122,15 @@ QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDa
           myColorRampItem.value = static_cast< double >( myIterator );
           myColorRampItem.label = label;
           //Branch on palette interpretation
-          if ( myPaletteInterpretation  == GPI_RGB )
+          if ( myPaletteInterpretation == GPI_RGB )
           {
             myColorRampItem.color = QColor::fromRgb( myColorEntry->c1, myColorEntry->c2, myColorEntry->c3, myColorEntry->c4 );
           }
-          else if ( myPaletteInterpretation  == GPI_CMYK )
+          else if ( myPaletteInterpretation == GPI_CMYK )
           {
             myColorRampItem.color = QColor::fromCmyk( myColorEntry->c1, myColorEntry->c2, myColorEntry->c3, myColorEntry->c4 );
           }
-          else if ( myPaletteInterpretation  == GPI_HLS )
+          else if ( myPaletteInterpretation == GPI_HLS )
           {
             myColorRampItem.color = QColor::fromHsv( myColorEntry->c1, myColorEntry->c3, myColorEntry->c2, myColorEntry->c4 );
           }
@@ -129,7 +142,7 @@ QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDa
         }
         else
         {
-          QgsDebugMsgLevel( QStringLiteral( "Color interpretation type not supported yet" ), 2 );
+          QgsDebugMsgLevel( u"Color interpretation type not supported yet"_s, 2 );
           return ct;
         }
       }
@@ -141,7 +154,7 @@ QList<QgsColorRampShader::ColorRampItem> QgsGdalProviderBase::colorTable( GDALDa
     return ct;
   }
 
-  QgsDebugMsgLevel( QStringLiteral( "Color table loaded successfully" ), 2 );
+  QgsDebugMsgLevel( u"Color table loaded successfully"_s, 2 );
   return ct;
 }
 
@@ -149,75 +162,107 @@ Qgis::DataType QgsGdalProviderBase::dataTypeFromGdal( const GDALDataType gdalDat
 {
   switch ( gdalDataType )
   {
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 7, 0 )
+    case GDT_Int8:
+      return Qgis::DataType::Int8;
+#endif
     case GDT_Byte:
-      return Qgis::Byte;
+      return Qgis::DataType::Byte;
     case GDT_UInt16:
-      return Qgis::UInt16;
+      return Qgis::DataType::UInt16;
     case GDT_Int16:
-      return Qgis::Int16;
+      return Qgis::DataType::Int16;
     case GDT_UInt32:
-      return Qgis::UInt32;
+      return Qgis::DataType::UInt32;
     case GDT_Int32:
-      return Qgis::Int32;
+      return Qgis::DataType::Int32;
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 11, 0 )
+    case GDT_Float16:
+#endif
     case GDT_Float32:
-      return Qgis::Float32;
+      return Qgis::DataType::Float32;
     case GDT_Float64:
-      return Qgis::Float64;
+      return Qgis::DataType::Float64;
     case GDT_CInt16:
-      return Qgis::CInt16;
+      return Qgis::DataType::CInt16;
     case GDT_CInt32:
-      return Qgis::CInt32;
+      return Qgis::DataType::CInt32;
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 11, 0 )
+    case GDT_CFloat16:
+#endif
     case GDT_CFloat32:
-      return Qgis::CFloat32;
+      return Qgis::DataType::CFloat32;
     case GDT_CFloat64:
-      return Qgis::CFloat64;
+      return Qgis::DataType::CFloat64;
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 5, 0 )
+    case GDT_Int64:
+    case GDT_UInt64:
+      // Lossy conversion
+      // NOTE: remove conversion from/to double in qgsgdalprovider.cpp if using
+      // a native Qgis data type for Int64/UInt64 (look for GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(3,5,0))
+      return Qgis::DataType::Float64;
+#endif
     case GDT_Unknown:
     case GDT_TypeCount:
-      return Qgis::UnknownDataType;
+      return Qgis::DataType::UnknownDataType;
   }
-  return Qgis::UnknownDataType;
+  return Qgis::DataType::UnknownDataType;
 }
 
-int QgsGdalProviderBase::colorInterpretationFromGdal( const GDALColorInterp gdalColorInterpretation ) const
+#define MAP_GCI_TO_QGIS( x ) \
+  case GCI_##x:              \
+    return Qgis::RasterColorInterpretation::x;
+
+Qgis::RasterColorInterpretation QgsGdalProviderBase::colorInterpretationFromGdal( const GDALColorInterp gdalColorInterpretation ) const
 {
   switch ( gdalColorInterpretation )
   {
-    case GCI_GrayIndex:
-      return QgsRaster::GrayIndex;
-    case GCI_PaletteIndex:
-      return QgsRaster::PaletteIndex;
-    case GCI_RedBand:
-      return QgsRaster::RedBand;
-    case GCI_GreenBand:
-      return QgsRaster::GreenBand;
-    case GCI_BlueBand:
-      return QgsRaster::BlueBand;
-    case GCI_AlphaBand:
-      return QgsRaster::AlphaBand;
-    case GCI_HueBand:
-      return QgsRaster::HueBand;
-    case GCI_SaturationBand:
-      return QgsRaster::SaturationBand;
-    case GCI_LightnessBand:
-      return QgsRaster::LightnessBand;
-    case GCI_CyanBand:
-      return QgsRaster::CyanBand;
-    case GCI_MagentaBand:
-      return QgsRaster::MagentaBand;
-    case GCI_YellowBand:
-      return QgsRaster::YellowBand;
-    case GCI_BlackBand:
-      return QgsRaster::BlackBand;
-    case GCI_YCbCr_YBand:
-      return QgsRaster::YCbCr_YBand;
-    case GCI_YCbCr_CbBand:
-      return QgsRaster::YCbCr_CbBand;
-    case GCI_YCbCr_CrBand:
-      return QgsRaster::YCbCr_CrBand;
-    case GCI_Undefined:
-      return QgsRaster::UndefinedColorInterpretation;
+    MAP_GCI_TO_QGIS( Undefined )
+    MAP_GCI_TO_QGIS( GrayIndex )
+    MAP_GCI_TO_QGIS( PaletteIndex )
+    MAP_GCI_TO_QGIS( RedBand )
+    MAP_GCI_TO_QGIS( GreenBand )
+    MAP_GCI_TO_QGIS( BlueBand )
+    MAP_GCI_TO_QGIS( AlphaBand )
+    MAP_GCI_TO_QGIS( HueBand )
+    MAP_GCI_TO_QGIS( SaturationBand )
+    MAP_GCI_TO_QGIS( LightnessBand )
+    MAP_GCI_TO_QGIS( CyanBand )
+    MAP_GCI_TO_QGIS( MagentaBand )
+    MAP_GCI_TO_QGIS( YellowBand )
+    MAP_GCI_TO_QGIS( BlackBand )
+    MAP_GCI_TO_QGIS( YCbCr_YBand )
+    MAP_GCI_TO_QGIS( YCbCr_CbBand )
+    MAP_GCI_TO_QGIS( YCbCr_CrBand )
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION( 3, 10, 0 )
+    MAP_GCI_TO_QGIS( PanBand )
+    MAP_GCI_TO_QGIS( CoastalBand )
+    MAP_GCI_TO_QGIS( RedEdgeBand )
+    MAP_GCI_TO_QGIS( NIRBand )
+    MAP_GCI_TO_QGIS( SWIRBand )
+    MAP_GCI_TO_QGIS( MWIRBand )
+    MAP_GCI_TO_QGIS( LWIRBand )
+    MAP_GCI_TO_QGIS( TIRBand )
+    MAP_GCI_TO_QGIS( OtherIRBand )
+    MAP_GCI_TO_QGIS( SAR_Ka_Band )
+    MAP_GCI_TO_QGIS( SAR_K_Band )
+    MAP_GCI_TO_QGIS( SAR_Ku_Band )
+    MAP_GCI_TO_QGIS( SAR_X_Band )
+    MAP_GCI_TO_QGIS( SAR_C_Band )
+    MAP_GCI_TO_QGIS( SAR_S_Band )
+    MAP_GCI_TO_QGIS( SAR_L_Band )
+    MAP_GCI_TO_QGIS( SAR_P_Band )
+    case GCI_IR_Reserved_1:
+    case GCI_IR_Reserved_2:
+    case GCI_IR_Reserved_3:
+    case GCI_IR_Reserved_4:
+    case GCI_SAR_Reserved_1:
+    //case GCI_SAR_Reserved_2:
+    case GCI_Max: // same as GCI_SAR_Reserved_2
+      break;
+#endif
   }
-  return QgsRaster::UndefinedColorInterpretation;
+  return Qgis::RasterColorInterpretation::Undefined;
 }
 
 void QgsGdalProviderBase::registerGdalDrivers()
@@ -226,11 +271,11 @@ void QgsGdalProviderBase::registerGdalDrivers()
   std::call_once( initialized, QgsApplication::registerGdalDriversFromSettings );
 }
 
-QgsRectangle QgsGdalProviderBase::extent( GDALDatasetH gdalDataset )const
+QgsRectangle QgsGdalProviderBase::extent( GDALDatasetH gdalDataset ) const
 {
   double myGeoTransform[6];
 
-  bool myHasGeoTransform = GDALGetGeoTransform( gdalDataset, myGeoTransform ) == CE_None;
+  const bool myHasGeoTransform = GDALGetGeoTransform( gdalDataset, myGeoTransform ) == CE_None;
   if ( !myHasGeoTransform )
   {
     // Initialize the affine transform matrix
@@ -244,44 +289,95 @@ QgsRectangle QgsGdalProviderBase::extent( GDALDatasetH gdalDataset )const
 
   // Use the affine transform to get geo coordinates for
   // the corners of the raster
-  double myXMax = myGeoTransform[0] +
-                  GDALGetRasterXSize( gdalDataset ) * myGeoTransform[1] +
-                  GDALGetRasterYSize( gdalDataset ) * myGeoTransform[2];
-  double myYMin = myGeoTransform[3] +
-                  GDALGetRasterXSize( gdalDataset ) * myGeoTransform[4] +
-                  GDALGetRasterYSize( gdalDataset ) * myGeoTransform[5];
+  const double myXMax = myGeoTransform[0] + GDALGetRasterXSize( gdalDataset ) * myGeoTransform[1] + GDALGetRasterYSize( gdalDataset ) * myGeoTransform[2];
+  const double myYMin = myGeoTransform[3] + GDALGetRasterXSize( gdalDataset ) * myGeoTransform[4] + GDALGetRasterYSize( gdalDataset ) * myGeoTransform[5];
 
-  QgsRectangle extent( myGeoTransform[0], myYMin, myXMax, myGeoTransform[3] );
+  const QgsRectangle extent( myGeoTransform[0], myYMin, myXMax, myGeoTransform[3] );
   return extent;
 }
 
 GDALDatasetH QgsGdalProviderBase::gdalOpen( const QString &uri, unsigned int nOpenFlags )
 {
   QVariantMap parts = decodeGdalUri( uri );
-  QString filePath = parts.value( QStringLiteral( "path" ) ).toString();
-  const QStringList openOptions = parts.value( QStringLiteral( "openOptions" ) ).toStringList();
-  parts.remove( QStringLiteral( "openOptions" ) );
+  const QStringList openOptions = parts.value( u"openOptions"_s ).toStringList();
+  parts.remove( u"openOptions"_s );
 
   char **papszOpenOptions = nullptr;
   for ( const QString &option : openOptions )
   {
-    papszOpenOptions = CSLAddString( papszOpenOptions,
-                                     option.toUtf8().constData() );
+    papszOpenOptions = CSLAddString( papszOpenOptions, option.toUtf8().constData() );
   }
 
-  bool modify_OGR_GPKG_FOREIGN_KEY_CHECK = !CPLGetConfigOption( "OGR_GPKG_FOREIGN_KEY_CHECK", nullptr );
+  const QString vsiPrefix = parts.value( u"vsiPrefix"_s ).toString();
+  const QString vsiSuffix = parts.value( u"vsiSuffix"_s ).toString();
+
+  const QVariantMap credentialOptions = parts.value( u"credentialOptions"_s ).toMap();
+  parts.remove( u"credentialOptions"_s );
+  if ( !credentialOptions.isEmpty() && !vsiPrefix.isEmpty() )
+  {
+    const thread_local QRegularExpression bucketRx( u"^(.*)/"_s );
+    const QRegularExpressionMatch bucketMatch = bucketRx.match( parts.value( u"path"_s ).toString() );
+    if ( bucketMatch.hasMatch() )
+    {
+      QgsGdalUtils::applyVsiCredentialOptions( vsiPrefix, bucketMatch.captured( 1 ), credentialOptions );
+    }
+  }
+
+  const bool modify_OGR_GPKG_FOREIGN_KEY_CHECK = !CPLGetConfigOption( "OGR_GPKG_FOREIGN_KEY_CHECK", nullptr );
   if ( modify_OGR_GPKG_FOREIGN_KEY_CHECK )
   {
     CPLSetThreadLocalConfigOption( "OGR_GPKG_FOREIGN_KEY_CHECK", "NO" );
   }
 
-  GDALDatasetH hDS = GDALOpenEx( encodeGdalUri( parts ).toUtf8().constData(), nOpenFlags, nullptr, papszOpenOptions, nullptr );
+  QString gdalUri = encodeGdalUri( parts );
+  GDALDatasetH hDS = GDALOpenEx( gdalUri.toUtf8().constData(), nOpenFlags, nullptr, papszOpenOptions, nullptr );
+
+  if ( !hDS )
+  {
+    if ( vsiSuffix.isEmpty() && QgsGdalUtils::isVsiArchivePrefix( vsiPrefix ) )
+    {
+      // in the case that a direct path to a vsi supported archive was specified BUT
+      // no file suffix was given, see if there's only one valid file we could read anyway and
+      // passthrough directly to this
+      char **papszSiblingFiles = VSIReadDirRecursive( gdalUri.toUtf8().constData() );
+      if ( papszSiblingFiles )
+      {
+        bool foundMultipleCandidates = false;
+        QString filename;
+        for ( int i = 0; papszSiblingFiles[i]; i++ )
+        {
+          const QString tmpPath = papszSiblingFiles[i];
+          const QString suffix = QFileInfo( tmpPath ).completeSuffix();
+          if ( suffix.endsWith( "aux.xml"_L1, Qt::CaseInsensitive ) )
+            continue;
+
+          if ( !filename.isEmpty() )
+          {
+            foundMultipleCandidates = true;
+            break;
+          }
+          filename = tmpPath;
+        }
+        CSLDestroy( papszSiblingFiles );
+
+        if ( !foundMultipleCandidates )
+        {
+          parts.insert( u"vsiSuffix"_s, filename );
+          // try again with suffix
+          gdalUri = encodeGdalUri( parts );
+          hDS = GDALOpenEx( gdalUri.toUtf8().constData(), nOpenFlags, nullptr, papszOpenOptions, nullptr );
+        }
+      }
+    }
+  }
+
   CSLDestroy( papszOpenOptions );
 
   if ( modify_OGR_GPKG_FOREIGN_KEY_CHECK )
   {
     CPLSetThreadLocalConfigOption( "OGR_GPKG_FOREIGN_KEY_CHECK", nullptr );
   }
+
   return hDS;
 }
 
@@ -294,12 +390,13 @@ int CPL_STDCALL _gdalProgressFnWithFeedback( double dfComplete, const char *pszM
   return !feedback->isCanceled();
 }
 
-
-CPLErr QgsGdalProviderBase::gdalRasterIO( GDALRasterBandH hBand, GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize, void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType, int nPixelSpace, int nLineSpace, QgsRasterBlockFeedback *feedback )
+CPLErr QgsGdalProviderBase::gdalRasterIO(
+  GDALRasterBandH hBand, GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize, void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType, int nPixelSpace, int nLineSpace, QgsRasterBlockFeedback *feedback
+)
 {
   GDALRasterIOExtraArg extra;
   INIT_RASTERIO_EXTRA_ARG( extra );
-  if ( false && feedback )  // disabled!
+  if ( false && feedback ) // disabled!
   {
     // Currently the cancellation is disabled... When RasterIO call is canceled,
     // GDAL returns CE_Failure with error code = 0 (CPLE_None), however one would
@@ -309,14 +406,14 @@ CPLErr QgsGdalProviderBase::gdalRasterIO( GDALRasterBandH hBand, GDALRWFlag eRWF
     extra.pfnProgress = _gdalProgressFnWithFeedback;
     extra.pProgressData = ( void * ) feedback;
   }
-  CPLErr err = GDALRasterIOEx( hBand, eRWFlag, nXOff, nYOff, nXSize, nYSize, pData, nBufXSize, nBufYSize, eBufType, nPixelSpace, nLineSpace, &extra );
+  const CPLErr err = GDALRasterIOEx( hBand, eRWFlag, nXOff, nYOff, nXSize, nYSize, pData, nBufXSize, nBufYSize, eBufType, nPixelSpace, nLineSpace, &extra );
 
   return err;
 }
 
 int QgsGdalProviderBase::gdalGetOverviewCount( GDALRasterBandH hBand )
 {
-  int count = GDALGetOverviewCount( hBand );
+  const int count = GDALGetOverviewCount( hBand );
   return count;
 }
 
@@ -324,16 +421,41 @@ QVariantMap QgsGdalProviderBase::decodeGdalUri( const QString &uri )
 {
   QString path = uri;
   QString layerName;
+  QString authcfg;
   QStringList openOptions;
+  QVariantMap credentialOptions;
 
-  QString vsiPrefix = qgsVsiPrefix( path );
-  if ( !path.isEmpty() )
+  const thread_local QRegularExpression authcfgRegex( " authcfg='([^']+)'" );
+  QRegularExpressionMatch match;
+  if ( path.contains( authcfgRegex, &match ) )
+  {
+    path = path.remove( match.capturedStart( 0 ), match.capturedLength( 0 ) );
+    authcfg = match.captured( 1 );
+  }
+
+  QString vsiPrefix = QgsGdalUtils::vsiPrefixForPath( path );
+  QString vsiSuffix;
+  if ( path.startsWith( vsiPrefix, Qt::CaseInsensitive ) )
+  {
     path = path.mid( vsiPrefix.count() );
+
+    const thread_local QRegularExpression vsiRegex( u"(?:\\.zip|\\.tar|\\.tar\\.gz|\\.tgz)([\\\\/][^|]+)"_s );
+    const QRegularExpressionMatch match = vsiRegex.match( path );
+    if ( match.hasMatch() )
+    {
+      vsiSuffix = match.captured( 1 );
+      path = path.remove( match.capturedStart( 1 ), match.capturedLength( 1 ) );
+    }
+  }
+  else
+  {
+    vsiPrefix.clear();
+  }
 
   if ( path.indexOf( ':' ) != -1 )
   {
     QStringList parts = path.split( ':' );
-    if ( parts[0].toLower() == QLatin1String( "gpkg" ) )
+    if ( parts[0].compare( "gpkg"_L1, Qt::CaseInsensitive ) == 0 )
     {
       parts.removeFirst();
       // Handle windows paths - which has an extra colon - and unix paths
@@ -342,17 +464,32 @@ QVariantMap QgsGdalProviderBase::decodeGdalUri( const QString &uri )
         layerName = parts[parts.length() - 1];
         parts.removeLast();
       }
-      path  = parts.join( ':' );
+      path = parts.join( ':' );
+    }
+    else if ( parts[0].compare( "openfilegdb"_L1, Qt::CaseInsensitive ) == 0 )
+    {
+      parts.removeFirst();
+      // Handle windows paths - which has an extra colon - and unix paths
+      if ( ( parts[0].length() > 1 && parts.count() > 1 ) || parts.count() > 2 )
+      {
+        layerName = parts[parts.length() - 1];
+        parts.removeLast();
+      }
+      path = parts.join( ':' );
+      // remove quotes around path
+      if ( !path.isEmpty() && path.at( 0 ) == '"' && path.right( 1 ) == '"' )
+      {
+        path = path.mid( 1, path.size() - 2 );
+      }
     }
   }
 
   if ( path.contains( '|' ) )
   {
-    const QRegularExpression openOptionRegex( QStringLiteral( "\\|option:([^|]*)" ) );
-
+    const thread_local QRegularExpression openOptionRegex( u"\\|option:([^|]*)"_s );
     while ( true )
     {
-      QRegularExpressionMatch match = openOptionRegex.match( path );
+      const QRegularExpressionMatch match = openOptionRegex.match( path );
       if ( match.hasMatch() )
       {
         openOptions << match.captured( 1 );
@@ -363,34 +500,84 @@ QVariantMap QgsGdalProviderBase::decodeGdalUri( const QString &uri )
         break;
       }
     }
+
+    const thread_local QRegularExpression credentialOptionRegex( u"\\|credential:([^|]*)"_s );
+    const thread_local QRegularExpression credentialOptionKeyValueRegex( u"(.*?)=(.*)"_s );
+    while ( true )
+    {
+      const QRegularExpressionMatch match = credentialOptionRegex.match( path );
+      if ( match.hasMatch() )
+      {
+        const QRegularExpressionMatch keyValueMatch = credentialOptionKeyValueRegex.match( match.captured( 1 ) );
+        if ( keyValueMatch.hasMatch() )
+        {
+          credentialOptions.insert( keyValueMatch.captured( 1 ), keyValueMatch.captured( 2 ) );
+        }
+        path = path.remove( match.capturedStart( 0 ), match.capturedLength( 0 ) );
+      }
+      else
+      {
+        break;
+      }
+    }
   }
 
   QVariantMap uriComponents;
-  uriComponents.insert( QStringLiteral( "path" ), path );
-  uriComponents.insert( QStringLiteral( "layerName" ), layerName );
+  uriComponents.insert( u"path"_s, path );
+  uriComponents.insert( u"layerName"_s, layerName );
   if ( !openOptions.isEmpty() )
-    uriComponents.insert( QStringLiteral( "openOptions" ), openOptions );
+    uriComponents.insert( u"openOptions"_s, openOptions );
+  if ( !credentialOptions.isEmpty() )
+    uriComponents.insert( u"credentialOptions"_s, credentialOptions );
+  if ( !vsiPrefix.isEmpty() )
+    uriComponents.insert( u"vsiPrefix"_s, vsiPrefix );
+  if ( !vsiSuffix.isEmpty() )
+    uriComponents.insert( u"vsiSuffix"_s, vsiSuffix );
+  if ( !authcfg.isEmpty() )
+    uriComponents.insert( u"authcfg"_s, authcfg );
   return uriComponents;
 }
 
 QString QgsGdalProviderBase::encodeGdalUri( const QVariantMap &parts )
 {
-  QString path = parts.value( QStringLiteral( "path" ) ).toString();
-  QString layerName = parts.value( QStringLiteral( "layerName" ) ).toString();
-  QString uri;
+  const QString vsiPrefix = parts.value( u"vsiPrefix"_s ).toString();
+  const QString vsiSuffix = parts.value( u"vsiSuffix"_s ).toString();
+  const QString path = parts.value( u"path"_s ).toString();
+  const QString layerName = parts.value( u"layerName"_s ).toString();
+  const QString authcfg = parts.value( u"authcfg"_s ).toString();
 
-  if ( !layerName.isEmpty() && path.endsWith( QLatin1String( "gpkg" ) ) )
-    uri = QStringLiteral( "GPKG:%1:%2" ).arg( path, layerName );
+  QString uri = vsiPrefix + path;
+  if ( !vsiSuffix.isEmpty() && !vsiSuffix.startsWith( '/' ) )
+    uri += '/' + vsiSuffix;
   else
-    uri = path + ( !layerName.isEmpty() ? QStringLiteral( "|%1" ).arg( layerName ) : QString() );
+    uri += vsiSuffix;
 
-  const QStringList openOptions = parts.value( QStringLiteral( "openOptions" ) ).toStringList();
+  if ( !layerName.isEmpty() && uri.endsWith( "gpkg"_L1 ) )
+    uri = u"GPKG:%1:%2"_s.arg( uri, layerName );
+  else if ( !layerName.isEmpty() && uri.endsWith( "gdb"_L1 ) )
+    uri = u"OpenFileGDB:\"%1\":%2"_s.arg( uri, layerName );
+  else if ( !layerName.isEmpty() )
+    uri = uri + u"|%1"_s.arg( layerName );
+
+  const QStringList openOptions = parts.value( u"openOptions"_s ).toStringList();
 
   for ( const QString &openOption : openOptions )
   {
-    uri += QLatin1String( "|option:" );
+    uri += "|option:"_L1;
     uri += openOption;
   }
+
+  const QVariantMap credentialOptions = parts.value( u"credentialOptions"_s ).toMap();
+  for ( auto it = credentialOptions.constBegin(); it != credentialOptions.constEnd(); ++it )
+  {
+    if ( !it.value().toString().isEmpty() )
+    {
+      uri += u"|credential:%1=%2"_s.arg( it.key(), it.value().toString() );
+    }
+  }
+
+  if ( !authcfg.isEmpty() )
+    uri += u" authcfg='%1'"_s.arg( authcfg );
 
   return uri;
 }

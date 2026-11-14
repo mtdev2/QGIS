@@ -19,13 +19,14 @@
 #include "qgis_core.h"
 #include "qgis_sip.h"
 #include "qgsstyle.h"
-#include "qgssymbol.h"
+
 #include <QAbstractItemModel>
-#include <QSortFilterProxyModel>
-#include <QIcon>
 #include <QHash>
+#include <QIcon>
+#include <QSortFilterProxyModel>
 
 class QgsSymbol;
+class QgsCombinedStyleModel;
 
 #ifndef SIP_RUN
 
@@ -33,7 +34,7 @@ class QgsSymbol;
  * \ingroup core
  * \class QgsAbstractStyleEntityIconGenerator
  *
- * An abstract base class for icon generators for a QgsStyleModel.
+ * \brief An abstract base class for icon generators for a QgsStyleModel.
  *
  * This base class allows for creation of specialized icon generators for
  * entities in a style database, and allows for deferred icon generation.
@@ -46,7 +47,6 @@ class CORE_EXPORT QgsAbstractStyleEntityIconGenerator : public QObject
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsAbstractStyleEntityIconGenerator, with the specified \a parent
      * object.
@@ -67,11 +67,33 @@ class CORE_EXPORT QgsAbstractStyleEntityIconGenerator : public QObject
     void setIconSizes( const QList< QSize > &sizes );
 
     /**
-     * Returns the list of icon \a sizes to generate.
+     * Returns the list of icon sizes to generate.
      *
      * \see setIconSizes()
      */
     QList< QSize > iconSizes() const;
+
+    /**
+     * Sets the target screen \a properties to use when generating icons.
+     *
+     * This allows style icons to be generated at an icon device pixel ratio and DPI which
+     * corresponds exactly to the view's screen properties in which this model is used.
+     *
+     * \see targetScreenProperties()
+     * \since QGIS 3.32
+     */
+    void setTargetScreenProperties( const QSet< QgsScreenProperties > &properties );
+
+    /**
+     * Returns the target screen properties to use when generating icons.
+     *
+     * This allows style icons to be generated at an icon device pixel ratio and DPI which
+     * corresponds exactly to the view's screen properties in which this model is used.
+     *
+     * \see setTargetScreenProperties()
+     * \since QGIS 3.32
+     */
+    QSet< QgsScreenProperties > targetScreenProperties() const;
 
   signals:
 
@@ -82,9 +104,8 @@ class CORE_EXPORT QgsAbstractStyleEntityIconGenerator : public QObject
     void iconGenerated( QgsStyle::StyleEntity type, const QString &name, const QIcon &icon );
 
   private:
-
     QList< QSize > mIconSizes;
-
+    QSet< QgsScreenProperties > mTargetScreenProperties;
 };
 
 #endif
@@ -93,7 +114,7 @@ class CORE_EXPORT QgsAbstractStyleEntityIconGenerator : public QObject
  * \ingroup core
  * \class QgsStyleModel
  *
- * A QAbstractItemModel subclass for showing symbol and color ramp entities contained
+ * \brief A QAbstractItemModel subclass for showing symbol and color ramp entities contained
  * within a QgsStyle database.
  *
  * If you are creating a style model for the default application style (see QgsStyle::defaultStyle()),
@@ -104,29 +125,42 @@ class CORE_EXPORT QgsAbstractStyleEntityIconGenerator : public QObject
  *
  * \since QGIS 3.4
  */
-class CORE_EXPORT QgsStyleModel: public QAbstractItemModel
+class CORE_EXPORT QgsStyleModel : public QAbstractItemModel
 {
     Q_OBJECT
 
   public:
-
     //! Model columns
     enum Column
     {
       Name = 0, //!< Name column
-      Tags, //!< Tags column
+      Tags,     //!< Tags column
     };
 
-    //! Custom model roles
-    enum Role
+    // *INDENT-OFF*
+
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsStyleModel::Role
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsStyleModel, Role ) : int
     {
-      TypeRole = Qt::UserRole + 1, //!< Style entity type, see QgsStyle::StyleEntity
-      TagRole, //!< String list of tags
-      SymbolTypeRole, //!< Symbol type (for symbol or legend patch shape entities)
-      IsFavoriteRole, //!< Whether entity is flagged as a favorite
-      LayerTypeRole, //!< Layer type (for label settings entities)
-      CompatibleGeometryTypesRole, //!< Compatible layer geometry types (for 3D symbols)
+      Type SIP_MONKEYPATCH_COMPAT_NAME( TypeRole ) = Qt::UserRole + 1,                    //!< Style entity type, see QgsStyle::StyleEntity
+      Tag SIP_MONKEYPATCH_COMPAT_NAME( TagRole ),                                         //!< String list of tags
+      EntityName,                                                                         //!< Entity name \since QGIS 3.26
+      SymbolType SIP_MONKEYPATCH_COMPAT_NAME( SymbolTypeRole ),                           //!< Symbol type (for symbol or legend patch shape entities)
+      IsFavorite SIP_MONKEYPATCH_COMPAT_NAME( IsFavoriteRole ),                           //!< Whether entity is flagged as a favorite
+      LayerType SIP_MONKEYPATCH_COMPAT_NAME( LayerTypeRole ),                             //!< Layer type (for label settings entities)
+      CompatibleGeometryTypes SIP_MONKEYPATCH_COMPAT_NAME( CompatibleGeometryTypesRole ), //!< Compatible layer geometry types (for 3D symbols)
+      StyleName,                                                                          //!< Name of associated QgsStyle (QgsStyle::name()) \since QGIS 3.26
+      StyleFileName,                                                                      //!< File name of associated QgsStyle (QgsStyle::fileName()) \since QGIS 3.26
+      IsTitle SIP_MONKEYPATCH_COMPAT_NAME( IsTitleRole ),                                 //!< True if the index corresponds to a title item \since QGIS 3.26
+      MaterialType                                                                        //!< Material type (for material entities) \since QGIS 4.2
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsStyleModel, for the specified \a style and \a parent object.
@@ -145,10 +179,8 @@ class CORE_EXPORT QgsStyleModel: public QAbstractItemModel
     QVariant data( const QModelIndex &index, int role ) const override;
     bool setData( const QModelIndex &index, const QVariant &value, int role = Qt::EditRole ) override;
     Qt::ItemFlags flags( const QModelIndex &index ) const override;
-    QVariant headerData( int section, Qt::Orientation orientation,
-                         int role = Qt::DisplayRole ) const override;
-    QModelIndex index( int row, int column,
-                       const QModelIndex &parent = QModelIndex() ) const override;
+    QVariant headerData( int section, Qt::Orientation orientation, int role = Qt::DisplayRole ) const override;
+    QModelIndex index( int row, int column, const QModelIndex &parent = QModelIndex() ) const override;
     QModelIndex parent( const QModelIndex &index ) const override;
     int rowCount( const QModelIndex &parent = QModelIndex() ) const override;
     int columnCount( const QModelIndex &parent = QModelIndex() ) const override;
@@ -160,6 +192,16 @@ class CORE_EXPORT QgsStyleModel: public QAbstractItemModel
      * corresponds exactly to the view's icon size in which this model is used.
      */
     void addDesiredIconSize( QSize size );
+
+    /**
+     * Adds additional target screen \a properties to use when generating icons for Qt::DecorationRole data.
+     *
+     * This allows style icons to be generated at an icon device pixel ratio and DPI which
+     * corresponds exactly to the view's screen properties in which this model is used.
+     *
+     * \since QGIS 3.32
+     */
+    void addTargetScreenProperties( const QgsScreenProperties &properties );
 
     /**
      * Sets the icon \a generator to use for deferred style entity icon generation.
@@ -176,16 +218,20 @@ class CORE_EXPORT QgsStyleModel: public QAbstractItemModel
     void onEntityAdded( QgsStyle::StyleEntity type, const QString &name );
     void onEntityRemoved( QgsStyle::StyleEntity type, const QString &name );
     void onEntityChanged( QgsStyle::StyleEntity type, const QString &name );
+    void onFavoriteChanged( QgsStyle::StyleEntity type, const QString &name, bool isFavorite );
     void onEntityRename( QgsStyle::StyleEntity type, const QString &oldName, const QString &newName );
     void onTagsChanged( int entity, const QString &name, const QStringList &tags );
     void rebuildSymbolIcons();
     void iconGenerated( QgsStyle::StyleEntity type, const QString &name, const QIcon &icon );
 
   private:
+    void initStyleModel();
 
     QgsStyle *mStyle = nullptr;
 
     QHash< QgsStyle::StyleEntity, QStringList > mEntityNames;
+
+    QSet< QgsScreenProperties > mTargetScreenProperties;
 
     QList< QSize > mAdditionalSizes;
     mutable std::unique_ptr< QgsExpressionContext > mExpressionContext;
@@ -194,29 +240,31 @@ class CORE_EXPORT QgsStyleModel: public QAbstractItemModel
 
     static QgsAbstractStyleEntityIconGenerator *sIconGenerator;
     mutable QSet< QString > mPending3dSymbolIcons;
+    mutable QSet< QString > mPendingMaterialSettingsIcons;
 
     QgsStyle::StyleEntity entityTypeFromRow( int row ) const;
 
     int offsetForEntity( QgsStyle::StyleEntity entity ) const;
+    static QVariant headerDataStatic( int section, Qt::Orientation orientation, int role = Qt::DisplayRole );
 
+    friend class QgsCombinedStyleModel;
 };
 
 /**
  * \ingroup core
  * \class QgsStyleProxyModel
  *
- * A QSortFilterProxyModel subclass for showing filtered symbol and color ramps entries from a QgsStyle database.
+ * \brief A QSortFilterProxyModel subclass for showing filtered symbol and color ramps entries from a QgsStyle database.
  *
  * \see QgsStyleModel
  *
  * \since QGIS 3.4
  */
-class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
+class CORE_EXPORT QgsStyleProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsStyleProxyModel, for the specified \a style and \a parent object.
      *
@@ -230,6 +278,17 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      * The source \a model object must exist for the lifetime of this model.
      */
     explicit QgsStyleProxyModel( QgsStyleModel *model, QObject *parent SIP_TRANSFERTHIS = nullptr );
+
+    /**
+     * Constructor for QgsStyleProxyModel, using the specified source combined \a model and \a parent object.
+     *
+     * The source \a model object must exist for the lifetime of this model.
+     *
+     * \note This is only available on builds based on Qt 5.13 or later.
+     *
+     * \since QGIS 3.26
+     */
+    explicit QgsStyleProxyModel( QgsCombinedStyleModel *model, QObject *parent SIP_TRANSFERTHIS = nullptr );
 
     /**
      * Returns the current filter string, if set.
@@ -293,7 +352,7 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      *
      * \see setSymbolType()
      */
-    QgsSymbol::SymbolType symbolType() const;
+    Qgis::SymbolType symbolType() const;
 
     /**
      * Sets the symbol \a type filter.
@@ -302,7 +361,7 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      *
      * \see symbolType()
      */
-    void setSymbolType( QgsSymbol::SymbolType type );
+    void setSymbolType( Qgis::SymbolType type );
 
     /**
      * Returns TRUE if filtering by symbol type is enabled.
@@ -325,28 +384,72 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
     void setSymbolTypeFilterEnabled( bool enabled );
 
     /**
-     * Returns the layer type filter, or QgsWkbTypes::UnknownGeometry if no
+     * Returns the layer type filter, or Qgis::GeometryType::Unknown if no
      * layer type filter is present.
      *
      * This setting has an effect on label settings entities and 3d symbols only.
      *
      * \see setLayerType()
      */
-    QgsWkbTypes::GeometryType layerType() const;
+    Qgis::GeometryType layerType() const;
 
     /**
-     * Sets the layer \a type filter. Set \a type to QgsWkbTypes::UnknownGeometry if no
+     * Sets the layer \a type filter. Set \a type to Qgis::GeometryType::Unknown if no
      * layer type filter is desired.
      *
      * \see layerType()
      */
-    void setLayerType( QgsWkbTypes::GeometryType type );
+    void setLayerType( Qgis::GeometryType type );
+
+    /**
+     * Returns TRUE if filtering by material rendering technique is enabled.
+     *
+     * \see setRenderingTechniqueFilterEnabled()
+     * \see renderingTechnique()
+     * \since QGIS 4.2
+     */
+    bool renderingTechniqueFilterEnabled() const;
+
+    /**
+     * Sets whether filtering by material rendering technique is \a enabled.
+     *
+     * If \a enabled is FALSE, then the value of renderingTechnique() will have no
+     * effect on the model filtering. This has
+     * no effect on non-material entities (i.e. color ramps).
+     *
+     * \see renderingTechniqueFilterEnabled()
+     * \see setRenderingTechnique()
+     * \since QGIS 4.2
+     */
+    void setRenderingTechniqueFilterEnabled( bool enabled );
+
+    /**
+     * Returns the rendering technique filter.
+     *
+     * \note This filter is only active if renderingTechniqueFilterEnabled() is TRUE, and has
+     * no effect on non-material entities (i.e. color ramps).
+     *
+     * \since QGIS 4.2
+     */
+    Qgis::MaterialRenderingTechnique renderingTechnique() const;
+
+    /**
+     * Sets the rendering \a technique filter.
+     *
+     * \note This filter is only active if renderingTechniqueFilterEnabled() is TRUE.
+     *
+     * \see renderingTechnique()
+     * \since QGIS 4.2
+     */
+    void setRenderingTechnique( Qgis::MaterialRenderingTechnique technique );
 
     /**
      * Sets a tag \a id to filter style entities by. Only entities with the given
      * tag will be shown in the model.
      *
      * Set \a id to -1 to disable tag filtering.
+     *
+     * \note This method has no effect for models created using QgsCombinedStyleModel source models. Use setTagString() instead.
      *
      * \see tagId()
      */
@@ -357,15 +460,40 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      *
      * If returned value is -1, then no tag filtering is being conducted.
      *
+     * \note This method has no effect for models created using QgsCombinedStyleModel source models. Use tagString() instead.
+     *
      * \see setTagId()
      */
     int tagId() const;
+
+    /**
+     * Sets a \a tag to filter style entities by. Only entities with the given
+     * tag will be shown in the model.
+     *
+     * Set \a tag to an empty string to disable tag filtering.
+     *
+     * \see tagString()
+     * \since QGIS 3.26
+     */
+    void setTagString( const QString &tag );
+
+    /**
+     * Returns the tag string used to filter style entities by.
+     *
+     * If returned value is empty, then no tag filtering is being conducted.
+     *
+     * \see setTagString()
+     * \since QGIS 3.26
+     */
+    QString tagString() const;
 
     /**
      * Sets a smart group \a id to filter style entities by. Only entities within the given
      * smart group will be shown in the model.
      *
      * Set \a id to -1 to disable smart group filtering.
+     *
+     * \note This method has no effect for models created using QgsCombinedStyleModel source models.
      *
      * \see smartGroupId()
      */
@@ -376,11 +504,14 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      *
      * If returned value is -1, then no smart group filtering is being conducted.
      *
+     * \note This method has no effect for models created using QgsCombinedStyleModel source models.
+     *
      * \see setSmartGroupId()
      */
     int smartGroupId() const;
 
     bool filterAcceptsRow( int source_row, const QModelIndex &source_parent ) const override;
+    bool lessThan( const QModelIndex &left, const QModelIndex &right ) const override;
 
     /**
      * Returns TRUE if the model is showing only favorited entities.
@@ -404,6 +535,16 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
      */
     void addDesiredIconSize( QSize size );
 
+    /**
+     * Adds additional target screen \a properties to use when generating icons for Qt::DecorationRole data.
+     *
+     * This allows style icons to be generated at an icon device pixel ratio and DPI which
+     * corresponds exactly to the view's screen properties in which this model is used.
+     *
+     * \since QGIS 3.32
+     */
+    void addTargetScreenProperties( const QgsScreenProperties &properties );
+
   public slots:
 
     /**
@@ -415,16 +556,18 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
     void setFilterString( const QString &filter );
 
   private:
-
     void initialize();
 
     QgsStyleModel *mModel = nullptr;
+    QgsCombinedStyleModel *mCombinedModel = nullptr;
     QgsStyle *mStyle = nullptr;
 
     QString mFilterString;
 
     int mTagId = -1;
     QStringList mTaggedSymbolNames;
+
+    QString mTagFilter;
 
     int mSmartGroupId = -1;
     QStringList mSmartGroupSymbolNames;
@@ -435,10 +578,12 @@ class CORE_EXPORT QgsStyleProxyModel: public QSortFilterProxyModel
     QList< QgsStyle::StyleEntity > mEntityFilters = QList< QgsStyle::StyleEntity >() << QgsStyle::SymbolEntity;
 
     bool mSymbolTypeFilterEnabled = false;
-    QgsSymbol::SymbolType mSymbolType = QgsSymbol::Marker;
+    Qgis::SymbolType mSymbolType = Qgis::SymbolType::Marker;
 
-    QgsWkbTypes::GeometryType mLayerType = QgsWkbTypes::UnknownGeometry;
+    Qgis::GeometryType mLayerType = Qgis::GeometryType::Unknown;
 
+    bool mRenderingTechniqueFilterEnabled = false;
+    Qgis::MaterialRenderingTechnique mRenderingTechnique = Qgis::MaterialRenderingTechnique::Triangles;
 };
 
 #endif //QGSSTYLEMODEL_H

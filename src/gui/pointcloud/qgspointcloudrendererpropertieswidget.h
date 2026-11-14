@@ -16,31 +16,31 @@
 #ifndef QGSPOINTCLOUDRENDERERPROPERTIESWIDGET_H
 #define QGSPOINTCLOUDRENDERERPROPERTIESWIDGET_H
 
-#include "qgis_sip.h"
-#include "qgis_gui.h"
-
 #include "ui_qgspointcloudrendererpropsdialogbase.h"
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
 #include "qgsmaplayerconfigwidget.h"
+#include "qgspropertycollection.h"
+#include "qgssymbolwidgetcontext.h"
 
 class QgsPointCloudLayer;
 class QgsStyle;
 class QgsPointCloudRendererWidget;
 class QgsMapCanvas;
-class QgsSymbolWidgetContext;
 class QgsMessageBar;
 
 /**
  * \ingroup gui
- * A generic widget for setting the 2D renderer for a point cloud layer.
+ * \brief A generic widget for setting the 2D renderer for a point cloud layer.
  *
  * \since QGIS 3.18
  */
-class GUI_EXPORT QgsPointCloudRendererPropertiesWidget : public QgsMapLayerConfigWidget, private Ui::QgsPointCloudRendererPropsDialogBase
+class GUI_EXPORT QgsPointCloudRendererPropertiesWidget : public QgsMapLayerConfigWidget, public QgsExpressionContextGenerator, private Ui::QgsPointCloudRendererPropsDialogBase
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsPointCloudRendererPropertiesWidget, associated with the specified \a layer and \a style database.
      */
@@ -51,8 +51,9 @@ class GUI_EXPORT QgsPointCloudRendererPropertiesWidget : public QgsMapLayerConfi
      */
     void setContext( const QgsSymbolWidgetContext &context );
 
-    void syncToLayer( QgsMapLayer *layer ) override;
-    void setDockMode( bool dockMode ) override;
+    void syncToLayer( QgsMapLayer *layer ) final;
+    void setDockMode( bool dockMode ) final;
+    QgsExpressionContext createExpressionContext() const override;
 
   public slots:
 
@@ -64,7 +65,15 @@ class GUI_EXPORT QgsPointCloudRendererPropertiesWidget : public QgsMapLayerConfi
 
     void emitWidgetChanged();
 
+    void updateDataDefinedProperty();
+
   private:
+    // for 3D rendering, see values in qgspointcloud3dsymbolwidget.h
+    const QMap<double, QString> mOverviewSwitchingScaleMap { { 5.0, "Much earlier" }, { 2.0, "Earlier" }, { 1.0, "Normal" }, { 0.5, "Later" } };
+
+    static void initRendererWidgetFunctions();
+    void setOverviewSwitchingScale( double scale );
+    double overviewSwitchingScale() const;
 
     QgsPointCloudLayer *mLayer = nullptr;
     QgsStyle *mStyle = nullptr;
@@ -76,6 +85,9 @@ class GUI_EXPORT QgsPointCloudRendererPropertiesWidget : public QgsMapLayerConfi
 
     bool mBlockChangedSignal = false;
 
+    QgsPropertyCollection mDataDefinedProperties;
+
+    QgsSymbolWidgetContext mContext;
 };
 
 

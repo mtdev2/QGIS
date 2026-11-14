@@ -25,14 +25,13 @@
  * \class QgsSpatialIndexKDBushData
  * \ingroup core
  *
- * A container for data stored inside a QgsSpatialIndexKDBush index.
+ * \brief A container for data stored inside a QgsSpatialIndexKDBush index.
  *
  * \since QGIS 3.4
 */
 class CORE_EXPORT QgsSpatialIndexKDBushData
 {
   public:
-
     /**
      * Constructor for QgsSpatialIndexKDBushData, for a feature with the
      * given \a id and \a x, \a y coordinate.
@@ -51,10 +50,7 @@ class CORE_EXPORT QgsSpatialIndexKDBushData
     /**
      * Returns the indexed point.
      */
-    QgsPointXY point() const
-    {
-      return QgsPointXY( coords.first, coords.second );
-    }
+    QgsPointXY point() const { return QgsPointXY( coords.first, coords.second ); }
 
     //! Feature ID
     QgsFeatureId id;

@@ -18,12 +18,13 @@
 #ifndef QGSCOORDINATEUTILS_H
 #define QGSCOORDINATEUTILS_H
 
-#define SIP_NO_FILE
-
-#include <QString>
-#include <QObject>
 
 #include "qgis_core.h"
+
+#include <QObject>
+#include <QString>
+
+#define SIP_NO_FILE
 
 class QgsPointXY;
 class QgsCoordinateReferenceSystem;
@@ -37,14 +38,12 @@ class QgsRectangle;
  * \ingroup core
  * \class QgsCoordinateUtils
  * \brief Utilities for handling and formatting coordinates
- * \since QGIS 2.14
  */
 class CORE_EXPORT QgsCoordinateUtils
 {
     Q_GADGET
 
   public:
-
     /**
      * Returns the precision to use for displaying coordinates in \a mapCrs to the user.
      * It respects the user's \a project settings.
@@ -54,28 +53,74 @@ class CORE_EXPORT QgsCoordinateUtils
      * having enough decimal places to show the difference in position between adjacent
      * pixels.
      *
-     * \note  Since QGIS 3.6 a new \a project parameter is available. Using the method without this
-     *        a \a project parameter is deprecated and will be removed with QGIS 4.
-     *        For backward compatibility, QgsProject.instance() will be used if the \a project
-     *        parameter is not specified.
+     * \note  Since QGIS 3.6 a new \a project parameter is available.
      */
-    Q_INVOKABLE static int calculateCoordinatePrecision( double mapUnitsPerPixel, const QgsCoordinateReferenceSystem &mapCrs, QgsProject *project = nullptr );
+    Q_INVOKABLE static int calculateCoordinatePrecision( double mapUnitsPerPixel, const QgsCoordinateReferenceSystem &mapCrs, QgsProject *project );
+
+    // TODO QGIS 5.0 -- remove this deprecated method
+    /**
+     * Returns the precision to use for displaying coordinates in \a mapCrs to the user,
+     * using the project settings of QgsProject.instance().
+     *
+     * \deprecated QGIS 4.4. Use the overload with an explicit \a project argument instead.
+     */
+    Q_DECL_DEPRECATED Q_INVOKABLE static int calculateCoordinatePrecision( double mapUnitsPerPixel, const QgsCoordinateReferenceSystem &mapCrs );
 
     /**
-     * Calculates coordinate precision for a CRS / Project. Considers CRS units and project settings
+     * Calculates coordinate precision for a \a crs and \a project.
+     *
+     * This method checks whether the \a project has explicit precision settings, and if not
+     * calculates a precision based on CRS units.
+     *
      * \param crs Coordinate system
-     * \param project QGIS project. Takes QgsProject::instance() if NULL
+     * \param project QGIS project.
+     *
      * \returns number of decimal places behind the dot
      * \since QGIS 3.18
      */
-    Q_INVOKABLE static int calculateCoordinatePrecisionForCrs( const QgsCoordinateReferenceSystem &crs, QgsProject *project = nullptr );
+    Q_INVOKABLE static int calculateCoordinatePrecisionForCrs( const QgsCoordinateReferenceSystem &crs, QgsProject *project );
+
+    // TODO QGIS 5.0 -- remove this deprecated method
+    /**
+     * Calculates coordinate precision for a \a crs, using the project settings of QgsProject.instance().
+     *
+     * \param crs Coordinate system
+     *
+     * \returns number of decimal places behind the dot
+     * \deprecated QGIS 4.4. Use the overload with an explicit \a project argument instead.
+     */
+    Q_DECL_DEPRECATED Q_INVOKABLE static int calculateCoordinatePrecisionForCrs( const QgsCoordinateReferenceSystem &crs );
+
+    /**
+     * Calculates a reasonable coordinate precision for a \a crs.
+     *
+     * This method considers the CRS units only.
+     *
+     * \since QGIS 3.30
+     */
+    Q_INVOKABLE static int calculateCoordinatePrecision( const QgsCoordinateReferenceSystem &crs );
 
     /**
      * Formats a \a point coordinate for use with the specified \a project, respecting the project's
      * coordinate display settings.
+     *
+     * \note This method returns the x and y coordinates as a concatenated string which respects the project's coordinate axis display order.
+     * See formatCoordinatePartsForProject() for a method which returns separate x and y coordinate strings.
+     *
      * \since QGIS 3.2
      */
     Q_INVOKABLE static QString formatCoordinateForProject( QgsProject *project, const QgsPointXY &point, const QgsCoordinateReferenceSystem &destCrs, int precision );
+
+    /**
+     * Formats a \a point coordinate for use with the specified \a project, respecting the project's
+     * coordinate display settings.
+     *
+     * \note This method returns the x and y coordinates as separate strings, see formatCoordinateForProject() for a method which returns a single concatenated string
+     * respecting the project's coordinate axis display order.
+     *
+     * \since QGIS 3.28
+     */
+    Q_INVOKABLE static void formatCoordinatePartsForProject( QgsProject *project, const QgsPointXY &point, const QgsCoordinateReferenceSystem &destCrs, int precision, QString &x, QString &y );
 
     /**
      * Formats an \a extent for use with the specified \a project, respecting the project's
@@ -92,6 +137,13 @@ class CORE_EXPORT QgsCoordinateUtils
      */
     Q_INVOKABLE static double dmsToDecimal( const QString &string, bool *ok = nullptr, bool *isEasting = nullptr );
 
+    /**
+     * Converts a decimal degree with suffix string to its raw decimal equivalent.
+     * \param string decimal degree to convert (must include a [N,S,E,W] suffix)
+     * \returns Double decimal value
+     * \since QGIS 3.26
+     */
+    Q_INVOKABLE static double degreeToDecimal( const QString &string, bool *ok = nullptr, bool *isEasting = nullptr );
 };
 
 

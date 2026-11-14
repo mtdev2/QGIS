@@ -16,29 +16,41 @@
 #ifndef QGSSHORTCUTSMANAGER_H
 #define QGSSHORTCUTSMANAGER_H
 
-#include <QHash>
-#include <QList>
-#include <QAction>
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+
+#include <QAction>
+#include <QHash>
+#include <QList>
 
 class QShortcut;
 
 /**
  * \ingroup gui
  * \class QgsShortcutsManager
- * Shortcuts manager is a class that contains a list of QActions and QShortcuts
+ * \brief Shortcuts manager is a class that contains a list of QActions and QShortcuts
  * that have been registered and their shortcuts can be changed.
  *
  * QgsShortcutsManager is not usually directly created, but rather accessed through
  * QgsGui::shortcutsManager().
- * \since QGIS 2.16
  */
 class GUI_EXPORT QgsShortcutsManager : public QObject
 {
     Q_OBJECT
 
   public:
+    /**
+     * Contains common actions which are used across a variety of classes.
+     * \since QGIS 4.0
+     */
+    enum class CommonAction
+    {
+      CodeToggleComment, //!< Toggle code comments
+      CodeReformat,      //!< Reformat code
+      CodeRunScript,     //!< Run script
+      CodeRunSelection,  //!< Run selection from script
+    };
+    Q_ENUM( CommonAction )
 
     /**
      * Constructor for QgsShortcutsManager.
@@ -49,58 +61,75 @@ class GUI_EXPORT QgsShortcutsManager : public QObject
      */
     QgsShortcutsManager( QObject *parent SIP_TRANSFERTHIS = nullptr, const QString &settingsRoot = "/shortcuts/" );
 
+    ~QgsShortcutsManager() override;
+
     /**
      * Automatically registers all QActions and QShortcuts which are children of the
      * passed object.
      * \param object parent object containing actions and shortcuts to register
      * \param recursive set to TRUE to recursively add child actions and shortcuts
+     * \param section Allows disambiguating shortcuts with the same objectName (since QGIS 3.32)
      * \see registerAllChildActions()
      * \see registerAllChildShortcuts()
      */
-    void registerAllChildren( QObject *object, bool recursive = false );
+    void registerAllChildren( QObject *object, bool recursive = false, const QString &section = QString() );
 
     /**
      * Automatically registers all QActions which are children of the passed object.
      * \param object parent object containing actions to register
      * \param recursive set to TRUE to recursively add child actions
+     * \param section Allows disambiguating shortcuts with the same objectName (since QGIS 3.32)
      * \see registerAction()
      * \see registerAllChildren()
      * \see registerAllChildShortcuts()
      */
-    void registerAllChildActions( QObject *object, bool recursive = false );
+    void registerAllChildActions( QObject *object, bool recursive = false, const QString &section = QString() );
 
     /**
      * Automatically registers all QShortcuts which are children of the passed object.
      * \param object parent object containing shortcuts to register
      * \param recursive set to TRUE to recursively add child shortcuts
+     * \param section Allows disambiguating shortcuts with the same objectName (since QGIS 3.32)
      * \see registerShortcut()
      * \see registerAllChildren()
      * \see registerAllChildActions()
      */
-    void registerAllChildShortcuts( QObject *object, bool recursive = false );
+    void registerAllChildShortcuts( QObject *object, bool recursive = false, const QString &section = QString() );
 
     /**
      * Registers an action with the manager so the shortcut can be configured in GUI.
      * \param action action to register. The action must have a unique text string for
      * identification.
      * \param defaultShortcut default key sequence for action
+     * \param section Allows disambiguating shortcuts with the same objectName (since QGIS 3.32)
      * \returns TRUE if action was successfully registered
      * \see registerShortcut()
      * \see unregisterAction()
      * \see registerAllChildActions()
      */
-    bool registerAction( QAction *action, const QString &defaultShortcut = QString() );
+    bool registerAction( QAction *action, const QString &defaultShortcut = QString(), const QString &section = QString() );
+
+    /**
+     * Initializes an \a action as a common action.
+     *
+     * This automatically configures the \a action to use the properties for the common action, such
+     * as setting the action's tooltip and shortcut.
+     *
+     * \since QGIS 4.0
+     */
+    void initializeCommonAction( QAction *action, CommonAction commonAction );
 
     /**
      * Registers a QShortcut with the manager so the shortcut can be configured in GUI.
-    * \param shortcut QShortcut to register. The shortcut must have a unique QObject::objectName() for
-    * identification.
-    * \param defaultSequence default key sequence for shortcut
-    * \returns TRUE if shortcut was successfully registered
-    * \see registerAction()
-    * \see registerAllChildShortcuts()
-    */
-    bool registerShortcut( QShortcut *shortcut, const QString &defaultSequence = QString() );
+     * \param shortcut QShortcut to register. The shortcut must have a unique QObject::objectName() for
+     * identification.
+     * \param defaultSequence default key sequence for shortcut
+     * \param section Allows disambiguating shortcuts with the same objectName (since QGIS 3.32)
+     * \returns TRUE if shortcut was successfully registered
+     * \see registerAction()
+     * \see registerAllChildShortcuts()
+     */
+    bool registerShortcut( QShortcut *shortcut, const QString &defaultSequence = QString(), const QString &section = QString() );
 
     /**
      * Removes an action from the manager.
@@ -226,6 +255,12 @@ class GUI_EXPORT QgsShortcutsManager : public QObject
     QShortcut *shortcutForSequence( const QKeySequence &sequence ) const;
 
     /**
+     * Returns the key sequence which is associated with a common \a action, or an empty sequence if no shortcut is assigned to that action.
+     * \since QGIS 4.0
+     */
+    QKeySequence sequenceForCommonAction( CommonAction action ) const;
+
+    /**
      * Returns an action by its name, or NULLPTR if nothing found.
      * \param name action name. Must match QAction's text.
      * \see shortcutByName()
@@ -242,19 +277,38 @@ class GUI_EXPORT QgsShortcutsManager : public QObject
     //! Returns the root settings path used to store shortcut customization.
     QString settingsPath() const { return mSettingsPath; }
 
+    /**
+     * Returns the full settings key matching the QShortcut or QAction
+     * Return an empty QString if the QObject is not registered
+     *
+     * \since QGIS 3.30
+     */
+    QString objectSettingKey( QObject *object ) const;
+
+    /**
+     * Returns the QShortcut or QAction matching the the full setting key
+     * Return nullptr if the key was not found
+     *
+     * \since QGIS 3.30
+     */
+    QObject *objectForSettingKey( const QString &name ) const;
+
   private slots:
 
-    void actionDestroyed();
-    void shortcutDestroyed();
+    void actionDestroyed( QAction *action );
+    void shortcutDestroyed( QShortcut *shortcut );
 
   private:
-
-    typedef QHash< QAction *, QString > ActionsHash;
-    typedef QHash< QShortcut *, QString > ShortcutsHash;
+    typedef QHash<QAction *, QPair<QString, QString>> ActionsHash;
+    typedef QHash<QShortcut *, QPair<QString, QString>> ShortcutsHash;
 
     ActionsHash mActions;
     ShortcutsHash mShortcuts;
     QString mSettingsPath;
+    QHash< int, QAction * > mCommonActions;
+    QHash< QAction *, CommonAction > mLinkedCommonActions;
+
+    static QString formatActionToolTip( const QString &toolTip );
 
     /**
      * Updates the action to include the shortcut keys. Shortcut keys are

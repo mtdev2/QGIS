@@ -14,9 +14,13 @@
  ***************************************************************************/
 
 #include "qgslayoutviewtooltemporarymousepan.h"
-#include "qgslayoutviewmouseevent.h"
+
 #include "qgslayoutview.h"
+#include "qgslayoutviewmouseevent.h"
+
 #include <QScrollBar>
+
+#include "moc_qgslayoutviewtooltemporarymousepan.cpp"
 
 QgsLayoutViewToolTemporaryMousePan::QgsLayoutViewToolTemporaryMousePan( QgsLayoutView *view )
   : QgsLayoutViewTool( view, tr( "Pan" ) )
@@ -34,7 +38,7 @@ void QgsLayoutViewToolTemporaryMousePan::layoutMoveEvent( QgsLayoutViewMouseEven
 
 void QgsLayoutViewToolTemporaryMousePan::layoutReleaseEvent( QgsLayoutViewMouseEvent *event )
 {
-  if ( event->button() == Qt::MidButton )
+  if ( event->button() == Qt::MiddleButton )
   {
     view()->setTool( mPreviousViewTool );
   }

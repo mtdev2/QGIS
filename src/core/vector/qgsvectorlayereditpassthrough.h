@@ -23,18 +23,20 @@ class QgsVectorLayerUndoPassthroughCommand;
 class QgsTransaction;
 
 #ifdef SIP_RUN
+// clang-format off
 % ModuleHeaderCode
 #include <qgsvectorlayereditpassthrough.h>
 % End
+// clang-format on
 #endif
 
-/**
+  /**
  * \ingroup core
  * \class QgsVectorLayerEditPassthrough
+ * \brief An edit buffer which directly passes commands through, used when a layer is within a transaction.
  */
-class CORE_EXPORT QgsVectorLayerEditPassthrough : public QgsVectorLayerEditBuffer
+  class CORE_EXPORT QgsVectorLayerEditPassthrough : public QgsVectorLayerEditBuffer
 {
-
 #ifdef SIP_RUN
     SIP_CONVERT_TO_SUBCLASS_CODE
     if ( qobject_cast<QgsVectorLayerEditPassthrough *>( sipCpp ) )
@@ -44,8 +46,12 @@ class CORE_EXPORT QgsVectorLayerEditPassthrough : public QgsVectorLayerEditBuffe
     SIP_END
 #endif
 
-    Q_OBJECT
+    // clang-format off
+  Q_OBJECT
+
   public:
+    // clang-format on
+
     QgsVectorLayerEditPassthrough( QgsVectorLayer *layer );
     bool isModified() const override;
     bool addFeature( QgsFeature &f ) override;
@@ -58,7 +64,6 @@ class CORE_EXPORT QgsVectorLayerEditPassthrough : public QgsVectorLayerEditBuffe
     /**
      * Changes values of attributes (but does not commit it).
      * \returns TRUE if attributes are well updated, FALSE otherwise
-     * \since QGIS 3.0
      */
     bool changeAttributeValues( QgsFeatureId fid, const QgsAttributeMap &newValues, const QgsAttributeMap &oldValues ) override;
 
@@ -77,16 +82,14 @@ class CORE_EXPORT QgsVectorLayerEditPassthrough : public QgsVectorLayerEditBuffe
      *
      * \returns TRUE if the undo/redo command is well added to the stack, FALSE otherwise
      *
-     * \since QGIS 3.0
      */
     bool update( QgsTransaction *transaction, const QString &sql, const QString &name );
 
   private:
-    bool mModified;
+    bool mModified = false;
 
     // utility function to avoid cpy/paste
     bool modify( QgsVectorLayerUndoPassthroughCommand *cmd );
-
 };
 
 #endif // QGSVECTORLAYEREDITPASSTHROUGH_H

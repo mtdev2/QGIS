@@ -15,28 +15,35 @@
  ***************************************************************************/
 #include "qgsfieldformatter.h"
 
+#include "qgsapplication.h"
 #include "qgsfield.h"
 #include "qgsfields.h"
-#include "qgsvectorlayer.h"
 #include "qgsvectordataprovider.h"
-
+#include "qgsvectorlayer.h"
 
 QString QgsFieldFormatter::representValue( QgsVectorLayer *layer, int fieldIndex, const QVariantMap &config, const QVariant &cache, const QVariant &value ) const
 {
   Q_UNUSED( config )
   Q_UNUSED( cache )
 
+  if ( !layer->fields().exists( fieldIndex ) )
+    return QString();
+
   QString defVal;
-  if ( layer->fields().fieldOrigin( fieldIndex ) == QgsFields::OriginProvider && layer->dataProvider() )
+  if ( layer->fields().fieldOrigin( fieldIndex ) == Qgis::FieldOrigin::Provider && layer->dataProvider() )
     defVal = layer->dataProvider()->defaultValueClause( layer->fields().fieldOriginIndex( fieldIndex ) );
 
-  if ( ! layer->fields().exists( fieldIndex ) )
+  if ( !defVal.isNull() && defVal == value )
   {
     return defVal;
   }
+  else if ( QgsVariantUtils::isNull( value ) )
+  {
+    return QgsApplication::nullRepresentation();
+  }
   else
   {
-    return layer->fields().at( fieldIndex ).displayString( value.isNull() ? defVal : value );
+    return layer->fields().at( fieldIndex ).displayString( value );
   }
 }
 
@@ -52,9 +59,16 @@ QVariant QgsFieldFormatter::sortValue( QgsVectorLayer *layer, int fieldIndex, co
 
 Qt::AlignmentFlag QgsFieldFormatter::alignmentFlag( QgsVectorLayer *layer, int fieldIndex, const QVariantMap &config ) const
 {
-  Q_UNUSED( config )
+  Qt::AlignmentFlag res = Qt::AlignLeft;
+  if ( fieldIndex >= 0 && fieldIndex < layer->fields().count() )
+  {
+    res = alignmentFlag( layer->fields().at( fieldIndex ), config );
+  }
+  return res;
+}
 
-  QgsField field = layer->fields().at( fieldIndex );
+Qt::AlignmentFlag QgsFieldFormatter::alignmentFlag( const QgsField &field, const QVariantMap & ) const
+{
   if ( field.isNumeric() || field.isDateOrTime() )
     return Qt::AlignRight;
   else

@@ -16,10 +16,15 @@
  ***************************************************************************/
 
 #include "qgsserverfeatureid.h"
+
+#include "qgsexpression.h"
 #include "qgsfeature.h"
 #include "qgsfeaturerequest.h"
 #include "qgsvectordataprovider.h"
-#include "qgsexpression.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QString QgsServerFeatureId::getServerFid( const QgsFeature &feature, const QgsAttributeList &pkAttributes )
 {
@@ -29,10 +34,9 @@ QString QgsServerFeatureId::getServerFid( const QgsFeature &feature, const QgsAt
   }
 
   QStringList pkValues;
-  QgsAttributeList::const_iterator it = pkAttributes.constBegin();
-  if ( it != pkAttributes.constEnd() )
+  for ( const auto &attrIdx : std::as_const( pkAttributes ) )
   {
-    pkValues.append( feature.attribute( *it ).toString() );
+    pkValues.append( feature.attribute( attrIdx ).toString() );
   }
   return pkValues.join( pkSeparator() );
 }
@@ -46,7 +50,7 @@ QgsFeatureRequest QgsServerFeatureId::updateFeatureRequestFromServerFids( QgsFea
     QgsFeatureIds fids;
     for ( const QString &serverFid : serverFids )
     {
-      fids.insert( serverFid.toLongLong() );
+      fids.insert( STRING_TO_FID( serverFid ) );
     }
     featureRequest.setFilterFids( fids );
     return featureRequest;
@@ -60,22 +64,22 @@ QgsFeatureRequest QgsServerFeatureId::updateFeatureRequestFromServerFids( QgsFea
 
   if ( expList.count() == 1 )
   {
-    featureRequest.setFilterExpression( expList.at( 0 ) );
+    featureRequest.combineFilterExpression( expList.at( 0 ) );
   }
   else
   {
     QString fullExpression;
-    for ( const QString &exp : qgis::as_const( expList ) )
+    for ( const QString &exp : std::as_const( expList ) )
     {
       if ( !fullExpression.isEmpty() )
       {
-        fullExpression.append( QStringLiteral( " OR " ) );
+        fullExpression.append( u" OR "_s );
       }
-      fullExpression.append( QStringLiteral( "( " ) );
+      fullExpression.append( u"( "_s );
       fullExpression.append( exp );
-      fullExpression.append( QStringLiteral( " )" ) );
+      fullExpression.append( u" )"_s );
     }
-    featureRequest.setFilterExpression( fullExpression );
+    featureRequest.combineFilterExpression( fullExpression );
   }
 
   return featureRequest;
@@ -99,10 +103,10 @@ QString QgsServerFeatureId::getExpressionFromServerFid( const QString &serverFid
   {
     if ( i > 0 )
     {
-      expressionString.append( QStringLiteral( " AND " ) );
+      expressionString.append( u" AND "_s );
     }
 
-    QString fieldName = fields[ pkAttributes.at( i ) ].name();
+    QString fieldName = fields[pkAttributes.at( i )].name();
     expressionString.append( QgsExpression::createFieldEqualityExpression( fieldName, QVariant( pkValues.at( i ) ) ) );
   }
 
@@ -111,5 +115,5 @@ QString QgsServerFeatureId::getExpressionFromServerFid( const QString &serverFid
 
 QString QgsServerFeatureId::pkSeparator()
 {
-  return QStringLiteral( "@@" );
+  return u"@@"_s;
 }

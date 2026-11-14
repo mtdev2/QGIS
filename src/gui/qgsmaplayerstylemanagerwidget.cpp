@@ -12,333 +12,434 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include <QAction>
-#include <QVBoxLayout>
-#include <QToolBar>
-#include <QInputDialog>
-#include <QMessageBox>
-#include <QFileDialog>
-
 #include "qgsmaplayerstylemanagerwidget.h"
-#include "qgssettings.h"
+
+#include "qgsapplication.h"
 #include "qgslogger.h"
-#include "qgsmaplayer.h"
 #include "qgsmapcanvas.h"
+#include "qgsmaplayer.h"
 #include "qgsmaplayerconfigwidget.h"
 #include "qgsmaplayerstylemanager.h"
-#include "qgsvectordataprovider.h"
-#include "qgsrasterdataprovider.h"
+#include "qgsmeshlayerproperties.h"
+#include "qgspointcloudlayer.h"
+#include "qgspointcloudlayerproperties.h"
+#include "qgsrasterlayerproperties.h"
+#include "qgstiledscenelayer.h"
+#include "qgstiledscenelayerproperties.h"
 #include "qgsvectorlayer.h"
-#include "qgsrasterlayer.h"
-#include "qgsapplication.h"
+#include "qgsvectorlayerproperties.h"
+#include "qgsvectortilelayer.h"
+#include "qgsvectortilelayerproperties.h"
+
+#include <QAction>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QString>
+#include <QToolBar>
+#include <QVBoxLayout>
+
+#include "moc_qgsmaplayerstylemanagerwidget.cpp"
+
+using namespace Qt::StringLiterals;
+
+//
+// QgsMapLayerStyleModel
+//
+QgsMapLayerStyleModel::QgsMapLayerStyleModel( QgsMapLayerStyleManager *manager, QObject *parent )
+  : QAbstractListModel( parent )
+  , mManager( manager )
+{
+  if ( mManager )
+  {
+    connect( mManager, &QgsMapLayerStyleManager::styleAdded, this, &QgsMapLayerStyleModel::styleAdded );
+    connect( mManager, &QgsMapLayerStyleManager::styleRemoved, this, &QgsMapLayerStyleModel::styleRemoved );
+    connect( mManager, &QgsMapLayerStyleManager::styleRenamed, this, &QgsMapLayerStyleModel::styleRenamed );
+
+    mStyleNames = mManager->styles();
+  }
+}
+
+int QgsMapLayerStyleModel::rowCount( const QModelIndex &parent ) const
+{
+  if ( parent.isValid() )
+    return 0;
+
+  return static_cast< int >( mStyleNames.size() );
+}
+
+QVariant QgsMapLayerStyleModel::data( const QModelIndex &index, int role ) const
+{
+  if ( index.row() < 0 || index.row() >= rowCount( QModelIndex() ) )
+    return QVariant();
+
+  switch ( role )
+  {
+    case Qt::DisplayRole:
+    case Qt::ToolTipRole:
+    case Qt::EditRole:
+      return mStyleNames.at( index.row() );
+
+    default:
+      break;
+  }
+  return QVariant();
+}
+
+bool QgsMapLayerStyleModel::setData( const QModelIndex &index, const QVariant &value, int role )
+{
+  if ( !mManager || !index.isValid() || role != Qt::EditRole )
+  {
+    return false;
+  }
+  if ( index.row() >= mStyleNames.size() )
+  {
+    return false;
+  }
+
+  if ( value.toString().isEmpty() )
+    return false;
+
+  //has name changed?
+  const bool changed = mStyleNames.at( index.row() ) != value.toString();
+  if ( !changed )
+    return true;
+
+  //check if name already exists
+  if ( mStyleNames.contains( value.toString() ) )
+    return false;
+
+  mManager->renameStyle( mStyleNames[index.row()], value.toString() );
+  mStyleNames[index.row()] = value.toString();
+  return true;
+}
+
+Qt::ItemFlags QgsMapLayerStyleModel::flags( const QModelIndex &index ) const
+{
+  Qt::ItemFlags flags = QAbstractListModel::flags( index );
+  if ( index.isValid() )
+  {
+    return flags | Qt::ItemIsEditable;
+  }
+  else
+  {
+    return flags;
+  }
+}
+
+QModelIndex QgsMapLayerStyleModel::indexForName( const QString &name ) const
+{
+  const int row = static_cast< int >( mStyleNames.indexOf( name ) );
+  if ( row >= 0 )
+  {
+    return index( row, 0, QModelIndex() );
+  }
+  return QModelIndex();
+}
+
+void QgsMapLayerStyleModel::styleAdded( const QString &name )
+{
+  beginInsertRows( QModelIndex(), static_cast< int >( mStyleNames.size() ), static_cast< int >( mStyleNames.size() ) );
+  mStyleNames << name;
+  endInsertRows();
+}
+
+void QgsMapLayerStyleModel::styleRemoved( const QString &name )
+{
+  const int row = static_cast< int >( mStyleNames.indexOf( name ) );
+  if ( row >= 0 )
+  {
+    beginRemoveRows( QModelIndex(), row, row );
+    mStyleNames.remove( row );
+    endRemoveRows();
+  }
+}
+
+void QgsMapLayerStyleModel::styleRenamed( const QString &oldname, const QString &newname )
+{
+  const QModelIndex styleIndex = indexForName( oldname );
+  mStyleNames[styleIndex.row()] = newname;
+  emit dataChanged( styleIndex, styleIndex );
+}
+
+//
+// QgsMapLayerStyleManagerWidget
+//
 
 QgsMapLayerStyleManagerWidget::QgsMapLayerStyleManagerWidget( QgsMapLayer *layer, QgsMapCanvas *canvas, QWidget *parent )
   : QgsMapLayerConfigWidget( layer, canvas, parent )
 {
-  mModel = new QStandardItemModel( this );
   mStyleList = new QListView( this );
-  mStyleList->setModel( mModel );
+  if ( layer )
+  {
+    mModel = new QgsMapLayerStyleModel( layer->styleManager(), this );
+    mStyleList->setModel( mModel );
+  }
+  mStyleList->setObjectName( "mStyleList" );
   mStyleList->setViewMode( QListView::ListMode );
   mStyleList->setResizeMode( QListView::Adjust );
 
   QToolBar *toolbar = new QToolBar( this );
   QAction *addAction = toolbar->addAction( tr( "Add" ) );
-  addAction->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "symbologyAdd.svg" ) ) );
+  addAction->setIcon( QgsApplication::getThemeIcon( u"symbologyAdd.svg"_s ) );
   connect( addAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::addStyle );
   QAction *removeAction = toolbar->addAction( tr( "Remove Current" ) );
-  removeAction->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "symbologyRemove.svg" ) ) );
+  removeAction->setIcon( QgsApplication::getThemeIcon( u"symbologyRemove.svg"_s ) );
   connect( removeAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::removeStyle );
   QAction *loadFromFileAction = toolbar->addAction( tr( "Load Style" ) );
-  loadFromFileAction->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionFileOpen.svg" ) ) );
+  loadFromFileAction->setIcon( QgsApplication::getThemeIcon( u"/mActionFileOpen.svg"_s ) );
   connect( loadFromFileAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::loadStyle );
+  QAction *saveAction = toolbar->addAction( tr( "Save Style" ) );
+  saveAction->setIcon( QgsApplication::getThemeIcon( u"mActionFileSave.svg"_s ) );
+  connect( saveAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::saveStyle );
   QAction *saveAsDefaultAction = toolbar->addAction( tr( "Save as Default" ) );
   connect( saveAsDefaultAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::saveAsDefault );
   QAction *loadDefaultAction = toolbar->addAction( tr( "Restore Default" ) );
   connect( loadDefaultAction, &QAction::triggered, this, &QgsMapLayerStyleManagerWidget::loadDefault );
-
-
-  // Save style doesn't work correctly yet so just disable for now.
-//  QAction* saveToFileAction = toolbar->addAction( tr( "Save Style" ) );
-//  connect( saveToFileAction, SIGNAL( triggered() ), this, SLOT( saveStyle() ) );
-
-  //broken connect - not sure what the purpose of this was?
-//  connect( canvas, &QgsMapCanvas::mapCanvasRefreshed, this, SLOT( updateCurrent() ) );
-
-  connect( mStyleList, &QAbstractItemView::clicked, this, &QgsMapLayerStyleManagerWidget::styleClicked );
 
   setLayout( new QVBoxLayout() );
   layout()->setContentsMargins( 0, 0, 0, 0 );
   layout()->addWidget( toolbar );
   layout()->addWidget( mStyleList );
 
-  connect( mLayer->styleManager(), &QgsMapLayerStyleManager::currentStyleChanged, this, &QgsMapLayerStyleManagerWidget::currentStyleChanged );
-  connect( mLayer->styleManager(), &QgsMapLayerStyleManager::styleAdded, this, &QgsMapLayerStyleManagerWidget::styleAdded );
-  connect( mLayer->styleManager(), &QgsMapLayerStyleManager::styleRemoved, this, &QgsMapLayerStyleManagerWidget::styleRemoved );
-  connect( mLayer->styleManager(), &QgsMapLayerStyleManager::styleRenamed, this, &QgsMapLayerStyleManagerWidget::styleRenamed );
-
-  mModel->clear();
-
-  const QStringList styles = mLayer->styleManager()->styles();
-  for ( const QString &styleName : styles )
+  if ( mLayer )
   {
-    QStandardItem *item = new QStandardItem( styleName );
-    item->setData( styleName );
-    mModel->appendRow( item );
+    connect( mLayer->styleManager(), &QgsMapLayerStyleManager::currentStyleChanged, this, &QgsMapLayerStyleManagerWidget::currentStyleChanged );
+    connect( mStyleList->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsMapLayerStyleManagerWidget::selectionChanged );
+
+    const QString active = mLayer->styleManager()->currentStyle();
+    currentStyleChanged( active );
   }
-
-  QString active = mLayer->styleManager()->currentStyle();
-  currentStyleChanged( active );
-
-  connect( mModel, &QStandardItemModel::itemChanged, this, &QgsMapLayerStyleManagerWidget::renameStyle );
 }
 
-void QgsMapLayerStyleManagerWidget::styleClicked( const QModelIndex &index )
+void QgsMapLayerStyleManagerWidget::syncToLayer( QgsMapLayer *layer )
 {
-  if ( !mLayer || !index.isValid() )
+  if ( layer == mLayer )
+  {
+    return;
+  }
+  if ( mLayer )
+  {
+    disconnect( mLayer->styleManager(), &QgsMapLayerStyleManager::currentStyleChanged, this, &QgsMapLayerStyleManagerWidget::currentStyleChanged );
+  }
+
+  if ( mModel )
+  {
+    mStyleList->setModel( nullptr );
+    mModel->deleteLater();
+    mModel = nullptr;
+  }
+  mLayer = layer;
+  if ( mLayer )
+  {
+    connect( mLayer->styleManager(), &QgsMapLayerStyleManager::currentStyleChanged, this, &QgsMapLayerStyleManagerWidget::currentStyleChanged );
+    mModel = new QgsMapLayerStyleModel( layer->styleManager(), this );
+    mStyleList->setModel( mModel );
+    currentStyleChanged( mLayer->styleManager()->currentStyle() );
+    connect( mStyleList->selectionModel(), &QItemSelectionModel::selectionChanged, this, &QgsMapLayerStyleManagerWidget::selectionChanged );
+  }
+}
+
+void QgsMapLayerStyleManagerWidget::selectionChanged( const QItemSelection &selected, const QItemSelection & )
+{
+  if ( !mLayer || selected.empty() )
     return;
 
-  QString name = index.data().toString();
+  const QModelIndex index = selected.indexes().first();
+  if ( !index.isValid() )
+    return;
+
+  const QString name = index.data().toString();
   mLayer->styleManager()->setCurrentStyle( name );
 }
 
 void QgsMapLayerStyleManagerWidget::currentStyleChanged( const QString &name )
 {
-  QList<QStandardItem *> items = mModel->findItems( name );
-  if ( items.isEmpty() )
-    return;
-
-  QStandardItem *item = items.at( 0 );
-
-  mStyleList->setCurrentIndex( item->index() );
-}
-
-void QgsMapLayerStyleManagerWidget::styleAdded( const QString &name )
-{
-  QgsDebugMsg( QStringLiteral( "Style added" ) );
-  QStandardItem *item = new QStandardItem( name );
-  item->setData( name );
-  mModel->appendRow( item );
-}
-
-void QgsMapLayerStyleManagerWidget::styleRemoved( const QString &name )
-{
-  QList<QStandardItem *> items = mModel->findItems( name );
-  if ( items.isEmpty() )
-    return;
-
-  QStandardItem *item = items.at( 0 );
-  mModel->removeRow( item->row() );
-}
-
-void QgsMapLayerStyleManagerWidget::styleRenamed( const QString &oldname, const QString &newname )
-{
-  QList<QStandardItem *> items = mModel->findItems( oldname );
-  if ( items.isEmpty() )
-    return;
-
-  QStandardItem *item = items.at( 0 );
-  item->setText( newname );
-  item->setData( newname );
+  const QModelIndex listIndex = mModel->indexForName( name );
+  if ( listIndex.isValid() )
+  {
+    mStyleList->selectionModel()->select( listIndex, QItemSelectionModel::SelectionFlag::ClearAndSelect );
+  }
 }
 
 void QgsMapLayerStyleManagerWidget::addStyle()
 {
   bool ok;
-  QString text = QInputDialog::getText( nullptr, tr( "New Style" ),
-                                        tr( "Style name:" ), QLineEdit::Normal,
-                                        QStringLiteral( "new style" ), &ok );
+  const QString text = QInputDialog::getText( nullptr, tr( "New Style" ), tr( "Style name:" ), QLineEdit::Normal, u"new style"_s, &ok );
   if ( !ok || text.isEmpty() )
     return;
 
-  bool res = mLayer->styleManager()->addStyleFromLayer( text );
+  const bool res = mLayer->styleManager()->addStyleFromLayer( text );
   if ( res ) // make it active!
   {
     mLayer->styleManager()->setCurrentStyle( text );
   }
   else
   {
-    QgsDebugMsg( "Failed to add style: " + text );
+    QgsDebugError( "Failed to add style: " + text );
   }
 }
 
 void QgsMapLayerStyleManagerWidget::removeStyle()
 {
-  QString current = mLayer->styleManager()->currentStyle();
-  QList<QStandardItem *> items = mModel->findItems( current );
-  if ( items.isEmpty() )
-    return;
-
-  QStandardItem *item = items.at( 0 );
-  bool res = mLayer->styleManager()->removeStyle( current );
-  if ( res )
-  {
-    mModel->removeRow( item->row() );
-  }
-  else
-  {
-    QgsDebugMsg( QStringLiteral( "Failed to remove current style" ) );
-  }
-
-}
-
-void QgsMapLayerStyleManagerWidget::renameStyle( QStandardItem *item )
-{
-  const QString oldName = item->data().toString();
-  const QString newName = item->text();
-  item->setData( newName );
-  whileBlocking( this )->mLayer->styleManager()->renameStyle( oldName, newName );
+  const QString current = mLayer->styleManager()->currentStyle();
+  const bool res = mLayer->styleManager()->removeStyle( current );
+  if ( !res )
+    QgsDebugError( u"Failed to remove current style"_s );
 }
 
 void QgsMapLayerStyleManagerWidget::saveAsDefault()
 {
-  QString errorMsg;
+  if ( !mLayer )
+    return;
 
-  if ( QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mLayer ) )
+  switch ( mLayer->type() )
   {
-    if ( layer->dataProvider()->isSaveAndLoadStyleToDatabaseSupported() )
-    {
-      QMessageBox askToUser;
-      askToUser.setWindowTitle( tr( "Save Style" ) );
-      askToUser.setText( tr( "Save default style to: " ) );
-      askToUser.setIcon( QMessageBox::Question );
-      askToUser.addButton( tr( "Cancel" ), QMessageBox::RejectRole );
-      askToUser.addButton( tr( "Local Database" ), QMessageBox::NoRole );
-      askToUser.addButton( tr( "Datasource Database" ), QMessageBox::YesRole );
+    case Qgis::LayerType::Vector:
+      QgsVectorLayerProperties( mMapCanvas, mMapLayerConfigWidgetContext.messageBar(), qobject_cast<QgsVectorLayer *>( mLayer ) ).saveDefaultStyle();
+      break;
 
-      switch ( askToUser.exec() )
-      {
-        case 0:
-          return;
-        case 2:
-          layer->saveStyleToDatabase( QString(), QString(), true, QString(), errorMsg );
-          if ( errorMsg.isNull() )
-          {
-            return;
-          }
-          break;
-        default:
-          break;
-      }
-    }
+    case Qgis::LayerType::Raster:
+      QgsRasterLayerProperties( mLayer, mMapCanvas ).saveStyleAsDefault();
+      break;
+
+    case Qgis::LayerType::Mesh:
+      QgsMeshLayerProperties( mLayer, mMapCanvas ).saveStyleAsDefault();
+      break;
+
+    case Qgis::LayerType::VectorTile:
+      QgsVectorTileLayerProperties( qobject_cast<QgsVectorTileLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleAsDefault();
+      break;
+
+    case Qgis::LayerType::PointCloud:
+      QgsPointCloudLayerProperties( qobject_cast<QgsPointCloudLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleAsDefault();
+      break;
+
+    case Qgis::LayerType::TiledScene:
+      QgsTiledSceneLayerProperties( qobject_cast<QgsTiledSceneLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleAsDefault();
+      break;
+
+    // Not available for these
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Group:
+      break;
   }
-
-  bool defaultSavedFlag = false;
-  errorMsg = mLayer->saveDefaultStyle( defaultSavedFlag );
-  if ( !defaultSavedFlag )
-  {
-    QMessageBox::warning( this, tr( "Default Style" ), errorMsg );
-  }
-
 }
 
 void QgsMapLayerStyleManagerWidget::loadDefault()
 {
-  QString msg;
-  bool defaultLoadedFlag = false;
+  if ( !mLayer )
+    return;
 
-  if ( QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mLayer ) )
+  switch ( mLayer->type() )
   {
-    if ( layer->dataProvider()->isSaveAndLoadStyleToDatabaseSupported() )
-    {
-      QMessageBox askToUser;
-      askToUser.setWindowTitle( tr( "Load Style" ) );
-      askToUser.setText( tr( "Load default style from: " ) );
-      askToUser.setIcon( QMessageBox::Question );
-      askToUser.addButton( tr( "Cancel" ), QMessageBox::RejectRole );
-      askToUser.addButton( tr( "Local Database" ), QMessageBox::NoRole );
-      askToUser.addButton( tr( "Datasource Database" ), QMessageBox::YesRole );
+    case Qgis::LayerType::Vector:
+      QgsVectorLayerProperties( mMapCanvas, mMapLayerConfigWidgetContext.messageBar(), qobject_cast<QgsVectorLayer *>( mLayer ) ).loadDefaultStyle();
+      break;
 
-      switch ( askToUser.exec() )
-      {
-        case 0:
-          return;
-        case 2:
-          msg = layer->loadNamedStyle( mLayer->styleURI(), defaultLoadedFlag );
-          if ( !defaultLoadedFlag )
-          {
-            //something went wrong - let them know why
-            QMessageBox::information( this, tr( "Default Style" ), msg );
-          }
-          if ( msg.compare( tr( "Loaded from Provider" ) ) )
-          {
-            QMessageBox::information( this, tr( "Default Style" ),
-                                      tr( "No default style was found for this layer" ) );
-          }
-          return;
-        default:
-          break;
-      }
-    }
+    case Qgis::LayerType::Raster:
+      QgsRasterLayerProperties( mLayer, mMapCanvas ).loadDefaultStyle();
+      break;
+
+    case Qgis::LayerType::Mesh:
+      QgsMeshLayerProperties( mLayer, mMapCanvas ).loadDefaultStyle();
+      break;
+
+    case Qgis::LayerType::VectorTile:
+      QgsVectorTileLayerProperties( qobject_cast<QgsVectorTileLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadDefaultStyle();
+      break;
+
+    case Qgis::LayerType::PointCloud:
+      QgsPointCloudLayerProperties( qobject_cast<QgsPointCloudLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadDefaultStyle();
+      break;
+
+    case Qgis::LayerType::TiledScene:
+      QgsTiledSceneLayerProperties( qobject_cast<QgsTiledSceneLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadDefaultStyle();
+      break;
+
+    // Not available for these
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Group:
+      break;
   }
-
-  QString myMessage;
-  if ( QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>( mLayer ) )
-  {
-    myMessage = layer->loadNamedStyle( mLayer->styleURI(), defaultLoadedFlag, true );
-  }
-  if ( QgsRasterLayer *layer = qobject_cast<QgsRasterLayer *>( mLayer ) )
-  {
-    myMessage = layer->loadNamedStyle( mLayer->styleURI(), defaultLoadedFlag );
-  }
-
-//  QString myMessage = layer->loadDefaultStyle( defaultLoadedFlag );
-  //reset if the default style was loaded OK only
-
-
-  if ( !defaultLoadedFlag )
-  {
-    //something went wrong - let them know why
-    QMessageBox::information( this, tr( "Default Style" ), myMessage );
-  }
-  else
-  {
-    emit widgetChanged();
-  }
-
 }
 
 void QgsMapLayerStyleManagerWidget::saveStyle()
 {
+  if ( !mLayer )
+    return;
 
+  switch ( mLayer->type() )
+  {
+    case Qgis::LayerType::Vector:
+      QgsVectorLayerProperties( mMapCanvas, mMapLayerConfigWidgetContext.messageBar(), qobject_cast<QgsVectorLayer *>( mLayer ) ).saveStyleAs();
+      break;
+
+    case Qgis::LayerType::Raster:
+      QgsRasterLayerProperties( mLayer, mMapCanvas ).saveStyleAs();
+      break;
+
+    case Qgis::LayerType::Mesh:
+      QgsMeshLayerProperties( mLayer, mMapCanvas ).saveStyleToFile();
+      break;
+
+    case Qgis::LayerType::VectorTile:
+      QgsVectorTileLayerProperties( qobject_cast<QgsVectorTileLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleToFile();
+      break;
+
+    case Qgis::LayerType::PointCloud:
+      QgsPointCloudLayerProperties( qobject_cast<QgsPointCloudLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleToFile();
+      break;
+
+    case Qgis::LayerType::TiledScene:
+      QgsTiledSceneLayerProperties( qobject_cast<QgsTiledSceneLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).saveStyleToFile();
+      break;
+
+    // Not available for these
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Group:
+      break;
+  }
 }
 
 void QgsMapLayerStyleManagerWidget::loadStyle()
 {
-  QgsSettings myQSettings;  // where we keep last used filter in persistent state
-  QString myLastUsedDir = myQSettings.value( QStringLiteral( "style/lastStyleDir" ), QDir::homePath() ).toString();
-
-  QString myFileName = QFileDialog::getOpenFileName( this, tr( "Load layer properties from style file" ), myLastUsedDir,
-                       tr( "QGIS Layer Style File" ) + " (*.qml);;" + tr( "SLD File" ) + " (*.sld)" );
-  if ( myFileName.isNull() )
-  {
+  if ( !mLayer )
     return;
-  }
 
-  QString myMessage;
-  bool defaultLoadedFlag = false;
+  switch ( mLayer->type() )
+  {
+    case Qgis::LayerType::Vector:
+      QgsVectorLayerProperties( mMapCanvas, mMapLayerConfigWidgetContext.messageBar(), qobject_cast<QgsVectorLayer *>( mLayer ) ).loadStyle();
+      break;
 
-  if ( myFileName.endsWith( QLatin1String( ".sld" ), Qt::CaseInsensitive ) )
-  {
-    // load from SLD
-    myMessage = mLayer->loadSldStyle( myFileName, defaultLoadedFlag );
-  }
-  else
-  {
-    myMessage = mLayer->loadNamedStyle( myFileName, defaultLoadedFlag );
-  }
-  //reset if the default style was loaded OK only
-  if ( defaultLoadedFlag )
-  {
-    emit widgetChanged();
-  }
-  else
-  {
-    //let the user know what went wrong
-    QMessageBox::warning( this, tr( "Load Style" ), myMessage );
-  }
+    case Qgis::LayerType::Raster:
+      QgsRasterLayerProperties( mLayer, mMapCanvas ).loadStyleFromFile();
+      break;
 
-  QFileInfo myFI( myFileName );
-  QString myPath = myFI.path();
-  myQSettings.setValue( QStringLiteral( "style/lastStyleDir" ), myPath );
+    case Qgis::LayerType::Mesh:
+      QgsMeshLayerProperties( mLayer, mMapCanvas ).loadStyleFromFile();
+      break;
 
+    case Qgis::LayerType::VectorTile:
+      QgsVectorTileLayerProperties( qobject_cast<QgsVectorTileLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadStyle();
+      break;
+
+    case Qgis::LayerType::PointCloud:
+      QgsPointCloudLayerProperties( qobject_cast<QgsPointCloudLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadStyleFromFile();
+      break;
+
+    case Qgis::LayerType::TiledScene:
+      QgsTiledSceneLayerProperties( qobject_cast<QgsTiledSceneLayer *>( mLayer ), mMapCanvas, mMapLayerConfigWidgetContext.messageBar() ).loadStyleFromFile();
+      break;
+
+    // Not available for these
+    case Qgis::LayerType::Annotation:
+    case Qgis::LayerType::Plugin:
+    case Qgis::LayerType::Group:
+      break;
+  }
 }

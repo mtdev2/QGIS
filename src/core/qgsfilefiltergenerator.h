@@ -19,11 +19,12 @@
 #define QGSFILEFILTERGENERATOR_H
 
 #include "qgis_core.h"
+
 #include <QString>
 
 /**
  * \ingroup core
- * Abstract interface for classes which generate a file filter string.
+ * \brief Abstract interface for classes which generate a file filter string.
  *
  * This interface can be inherited by classes which can generate a file filter
  * string, for use in file open or file save dialogs.
@@ -40,9 +41,6 @@ class CORE_EXPORT QgsFileFilterGenerator
      * and return a file filter.
      */
     virtual QString createFileFilter() const = 0;
-
 };
 
 #endif // QGSPROCESSINGUTILS_H
-
-

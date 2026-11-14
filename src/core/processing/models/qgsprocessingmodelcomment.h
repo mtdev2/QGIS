@@ -18,22 +18,21 @@
 #ifndef QGSPROCESSINGMODELCOMMENT_H
 #define QGSPROCESSINGMODELCOMMENT_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 #include "qgsprocessingmodelcomponent.h"
 #include "qgsprocessingparameters.h"
 
 ///@cond NOT_STABLE
 
 /**
- * Represents a comment in a model.
+ * \brief Represents a comment in a model.
  * \ingroup core
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsProcessingModelComment : public QgsProcessingModelComponent
 {
   public:
-
     /**
      * Constructor for QgsProcessingModelComment with the specified \a description.
      */

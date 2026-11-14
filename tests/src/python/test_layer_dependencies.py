@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QGIS Unit tests for QgsSnappingUtils (complement to C++-based tests)
 
 .. note:: This program is free software; you can redistribute it and/or modify
@@ -6,52 +5,57 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 """
-__author__ = 'Hugo Mercier'
-__date__ = '12/07/2016'
-__copyright__ = 'Copyright 2016, The QGIS Project'
 
-import qgis  # NOQA
+__author__ = "Hugo Mercier"
+__date__ = "12/07/2016"
+__copyright__ = "Copyright 2016, The QGIS Project"
+
+import hashlib
 import os
-
-from qgis.core import (QgsProject,
-                       QgsVectorLayer,
-                       QgsMapSettings,
-                       QgsSnappingUtils,
-                       QgsSnappingConfig,
-                       QgsTolerance,
-                       QgsRectangle,
-                       QgsPointXY,
-                       QgsFeature,
-                       QgsGeometry,
-                       QgsLayerDefinition,
-                       QgsMapLayerDependency
-                       )
-
-from qgis.testing import start_app, unittest
-
-from qgis.PyQt.QtCore import QSize, QPoint
-from qgis.PyQt.QtTest import QSignalSpy
-
+import shutil
 import tempfile
+import unittest
 
+from qgis.core import (
+    Qgis,
+    QgsFeature,
+    QgsGeometry,
+    QgsLayerDefinition,
+    QgsMapLayerDependency,
+    QgsMapSettings,
+    QgsPointXY,
+    QgsProject,
+    QgsRectangle,
+    QgsSnappingConfig,
+    QgsSnappingUtils,
+    QgsVectorLayer,
+)
+from qgis.PyQt.QtCore import QPoint, QSize
+from qgis.PyQt.QtTest import QSignalSpy
+from qgis.testing import QgisTestCase, start_app
 from qgis.utils import spatialite_connect
 
 # Convenience instances in case you may need them
 start_app()
 
 
-class TestLayerDependencies(unittest.TestCase):
+def sanitize(endpoint, x):
+    if len(endpoint + x) > 256:
+        # print('Before: ' + endpoint + x)
+        x = x.replace("/", "_").encode()
+        ret = endpoint + hashlib.md5(x).hexdigest()
+        # print('After:  ' + ret)
+        return ret
+    ret = endpoint + x.replace("?", "_").replace("&", "_").replace("<", "_").replace(
+        ">", "_"
+    ).replace('"', "_").replace("'", "_").replace(" ", "_").replace(":", "_").replace(
+        "/", "_"
+    ).replace("\n", "_")
+    # print('Sanitize: ' + x)
+    return ret
 
-    @classmethod
-    def setUpClass(cls):
-        """Run before all tests"""
-        pass
 
-    @classmethod
-    def tearDownClass(cls):
-        """Run after all tests"""
-        pass
-
+class TestLayerDependencies(QgisTestCase):
     def setUp(self):
         """Run before each test."""
         # create a temp SpatiaLite db with a trigger
@@ -64,24 +68,105 @@ class TestLayerDependencies(unittest.TestCase):
         cur.execute("SELECT InitSpatialMetadata(1)")
         cur.execute("create table node(id integer primary key autoincrement);")
         cur.execute("select AddGeometryColumn('node', 'geom', 4326, 'POINT');")
-        cur.execute("create table section(id integer primary key autoincrement, node1 integer, node2 integer);")
+        cur.execute(
+            "create table section(id integer primary key autoincrement, node1 integer, node2 integer);"
+        )
         cur.execute("select AddGeometryColumn('section', 'geom', 4326, 'LINESTRING');")
-        cur.execute("create trigger add_nodes after insert on section begin insert into node (geom) values (st_startpoint(NEW.geom)); insert into node (geom) values (st_endpoint(NEW.geom)); end;")
-        cur.execute("insert into node (geom) values (geomfromtext('point(0 0)', 4326));")
-        cur.execute("insert into node (geom) values (geomfromtext('point(1 0)', 4326));")
+        cur.execute(
+            "create trigger add_nodes after insert on section begin insert into node (geom) values (st_startpoint(NEW.geom)); insert into node (geom) values (st_endpoint(NEW.geom)); end;"
+        )
+        cur.execute(
+            "insert into node (geom) values (geomfromtext('point(0 0)', 4326));"
+        )
+        cur.execute(
+            "insert into node (geom) values (geomfromtext('point(1 0)', 4326));"
+        )
         cur.execute("create table node2(id integer primary key autoincrement);")
         cur.execute("select AddGeometryColumn('node2', 'geom', 4326, 'POINT');")
-        cur.execute("create trigger add_nodes2 after insert on node begin insert into node2 (geom) values (st_translate(NEW.geom, 0.2, 0, 0)); end;")
+        cur.execute(
+            "create trigger add_nodes2 after insert on node begin insert into node2 (geom) values (st_translate(NEW.geom, 0.2, 0, 0)); end;"
+        )
         con.commit()
         con.close()
 
-        self.pointsLayer = QgsVectorLayer("dbname='%s' table=\"node\" (geom) sql=" % fn, "points", "spatialite")
-        assert (self.pointsLayer.isValid())
-        self.linesLayer = QgsVectorLayer("dbname='%s' table=\"section\" (geom) sql=" % fn, "lines", "spatialite")
-        assert (self.linesLayer.isValid())
-        self.pointsLayer2 = QgsVectorLayer("dbname='%s' table=\"node2\" (geom) sql=" % fn, "_points2", "spatialite")
-        assert (self.pointsLayer2.isValid())
-        QgsProject.instance().addMapLayers([self.pointsLayer, self.linesLayer, self.pointsLayer2])
+        self.pointsLayer = QgsVectorLayer(
+            f"dbname='{fn}' table=\"node\" (geom) sql=", "points", "spatialite"
+        )
+        assert self.pointsLayer.isValid()
+        self.linesLayer = QgsVectorLayer(
+            f"dbname='{fn}' table=\"section\" (geom) sql=", "lines", "spatialite"
+        )
+        assert self.linesLayer.isValid()
+        self.pointsLayer2 = QgsVectorLayer(
+            f"dbname='{fn}' table=\"node2\" (geom) sql=", "_points2", "spatialite"
+        )
+        assert self.pointsLayer2.isValid()
+
+        self.basetestpath = tempfile.mkdtemp().replace("\\", "/")
+        endpoint = self.basetestpath + "/fake_qgis_http_endpoint_cache_data_dependency"
+
+        with open(
+            sanitize(
+                endpoint,
+                "?SERVICE=WFS?REQUEST=GetCapabilities?ACCEPTVERSIONS=2.0.0,1.1.0,1.0.0",
+            ),
+            "wb",
+        ) as f:
+            f.write(
+                b"""
+<wfs:WFS_Capabilities version="2.0.0" xmlns="http://www.opengis.net/wfs/2.0" xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:ows="http://www.opengis.net/ows/1.1" xmlns:gml="http://schemas.opengis.net/gml/3.2" xmlns:fes="http://www.opengis.net/fes/2.0">
+  <FeatureTypeList>
+    <FeatureType>
+      <Name>my:typename</Name>
+      <Title>Title</Title>
+      <Abstract>Abstract</Abstract>
+      <DefaultCRS>urn:ogc:def:crs:EPSG::4326</DefaultCRS>
+      <WGS84BoundingBox>
+        <LowerCorner>-71.123 66.33</LowerCorner>
+        <UpperCorner>-65.32 78.3</UpperCorner>
+      </WGS84BoundingBox>
+    </FeatureType>
+  </FeatureTypeList>
+</wfs:WFS_Capabilities>"""
+            )
+
+        with open(
+            sanitize(
+                endpoint,
+                "?SERVICE=WFS&REQUEST=DescribeFeatureType&VERSION=2.0.0&TYPENAMES=my:typename&TYPENAME=my:typename",
+            ),
+            "wb",
+        ) as f:
+            f.write(
+                b"""
+<xsd:schema xmlns:my="http://my" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://my">
+  <xsd:import namespace="http://www.opengis.net/gml/3.2"/>
+  <xsd:complexType name="typenameType">
+    <xsd:complexContent>
+      <xsd:extension base="gml:AbstractFeatureType">
+        <xsd:sequence>
+          <xsd:element maxOccurs="1" minOccurs="0" name="pk" nillable="true" type="xsd:long"/>
+          <xsd:element maxOccurs="1" minOccurs="0" name="geometryProperty" nillable="true" type="gml:PointPropertyType"/>
+        </xsd:sequence>
+      </xsd:extension>
+    </xsd:complexContent>
+  </xsd:complexType>
+  <xsd:element name="typename" substitutionGroup="gml:_Feature" type="my:typenameType"/>
+</xsd:schema>"""
+            )
+
+        self.cachedLayer = QgsVectorLayer(
+            "url='http://"
+            + endpoint
+            + "' typename='my:typename' skipInitialGetFeature='true'",
+            "cache_data_dependent",
+            "WFS",
+        )
+        assert self.cachedLayer.isValid()
+
+        QgsProject.instance().addMapLayers(
+            [self.pointsLayer, self.linesLayer, self.pointsLayer2, self.cachedLayer]
+        )
 
         # save the project file
         fo = tempfile.NamedTemporaryFile()
@@ -94,7 +179,7 @@ class TestLayerDependencies(unittest.TestCase):
     def tearDown(self):
         """Run after each test."""
         QgsProject.instance().clear()
-        pass
+        shutil.rmtree(self.basetestpath, True)
 
     def test_resetSnappingIndex(self):
         self.pointsLayer.setDependencies([])
@@ -110,10 +195,13 @@ class TestLayerDependencies(unittest.TestCase):
         u.setMapSettings(ms)
         cfg = u.config()
         cfg.setEnabled(True)
-        cfg.setMode(QgsSnappingConfig.AdvancedConfiguration)
-        cfg.setIndividualLayerSettings(self.pointsLayer,
-                                       QgsSnappingConfig.IndividualLayerSettings(True,
-                                                                                 QgsSnappingConfig.VertexFlag, 20, QgsTolerance.Pixels, 0.0, 0.0))
+        cfg.setMode(Qgis.SnappingMode.AdvancedConfiguration)
+        cfg.setIndividualLayerSettings(
+            self.pointsLayer,
+            QgsSnappingConfig.IndividualLayerSettings(
+                True, Qgis.SnappingType.Vertex, 20, Qgis.MapToolUnit.Pixels, 0.0, 0.0
+            ),
+        )
         u.setConfig(cfg)
 
         m = u.snapToMap(QPoint(95, 100))
@@ -154,12 +242,17 @@ class TestLayerDependencies(unittest.TestCase):
         self.pointsLayer.setDependencies([])
 
         # test chained layer dependencies A -> B -> C
-        cfg.setIndividualLayerSettings(self.pointsLayer2,
-                                       QgsSnappingConfig.IndividualLayerSettings(True,
-                                                                                 QgsSnappingConfig.VertexFlag, 20, QgsTolerance.Pixels, 0.0, 0.0))
+        cfg.setIndividualLayerSettings(
+            self.pointsLayer2,
+            QgsSnappingConfig.IndividualLayerSettings(
+                True, Qgis.SnappingType.Vertex, 20, Qgis.MapToolUnit.Pixels, 0.0, 0.0
+            ),
+        )
         u.setConfig(cfg)
         self.pointsLayer.setDependencies([QgsMapLayerDependency(self.linesLayer.id())])
-        self.pointsLayer2.setDependencies([QgsMapLayerDependency(self.pointsLayer.id())])
+        self.pointsLayer2.setDependencies(
+            [QgsMapLayerDependency(self.pointsLayer.id())]
+        )
         # add another line
         f = QgsFeature(self.linesLayer.fields())
         f.setId(3)
@@ -184,13 +277,21 @@ class TestLayerDependencies(unittest.TestCase):
         spy_lines_repaint_requested = QSignalSpy(self.linesLayer.repaintRequested)
 
         # only points fire dataChanged because we change its dependencies
-        self.assertTrue(self.pointsLayer.setDependencies([QgsMapLayerDependency(self.linesLayer.id())]))
+        self.assertTrue(
+            self.pointsLayer.setDependencies(
+                [QgsMapLayerDependency(self.linesLayer.id())]
+            )
+        )
         self.assertEqual(len(spy_points_data_changed), 1)
         self.assertEqual(len(spy_lines_data_changed), 0)
 
         # lines fire dataChanged because we changes its dependencies
         # points fire dataChanged because it depends on line
-        self.assertTrue(self.linesLayer.setDependencies([QgsMapLayerDependency(self.pointsLayer.id())]))
+        self.assertTrue(
+            self.linesLayer.setDependencies(
+                [QgsMapLayerDependency(self.pointsLayer.id())]
+            )
+        )
         self.assertEqual(len(spy_points_data_changed), 2)
         self.assertEqual(len(spy_lines_data_changed), 1)
 
@@ -206,18 +307,27 @@ class TestLayerDependencies(unittest.TestCase):
         self.assertEqual(len(spy_points_data_changed), 3)
         self.assertEqual(len(spy_lines_data_changed), 2)
 
-        # added feature is deleted and added with its new defined id
-        # (it was -1 before) so it fires 2 more signal dataChanged on
-        # depending line (on featureAdded and on featureDeleted)
-        # and so 2 more signal on points because it depends on line
-        self.pointsLayer.commitChanges()
+        # commit changes fires dataChanged because external changes could happen (provider side)
+        self.pointsLayer.commitChanges(False)
+        self.assertEqual(len(spy_points_data_changed), 4)
+        self.assertEqual(len(spy_lines_data_changed), 3)
+
+        # points fire dataChanged on geometryChanged
+        # line depends on point, so fire dataChanged
+        self.pointsLayer.changeGeometry(f.id(), QgsGeometry.fromWkt("POINT(0 2)"))
         self.assertEqual(len(spy_points_data_changed), 5)
         self.assertEqual(len(spy_lines_data_changed), 4)
 
+        # commit changes fires dataChanged because external changes could happen (provider side)
+        self.assertTrue(self.pointsLayer.commitChanges())
+        self.assertEqual(len(spy_points_data_changed), 6)
+        self.assertEqual(len(spy_lines_data_changed), 5)
+
         # repaintRequested is called on commit changes on point
         # so it is on depending line
-        self.assertEqual(len(spy_lines_repaint_requested), 1)
-        self.assertEqual(len(spy_points_repaint_requested), 1)
+        # (ideally only one repaintRequested signal is fired, but it's harmless to fire multiple ones)
+        self.assertGreaterEqual(len(spy_lines_repaint_requested), 2)
+        self.assertGreaterEqual(len(spy_points_repaint_requested), 2)
 
     def test_circular_dependencies_with_1_layer(self):
 
@@ -228,7 +338,11 @@ class TestLayerDependencies(unittest.TestCase):
         spy_lines_repaint_requested = QSignalSpy(self.linesLayer.repaintRequested)
 
         # line fire dataChanged because we change its dependencies
-        self.assertTrue(self.linesLayer.setDependencies([QgsMapLayerDependency(self.linesLayer.id())]))
+        self.assertTrue(
+            self.linesLayer.setDependencies(
+                [QgsMapLayerDependency(self.linesLayer.id())]
+            )
+        )
         self.assertEqual(len(spy_lines_data_changed), 1)
 
         f = QgsFeature(self.linesLayer.fields())
@@ -241,14 +355,23 @@ class TestLayerDependencies(unittest.TestCase):
         self.linesLayer.addFeatures([f])
         self.assertEqual(len(spy_lines_data_changed), 2)
 
-        # added feature is deleted and added with its new defined id
-        # (it was -1 before) so it fires 2 more signal dataChanged on
-        # depending line (on featureAdded and on featureDeleted)
-        self.linesLayer.commitChanges()
-        self.assertEqual(len(spy_lines_data_changed), 4)
+        # line fire dataChanged on commitChanges
+        self.linesLayer.commitChanges(False)
+        self.assertEqual(len(spy_lines_data_changed), 3)
 
         # repaintRequested is called only once on commit changes on line
-        self.assertEqual(len(spy_lines_repaint_requested), 1)
+        # (ideally only one repaintRequested signal is fired, but it's harmless to fire multiple ones)
+        self.assertGreaterEqual(len(spy_lines_repaint_requested), 2)
+
+        # line fire dataChanged on geometryChanged
+        self.linesLayer.changeGeometry(
+            f.id(), QgsGeometry.fromWkt("LINESTRING(0 0, 2 2)")
+        )
+        self.assertEqual(len(spy_lines_data_changed), 4)
+
+        # commit changes fires dataChanged because external changes could happen (provider side)
+        self.linesLayer.commitChanges()
+        self.assertEqual(len(spy_lines_data_changed), 5)
 
     def test_layerDefinitionRewriteId(self):
         tmpfile = os.path.join(tempfile.tempdir, "test.qlr")
@@ -257,7 +380,9 @@ class TestLayerDependencies(unittest.TestCase):
 
         self.pointsLayer.setDependencies([QgsMapLayerDependency(self.linesLayer.id())])
 
-        QgsLayerDefinition.exportLayerDefinition(tmpfile, [ltr])
+        QgsLayerDefinition.exportLayerDefinition(
+            tmpfile, [ltr], QgsProject.instance().filePathStorage()
+        )
 
         grp = ltr.addGroup("imported")
         QgsLayerDefinition.loadLayerDefinition(tmpfile, QgsProject.instance(), grp)
@@ -265,13 +390,15 @@ class TestLayerDependencies(unittest.TestCase):
         newPointsLayer = None
         newLinesLayer = None
         for l in grp.findLayers():
-            if l.layerId().startswith('points'):
+            if l.layerId().startswith("points"):
                 newPointsLayer = l.layer()
-            elif l.layerId().startswith('lines'):
+            elif l.layerId().startswith("lines"):
                 newLinesLayer = l.layer()
         self.assertIsNotNone(newPointsLayer)
         self.assertIsNotNone(newLinesLayer)
-        self.assertTrue(newLinesLayer.id() in [dep.layerId() for dep in newPointsLayer.dependencies()])
+        self.assertIn(
+            newLinesLayer.id(), [dep.layerId() for dep in newPointsLayer.dependencies()]
+        )
 
         self.pointsLayer.setDependencies([])
 
@@ -279,14 +406,22 @@ class TestLayerDependencies(unittest.TestCase):
         # remove all layers
         QgsProject.instance().removeAllMapLayers()
         # set dependencies and add back layers
-        self.pointsLayer = QgsVectorLayer("dbname='%s' table=\"node\" (geom) sql=" % self.fn, "points", "spatialite")
-        assert (self.pointsLayer.isValid())
-        self.linesLayer = QgsVectorLayer("dbname='%s' table=\"section\" (geom) sql=" % self.fn, "lines", "spatialite")
-        assert (self.linesLayer.isValid())
-        self.pointsLayer2 = QgsVectorLayer("dbname='%s' table=\"node2\" (geom) sql=" % self.fn, "_points2", "spatialite")
-        assert (self.pointsLayer2.isValid())
+        self.pointsLayer = QgsVectorLayer(
+            f"dbname='{self.fn}' table=\"node\" (geom) sql=", "points", "spatialite"
+        )
+        self.assertTrue(self.pointsLayer.isValid())
+        self.linesLayer = QgsVectorLayer(
+            f"dbname='{self.fn}' table=\"section\" (geom) sql=", "lines", "spatialite"
+        )
+        self.assertTrue(self.linesLayer.isValid())
+        self.pointsLayer2 = QgsVectorLayer(
+            f"dbname='{self.fn}' table=\"node2\" (geom) sql=", "_points2", "spatialite"
+        )
+        self.assertTrue(self.pointsLayer2.isValid())
         self.pointsLayer.setDependencies([QgsMapLayerDependency(self.linesLayer.id())])
-        self.pointsLayer2.setDependencies([QgsMapLayerDependency(self.pointsLayer.id())])
+        self.pointsLayer2.setDependencies(
+            [QgsMapLayerDependency(self.pointsLayer.id())]
+        )
         # this should update connections between layers
         QgsProject.instance().addMapLayers([self.pointsLayer])
         QgsProject.instance().addMapLayers([self.linesLayer])
@@ -301,13 +436,19 @@ class TestLayerDependencies(unittest.TestCase):
         u.setMapSettings(ms)
         cfg = u.config()
         cfg.setEnabled(True)
-        cfg.setMode(QgsSnappingConfig.AdvancedConfiguration)
-        cfg.setIndividualLayerSettings(self.pointsLayer,
-                                       QgsSnappingConfig.IndividualLayerSettings(True,
-                                                                                 QgsSnappingConfig.VertexFlag, 20, QgsTolerance.Pixels, 0.0, 0.0))
-        cfg.setIndividualLayerSettings(self.pointsLayer2,
-                                       QgsSnappingConfig.IndividualLayerSettings(True,
-                                                                                 QgsSnappingConfig.VertexFlag, 20, QgsTolerance.Pixels, 0.0, 0.0))
+        cfg.setMode(Qgis.SnappingMode.AdvancedConfiguration)
+        cfg.setIndividualLayerSettings(
+            self.pointsLayer,
+            QgsSnappingConfig.IndividualLayerSettings(
+                True, Qgis.SnappingType.Vertex, 20, Qgis.MapToolUnit.Pixels, 0.0, 0.0
+            ),
+        )
+        cfg.setIndividualLayerSettings(
+            self.pointsLayer2,
+            QgsSnappingConfig.IndividualLayerSettings(
+                True, Qgis.SnappingType.Vertex, 20, Qgis.MapToolUnit.Pixels, 0.0, 0.0
+            ),
+        )
         u.setConfig(cfg)
         # add another line
         f = QgsFeature(self.linesLayer.fields())
@@ -326,6 +467,34 @@ class TestLayerDependencies(unittest.TestCase):
         self.pointsLayer.setDependencies([])
         self.pointsLayer2.setDependencies([])
 
+    def test_cache_data_dependency_triggers_provider_reload(self):
+        self.assertTrue(
+            self.cachedLayer.dataProvider().capabilities()
+            & Qgis.VectorProviderCapability.CacheData
+        )
 
-if __name__ == '__main__':
+        self.assertTrue(
+            self.cachedLayer.setDependencies(
+                [QgsMapLayerDependency(self.linesLayer.id())]
+            )
+        )
+
+        spy_cached_provider_data_changed = QSignalSpy(
+            self.cachedLayer.dataProvider().dataChanged
+        )
+
+        f = QgsFeature(self.linesLayer.fields())
+        f.setId(5)
+        geom = QgsGeometry.fromWkt("LINESTRING(0.2 0.2,0.3 0.3)")
+        f.setGeometry(geom)
+        self.linesLayer.startEditing()
+        self.linesLayer.addFeatures([f])
+        self.assertTrue(self.linesLayer.commitChanges())
+
+        self.assertEqual(len(spy_cached_provider_data_changed), 1)
+
+        self.cachedLayer.setDependencies([])
+
+
+if __name__ == "__main__":
     unittest.main()

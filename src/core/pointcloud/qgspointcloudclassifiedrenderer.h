@@ -18,11 +18,13 @@
 #ifndef QGSPOINTCLOUDCLASSIFIEDRENDERER_H
 #define QGSPOINTCLOUDCLASSIFIEDRENDERER_H
 
-#include "qgspointcloudrenderer.h"
 #include "qgis_core.h"
 #include "qgis_sip.h"
-#include "qgscolorrampshader.h"
+#include "qgspointcloudrenderer.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 /**
  * \ingroup core
@@ -32,10 +34,6 @@
 class CORE_EXPORT QgsPointCloudCategory
 {
   public:
-
-    /**
-     * Constructor for QgsPointCloudCategory.
-     */
     QgsPointCloudCategory() = default;
 
     /**
@@ -44,8 +42,16 @@ class CORE_EXPORT QgsPointCloudCategory
     * The \a label argument specifies the label used for this category in legends and the layer tree.
     *
     * The \a render argument indicates whether the category should initially be rendered and appear checked in the layer tree.
+    *
+    * A positive \a pointSize argument overrides the layer's point size setting for this category (added in QGIS 3.36).
     */
-    QgsPointCloudCategory( int value, const QColor &color, const QString &label, bool render = true );
+    QgsPointCloudCategory( int value, const QColor &color, const QString &label, bool render = true, double pointSize = 0 );
+
+    /**
+     * Equality operator.
+     * \since QGIS 3.26
+     */
+    bool operator==( const QgsPointCloudCategory &other ) const;
 
     /**
      * Returns the value corresponding to this category.
@@ -59,6 +65,13 @@ class CORE_EXPORT QgsPointCloudCategory
      * \see setColor()
      */
     QColor color() const { return mColor; }
+
+    /**
+     * Returns the point size for this category.
+     * \see setPointSize()
+     * \since QGIS 3.36
+     */
+    double pointSize() const { return mPointSize; }
 
     /**
      * Returns the label for this category, which is used to represent the category within
@@ -82,6 +95,14 @@ class CORE_EXPORT QgsPointCloudCategory
     void setColor( const QColor &color ) { mColor = color; }
 
     /**
+     * Sets the point size for this category.
+     *
+     * \see pointSize()
+     * \since QGIS 3.36
+     */
+    void setPointSize( double size ) { mPointSize = size; }
+
+    /**
      * Sets the \a label for this category, which is used to represent the category within
      * legends and the layer tree.
      * \see label()
@@ -103,27 +124,50 @@ class CORE_EXPORT QgsPointCloudCategory
   protected:
     int mValue = 0;
     QColor mColor;
+    double mPointSize = 0; // Values <= 0 means "use default layer point size"
     QString mLabel;
     bool mRender = true;
 };
 
 typedef QList<QgsPointCloudCategory> QgsPointCloudCategoryList;
 
+#ifndef SIP_RUN
 
 /**
  * \ingroup core
- * Renders point clouds by a classification attribute.
+ * \brief Prepared data container for QgsPointCloudClassifiedRenderer.
+ *
+ * \note Not available in Python bindings.
+ *
+ * \since QGIS 3.26
+ */
+class CORE_EXPORT QgsPointCloudClassifiedRendererPreparedData : public QgsPreparedPointCloudRendererData
+{
+  public:
+    QSet< QString > usedAttributes() const override;
+    bool prepareBlock( const QgsPointCloudBlock *block ) override;
+    QColor pointColor( const QgsPointCloudBlock *block, int i, double z ) override SIP_SKIP;
+
+    QgsPointCloudAttribute::DataType attributeType;
+    QHash< int, QColor > colors;
+    QString attributeName;
+    int attributeOffset = 0;
+};
+#endif
+
+/**
+ * \ingroup core
+ * \brief Renders point clouds by a classification attribute.
  *
  * \since QGIS 3.18
  */
 class CORE_EXPORT QgsPointCloudClassifiedRenderer : public QgsPointCloudRenderer
 {
   public:
-
     /**
      * Constructor for QgsPointCloudClassifiedRenderer.
      */
-    QgsPointCloudClassifiedRenderer();
+    QgsPointCloudClassifiedRenderer( const QString &attributeName = QString(), const QgsPointCloudCategoryList &categories = QgsPointCloudCategoryList() );
 
     QString type() const override;
     QgsPointCloudRenderer *clone() const override;
@@ -135,11 +179,12 @@ class CORE_EXPORT QgsPointCloudClassifiedRenderer : public QgsPointCloudRenderer
     QStringList legendRuleKeys() const override;
     bool legendItemChecked( const QString &key ) override;
     void checkLegendItem( const QString &key, bool state = true ) override;
+    std::unique_ptr< QgsPreparedPointCloudRendererData > prepare() override SIP_SKIP;
 
     /**
      * Creates an RGB renderer from an XML \a element.
      */
-    static QgsPointCloudRenderer *create( QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static std::unique_ptr<QgsPointCloudRenderer> create( QDomElement &element, const QgsReadWriteContext &context );
 
     /**
      * Returns the default list of categories.
@@ -182,8 +227,7 @@ class CORE_EXPORT QgsPointCloudClassifiedRenderer : public QgsPointCloudRenderer
     void addCategory( const QgsPointCloudCategory &category );
 
   private:
-
-    QString mAttribute = QStringLiteral( "Classification" );
+    QString mAttribute = u"Classification"_s;
 
     QgsPointCloudCategoryList mCategories;
 };

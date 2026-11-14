@@ -16,9 +16,17 @@
  ***************************************************************************/
 
 #include "qgsmaplayerstore.h"
-#include "qgsmaplayer.h"
+
 #include "qgslogger.h"
+#include "qgsmaplayer.h"
+#include "qgsthreadingutils.h"
+
 #include <QList>
+#include <QString>
+
+#include "moc_qgsmaplayerstore.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsMapLayerStore::QgsMapLayerStore( QObject *parent )
   : QObject( parent )
@@ -31,11 +39,15 @@ QgsMapLayerStore::~QgsMapLayerStore()
 
 int QgsMapLayerStore::count() const
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   return mMapLayers.size();
 }
 
 int QgsMapLayerStore::validCount() const
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   int i = 0;
   const QList<QgsMapLayer *> cLayers = mMapLayers.values();
   for ( const auto l : cLayers )
@@ -48,11 +60,16 @@ int QgsMapLayerStore::validCount() const
 
 QgsMapLayer *QgsMapLayerStore::mapLayer( const QString &layerId ) const
 {
+  // because QgsVirtualLayerProvider is not anywhere NEAR thread safe:
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS_NON_FATAL
+
   return mMapLayers.value( layerId );
 }
 
 QList<QgsMapLayer *> QgsMapLayerStore::mapLayersByName( const QString &layerName ) const
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   QList<QgsMapLayer *> myResultList;
   const auto constMMapLayers = mMapLayers;
   for ( QgsMapLayer *layer : constMMapLayers )
@@ -67,17 +84,22 @@ QList<QgsMapLayer *> QgsMapLayerStore::mapLayersByName( const QString &layerName
 
 QList<QgsMapLayer *> QgsMapLayerStore::addMapLayers( const QList<QgsMapLayer *> &layers, bool takeOwnership )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   QList<QgsMapLayer *> myResultList;
   const auto constLayers = layers;
   for ( QgsMapLayer *myLayer : constLayers )
   {
     if ( !myLayer )
     {
-      QgsDebugMsg( QStringLiteral( "Cannot add null layers" ) );
+      QgsDebugError( u"Cannot add null layers"_s );
       continue;
     }
+
+    QGIS_CHECK_QOBJECT_THREAD_EQUALITY( myLayer );
+
     // If the layer is already in the store but its validity has flipped to TRUE reset data source
-    if ( mMapLayers.contains( myLayer->id() ) && ! mMapLayers[myLayer->id()]->isValid() && myLayer->isValid() && myLayer->dataProvider() )
+    if ( mMapLayers.contains( myLayer->id() ) && !mMapLayers[myLayer->id()]->isValid() && myLayer->isValid() && myLayer->dataProvider() )
     {
       mMapLayers[myLayer->id()]->setDataSource( myLayer->dataProvider()->dataSourceUri(), myLayer->name(), myLayer->providerType(), QgsDataProvider::ProviderOptions() );
     }
@@ -101,9 +123,10 @@ QList<QgsMapLayer *> QgsMapLayerStore::addMapLayers( const QList<QgsMapLayer *> 
   return myResultList;
 }
 
-QgsMapLayer *
-QgsMapLayerStore::addMapLayer( QgsMapLayer *layer, bool takeOwnership )
+QgsMapLayer *QgsMapLayerStore::addMapLayer( QgsMapLayer *layer, bool takeOwnership )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   QList<QgsMapLayer *> addedLayers;
   addedLayers = addMapLayers( QList<QgsMapLayer *>() << layer, takeOwnership );
   return addedLayers.isEmpty() ? nullptr : addedLayers[0];
@@ -111,6 +134,8 @@ QgsMapLayerStore::addMapLayer( QgsMapLayer *layer, bool takeOwnership )
 
 void QgsMapLayerStore::removeMapLayers( const QStringList &layerIds )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   QList<QgsMapLayer *> layers;
   const auto constLayerIds = layerIds;
   for ( const QString &myId : constLayerIds )
@@ -123,6 +148,8 @@ void QgsMapLayerStore::removeMapLayers( const QStringList &layerIds )
 
 void QgsMapLayerStore::removeMapLayers( const QList<QgsMapLayer *> &layers )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   if ( layers.isEmpty() )
     return;
 
@@ -149,7 +176,7 @@ void QgsMapLayerStore::removeMapLayers( const QList<QgsMapLayer *> &layers )
   const auto constLayerList = layerList;
   for ( QgsMapLayer *lyr : constLayerList )
   {
-    QString myId( lyr->id() );
+    const QString myId( lyr->id() );
     emit layerWillBeRemoved( myId );
     emit layerWillBeRemoved( lyr );
     mMapLayers.remove( myId );
@@ -165,17 +192,23 @@ void QgsMapLayerStore::removeMapLayers( const QList<QgsMapLayer *> &layers )
 
 void QgsMapLayerStore::removeMapLayer( const QString &layerId )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   removeMapLayers( QList<QgsMapLayer *>() << mMapLayers.value( layerId ) );
 }
 
 void QgsMapLayerStore::removeMapLayer( QgsMapLayer *layer )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   if ( layer )
     removeMapLayers( QList<QgsMapLayer *>() << layer );
 }
 
 QgsMapLayer *QgsMapLayerStore::takeMapLayer( QgsMapLayer *layer )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   if ( !layer )
     return nullptr;
 
@@ -197,6 +230,8 @@ QgsMapLayer *QgsMapLayerStore::takeMapLayer( QgsMapLayer *layer )
 
 void QgsMapLayerStore::removeAllMapLayers()
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   emit allLayersRemoved();
   // now let all observers know to clear themselves,
   // and then consequently any of their map legends
@@ -206,12 +241,14 @@ void QgsMapLayerStore::removeAllMapLayers()
 
 void QgsMapLayerStore::transferLayersFromStore( QgsMapLayerStore *other )
 {
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
   if ( !other || other == this )
     return;
 
   Q_ASSERT_X( other->thread() == thread(), "QgsMapLayerStore::transferLayersFromStore", "Cannot transfer layers from store with different thread affinity" );
 
-  QMap<QString, QgsMapLayer *> otherLayers = other->mapLayers();
+  const QMap<QString, QgsMapLayer *> otherLayers = other->mapLayers();
   QMap<QString, QgsMapLayer *>::const_iterator it = otherLayers.constBegin();
   for ( ; it != otherLayers.constEnd(); ++it )
   {
@@ -223,27 +260,35 @@ void QgsMapLayerStore::transferLayersFromStore( QgsMapLayerStore *other )
 
 void QgsMapLayerStore::onMapLayerDeleted( QObject *obj )
 {
-  QString id = mMapLayers.key( static_cast<QgsMapLayer *>( obj ) );
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS
+
+  const QString id = mMapLayers.key( static_cast<QgsMapLayer *>( obj ) );
 
   if ( !id.isNull() )
   {
-    QgsDebugMsg( QStringLiteral( "Map layer deleted without unregistering! %1" ).arg( id ) );
+    QgsDebugError( u"Map layer deleted without unregistering! %1"_s.arg( id ) );
     mMapLayers.remove( id );
   }
 }
 
 QMap<QString, QgsMapLayer *> QgsMapLayerStore::mapLayers() const
 {
+  // because QgsVirtualLayerProvider is not anywhere NEAR thread safe:
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS_NON_FATAL
+
   return mMapLayers;
 }
 
 QMap<QString, QgsMapLayer *> QgsMapLayerStore::validMapLayers() const
 {
+  // because QgsVirtualLayerProvider is not anywhere NEAR thread safe:
+  QGIS_PROTECT_QOBJECT_THREAD_ACCESS_NON_FATAL
+
   QMap<QString, QgsMapLayer *> validLayers;
-  for ( const auto &id : mMapLayers.keys() )
+  for ( auto it = mMapLayers.constBegin(); it != mMapLayers.constEnd(); it++ )
   {
-    if ( mMapLayers[id]->isValid() )
-      validLayers[id] = mMapLayers[id];
+    if ( it.value()->isValid() )
+      validLayers[it.key()] = it.value();
   }
   return validLayers;
 }

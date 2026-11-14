@@ -19,8 +19,8 @@
 #include "qgis_3d.h"
 
 /**
- * \ingroup 3d
- * Defines enumerations and other auxiliary types for QGIS 3D
+ * \ingroup qgis_3d
+ * \brief Defines enumerations and other auxiliary types for QGIS 3D.
  *
  * \warning This is not considered stable API, and may change in future QGIS releases. It is
  * exposed to the Python bindings as a tech preview only.
@@ -30,28 +30,23 @@
 class _3D_EXPORT Qgs3DTypes
 {
   public:
-    //! how to handle altitude of vector features
-    enum AltitudeClamping
-    {
-      AltClampAbsolute,   //!< Z_final = z_geometry
-      AltClampRelative,   //!< Z_final = z_terrain + z_geometry
-      AltClampTerrain,    //!< Z_final = z_terrain
-    };
-
-    //! how to handle clamping of vertices of individual features
-    enum AltitudeBinding
-    {
-      AltBindVertex,      //!< Clamp every vertex of feature
-      AltBindCentroid,    //!< Clamp just centroid of feature
-    };
-
     //! Triangle culling mode
     enum CullingMode
     {
-      NoCulling,     //!< Will render both front and back faces of triangles
-      Front,         //!< Will render only back faces of triangles
-      Back,          //!< Will render only front faces of triangles (recommended when input data are consistent)
-      FrontAndBack   //!< Will not render anything
+      NoCulling,   //!< Will render both front and back faces of triangles
+      Front,       //!< Will render only back faces of triangles
+      Back,        //!< Will render only front faces of triangles (recommended when input data are consistent)
+      FrontAndBack //!< Will not render anything
+    };
+
+    //! Qt property name to hold the 3D geometry renderer flag
+    static const char *PROP_NAME_3D_RENDERER_FLAG;
+
+    //! 3D geometry renderer flag
+    enum Flag3DRenderer
+    {
+      Main3DRenderer = 0, //!< Renderer for normal entities
+      Selected3DRenderer, //!< Renderer for selected entities
     };
 };
 

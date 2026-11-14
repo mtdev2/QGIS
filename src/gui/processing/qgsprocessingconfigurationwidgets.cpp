@@ -17,18 +17,24 @@
 
 
 #include "qgsprocessingconfigurationwidgets.h"
-#include "qgsprocessingalgorithm.h"
-#include "qgsexpressionlineedit.h"
+
 #include "qgsapplication.h"
+#include "qgsexpressionlineedit.h"
 #include "qgsgui.h"
+#include "qgsprocessingalgorithm.h"
 #include "qgsprocessingguiregistry.h"
 
-#include <QTableWidget>
-#include <QGridLayout>
-#include <QToolButton>
-#include <QLabel>
 #include <QCheckBox>
+#include <QGridLayout>
 #include <QHeaderView>
+#include <QLabel>
+#include <QString>
+#include <QTableWidget>
+#include <QToolButton>
+
+#include "moc_qgsprocessingconfigurationwidgets.cpp"
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 
@@ -49,11 +55,11 @@ QgsFilterAlgorithmConfigurationWidget::QgsFilterAlgorithmConfigurationWidget( QW
   layout->addWidget( new QLabel( tr( "Outputs and filters" ) ), 0, 0, 1, 2 );
   layout->addWidget( mOutputExpressionWidget, 1, 0, 4, 1 );
   QToolButton *addOutputButton = new QToolButton();
-  addOutputButton->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionAddLayer.svg" ) ) );
+  addOutputButton->setIcon( QgsApplication::getThemeIcon( u"/mActionAddLayer.svg"_s ) );
   addOutputButton->setText( tr( "Add Output" ) );
 
   QToolButton *removeOutputButton = new QToolButton();
-  removeOutputButton->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionRemoveLayer.svg" ) ) );
+  removeOutputButton->setIcon( QgsApplication::getThemeIcon( u"/mActionRemoveLayer.svg"_s ) );
   removeOutputButton->setToolTip( tr( "Remove Selected Outputs" ) );
 
   layout->addWidget( addOutputButton, 2, 1, 1, 1 );
@@ -62,8 +68,7 @@ QgsFilterAlgorithmConfigurationWidget::QgsFilterAlgorithmConfigurationWidget( QW
   connect( addOutputButton, &QToolButton::clicked, this, &QgsFilterAlgorithmConfigurationWidget::addOutput );
   connect( removeOutputButton, &QToolButton::clicked, this, &QgsFilterAlgorithmConfigurationWidget::removeSelectedOutputs );
 
-  connect( mOutputExpressionWidget->selectionModel(), &QItemSelectionModel::selectionChanged, this, [removeOutputButton, this]
-  {
+  connect( mOutputExpressionWidget->selectionModel(), &QItemSelectionModel::selectionChanged, this, [removeOutputButton, this] {
     removeOutputButton->setEnabled( !mOutputExpressionWidget->selectionModel()->selectedIndexes().isEmpty() );
   } );
 }
@@ -75,9 +80,9 @@ QVariantMap QgsFilterAlgorithmConfigurationWidget::configuration() const
   for ( int i = 0; i < mOutputExpressionWidget->rowCount(); ++i )
   {
     QVariantMap output;
-    output.insert( QStringLiteral( "name" ), mOutputExpressionWidget->item( i, 0 )->text() );
-    output.insert( QStringLiteral( "expression" ), qobject_cast<QgsExpressionLineEdit *>( mOutputExpressionWidget->cellWidget( i, 1 ) )->expression() );
-    output.insert( QStringLiteral( "isModelOutput" ), qobject_cast<QCheckBox *>( mOutputExpressionWidget->cellWidget( i, 2 ) )->isChecked() );
+    output.insert( u"name"_s, mOutputExpressionWidget->item( i, 0 )->text() );
+    output.insert( u"expression"_s, qobject_cast<QgsExpressionLineEdit *>( mOutputExpressionWidget->cellWidget( i, 1 ) )->expression() );
+    output.insert( u"isModelOutput"_s, qobject_cast<QCheckBox *>( mOutputExpressionWidget->cellWidget( i, 2 ) )->isChecked() );
     outputs.append( output );
   }
 
@@ -116,7 +121,7 @@ void QgsFilterAlgorithmConfigurationWidget::setConfiguration( const QVariantMap 
 
 void QgsFilterAlgorithmConfigurationWidget::removeSelectedOutputs()
 {
-  QItemSelection selection( mOutputExpressionWidget->selectionModel()->selection() );
+  const QItemSelection selection( mOutputExpressionWidget->selectionModel()->selection() );
 
   QList<int> rows;
   const QModelIndexList indexes = selection.indexes();
@@ -130,7 +135,7 @@ void QgsFilterAlgorithmConfigurationWidget::removeSelectedOutputs()
   int prev = -1;
   for ( int i = rows.count() - 1; i >= 0; i -= 1 )
   {
-    int current = rows[i];
+    const int current = rows[i];
     if ( current != prev )
     {
       mOutputExpressionWidget->removeRow( current );
@@ -141,7 +146,7 @@ void QgsFilterAlgorithmConfigurationWidget::removeSelectedOutputs()
 
 void QgsFilterAlgorithmConfigurationWidget::addOutput()
 {
-  int rowIndex = mOutputExpressionWidget->rowCount();
+  const int rowIndex = mOutputExpressionWidget->rowCount();
   mOutputExpressionWidget->setRowCount( rowIndex + 1 );
   QgsExpressionLineEdit *expressionBuilder = new QgsExpressionLineEdit();
   expressionBuilder->registerExpressionContextGenerator( this );
@@ -152,7 +157,7 @@ void QgsFilterAlgorithmConfigurationWidget::addOutput()
 
 QgsProcessingAlgorithmConfigurationWidget *QgsFilterAlgorithmConfigurationWidgetFactory::create( const QgsProcessingAlgorithm *algorithm ) const
 {
-  if ( algorithm->name() == QLatin1String( "filter" ) )
+  if ( algorithm->name() == "filter"_L1 )
     return new QgsFilterAlgorithmConfigurationWidget();
   else
     return nullptr;
@@ -160,7 +165,7 @@ QgsProcessingAlgorithmConfigurationWidget *QgsFilterAlgorithmConfigurationWidget
 
 bool QgsFilterAlgorithmConfigurationWidgetFactory::canCreateFor( const QgsProcessingAlgorithm *algorithm ) const
 {
-  return algorithm->name() == QLatin1String( "filter" );
+  return algorithm->name() == "filter"_L1;
 }
 
 
@@ -184,11 +189,11 @@ QgsConditionalBranchAlgorithmConfigurationWidget::QgsConditionalBranchAlgorithmC
   layout->addWidget( new QLabel( tr( "Conditions" ) ), 0, 0, 1, 2 );
   layout->addWidget( mConditionExpressionWidget, 1, 0, 4, 1 );
   QToolButton *addConditionButton = new QToolButton();
-  addConditionButton->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionAddLayer.svg" ) ) );
+  addConditionButton->setIcon( QgsApplication::getThemeIcon( u"/mActionAddLayer.svg"_s ) );
   addConditionButton->setText( tr( "Add Condition" ) );
 
   QToolButton *removeConditionButton = new QToolButton();
-  removeConditionButton->setIcon( QgsApplication::getThemeIcon( QStringLiteral( "/mActionRemoveLayer.svg" ) ) );
+  removeConditionButton->setIcon( QgsApplication::getThemeIcon( u"/mActionRemoveLayer.svg"_s ) );
   removeConditionButton->setToolTip( tr( "Remove Selected Conditions" ) );
 
   layout->addWidget( addConditionButton, 2, 1, 1, 1 );
@@ -197,8 +202,7 @@ QgsConditionalBranchAlgorithmConfigurationWidget::QgsConditionalBranchAlgorithmC
   connect( addConditionButton, &QToolButton::clicked, this, &QgsConditionalBranchAlgorithmConfigurationWidget::addCondition );
   connect( removeConditionButton, &QToolButton::clicked, this, &QgsConditionalBranchAlgorithmConfigurationWidget::removeSelectedConditions );
 
-  connect( mConditionExpressionWidget->selectionModel(), &QItemSelectionModel::selectionChanged, this, [removeConditionButton, this]
-  {
+  connect( mConditionExpressionWidget->selectionModel(), &QItemSelectionModel::selectionChanged, this, [removeConditionButton, this] {
     removeConditionButton->setEnabled( !mConditionExpressionWidget->selectionModel()->selectedIndexes().isEmpty() );
   } );
 }
@@ -210,8 +214,8 @@ QVariantMap QgsConditionalBranchAlgorithmConfigurationWidget::configuration() co
   for ( int i = 0; i < mConditionExpressionWidget->rowCount(); ++i )
   {
     QVariantMap output;
-    output.insert( QStringLiteral( "name" ), mConditionExpressionWidget->item( i, 0 )->text() );
-    output.insert( QStringLiteral( "expression" ), qobject_cast<QgsExpressionLineEdit *>( mConditionExpressionWidget->cellWidget( i, 1 ) )->expression() );
+    output.insert( u"name"_s, mConditionExpressionWidget->item( i, 0 )->text() );
+    output.insert( u"expression"_s, qobject_cast<QgsExpressionLineEdit *>( mConditionExpressionWidget->cellWidget( i, 1 ) )->expression() );
     outputs.append( output );
   }
 
@@ -240,13 +244,13 @@ void QgsConditionalBranchAlgorithmConfigurationWidget::setConfiguration( const Q
     currentRow++;
   }
 
-  if ( conditions .isEmpty() )
+  if ( conditions.isEmpty() )
     addCondition();
 }
 
 void QgsConditionalBranchAlgorithmConfigurationWidget::removeSelectedConditions()
 {
-  QItemSelection selection( mConditionExpressionWidget->selectionModel()->selection() );
+  const QItemSelection selection( mConditionExpressionWidget->selectionModel()->selection() );
 
   QList<int> rows;
   const QModelIndexList indexes = selection.indexes();
@@ -260,7 +264,7 @@ void QgsConditionalBranchAlgorithmConfigurationWidget::removeSelectedConditions(
   int prev = -1;
   for ( int i = rows.count() - 1; i >= 0; i -= 1 )
   {
-    int current = rows[i];
+    const int current = rows[i];
     if ( current != prev )
     {
       mConditionExpressionWidget->removeRow( current );
@@ -271,7 +275,7 @@ void QgsConditionalBranchAlgorithmConfigurationWidget::removeSelectedConditions(
 
 void QgsConditionalBranchAlgorithmConfigurationWidget::addCondition()
 {
-  int rowIndex = mConditionExpressionWidget->rowCount();
+  const int rowIndex = mConditionExpressionWidget->rowCount();
   mConditionExpressionWidget->setRowCount( rowIndex + 1 );
   QgsExpressionLineEdit *expressionBuilder = new QgsExpressionLineEdit();
   expressionBuilder->registerExpressionContextGenerator( this );
@@ -281,7 +285,7 @@ void QgsConditionalBranchAlgorithmConfigurationWidget::addCondition()
 
 QgsConditionalBranchAlgorithmConfigurationWidget *QgsConditionalBranchAlgorithmConfigurationWidgetFactory::create( const QgsProcessingAlgorithm *algorithm ) const
 {
-  if ( algorithm->name() == QLatin1String( "condition" ) )
+  if ( algorithm->name() == "condition"_L1 )
     return new QgsConditionalBranchAlgorithmConfigurationWidget();
   else
     return nullptr;
@@ -289,7 +293,7 @@ QgsConditionalBranchAlgorithmConfigurationWidget *QgsConditionalBranchAlgorithmC
 
 bool QgsConditionalBranchAlgorithmConfigurationWidgetFactory::canCreateFor( const QgsProcessingAlgorithm *algorithm ) const
 {
-  return algorithm->name() == QLatin1String( "condition" );
+  return algorithm->name() == "condition"_L1;
 }
 
 

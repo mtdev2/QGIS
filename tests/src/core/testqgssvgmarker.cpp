@@ -13,13 +13,16 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgstest.h"
+
+#include <QApplication>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QApplication>
-#include <QFileInfo>
-#include <QDir>
-#include <QDesktopServices>
+
+using namespace Qt::StringLiterals;
 
 //qgis includes...
 #include <qgsmaplayer.h>
@@ -32,30 +35,31 @@
 #include <qgssinglesymbolrenderer.h>
 #include "qgsmarkersymbollayer.h"
 #include "qgsproperty.h"
+#include "qgsrendercontext.h"
 #include "qgssymbollayerutils.h"
-
-//qgis test includes
-#include "qgsrenderchecker.h"
+#include "qgsmarkersymbol.h"
+#include "qgsfontutils.h"
 
 /**
  * \ingroup UnitTests
  * This is a unit test for SVG marker symbol types.
  */
-class TestQgsSvgMarkerSymbol : public QObject
+class TestQgsSvgMarkerSymbol : public QgsTest
 {
     Q_OBJECT
 
   public:
-    TestQgsSvgMarkerSymbol() = default;
+    TestQgsSvgMarkerSymbol()
+      : QgsTest( u"SVG Marker Tests"_s, u"symbol_svgmarker"_s )
+    {}
 
   private slots:
-    void initTestCase();// will be called before the first testfunction is executed.
-    void cleanupTestCase();// will be called after the last testfunction was executed.
-    void init() {} // will be called before each testfunction is executed.
-    void cleanup() {} // will be called after every testfunction.
+    void initTestCase();    // will be called before the first testfunction is executed.
+    void cleanupTestCase(); // will be called after the last testfunction was executed.
 
     void svgMarkerSymbol();
     void bounds();
+    void boundsAnchorPoint();
     void boundsWidth();
     void bench();
     void anchor();
@@ -69,16 +73,14 @@ class TestQgsSvgMarkerSymbol : public QObject
     void dynamicParameters();
 
   private:
-    bool mTestHasError =  false ;
+    bool mTestHasError = false;
 
-    bool imageCheck( const QString &type );
     QgsMapSettings mMapSettings;
     QgsVectorLayer *mpPointsLayer = nullptr;
     QgsSvgMarkerSymbolLayer *mSvgMarkerLayer = nullptr;
     QgsMarkerSymbol *mMarkerSymbol = nullptr;
     QgsSingleSymbolRenderer *mSymbolRenderer = nullptr;
     QString mTestDataDir;
-    QString mReport;
 };
 
 
@@ -90,23 +92,23 @@ void TestQgsSvgMarkerSymbol::initTestCase()
   QgsApplication::initQgis();
   QgsApplication::showSettings();
 
+  QgsFontUtils::loadStandardTestFonts( { u"Roman"_s, u"Bold"_s } );
+
   //create some objects that will be used in all tests...
-  QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
+  const QString myDataDir( TEST_DATA_DIR ); //defined in CmakeLists.txt
   mTestDataDir = myDataDir + '/';
 
   //
   //create a poly layer that will be used in all tests...
   //
-  QString pointFileName = mTestDataDir + "points.shp";
-  QFileInfo pointFileInfo( pointFileName );
-  mpPointsLayer = new QgsVectorLayer( pointFileInfo.filePath(),
-                                      pointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+  const QString pointFileName = mTestDataDir + "points.shp";
+  const QFileInfo pointFileInfo( pointFileName );
+  mpPointsLayer = new QgsVectorLayer( pointFileInfo.filePath(), pointFileInfo.completeBaseName(), u"ogr"_s );
 
   // Register the layer with the registry
-  QgsProject::instance()->addMapLayers(
-    QList<QgsMapLayer *>() << mpPointsLayer );
+  QgsProject::instance()->addMapLayers( QList<QgsMapLayer *>() << mpPointsLayer );
 
-  QString defaultSvgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/crosses/Star1.svg" ), QgsPathResolver() );
+  const QString defaultSvgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/crosses/Star1.svg"_s, QgsPathResolver() );
 
   //setup symbol
   mSvgMarkerLayer = new QgsSvgMarkerSymbolLayer( defaultSvgPath );
@@ -120,35 +122,25 @@ void TestQgsSvgMarkerSymbol::initTestCase()
   // and is more light weight
   //
   mMapSettings.setLayers( QList<QgsMapLayer *>() << mpPointsLayer );
-  mReport += QLatin1String( "<h1>SVG Marker Tests</h1>\n" );
-
+  mMapSettings.setExtent( mpPointsLayer->extent() );
+  mMapSettings.setOutputDpi( 96 );
 }
+
 void TestQgsSvgMarkerSymbol::cleanupTestCase()
 {
-  QString myReportFile = QDir::tempPath() + "/qgistest.html";
-  QFile myFile( myReportFile );
-  if ( myFile.open( QIODevice::WriteOnly | QIODevice::Append ) )
-  {
-    QTextStream myQTextStream( &myFile );
-    myQTextStream << mReport;
-    myFile.close();
-  }
-
   QgsApplication::exitQgis();
 }
 
 void TestQgsSvgMarkerSymbol::svgMarkerSymbol()
 {
-  mReport += QLatin1String( "<h2>SVG marker symbol layer test</h2>\n" );
-
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/transport/transport_airport.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/transport/transport_airport.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::blue );
   mSvgMarkerLayer->setSize( 10 );
   mSvgMarkerLayer->setStrokeWidth( 0.5 );
-  QVERIFY( imageCheck( "svgmarker" ) );
+  QGSVERIFYRENDERMAPSETTINGSCHECK( "svgmarker", "svgmarker", mMapSettings );
 }
 
 void TestQgsSvgMarkerSymbol::bounds()
@@ -158,13 +150,75 @@ void TestQgsSvgMarkerSymbol::bounds()
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::blue );
   mSvgMarkerLayer->setStrokeWidth( 0.5 );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertySize, QgsProperty::fromExpression( QStringLiteral( "min(\"importance\" * 2, 6)" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Size, QgsProperty::fromExpression( u"min(\"importance\" * 2, 6)"_s ) );
 
-  mMapSettings.setFlag( QgsMapSettings::DrawSymbolBounds, true );
-  bool result = imageCheck( QStringLiteral( "svgmarker_bounds" ) );
-  mMapSettings.setFlag( QgsMapSettings::DrawSymbolBounds, false );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertySize, QgsProperty() );
+  mMapSettings.setFlag( Qgis::MapSettingsFlag::DrawSymbolBounds, true );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_bounds", "svgmarker_bounds", mMapSettings );
+
+  mMapSettings.setFlag( Qgis::MapSettingsFlag::DrawSymbolBounds, false );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Size, QgsProperty() );
   QVERIFY( result );
+}
+
+void TestQgsSvgMarkerSymbol::boundsAnchorPoint()
+{
+  // the bounds reported for a non-centered anchor must be equal
+  // to the center-anchored bounds translated by half the rendered
+  // symbol size, in pixels.
+
+  QgsSvgMarkerSymbolLayer layer( QgsSymbolLayerUtils::svgSymbolNameToPath( u"/backgrounds/background_square.svg"_s, QgsPathResolver() ) );
+  layer.setSize( 24.0 );
+  layer.setSizeUnit( Qgis::RenderUnit::Millimeters );
+  layer.setFixedAspectRatio( 1.0 );
+  layer.setStrokeWidth( 0.0 );
+  layer.setHorizontalAnchorPoint( Qgis::HorizontalAnchorPoint::Center );
+  layer.setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Center );
+
+  QgsMapSettings ms;
+  ms.setExtent( QgsRectangle( 0, 0, 1000, 1000 ) );
+  ms.setOutputSize( QSize( 500, 500 ) );
+  ms.setOutputDpi( 96 );
+  QgsRenderContext rc = QgsRenderContext::fromMapSettings( ms );
+  QgsSymbolRenderContext src( rc, Qgis::RenderUnit::Unknown, 1.0, false, Qgis::SymbolRenderHints() );
+
+  const QPointF point( 250, 250 );
+
+  layer.startRender( src );
+  const QRectF centerBounds = layer.bounds( point, src );
+  layer.stopRender( src );
+  QVERIFY( centerBounds.isValid() );
+
+  const double halfWidthPx = rc.convertToPainterUnits( layer.size(), layer.sizeUnit(), layer.sizeMapUnitScale() ) / 2.0;
+  const double halfHeightPx = halfWidthPx; // fixedAspectRatio == 1.0
+
+  layer.setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Bottom );
+  layer.startRender( src );
+  const QRectF bottomBounds = layer.bounds( point, src );
+  layer.stopRender( src );
+  QGSCOMPARENEAR( bottomBounds.center().x(), centerBounds.center().x(), 0.01 );
+  QGSCOMPARENEAR( bottomBounds.center().y(), centerBounds.center().y() - halfHeightPx, 0.01 );
+
+  layer.setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Top );
+  layer.startRender( src );
+  const QRectF topBounds = layer.bounds( point, src );
+  layer.stopRender( src );
+  QGSCOMPARENEAR( topBounds.center().x(), centerBounds.center().x(), 0.01 );
+  QGSCOMPARENEAR( topBounds.center().y(), centerBounds.center().y() + halfHeightPx, 0.01 );
+
+  layer.setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Center );
+  layer.setHorizontalAnchorPoint( Qgis::HorizontalAnchorPoint::Left );
+  layer.startRender( src );
+  const QRectF leftBounds = layer.bounds( point, src );
+  layer.stopRender( src );
+  QGSCOMPARENEAR( leftBounds.center().x(), centerBounds.center().x() + halfWidthPx, 0.01 );
+  QGSCOMPARENEAR( leftBounds.center().y(), centerBounds.center().y(), 0.01 );
+
+  layer.setHorizontalAnchorPoint( Qgis::HorizontalAnchorPoint::Right );
+  layer.startRender( src );
+  const QRectF rightBounds = layer.bounds( point, src );
+  layer.stopRender( src );
+  QGSCOMPARENEAR( rightBounds.center().x(), centerBounds.center().x() - halfWidthPx, 0.01 );
+  QGSCOMPARENEAR( rightBounds.center().y(), centerBounds.center().y(), 0.01 );
 }
 
 void TestQgsSvgMarkerSymbol::boundsWidth()
@@ -174,30 +228,30 @@ void TestQgsSvgMarkerSymbol::boundsWidth()
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::blue );
   mSvgMarkerLayer->setStrokeWidth( 0.5 );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyWidth, QgsProperty::fromExpression( QStringLiteral( "min(\"importance\" * 2, 6)" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Width, QgsProperty::fromExpression( u"min(\"importance\" * 2, 6)"_s ) );
 
-  mMapSettings.setFlag( QgsMapSettings::DrawSymbolBounds, true );
-  bool result = imageCheck( QStringLiteral( "svgmarker_bounds" ) );
-  mMapSettings.setFlag( QgsMapSettings::DrawSymbolBounds, false );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyWidth, QgsProperty() );
+  mMapSettings.setFlag( Qgis::MapSettingsFlag::DrawSymbolBounds, true );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_bounds", "svgmarker_bounds", mMapSettings );
+  mMapSettings.setFlag( Qgis::MapSettingsFlag::DrawSymbolBounds, false );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Width, QgsProperty() );
   QVERIFY( result );
 }
 
 void TestQgsSvgMarkerSymbol::bench()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::black );
   mSvgMarkerLayer->setSize( 20 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
-  QVERIFY( imageCheck( "svgmarker_bench" ) );
+  QGSVERIFYRENDERMAPSETTINGSCHECK( "svgmarker_bench", "svgmarker_bench", mMapSettings );
 }
 
 void TestQgsSvgMarkerSymbol::anchor()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/backgrounds/background_square.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/backgrounds/background_square.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
@@ -205,15 +259,15 @@ void TestQgsSvgMarkerSymbol::anchor()
   mSvgMarkerLayer->setSize( 5 );
   mSvgMarkerLayer->setFixedAspectRatio( 6 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
-  mSvgMarkerLayer->setVerticalAnchorPoint( QgsMarkerSymbolLayer::Bottom );
-  QVERIFY( imageCheck( "svgmarker_anchor" ) );
+  mSvgMarkerLayer->setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Bottom );
+  QGSVERIFYRENDERMAPSETTINGSCHECK( "svgmarker_anchor", "svgmarker_anchor", mMapSettings );
   mSvgMarkerLayer->setFixedAspectRatio( 0.0 );
-  mSvgMarkerLayer->setVerticalAnchorPoint( QgsMarkerSymbolLayer::VCenter );
+  mSvgMarkerLayer->setVerticalAnchorPoint( Qgis::VerticalAnchorPoint::Center );
 }
 
 void TestQgsSvgMarkerSymbol::aspectRatio()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
@@ -221,55 +275,55 @@ void TestQgsSvgMarkerSymbol::aspectRatio()
   mSvgMarkerLayer->setSize( 20 );
   mSvgMarkerLayer->setFixedAspectRatio( 0.5 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
-  QVERIFY( imageCheck( "svgmarker_aspectratio" ) );
+  QGSVERIFYRENDERMAPSETTINGSCHECK( "svgmarker_aspectratio", "svgmarker_aspectratio", mMapSettings );
 }
 
 void TestQgsSvgMarkerSymbol::dynamicSizeWithAspectRatio()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::black );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertySize, QgsProperty::fromExpression( QStringLiteral( "max(\"importance\" * 5, 10)" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Size, QgsProperty::fromExpression( u"max(\"importance\" * 5, 10)"_s ) );
   mSvgMarkerLayer->setFixedAspectRatio( 0.5 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
 
-  bool result = imageCheck( QStringLiteral( "svgmarker_dynamicsize_aspectratio" ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertySize, QgsProperty() );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_dynamicsize_aspectratio", "svgmarker_dynamicsize_aspectratio", mMapSettings );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Size, QgsProperty() );
   QVERIFY( result );
 }
 
 void TestQgsSvgMarkerSymbol::dynamicWidthWithAspectRatio()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::black );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyWidth, QgsProperty::fromExpression( QStringLiteral( "max(\"importance\" * 5, 10)" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Width, QgsProperty::fromExpression( u"max(\"importance\" * 5, 10)"_s ) );
   mSvgMarkerLayer->setFixedAspectRatio( 0.2 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
 
-  bool result = imageCheck( QStringLiteral( "svgmarker_dynamicwidth_aspectratio" ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyWidth, QgsProperty() );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_dynamicwidth_aspectratio", "svgmarker_dynamicwidth_aspectratio", mMapSettings );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Width, QgsProperty() );
   QVERIFY( result );
 }
 
 void TestQgsSvgMarkerSymbol::dynamicAspectRatio()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setStrokeColor( Qt::black );
   mSvgMarkerLayer->setColor( Qt::black );
   mSvgMarkerLayer->setSize( 20 );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyHeight, QgsProperty::fromExpression( QStringLiteral( "max(\"importance\" * 5, 10)" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Height, QgsProperty::fromExpression( u"max(\"importance\" * 5, 10)"_s ) );
   mSvgMarkerLayer->setFixedAspectRatio( 0.5 );
   mSvgMarkerLayer->setStrokeWidth( 0.0 );
 
-  bool result = imageCheck( QStringLiteral( "svgmarker_dynamic_aspectratio" ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyHeight, QgsProperty() );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_dynamic_aspectratio", "svgmarker_dynamic_aspectratio", mMapSettings );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::Height, QgsProperty() );
   mSvgMarkerLayer->setFixedAspectRatio( 0 );
 
   QVERIFY( result );
@@ -278,7 +332,7 @@ void TestQgsSvgMarkerSymbol::dynamicAspectRatio()
 void TestQgsSvgMarkerSymbol::resetDefaultAspectRatio()
 {
   // default aspect ratio must be updated as SVG path is changed
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/amenity/amenity_bench.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/amenity/amenity_bench.svg"_s, QgsPathResolver() );
   QgsSvgMarkerSymbolLayer layer( svgPath );
   QCOMPARE( layer.defaultAspectRatio(), 1.0 );
   QVERIFY( layer.preservedAspectRatio() );
@@ -305,79 +359,62 @@ void TestQgsSvgMarkerSymbol::resetDefaultAspectRatio()
 
 void TestQgsSvgMarkerSymbol::opacityWithDataDefinedColor()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/transport/transport_airport.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/transport/transport_airport.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setColor( QColor( 200, 200, 200 ) );
   mSvgMarkerLayer->setStrokeColor( QColor( 0, 0, 0 ) );
   mSvgMarkerLayer->setSize( 10 );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyFillColor, QgsProperty::fromExpression( QStringLiteral( "if(importance > 2, 'red', 'green')" ) ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyStrokeColor, QgsProperty::fromExpression( QStringLiteral( "if(importance > 2, 'blue', 'magenta')" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::FillColor, QgsProperty::fromExpression( u"if(importance > 2, 'red', 'green')"_s ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::StrokeColor, QgsProperty::fromExpression( u"if(importance > 2, 'blue', 'magenta')"_s ) );
   mSvgMarkerLayer->setStrokeWidth( 1.0 );
   mMarkerSymbol->setOpacity( 0.5 );
 
-  bool result = imageCheck( QStringLiteral( "svgmarker_opacityddcolor" ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyFillColor, QgsProperty() );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyStrokeColor, QgsProperty() );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_opacityddcolor", "svgmarker_opacityddcolor", mMapSettings );
+
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::FillColor, QgsProperty() );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::StrokeColor, QgsProperty() );
   mMarkerSymbol->setOpacity( 1.0 );
   QVERIFY( result );
 }
 
 void TestQgsSvgMarkerSymbol::dataDefinedOpacity()
 {
-  QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( QStringLiteral( "/transport/transport_airport.svg" ), QgsPathResolver() );
+  const QString svgPath = QgsSymbolLayerUtils::svgSymbolNameToPath( u"/transport/transport_airport.svg"_s, QgsPathResolver() );
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setColor( QColor( 200, 200, 200 ) );
   mSvgMarkerLayer->setStrokeColor( QColor( 0, 0, 0 ) );
   mSvgMarkerLayer->setSize( 10 );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyFillColor, QgsProperty::fromExpression( QStringLiteral( "if(importance > 2, 'red', 'green')" ) ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyStrokeColor, QgsProperty::fromExpression( QStringLiteral( "if(importance > 2, 'blue', 'magenta')" ) ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::FillColor, QgsProperty::fromExpression( u"if(importance > 2, 'red', 'green')"_s ) );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::StrokeColor, QgsProperty::fromExpression( u"if(importance > 2, 'blue', 'magenta')"_s ) );
   mSvgMarkerLayer->setStrokeWidth( 1.0 );
-  mMarkerSymbol->setDataDefinedProperty( QgsSymbol::PropertyOpacity, QgsProperty::fromExpression( QStringLiteral( "if(\"Heading\" > 100, 25, 50)" ) ) );
+  mMarkerSymbol->setDataDefinedProperty( QgsSymbol::Property::Opacity, QgsProperty::fromExpression( u"if(\"Heading\" > 100, 25, 50)"_s ) );
 
-  bool result = imageCheck( QStringLiteral( "svgmarker_ddopacity" ) );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyFillColor, QgsProperty() );
-  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::PropertyStrokeColor, QgsProperty() );
-  mMarkerSymbol->setDataDefinedProperty( QgsSymbol::PropertyOpacity, QgsProperty() );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_ddopacity", "svgmarker_ddopacity", mMapSettings );
+
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::FillColor, QgsProperty() );
+  mSvgMarkerLayer->setDataDefinedProperty( QgsSymbolLayer::Property::StrokeColor, QgsProperty() );
+  mMarkerSymbol->setDataDefinedProperty( QgsSymbol::Property::Opacity, QgsProperty() );
   QVERIFY( result );
 }
 
 void TestQgsSvgMarkerSymbol::dynamicParameters()
 {
-  const QString svgPath = TEST_DATA_DIR + QStringLiteral( "/svg/test_dynamic_svg.svg" );
+  const QString svgPath = TEST_DATA_DIR + u"/svg/test_dynamic_svg.svg"_s;
 
-  QMap<QString, QgsProperty> parameters {{QStringLiteral( "text1" ), QgsProperty::fromExpression( QStringLiteral( "1+1" ) )},
-    {QStringLiteral( "text2" ), QgsProperty::fromExpression( QStringLiteral( "\"Class\"" ) )},
-    {QStringLiteral( "align" ), QgsProperty::fromExpression( QStringLiteral( "'middle'" ) ) }};
+  const QMap<QString, QgsProperty>
+    parameters { { u"text1"_s, QgsProperty::fromExpression( u"1+1"_s ) }, { u"text2"_s, QgsProperty::fromExpression( u"\"Class\""_s ) }, { u"align"_s, QgsProperty::fromExpression( u"'middle'"_s ) } };
 
   mSvgMarkerLayer->setPath( svgPath );
   mSvgMarkerLayer->setSize( 20 );
   mSvgMarkerLayer->setParameters( parameters );
-  bool result = imageCheck( QStringLiteral( "svgmarker_dynamic_parameters" ) );
+  const bool result = QGSRENDERMAPSETTINGSCHECK( "svgmarker_dynamic_parameters", "svgmarker_dynamic_parameters", mMapSettings );
+
   mSvgMarkerLayer->setParameters( QMap<QString, QgsProperty>() );
   QVERIFY( result );
 }
 
-//
-// Private helper functions not called directly by CTest
-//
-
-
-bool TestQgsSvgMarkerSymbol::imageCheck( const QString &testType )
-{
-  //use the QgsRenderChecker test utility class to
-  //ensure the rendered output matches our control image
-  mMapSettings.setExtent( mpPointsLayer->extent() );
-  mMapSettings.setOutputDpi( 96 );
-  QgsRenderChecker myChecker;
-  myChecker.setControlPathPrefix( QStringLiteral( "symbol_svgmarker" ) );
-  myChecker.setControlName( "expected_" + testType );
-  myChecker.setMapSettings( mMapSettings );
-  bool myResultFlag = myChecker.runTest( testType );
-  mReport += myChecker.report();
-  return myResultFlag;
-}
 
 QGSTEST_MAIN( TestQgsSvgMarkerSymbol )
 #include "testqgssvgmarker.moc"

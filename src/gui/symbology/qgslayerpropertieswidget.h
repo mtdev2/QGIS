@@ -17,9 +17,10 @@
 #define QGSLAYERPROPERTIESWIDGET_H
 
 #include "ui_widget_layerproperties.h"
+
 #include "qgsexpressioncontext.h"
-#include "qgssymbolwidgetcontext.h"
 #include "qgssymbollayer.h"
+#include "qgssymbolwidgetcontext.h"
 
 class QgsSymbol;
 class QgsSymbolLayer;
@@ -28,8 +29,6 @@ class QgsVectorLayer;
 class QgsMapCanvas;
 class QgsPanelWidget;
 
-class SymbolLayerItem;
-
 #include <QMap>
 #include <QStandardItemModel>
 #include "qgis_gui.h"
@@ -37,13 +36,16 @@ class SymbolLayerItem;
 /**
  * \ingroup gui
  * \class QgsLayerPropertiesWidget
+ * \brief A widget which allows configuration of the properties of a single QgsSymbolLayer.
+ *
+ * This widget includes a combobox box for selection of the symbol layer type, and a panel for
+ * showing configuration properties for the selected symbol layer type.
  */
 class GUI_EXPORT QgsLayerPropertiesWidget : public QgsPanelWidget, public QgsExpressionContextGenerator, private Ui::LayerPropertiesWidget
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsLayerPropertiesWidget.
      * \param layer the symbol layer
@@ -57,14 +59,12 @@ class GUI_EXPORT QgsLayerPropertiesWidget : public QgsPanelWidget, public QgsExp
      * Sets the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \param context symbol widget context
      * \see context()
-     * \since QGIS 3.0
      */
     void setContext( const QgsSymbolWidgetContext &context );
 
     /**
      * Returns the context in which the symbol widget is shown, e.g., the associated map canvas and expression contexts.
      * \see setContext()
-     * \since QGIS 3.0
      */
     QgsSymbolWidgetContext context() const;
 
@@ -80,8 +80,11 @@ class GUI_EXPORT QgsLayerPropertiesWidget : public QgsPanelWidget, public QgsExp
     void emitSignalChanged();
 
   signals:
-    void changed();
-    void changeLayer( QgsSymbolLayer * );
+
+    /**
+     * Emitted when the symbol \a layer is changed in the widget.
+     */
+    void changeLayer( QgsSymbolLayer *layer );
 
   protected:
     void populateLayerTypes();
@@ -93,7 +96,6 @@ class GUI_EXPORT QgsLayerPropertiesWidget : public QgsPanelWidget, public QgsExp
      * Registers a data defined override button. Handles setting up connections
      * for the button and initializing the button to show the correct descriptions
      * and help text for the associated property.
-     * \since QGIS 3.0
      */
     void registerDataDefinedButton( QgsPropertyOverrideButton *button, QgsSymbolLayer::Property key );
 
@@ -109,9 +111,7 @@ class GUI_EXPORT QgsLayerPropertiesWidget : public QgsPanelWidget, public QgsExp
     void updateProperty();
 
   private:
-
     QgsSymbolWidgetContext mContext;
-
 };
 
 #endif //QGSLAYERPROPERTIESWIDGET_H

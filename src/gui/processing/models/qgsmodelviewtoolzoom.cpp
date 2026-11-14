@@ -14,18 +14,24 @@
  ***************************************************************************/
 
 #include "qgsmodelviewtoolzoom.h"
-#include "qgsmodelviewmouseevent.h"
+
+#include <memory>
+
+#include "qgsapplication.h"
 #include "qgsmodelgraphicsview.h"
+#include "qgsmodelviewmouseevent.h"
 #include "qgsmodelviewrubberband.h"
 #include "qgsrectangle.h"
-#include "qgsapplication.h"
+
 #include <QScrollBar>
+
+#include "moc_qgsmodelviewtoolzoom.cpp"
 
 QgsModelViewToolZoom::QgsModelViewToolZoom( QgsModelGraphicsView *view )
   : QgsModelViewTool( view, tr( "Pan" ) )
 {
   setCursor( QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomIn ) );
-  mRubberBand.reset( new QgsModelViewRectangularRubberBand( view ) );
+  mRubberBand = std::make_unique<QgsModelViewRectangularRubberBand>( view );
   mRubberBand->setBrush( QBrush( QColor( 70, 50, 255, 25 ) ) );
   mRubberBand->setPen( QPen( QBrush( QColor( 70, 50, 255, 100 ) ), 0 ) );
 }
@@ -42,13 +48,13 @@ void QgsModelViewToolZoom::modelPressEvent( QgsModelViewMouseEvent *event )
   if ( event->modifiers() & Qt::AltModifier )
   {
     //zoom out action, so zoom out and recenter on clicked point
-    double scaleFactor = 2;
+    const double scaleFactor = 2;
     //get current visible part of scene
-    QRect viewportRect( 0, 0, view()->viewport()->width(), view()->viewport()->height() );
+    const QRect viewportRect( 0, 0, view()->viewport()->width(), view()->viewport()->height() );
     QgsRectangle visibleRect = QgsRectangle( view()->mapToScene( viewportRect ).boundingRect() );
 
     visibleRect.scale( scaleFactor, event->modelPoint().x(), event->modelPoint().y() );
-    QRectF boundsRect = visibleRect.toRectF();
+    const QRectF boundsRect = visibleRect.toRectF();
 
     //zoom view to fit desired bounds
     view()->fitInView( boundsRect, Qt::KeepAspectRatio );
@@ -86,9 +92,9 @@ void QgsModelViewToolZoom::modelReleaseEvent( QgsModelViewMouseEvent *event )
   if ( !isClickAndDrag( mMousePressStartPos, event->pos() ) )
   {
     //just a click, so zoom to clicked point and recenter
-    double scaleFactor = 0.5;
+    const double scaleFactor = 0.5;
     //get current visible part of scene
-    QRect viewportRect( 0, 0, view()->viewport()->width(), view()->viewport()->height() );
+    const QRect viewportRect( 0, 0, view()->viewport()->width(), view()->viewport()->height() );
     QgsRectangle visibleRect = QgsRectangle( view()->mapToScene( viewportRect ).boundingRect() );
 
     visibleRect.scale( scaleFactor, event->modelPoint().x(), event->modelPoint().y() );
@@ -104,10 +110,9 @@ void QgsModelViewToolZoom::keyPressEvent( QKeyEvent *event )
   //respond to changes in the alt key status and update cursor accordingly
   if ( !event->isAutoRepeat() )
   {
-
-    view()->viewport()->setCursor( ( event->modifiers() & Qt::AltModifier ) ?
-                                   QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomOut ) :
-                                   QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomIn ) );
+    view()->viewport()->setCursor(
+      ( event->modifiers() & Qt::AltModifier ) ? QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomOut ) : QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomIn )
+    );
   }
   event->ignore();
 }
@@ -117,10 +122,9 @@ void QgsModelViewToolZoom::keyReleaseEvent( QKeyEvent *event )
   //respond to changes in the alt key status and update cursor accordingly
   if ( !event->isAutoRepeat() )
   {
-
-    view()->viewport()->setCursor( ( event->modifiers() & Qt::AltModifier ) ?
-                                   QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomOut ) :
-                                   QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomIn ) );
+    view()->viewport()->setCursor(
+      ( event->modifiers() & Qt::AltModifier ) ? QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomOut ) : QgsApplication::getThemeCursor( QgsApplication::Cursor::ZoomIn )
+    );
   }
   event->ignore();
 }

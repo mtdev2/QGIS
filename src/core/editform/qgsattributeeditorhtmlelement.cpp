@@ -15,6 +15,10 @@
  ***************************************************************************/
 #include "qgsattributeeditorhtmlelement.h"
 
+#include <QDomText>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 QgsAttributeEditorElement *QgsAttributeEditorHtmlElement::clone( QgsAttributeEditorElement *parent ) const
 {
@@ -36,7 +40,7 @@ void QgsAttributeEditorHtmlElement::setHtmlCode( const QString &htmlCode )
 
 void QgsAttributeEditorHtmlElement::saveConfiguration( QDomElement &elem, QDomDocument &doc ) const
 {
-  QDomText codeElem = doc.createTextNode( mHtmlCode );
+  const QDomText codeElem = doc.createTextNode( mHtmlCode );
   elem.appendChild( codeElem );
 }
 
@@ -50,6 +54,5 @@ void QgsAttributeEditorHtmlElement::loadConfiguration( const QDomElement &elemen
 
 QString QgsAttributeEditorHtmlElement::typeIdentifier() const
 {
-  return QStringLiteral( "attributeEditorHtmlElement" );
+  return u"attributeEditorHtmlElement"_s;
 }
-

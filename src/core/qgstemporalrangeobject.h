@@ -26,14 +26,13 @@
 /**
  * \class QgsTemporalRangeObject
  * \ingroup core
- * Base class for objects with an associated (optional) temporal range.
+ * \brief Base class for objects with an associated (optional) temporal range.
  *
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsTemporalRangeObject
 {
   public:
-
     /**
      * Constructor QgsTemporalRangeObject.
      *
@@ -82,13 +81,11 @@ class CORE_EXPORT QgsTemporalRangeObject
     const QgsDateTimeRange &temporalRange() const;
 
   private:
-
     //! Temporal state
     bool mTemporal = false;
 
     //! Represents datetime range member.
     QgsDateTimeRange mDateTimeRange;
-
 };
 
 #endif // QGSTEMPORALRANGEOBJECT_H

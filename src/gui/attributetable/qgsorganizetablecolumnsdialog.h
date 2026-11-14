@@ -17,28 +17,26 @@
 #ifndef QGSORGANIZEFILTERTABLESDIALOG_H_
 #define QGSORGANIZEFILTERTABLESDIALOG_H_
 
-#include <QDialog>
-
 #include "ui_qgsorganizetablecolumnsdialog.h"
 
-#include "qgsattributetableconfig.h"
 #include "qgis_gui.h"
 #include "qgis_sip.h"
+#include "qgsattributetableconfig.h"
+
+#include <QDialog>
 
 class QgsVectorLayer;
 
 /**
  * \class QgsOrganizeTableColumnsDialog
  * \ingroup gui
- * Dialog for organising (hiding and reordering) columns in the attributes table.
- * \since QGIS 2.16
+ * \brief Dialog for organising (hiding and reordering) columns in the attributes table.
  */
 class GUI_EXPORT QgsOrganizeTableColumnsDialog : public QDialog, private Ui::QgsOrganizeTableColumnsDialog
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor
      * \param vl The concerned vector layer
@@ -76,9 +74,14 @@ class GUI_EXPORT QgsOrganizeTableColumnsDialog : public QDialog, private Ui::Qgs
      */
     void hideAll();
 
+    /**
+     * Toggle the check state of selected fields to hide or show them in the attribute table
+     * \since QGIS 3.36
+     */
+    void toggleSelection();
+
   private:
     QgsAttributeTableConfig mConfig;
-
 };
 
 #endif

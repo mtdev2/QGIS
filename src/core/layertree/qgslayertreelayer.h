@@ -19,15 +19,19 @@
 #include "qgis_core.h"
 #include "qgis_sip.h"
 #include "qgslayertreenode.h"
+#include "qgslegendpatchshape.h"
 #include "qgsmaplayerref.h"
 #include "qgsreadwritecontext.h"
-#include "qgslegendpatchshape.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class QgsMapLayer;
 
 /**
  * \ingroup core
- * Layer tree node points to a map layer.
+ * \brief Layer tree node points to a map layer.
  *
  * The node can exist also without a valid instance of a layer (just ID). That
  * means the referenced layer does not need to be loaded in order to use it
@@ -38,7 +42,6 @@ class QgsMapLayer;
  * however possible that temporarily a layer exists in one tree more than just
  * once, e.g. while reordering items with drag and drop.
  *
- * \since QGIS 2.4
  */
 class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
 {
@@ -55,12 +58,27 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
      */
     explicit QgsLayerTreeLayer( const QString &layerId, const QString &name = QString(), const QString &source = QString(), const QString &provider = QString() );
 
-    /**
+#ifdef SIP_RUN
+    // clang-format off
+    SIP_PYOBJECT __repr__();
+    % MethodCode
+    QString str = u"<QgsLayerTreeLayer: %1>"_s.arg( sipCpp->name() );
+    sipRes = PyUnicode_FromString( str.toUtf8().constData() );
+    % End
+// clang-format on
+#endif
+
+        /**
      * Returns the ID for the map layer associated with this node.
      *
      * \see layer()
      */
-    QString layerId() const { return mRef.layerId; }
+        QString layerId() const
+    {
+      return mRef.layerId;
+    }
+
+    QString id() const override { return layerId(); }
 
     /**
      * Returns the map layer associated with this node.
@@ -78,7 +96,6 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
      *
      * \see setName()
      *
-     * \since QGIS 3.0
      */
     QString name() const override;
 
@@ -87,7 +104,6 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
      *
      * \see name()
      *
-     * \since QGIS 3.0
      */
     void setName( const QString &n ) override;
 
@@ -108,12 +124,11 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
      * Read layer node from XML. Returns new instance.
      * Does not resolve textual references to layers. Call resolveReferences() afterwards to do it.
      */
-    static QgsLayerTreeLayer *readXml( QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY;
+    static QgsLayerTreeLayer *readXml( QDomElement &element, const QgsReadWriteContext &context ) SIP_FACTORY; // cppcheck-suppress duplInheritedMember
 
     /**
      * Read layer node from XML. Returns new instance.
      * Also resolves textual references to layers from the project (calls resolveReferences() internally).
-     * \since QGIS 3.0
      */
     static QgsLayerTreeLayer *readXml( QDomElement &element, const QgsProject *project, const QgsReadWriteContext &context ) SIP_FACTORY;
 
@@ -125,7 +140,6 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
 
     /**
      * Resolves reference to layer from stored layer ID (if it has not been resolved already)
-     * \since QGIS 3.0
      */
     void resolveReferences( const QgsProject *project, bool looseMatching = false ) override;
 
@@ -188,8 +202,8 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
      */
     enum LegendNodesSplitBehavior
     {
-      UseDefaultLegendSetting, //!< Inherit default legend column splitting setting
-      AllowSplittingLegendNodesOverMultipleColumns, //!< Allow splitting node's legend nodes across multiple columns
+      UseDefaultLegendSetting,                        //!< Inherit default legend column splitting setting
+      AllowSplittingLegendNodesOverMultipleColumns,   //!< Allow splitting node's legend nodes across multiple columns
       PreventSplittingLegendNodesOverMultipleColumns, //!< Prevent splitting node's legend nodes across multiple columns
     };
 
@@ -222,7 +236,6 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
 
     /**
      * Emitted when a previously available layer got unloaded (from layer registry).
-     * \since QGIS 2.6
      */
     void layerWillBeUnloaded();
 
@@ -243,18 +256,15 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
 
     /**
      * Emits a nameChanged() signal if layer's name has changed
-     * \since QGIS 3.0
      */
     void layerNameChanged();
 
     /**
      * Handles the event of deletion of the referenced layer
-     * \since QGIS 3.0
      */
     void layerWillBeDeleted();
 
   private:
-
 #ifdef SIP_RUN
 
     /**
@@ -269,7 +279,6 @@ class CORE_EXPORT QgsLayerTreeLayer : public QgsLayerTreeNode
 
     QgsLayerTreeLayer &operator=( const QgsLayerTreeLayer & ) = delete;
 };
-
 
 
 #endif // QGSLAYERTREELAYER_H

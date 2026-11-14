@@ -16,19 +16,30 @@
  ***************************************************************************/
 
 #include "qgsmeshtriangulation.h"
-#include "qgsdualedgetriangulation.h"
-#include "qgsvectorlayer.h"
-#include "qgscoordinatetransformcontext.h"
+
+#include <memory>
+
 #include "qgscurve.h"
 #include "qgscurvepolygon.h"
-#include "qgsmultisurface.h"
-#include "qgsmulticurve.h"
+#include "qgsdualedgetriangulation.h"
+#include "qgsfeature.h"
+#include "qgsfeatureiterator.h"
 #include "qgsfeedback.h"
 #include "qgslogger.h"
+#include "qgsmesheditor.h"
+#include "qgsmulticurve.h"
+#include "qgsmultisurface.h"
 
-QgsMeshTriangulation::QgsMeshTriangulation(): QObject()
+#include <QString>
+
+#include "moc_qgsmeshtriangulation.cpp"
+
+using namespace Qt::StringLiterals;
+
+QgsMeshTriangulation::QgsMeshTriangulation()
+  : QObject()
 {
-  mTriangulation.reset( new QgsDualEdgeTriangulation() );
+  mTriangulation = std::make_unique<QgsDualEdgeTriangulation>();
 }
 
 
@@ -76,14 +87,14 @@ bool QgsMeshTriangulation::addBreakLines( QgsFeatureIterator &lineFeatureIterato
       i++;
     }
 
-    QgsWkbTypes::GeometryType geomType = feat.geometry().type();
+    Qgis::GeometryType geomType = feat.geometry().type();
     switch ( geomType )
     {
-      case QgsWkbTypes::PointGeometry:
+      case Qgis::GeometryType::Point:
         addVerticesFromFeature( feat, valueAttribute, transform, feedback );
         break;
-      case QgsWkbTypes::LineGeometry:
-      case QgsWkbTypes::PolygonGeometry:
+      case Qgis::GeometryType::Line:
+      case Qgis::GeometryType::Polygon:
         addBreakLinesFromFeature( feat, valueAttribute, transform, feedback );
         break;
       default:
@@ -92,6 +103,11 @@ bool QgsMeshTriangulation::addBreakLines( QgsFeatureIterator &lineFeatureIterato
   }
 
   return true;
+}
+
+int QgsMeshTriangulation::addVertex( const QgsPoint &vertex )
+{
+  return mTriangulation->addPoint( vertex );
 }
 
 QgsMesh QgsMeshTriangulation::triangulatedMesh( QgsFeedback *feedback ) const
@@ -109,12 +125,12 @@ void QgsMeshTriangulation::addVerticesFromFeature( const QgsFeature &feature, in
   QgsGeometry geom = feature.geometry();
   try
   {
-    geom.transform( transform, QgsCoordinateTransform::ForwardTransform, true );
+    geom.transform( transform, Qgis::TransformDirection::Forward, true );
   }
   catch ( QgsCsException &cse )
   {
     Q_UNUSED( cse )
-    QgsDebugMsgLevel( QStringLiteral( "Caught CRS exception %1" ).arg( cse.what() ), 4 );
+    QgsDebugMsgLevel( u"Caught CRS exception %1"_s.arg( cse.what() ), 4 );
     return;
   }
 
@@ -132,7 +148,7 @@ void QgsMeshTriangulation::addVerticesFromFeature( const QgsFeature &feature, in
       mTriangulation->addPoint( *vit );
     else
     {
-      mTriangulation->addPoint( QgsPoint( QgsWkbTypes::PointZ, ( *vit ).x(), ( *vit ).y(), value ) );
+      mTriangulation->addPoint( QgsPoint( Qgis::WkbType::PointZ, ( *vit ).x(), ( *vit ).y(), value ) );
     }
     ++vit;
   }
@@ -149,29 +165,29 @@ void QgsMeshTriangulation::addBreakLinesFromFeature( const QgsFeature &feature, 
   QgsGeometry geom = feature.geometry();
   try
   {
-    geom.transform( transform, QgsCoordinateTransform::ForwardTransform, true );
+    geom.transform( transform, Qgis::TransformDirection::Forward, true );
   }
   catch ( QgsCsException &cse )
   {
     Q_UNUSED( cse )
-    QgsDebugMsgLevel( QStringLiteral( "Caught CRS exception %1" ).arg( cse.what() ), 4 );
+    QgsDebugMsgLevel( u"Caught CRS exception %1"_s.arg( cse.what() ), 4 );
     return;
   }
 
-  if ( QgsWkbTypes::geometryType( geom.wkbType() ) == QgsWkbTypes::PolygonGeometry )
+  if ( QgsWkbTypes::geometryType( geom.wkbType() ) == Qgis::GeometryType::Polygon )
   {
-    std::vector< const QgsCurvePolygon * > polygons;
+    std::vector<const QgsCurvePolygon *> polygons;
     if ( geom.isMultipart() )
     {
-      const QgsMultiSurface *ms = qgsgeometry_cast< const QgsMultiSurface * >( geom.constGet() );
+      const QgsMultiSurface *ms = qgsgeometry_cast<const QgsMultiSurface *>( geom.constGet() );
       for ( int i = 0; i < ms->numGeometries(); ++i )
       {
-        polygons.emplace_back( qgsgeometry_cast< const QgsCurvePolygon * >( ms->geometryN( i ) ) );
+        polygons.emplace_back( qgsgeometry_cast<const QgsCurvePolygon *>( ms->geometryN( i ) ) );
       }
     }
     else
     {
-      polygons.emplace_back( qgsgeometry_cast< const QgsCurvePolygon * >( geom.constGet() ) );
+      polygons.emplace_back( qgsgeometry_cast<const QgsCurvePolygon *>( geom.constGet() ) );
     }
 
     for ( const QgsCurvePolygon *polygon : polygons )
@@ -196,17 +212,17 @@ void QgsMeshTriangulation::addBreakLinesFromFeature( const QgsFeature &feature, 
   {
     if ( geom.isMultipart() )
     {
-      const QgsMultiCurve *mc = qgsgeometry_cast< const QgsMultiCurve * >( geom.constGet() );
+      const QgsMultiCurve *mc = qgsgeometry_cast<const QgsMultiCurve *>( geom.constGet() );
       for ( int i = 0; i < mc->numGeometries(); ++i )
       {
         if ( feedback && feedback->isCanceled() )
           break;
-        curves.emplace_back( qgsgeometry_cast< const QgsCurve * >( mc->geometryN( i ) ) );
+        curves.emplace_back( qgsgeometry_cast<const QgsCurve *>( mc->geometryN( i ) ) );
       }
     }
     else
     {
-      curves.emplace_back( qgsgeometry_cast< const QgsCurve * >( geom.constGet() ) );
+      curves.emplace_back( qgsgeometry_cast<const QgsCurve *>( geom.constGet() ) );
     }
   }
 
@@ -235,14 +251,14 @@ void QgsMeshTriangulation::addBreakLinesFromFeature( const QgsFeature &feature, 
         }
       }
 
-    mTriangulation->addLine( linePoints, QgsInterpolator::SourceBreakLines );
+    mTriangulation->addLine( linePoints, Qgis::InterpolationSourceType::BreakLines );
   }
 }
 
-QgsMeshZValueDatasetGroup::QgsMeshZValueDatasetGroup( const QString &datasetGroupName, const QgsMesh &mesh ):
-  QgsMeshDatasetGroup( datasetGroupName, QgsMeshDatasetGroupMetadata::DataOnVertices )
+QgsMeshZValueDatasetGroup::QgsMeshZValueDatasetGroup( const QString &datasetGroupName, const QgsMesh &mesh )
+  : QgsMeshDatasetGroup( datasetGroupName, QgsMeshDatasetGroupMetadata::DataOnVertices )
 {
-  mDataset = qgis::make_unique< QgsMeshZValueDataset >( mesh );
+  mDataset = std::make_unique<QgsMeshZValueDataset>( mesh );
 }
 
 void QgsMeshZValueDatasetGroup::initialize()
@@ -258,7 +274,10 @@ QgsMeshDatasetMetadata QgsMeshZValueDatasetGroup::datasetMetadata( int datasetIn
   return mDataset->metadata();
 }
 
-int QgsMeshZValueDatasetGroup::datasetCount() const {return 1;}
+int QgsMeshZValueDatasetGroup::datasetCount() const
+{
+  return 1;
+}
 
 QgsMeshDataset *QgsMeshZValueDatasetGroup::dataset( int index ) const
 {
@@ -275,7 +294,8 @@ QDomElement QgsMeshZValueDatasetGroup::writeXml( QDomDocument &doc, const QgsRea
   return QDomElement();
 }
 
-QgsMeshZValueDataset::QgsMeshZValueDataset( const QgsMesh &mesh ): mMesh( mesh )
+QgsMeshZValueDataset::QgsMeshZValueDataset( const QgsMesh &mesh )
+  : mMesh( mesh )
 {
   for ( const QgsMeshVertex &vertex : mesh.vertices )
   {
@@ -327,4 +347,115 @@ QgsMeshDatasetMetadata QgsMeshZValueDataset::metadata() const
 int QgsMeshZValueDataset::valuesCount() const
 {
   return mMesh.vertexCount();
+}
+
+QgsMeshEditingDelaunayTriangulation::QgsMeshEditingDelaunayTriangulation() = default;
+
+QString QgsMeshEditingDelaunayTriangulation::text() const
+{
+  return QObject::tr( "Delaunay triangulation" );
+}
+
+QgsTopologicalMesh::Changes QgsMeshEditingDelaunayTriangulation::apply( QgsMeshEditor *meshEditor )
+{
+  //use only vertices that are on boundary or free, if boundary
+  QList<int> vertexIndextoTriangulate;
+
+  QList<int> removedVerticesFromTriangulation;
+
+  for ( const int vertexIndex : std::as_const( mInputVertices ) )
+  {
+    if ( meshEditor->isVertexFree( vertexIndex ) || meshEditor->isVertexOnBoundary( vertexIndex ) )
+      vertexIndextoTriangulate.append( vertexIndex );
+    else
+      removedVerticesFromTriangulation.append( vertexIndex );
+  }
+
+  bool triangulationReady = false;
+  bool giveUp = false;
+  QgsTopologicalMesh::TopologicalFaces topologicFaces;
+
+  while ( !triangulationReady )
+  {
+    QgsMeshTriangulation triangulation;
+
+    QVector<int> triangulationVertexToMeshVertex( vertexIndextoTriangulate.count() );
+    const QgsMesh *destinationMesh = meshEditor->topologicalMesh().mesh();
+
+    for ( int i = 0; i < vertexIndextoTriangulate.count(); ++i )
+    {
+      triangulationVertexToMeshVertex[i] = vertexIndextoTriangulate.at( i );
+      triangulation.addVertex( destinationMesh->vertices.at( vertexIndextoTriangulate.at( i ) ) );
+    }
+
+    QgsMesh resultingTriangulation = triangulation.triangulatedMesh();
+
+    //Transform the new mesh triangulation to destination mesh faces
+    QVector<QgsMeshFace> rawDestinationFaces = resultingTriangulation.faces;
+
+    for ( QgsMeshFace &destinationFace : rawDestinationFaces )
+    {
+      for ( int &vertexIndex : destinationFace )
+        vertexIndex = triangulationVertexToMeshVertex[vertexIndex];
+    }
+
+    //The new triangulation may contains faces that intersect existing faces, we need to remove them
+    QVector<QgsMeshFace> destinationFaces;
+    for ( const QgsMeshFace &face : rawDestinationFaces )
+    {
+      if ( meshEditor->isFaceGeometricallyCompatible( face ) )
+        destinationFaces.append( face );
+    }
+
+    bool facesReady = false;
+    QgsMeshEditingError previousError;
+    while ( !facesReady && !giveUp )
+    {
+      QgsMeshEditingError error;
+      topologicFaces = QgsTopologicalMesh::createNewTopologicalFaces( destinationFaces, true, error );
+
+      if ( error == QgsMeshEditingError() )
+        error = meshEditor->topologicalMesh().facesCanBeAdded( topologicFaces );
+
+      switch ( error.errorType )
+      {
+        case Qgis::MeshEditingErrorType::NoError:
+          facesReady = true;
+          triangulationReady = true;
+          break;
+        case Qgis::MeshEditingErrorType::InvalidFace:
+        case Qgis::MeshEditingErrorType::FlatFace:
+        case Qgis::MeshEditingErrorType::TooManyVerticesInFace:
+        case Qgis::MeshEditingErrorType::ManifoldFace:
+          if ( error.elementIndex != -1 )
+            destinationFaces.remove( error.elementIndex );
+          else
+            giveUp = true; //we don't know what happens, better to give up
+          break;
+        case Qgis::MeshEditingErrorType::InvalidVertex:
+        case Qgis::MeshEditingErrorType::UniqueSharedVertex:
+          facesReady = true;
+          if ( error.elementIndex != -1 )
+          {
+            removedVerticesFromTriangulation.append( error.elementIndex );
+            vertexIndextoTriangulate.removeOne( error.elementIndex );
+          }
+          else
+            giveUp = true; //we don't know what happens, better to give up
+          break;
+      }
+    }
+  }
+
+  Q_ASSERT( meshEditor->topologicalMesh().checkConsistency() == QgsMeshEditingError() );
+
+  if ( !removedVerticesFromTriangulation.isEmpty() )
+    mMessage = QObject::tr( "%n vertices have not been included in the triangulation", nullptr, removedVerticesFromTriangulation.count() );
+
+  mIsFinished = true;
+
+  if ( triangulationReady && !giveUp )
+    return meshEditor->topologicalMesh().addFaces( topologicFaces );
+  else
+    return QgsTopologicalMesh::Changes();
 }

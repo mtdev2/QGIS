@@ -13,8 +13,13 @@
 *                                                                         *
 ***************************************************************************/
 #include "qgsproviderconnectionmodel.h"
-#include "qgsproviderregistry.h"
+
 #include "qgsprovidermetadata.h"
+#include "qgsproviderregistry.h"
+
+#include <QIcon>
+
+#include "moc_qgsproviderconnectionmodel.cpp"
 
 QgsProviderConnectionModel::QgsProviderConnectionModel( const QString &provider, QObject *parent )
   : QAbstractItemModel( parent )
@@ -50,7 +55,7 @@ void QgsProviderConnectionModel::setAllowEmptyConnection( bool allowEmpty )
 
 void QgsProviderConnectionModel::removeConnection( const QString &connection )
 {
-  int index = mConnections.indexOf( connection );
+  const int index = mConnections.indexOf( connection );
   if ( index < 0 )
     return;
 
@@ -95,7 +100,7 @@ QVariant QgsProviderConnectionModel::data( const QModelIndex &index, int role ) 
 
   if ( index.row() == 0 && mAllowEmpty )
   {
-    if ( role == RoleEmpty )
+    if ( role == static_cast< int >( CustomRole::Empty ) )
       return true;
 
     return QVariant();
@@ -104,18 +109,18 @@ QVariant QgsProviderConnectionModel::data( const QModelIndex &index, int role ) 
   const QString connectionName = mConnections.value( index.row() - ( mAllowEmpty ? 1 : 0 ) );
   switch ( role )
   {
-    case RoleEmpty:
+    case static_cast< int >( CustomRole::Empty ):
       return false;
 
     case Qt::DisplayRole:
     case Qt::EditRole:
-    case RoleConnectionName:
+    case static_cast< int >( CustomRole::ConnectionName ):
     {
       return connectionName;
     }
 
     case Qt::DecorationRole:
-      if ( const QgsAbstractProviderConnection *connection =  mMetadata->findConnection( connectionName ) )
+      if ( const QgsAbstractProviderConnection *connection = mMetadata->findConnection( connectionName ) )
       {
         return connection->icon();
       }
@@ -125,9 +130,9 @@ QVariant QgsProviderConnectionModel::data( const QModelIndex &index, int role ) 
       }
 
     case Qt::ToolTipRole:
-    case RoleUri:
+    case static_cast< int >( CustomRole::Uri ):
     {
-      if ( const QgsAbstractProviderConnection *connection =  mMetadata->findConnection( connectionName ) )
+      if ( const QgsAbstractProviderConnection *connection = mMetadata->findConnection( connectionName ) )
       {
         return connection->uri();
       }
@@ -137,9 +142,9 @@ QVariant QgsProviderConnectionModel::data( const QModelIndex &index, int role ) 
       }
     }
 
-    case RoleConfiguration:
+    case static_cast< int >( CustomRole::Configuration ):
     {
-      if ( const QgsAbstractProviderConnection *connection =  mMetadata->findConnection( connectionName ) )
+      if ( const QgsAbstractProviderConnection *connection = mMetadata->findConnection( connectionName ) )
       {
         return connection->configuration();
       }
@@ -149,6 +154,8 @@ QVariant QgsProviderConnectionModel::data( const QModelIndex &index, int role ) 
       }
     }
 
+    default:
+      break;
   }
 
   return QVariant();

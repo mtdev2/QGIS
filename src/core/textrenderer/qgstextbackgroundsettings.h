@@ -16,19 +16,20 @@
 #ifndef QGSTEXTBACKGROUNDSETTINGS_H
 #define QGSTEXTBACKGROUNDSETTINGS_H
 
-#include "qgis_sip.h"
+#include "qgis.h"
 #include "qgis_core.h"
-#include "qgsunittypes.h"
+#include "qgis_sip.h"
 #include "qgsmapunitscale.h"
 
-#include <QString>
-#include <QPointF>
-#include <QSizeF>
-#include <QPainter>
 #include <QDomElement>
+#include <QPainter>
+#include <QPointF>
 #include <QSharedDataPointer>
+#include <QSizeF>
+#include <QString>
 
 class QgsMarkerSymbol;
+class QgsFillSymbol;
 class QgsPaintEffect;
 class QgsVectorLayer;
 class QgsReadWriteContext;
@@ -38,25 +39,23 @@ class QgsTextBackgroundSettingsPrivate;
 /**
  * \class QgsTextBackgroundSettings
   * \ingroup core
-  * Container for settings relating to a text background object.
+  * \brief Container for settings relating to a text background object.
   * \note QgsTextBackgroundSettings objects are implicitly shared.
-  * \since QGIS 3.0
  */
 class CORE_EXPORT QgsTextBackgroundSettings
 {
   public:
-
     /**
      * Background shape types.
      */
     enum ShapeType
     {
       ShapeRectangle = 0, //!< Rectangle
-      ShapeSquare, //!< Square - buffered sizes only
-      ShapeEllipse, //!< Ellipse
-      ShapeCircle, //!< Circle
-      ShapeSVG, //!< SVG file
-      ShapeMarkerSymbol, //!< Marker symbol
+      ShapeSquare,        //!< Square - buffered sizes only
+      ShapeEllipse,       //!< Ellipse
+      ShapeCircle,        //!< Circle
+      ShapeSVG,           //!< SVG file
+      ShapeMarkerSymbol,  //!< Marker symbol
     };
 
     /**
@@ -65,8 +64,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
     enum SizeType
     {
       SizeBuffer = 0, //!< Shape size is determined by adding a buffer margin around text
-      SizeFixed, //!< Fixed size
-      SizePercent //!< Shape size is determined by percent of text size
+      SizeFixed,      //!< Fixed size
+      SizePercent     //!< Shape size is determined by percent of text size
     };
 
     /**
@@ -75,19 +74,17 @@ class CORE_EXPORT QgsTextBackgroundSettings
     enum RotationType
     {
       RotationSync = 0, //!< Shape rotation is synced with text rotation
-      RotationOffset, //!< Shape rotation is offset from text rotation
-      RotationFixed //!< Shape rotation is a fixed angle
+      RotationOffset,   //!< Shape rotation is offset from text rotation
+      RotationFixed     //!< Shape rotation is a fixed angle
     };
 
     QgsTextBackgroundSettings();
 
-    /**
-     * Copy constructor.
-     * \param other source QgsTextBackgroundSettings
-     */
     QgsTextBackgroundSettings( const QgsTextBackgroundSettings &other );
+    SIP_SKIP QgsTextBackgroundSettings( QgsTextBackgroundSettings &&other );
 
     QgsTextBackgroundSettings &operator=( const QgsTextBackgroundSettings &other );
+    QgsTextBackgroundSettings &operator=( QgsTextBackgroundSettings &&other );
 
     ~QgsTextBackgroundSettings();
 
@@ -153,6 +150,28 @@ class CORE_EXPORT QgsTextBackgroundSettings
     void setMarkerSymbol( QgsMarkerSymbol *symbol SIP_TRANSFER );
 
     /**
+     * Returns the fill symbol to be rendered in the background. Ownership remains with
+     * the background settings.
+     * \note This is only used when the type() is QgsTextBackgroundSettings::ShapeRectangle,
+     * QgsTextBackgroundSettings::ShapeSquare, QgsTextBackgroundSettings::ShapeCircle or
+     * QgsTextBackgroundSettings::ShapeEllipse
+     * \see setFillSymbol()
+     * \since QGIS 3.20
+     */
+    QgsFillSymbol *fillSymbol() const;
+
+    /**
+     * Sets the current fill \a symbol for the background shape. Ownership is transferred
+     * to the background settings.
+     * \note This is only used when the type() is QgsTextBackgroundSettings::ShapeRectangle,
+     * QgsTextBackgroundSettings::ShapeSquare, QgsTextBackgroundSettings::ShapeCircle or
+     * QgsTextBackgroundSettings::ShapeEllipse
+     * \see fillSymbol()
+     * \since QGIS 3.20
+     */
+    void setFillSymbol( QgsFillSymbol *symbol SIP_TRANSFER );
+
+    /**
      * Returns the method used to determine the size of the background shape (e.g., fixed size or buffer
      * around text).
      * \see setSizeType()
@@ -197,7 +216,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see sizeType()
      * \see size()
      */
-    QgsUnitTypes::RenderUnit sizeUnit() const;
+    Qgis::RenderUnit sizeUnit() const;
 
     /**
      * Sets the units used for the shape's size. This value has no meaning if the sizeType() is set to
@@ -207,7 +226,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see setSizeType()
      * \see setSize()
      */
-    void setSizeUnit( QgsUnitTypes::RenderUnit unit );
+    void setSizeUnit( Qgis::RenderUnit unit );
 
     /**
      * Returns the map unit scale object for the shape size. This is only used if the
@@ -277,7 +296,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see setOffsetUnit()
      * \see offset()
      */
-    QgsUnitTypes::RenderUnit offsetUnit() const;
+    Qgis::RenderUnit offsetUnit() const;
 
     /**
      * Sets the units used for the shape's offset.
@@ -285,7 +304,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see offsetUnit()
      * \see setOffset()
      */
-    void setOffsetUnit( QgsUnitTypes::RenderUnit units );
+    void setOffsetUnit( Qgis::RenderUnit units );
 
     /**
      * Returns the map unit scale object for the shape offset. This is only used if the
@@ -327,7 +346,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see setRadiiUnit()
      * \see radii()
      */
-    QgsUnitTypes::RenderUnit radiiUnit() const;
+    Qgis::RenderUnit radiiUnit() const;
 
     /**
      * Sets the units used for the shape's radii.
@@ -335,7 +354,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see radiiUnit()
      * \see setRadii()
      */
-    void setRadiiUnit( QgsUnitTypes::RenderUnit units );
+    void setRadiiUnit( Qgis::RenderUnit units );
 
     /**
      * Returns the map unit scale object for the shape radii. This is only used if the
@@ -386,6 +405,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * Returns the color used for filing the background shape.
      * \see setFillColor()
      * \see strokeColor()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     QColor fillColor() const;
 
@@ -394,6 +415,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \param color background color
      * \see fillColor()
      * \see setStrokeColor()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     void setFillColor( const QColor &color );
 
@@ -401,6 +424,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * Returns the color used for outlining the background shape.
      * \see setStrokeColor()
      * \see fillColor()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     QColor strokeColor() const;
 
@@ -425,6 +450,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * setStrokeWidthUnit().
      * \see strokeWidth()
      * \see setStrokeWidthUnit()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     void setStrokeWidth( double width );
 
@@ -433,15 +460,17 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \see setStrokeWidthUnit()
      * \see strokeWidth()
      */
-    QgsUnitTypes::RenderUnit strokeWidthUnit() const;
+    Qgis::RenderUnit strokeWidthUnit() const;
 
     /**
      * Sets the units used for the shape's stroke width.
      * \param units stroke width units
      * \see strokeWidthUnit()
      * \see setStrokeWidth()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
-    void setStrokeWidthUnit( QgsUnitTypes::RenderUnit units );
+    void setStrokeWidthUnit( Qgis::RenderUnit units );
 
     /**
      * Returns the map unit scale object for the shape stroke width. This is only used if the
@@ -457,6 +486,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * \param scale scale for shape stroke width
      * \see strokeWidthMapUnitScale()
      * \see setStrokeWidthUnit()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     void setStrokeWidthMapUnitScale( const QgsMapUnitScale &scale );
 
@@ -470,6 +501,8 @@ class CORE_EXPORT QgsTextBackgroundSettings
      * Sets the join style used for drawing the background shape.
      * \param style join style
      * \see joinStyle()
+     * \note As of QGIS 3.20, using this function is only recommended for SVG backgrounds, while
+     * other background types should be configured through their symbols.
      */
     void setJoinStyle( Qt::PenJoinStyle style );
 
@@ -507,9 +540,18 @@ class CORE_EXPORT QgsTextBackgroundSettings
 
     /**
      * Updates the format by evaluating current values of data defined properties.
+     * \note Since QGIS 3.20, data defined fill color, stroke color, stroke width, and
+     * pen join style will only modify SVG backgrounds. For other background types, the
+     * data defined properties within symbols are to be used.
      * \since QGIS 3.10
      */
     void updateDataDefinedProperties( QgsRenderContext &context, const QgsPropertyCollection &properties );
+
+    /**
+     * Upgrade data defined properties when reading a project file saved in QGIS prior to version 3.20.
+     * \since QGIS 3.20
+     */
+    void upgradeDataDefinedProperties( QgsPropertyCollection &properties ) SIP_SKIP;
 
     /**
      * Returns all field names referenced by the configuration (e.g. from data defined properties).
@@ -518,9 +560,7 @@ class CORE_EXPORT QgsTextBackgroundSettings
     QSet<QString> referencedFields( const QgsRenderContext &context ) const;
 
   private:
-
     QSharedDataPointer<QgsTextBackgroundSettingsPrivate> d;
-
 };
 
 #endif // QGSTEXTBACKGROUNDSETTINGS_H

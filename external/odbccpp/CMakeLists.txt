@@ -1,10 +1,12 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+cmake_minimum_required(VERSION 3.12)
 
-SET(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
 
-PROJECT(odbccpp)
+project(odbccpp)
 
-FIND_PACKAGE(ODBC REQUIRED)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
-ADD_SUBDIRECTORY(src)
+find_package(ODBC REQUIRED)
 
+add_subdirectory(src)

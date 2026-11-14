@@ -15,19 +15,20 @@
 
 
 #include "qgsmapcanvasitem.h"
+
+#include "qgslogger.h"
 #include "qgsmapcanvas.h"
 #include "qgsmaptopixel.h"
 #include "qgsrendercontext.h"
-#include <QGraphicsScene>
-#include <QRect>
-#include <QPen>
+
 #include <QBrush>
+#include <QGraphicsScene>
 #include <QPainter>
-#include "qgslogger.h"
+#include <QPen>
+#include <QRect>
 
 QgsMapCanvasItem::QgsMapCanvasItem( QgsMapCanvas *mapCanvas )
   : mMapCanvas( mapCanvas )
-  , mRectRotation( 0.0 )
   , mItemSize( 0, 0 )
 {
   Q_ASSERT( mapCanvas && mapCanvas->scene() );
@@ -39,9 +40,7 @@ QgsMapCanvasItem::~QgsMapCanvasItem()
   update(); // schedule redraw of canvas
 }
 
-void QgsMapCanvasItem::paint( QPainter *painter,
-                              const QStyleOptionGraphicsItem *option,
-                              QWidget *widget )
+void QgsMapCanvasItem::paint( QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget )
 {
   Q_UNUSED( option )
   Q_UNUSED( widget )
@@ -83,7 +82,7 @@ void QgsMapCanvasItem::setRect( const QgsRectangle &rect, bool resetRotation )
     // and size (rect size / map units per pixel)
     r.setTopLeft( toCanvasCoordinates( QPointF( mRect.xMinimum(), mRect.yMaximum() ) ) );
     const QgsMapToPixel *m2p = mMapCanvas->getCoordinateTransform();
-    double res = m2p->mapUnitsPerPixel();
+    const double res = m2p->mapUnitsPerPixel();
     r.setSize( QSizeF( mRect.width() / res, mRect.height() / res ) );
   }
 
@@ -98,7 +97,7 @@ void QgsMapCanvasItem::setRect( const QgsRectangle &rect, bool resetRotation )
     setRotation( 0 );
   }
 
-  // QgsDebugMsg(QString("[%1,%2]-[%3x%4]").arg((int) r.left()).arg((int) r.top()).arg((int) r.width()).arg((int) r.height()));
+  // QgsDebugMsgLevel(QString("[%1,%2]-[%3x%4]").arg((int) r.left()).arg((int) r.top()).arg((int) r.width()).arg((int) r.height()), 2);
 
   update();
 }
@@ -128,7 +127,7 @@ bool QgsMapCanvasItem::setRenderContextVariables( QPainter *p, QgsRenderContext 
   context.setRendererScale( mMapCanvas->scale() );
   context.setScaleFactor( ms.outputDpi() / 25.4 );
 
-  context.setForceVectorOutput( true );
+  context.setRasterizedRenderingPolicy( Qgis::RasterizedRenderingPolicy::PreferVector );
   return true;
 }
 

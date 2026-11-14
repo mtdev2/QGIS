@@ -16,30 +16,40 @@
  ***************************************************************************/
 
 #include "qgsannotation.h"
-#include "qgssymbollayerutils.h"
+
+#include "qgsfillsymbol.h"
 #include "qgsmaplayer.h"
+#include "qgsmarkersymbol.h"
+#include "qgspainting.h"
 #include "qgsproject.h"
-#include "qgsgeometryutils.h"
+#include "qgsshapegenerator.h"
 #include "qgsstyleentityvisitor.h"
+#include "qgssymbol.h"
+#include "qgssymbollayerutils.h"
 
-#include <QPen>
 #include <QPainter>
+#include <QPen>
+#include <QString>
 
-Q_GUI_EXPORT extern int qt_defaultDpiX();
+#include "moc_qgsannotation.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsAnnotation::QgsAnnotation( QObject *parent )
   : QObject( parent )
   , mMarkerSymbol( new QgsMarkerSymbol() )
 {
   QVariantMap props;
-  props.insert( QStringLiteral( "color" ), QStringLiteral( "white" ) );
-  props.insert( QStringLiteral( "style" ), QStringLiteral( "solid" ) );
-  props.insert( QStringLiteral( "style_border" ), QStringLiteral( "solid" ) );
-  props.insert( QStringLiteral( "color_border" ), QStringLiteral( "black" ) );
-  props.insert( QStringLiteral( "width_border" ), QStringLiteral( "0.3" ) );
-  props.insert( QStringLiteral( "joinstyle" ), QStringLiteral( "miter" ) );
-  mFillSymbol.reset( QgsFillSymbol::createSimple( props ) );
+  props.insert( u"color"_s, u"white"_s );
+  props.insert( u"style"_s, u"solid"_s );
+  props.insert( u"style_border"_s, u"solid"_s );
+  props.insert( u"color_border"_s, u"black"_s );
+  props.insert( u"width_border"_s, u"0.3"_s );
+  props.insert( u"joinstyle"_s, u"miter"_s );
+  mFillSymbol = QgsFillSymbol::createSimple( props );
 }
+
+QgsAnnotation::~QgsAnnotation() = default;
 
 void QgsAnnotation::setVisible( bool visible )
 {
@@ -56,7 +66,6 @@ void QgsAnnotation::setHasFixedMapPosition( bool fixed )
     return;
 
   mHasFixedMapPosition = fixed;
-  updateBalloon();
   emit moved();
 }
 
@@ -93,7 +102,6 @@ void QgsAnnotation::setFrameOffsetFromReferencePointMm( QPointF offset )
 {
   mOffsetFromReferencePoint = offset;
 
-  updateBalloon();
   emit moved();
   emit appearanceChanged();
 }
@@ -111,9 +119,8 @@ QSizeF QgsAnnotation::frameSize() const
 
 void QgsAnnotation::setFrameSizeMm( QSizeF size )
 {
-  QSizeF frameSize = minimumFrameSize().expandedTo( size ); //don't allow frame sizes below minimum
+  const QSizeF frameSize = minimumFrameSize().expandedTo( size ); //don't allow frame sizes below minimum
   mFrameSize = frameSize;
-  updateBalloon();
   emit moved();
   emit appearanceChanged();
 }
@@ -130,15 +137,20 @@ void QgsAnnotation::setFillSymbol( QgsFillSymbol *symbol )
   emit appearanceChanged();
 }
 
+QgsFillSymbol *QgsAnnotation::fillSymbol() const
+{
+  return mFillSymbol.get();
+}
+
 void QgsAnnotation::render( QgsRenderContext &context ) const
 {
   QPainter *painter = context.painter();
-  if ( !painter )
+  if ( !painter || ( context.feedback() && context.feedback()->isCanceled() ) )
   {
     return;
   }
 
-  QgsScopedQPainterState painterState( context.painter() );
+  const QgsScopedQPainterState painterState( context.painter() );
   context.setPainterFlagsUsingContext();
 
   drawFrame( context );
@@ -148,20 +160,24 @@ void QgsAnnotation::render( QgsRenderContext &context ) const
   }
   if ( mHasFixedMapPosition )
   {
-    painter->translate( context.convertToPainterUnits( mOffsetFromReferencePoint.x(), QgsUnitTypes::RenderMillimeters ) + context.convertToPainterUnits( mContentsMargins.left(), QgsUnitTypes::RenderMillimeters ),
-                        context.convertToPainterUnits( mOffsetFromReferencePoint.y(), QgsUnitTypes::RenderMillimeters ) + context.convertToPainterUnits( mContentsMargins.top(), QgsUnitTypes::RenderMillimeters ) );
+    painter->translate(
+      context.convertToPainterUnits( mOffsetFromReferencePoint.x(), Qgis::RenderUnit::Millimeters ) + context.convertToPainterUnits( mContentsMargins.left(), Qgis::RenderUnit::Millimeters ),
+      context.convertToPainterUnits( mOffsetFromReferencePoint.y(), Qgis::RenderUnit::Millimeters ) + context.convertToPainterUnits( mContentsMargins.top(), Qgis::RenderUnit::Millimeters )
+    );
   }
   else
   {
-    painter->translate( context.convertToPainterUnits( mContentsMargins.left(), QgsUnitTypes::RenderMillimeters ),
-                        context.convertToPainterUnits( mContentsMargins.top(), QgsUnitTypes::RenderMillimeters ) );
+    painter->translate( context.convertToPainterUnits( mContentsMargins.left(), Qgis::RenderUnit::Millimeters ), context.convertToPainterUnits( mContentsMargins.top(), Qgis::RenderUnit::Millimeters ) );
   }
-  QSizeF size( context.convertToPainterUnits( mFrameSize.width(), QgsUnitTypes::RenderMillimeters ) - context.convertToPainterUnits( mContentsMargins.left() + mContentsMargins.right(), QgsUnitTypes::RenderMillimeters ),
-               context.convertToPainterUnits( mFrameSize.height(), QgsUnitTypes::RenderMillimeters ) - context.convertToPainterUnits( mContentsMargins.top() + mContentsMargins.bottom(), QgsUnitTypes::RenderMillimeters ) );
+  const QSizeF size(
+    context.convertToPainterUnits( mFrameSize.width(), Qgis::RenderUnit::Millimeters )
+      - context.convertToPainterUnits( mContentsMargins.left() + mContentsMargins.right(), Qgis::RenderUnit::Millimeters ),
+    context.convertToPainterUnits( mFrameSize.height(), Qgis::RenderUnit::Millimeters ) - context.convertToPainterUnits( mContentsMargins.top() + mContentsMargins.bottom(), Qgis::RenderUnit::Millimeters )
+  );
 
   // scale back from painter dpi to 96 dpi --
-// double dotsPerMM = context.painter()->device()->logicalDpiX() / ( 25.4 * 3.78 );
-// context.painter()->scale( dotsPerMM, dotsPerMM );
+  // double dotsPerMM = context.painter()->device()->logicalDpiX() / ( 25.4 * 3.78 );
+  // context.painter()->scale( dotsPerMM, dotsPerMM );
 
   renderAnnotation( context, size );
 }
@@ -186,24 +202,24 @@ void QgsAnnotation::setAssociatedFeature( const QgsFeature &feature )
 bool QgsAnnotation::accept( QgsStyleEntityVisitorInterface *visitor ) const
 {
   // NOTE: if visitEnter returns false it means "don't visit the annotation", not "abort all further visitations"
-  if ( !visitor->visitEnter( QgsStyleEntityVisitorInterface::Node( QgsStyleEntityVisitorInterface::NodeType::Annotation, QStringLiteral( "annotation" ), tr( "Annotation" ) ) ) )
+  if ( !visitor->visitEnter( QgsStyleEntityVisitorInterface::Node( QgsStyleEntityVisitorInterface::NodeType::Annotation, u"annotation"_s, tr( "Annotation" ) ) ) )
     return true;
 
   if ( mMarkerSymbol )
   {
     QgsStyleSymbolEntity entity( mMarkerSymbol.get() );
-    if ( !visitor->visit( QgsStyleEntityVisitorInterface::StyleLeaf( &entity, QStringLiteral( "marker" ), QObject::tr( "Marker" ) ) ) )
+    if ( !visitor->visit( QgsStyleEntityVisitorInterface::StyleLeaf( &entity, u"marker"_s, QObject::tr( "Marker" ) ) ) )
       return false;
   }
 
   if ( mFillSymbol )
   {
     QgsStyleSymbolEntity entity( mFillSymbol.get() );
-    if ( !visitor->visit( QgsStyleEntityVisitorInterface::StyleLeaf( &entity, QStringLiteral( "fill" ), QObject::tr( "Fill" ) ) ) )
+    if ( !visitor->visit( QgsStyleEntityVisitorInterface::StyleLeaf( &entity, u"fill"_s, QObject::tr( "Fill" ) ) ) )
       return false;
   }
 
-  if ( !visitor->visitExit( QgsStyleEntityVisitorInterface::Node( QgsStyleEntityVisitorInterface::NodeType::Annotation, QStringLiteral( "annotation" ), tr( "Annotation" ) ) ) )
+  if ( !visitor->visitExit( QgsStyleEntityVisitorInterface::Node( QgsStyleEntityVisitorInterface::NodeType::Annotation, u"annotation"_s, tr( "Annotation" ) ) ) )
     return false;
 
   return true;
@@ -214,169 +230,25 @@ QSizeF QgsAnnotation::minimumFrameSize() const
   return QSizeF( 0, 0 );
 }
 
-void QgsAnnotation::updateBalloon()
-{
-  //first test if the point is in the frame. In that case we don't need a balloon.
-  if ( !mHasFixedMapPosition ||
-       ( mOffsetFromReferencePoint.x() < 0 && ( mOffsetFromReferencePoint.x() + mFrameSize.width() ) > 0
-         && mOffsetFromReferencePoint.y() < 0 && ( mOffsetFromReferencePoint.y() + mFrameSize.height() ) > 0 ) )
-  {
-    mBalloonSegment = -1;
-    return;
-  }
-
-  //edge list
-  QList<QLineF> segmentList;
-  segmentList << segment( 0, nullptr );
-  segmentList << segment( 1, nullptr );
-  segmentList << segment( 2, nullptr );
-  segmentList << segment( 3, nullptr );
-
-  //find  closest edge / closest edge point
-  double minEdgeDist = std::numeric_limits<double>::max();
-  int minEdgeIndex = -1;
-  QLineF minEdge;
-  QgsPointXY minEdgePoint;
-  QgsPointXY origin( 0, 0 );
-
-  for ( int i = 0; i < 4; ++i )
-  {
-    QLineF currentSegment = segmentList.at( i );
-    QgsPointXY currentMinDistPoint;
-    double currentMinDist = origin.sqrDistToSegment( currentSegment.x1(), currentSegment.y1(), currentSegment.x2(), currentSegment.y2(), currentMinDistPoint );
-    bool isPreferredSegment = false;
-    if ( qgsDoubleNear( currentMinDist, minEdgeDist ) )
-    {
-      // two segments are close - work out which looks nicer
-      const double angle = fmod( origin.azimuth( currentMinDistPoint ) + 360.0, 360.0 );
-      if ( angle < 45 || angle > 315 )
-        isPreferredSegment = i == 0;
-      else if ( angle < 135 )
-        isPreferredSegment = i == 3;
-      else if ( angle < 225 )
-        isPreferredSegment = i == 2;
-      else
-        isPreferredSegment = i == 1;
-    }
-    else if ( currentMinDist < minEdgeDist )
-      isPreferredSegment = true;
-
-    if ( isPreferredSegment )
-    {
-      minEdgeIndex = i;
-      minEdgePoint = currentMinDistPoint;
-      minEdgeDist = currentMinDist;
-      minEdge = currentSegment;
-    }
-  }
-
-  if ( minEdgeIndex < 0 )
-  {
-    return;
-  }
-
-  mBalloonSegment = minEdgeIndex;
-  QPointF minEdgeEnd = minEdge.p2();
-  mBalloonSegmentPoint1 = QPointF( minEdgePoint.x(), minEdgePoint.y() );
-  if ( std::sqrt( minEdgePoint.sqrDist( minEdgeEnd.x(), minEdgeEnd.y() ) ) < mSegmentPointWidthMm )
-  {
-    double x = 0;
-    double y = 0;
-    QgsGeometryUtils::pointOnLineWithDistance( minEdge.p2().x(), minEdge.p2().y(), minEdge.p1().x(), minEdge.p1().y(), mSegmentPointWidthMm, x, y );
-    mBalloonSegmentPoint1 = QPointF( x, y );
-  }
-
-  {
-    double x = 0;
-    double y = 0;
-    QgsGeometryUtils::pointOnLineWithDistance( mBalloonSegmentPoint1.x(), mBalloonSegmentPoint1.y(), minEdge.p2().x(), minEdge.p2().y(), mSegmentPointWidthMm, x, y );
-    mBalloonSegmentPoint2 = QPointF( x, y );
-  }
-
-}
-
-QLineF QgsAnnotation::segment( int index, QgsRenderContext *context ) const
-{
-  auto scaleSize = [context]( double size )->double
-  {
-    return context ? context->convertToPainterUnits( size, QgsUnitTypes::RenderMillimeters ) : size;
-  };
-  if ( mHasFixedMapPosition )
-  {
-    switch ( index )
-    {
-      case 0:
-        return QLineF( scaleSize( mOffsetFromReferencePoint.x() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ),
-                       scaleSize( mOffsetFromReferencePoint.x() ) + scaleSize( mFrameSize.width() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) );
-      case 1:
-        return QLineF( scaleSize( mOffsetFromReferencePoint.x() ) + scaleSize( mFrameSize.width() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ),
-                       scaleSize( mOffsetFromReferencePoint.x() ) + scaleSize( mFrameSize.width() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) + scaleSize( mFrameSize.height() ) );
-      case 2:
-        return QLineF( scaleSize( mOffsetFromReferencePoint.x() ) + scaleSize( mFrameSize.width() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) + scaleSize( mFrameSize.height() ),
-                       scaleSize( mOffsetFromReferencePoint.x() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) + scaleSize( mFrameSize.height() ) );
-      case 3:
-        return QLineF( scaleSize( mOffsetFromReferencePoint.x() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) + scaleSize( mFrameSize.height() ),
-                       scaleSize( mOffsetFromReferencePoint.x() ),
-                       scaleSize( mOffsetFromReferencePoint.y() ) );
-      default:
-        return QLineF();
-    }
-  }
-  else
-  {
-    switch ( index )
-    {
-      case 0:
-        return QLineF( 0, 0, scaleSize( mFrameSize.width() ), 0 );
-      case 1:
-        return QLineF( scaleSize( mFrameSize.width() ), 0,
-                       scaleSize( mFrameSize.width() ), scaleSize( mFrameSize.height() ) );
-      case 2:
-        return QLineF( scaleSize( mFrameSize.width() ), scaleSize( mFrameSize.height() ),
-                       0, scaleSize( mFrameSize.height() ) );
-      case 3:
-        return QLineF( 0, scaleSize( mFrameSize.height() ),
-                       0, 0 );
-      default:
-        return QLineF();
-    }
-  }
-}
-
 void QgsAnnotation::drawFrame( QgsRenderContext &context ) const
 {
   if ( !mFillSymbol )
     return;
 
-  QPolygonF poly;
-  poly.reserve( 9 + ( mHasFixedMapPosition ? 3 : 0 ) );
-  QVector<QPolygonF> rings; //empty list
-  for ( int i = 0; i < 4; ++i )
-  {
-    QLineF currentSegment = segment( i, &context );
-    poly << QPointF( currentSegment.p1().x(),
-                     currentSegment.p1().y() );
-    if ( i == mBalloonSegment && mHasFixedMapPosition )
-    {
-      poly << QPointF( context.convertToPainterUnits( mBalloonSegmentPoint1.x(), QgsUnitTypes::RenderMillimeters ),
-                       context.convertToPainterUnits( mBalloonSegmentPoint1.y(), QgsUnitTypes::RenderMillimeters ) );
-      poly << QPointF( 0, 0 );
-      poly << QPointF( context.convertToPainterUnits( mBalloonSegmentPoint2.x(), QgsUnitTypes::RenderMillimeters ),
-                       context.convertToPainterUnits( mBalloonSegmentPoint2.y(), QgsUnitTypes::RenderMillimeters ) );
-    }
-    poly << QPointF( currentSegment.p2().x(), currentSegment.p2().y() );
-  }
-  if ( poly.at( 0 ) != poly.at( poly.count() - 1 ) )
-    poly << poly.at( 0 );
+  auto scaleSize = [&context]( double size ) -> double { return context.convertToPainterUnits( size, Qgis::RenderUnit::Millimeters ); };
+
+  const QRectF frameRect(
+    mHasFixedMapPosition ? scaleSize( mOffsetFromReferencePoint.x() ) : 0,
+    mHasFixedMapPosition ? scaleSize( mOffsetFromReferencePoint.y() ) : 0,
+    scaleSize( mFrameSize.width() ),
+    scaleSize( mFrameSize.height() )
+  );
+  const QgsPointXY origin = mHasFixedMapPosition ? QgsPointXY( 0, 0 ) : QgsPointXY( frameRect.center().x(), frameRect.center().y() );
+
+  const QPolygonF poly = QgsShapeGenerator::createBalloon( origin, frameRect, context.convertToPainterUnits( mSegmentPointWidthMm, Qgis::RenderUnit::Millimeters ) );
 
   mFillSymbol->startRender( context );
+  const QVector<QPolygonF> rings; //empty list
   mFillSymbol->renderPolygon( poly, &rings, nullptr, context );
   mFillSymbol->stopRender( context );
 }
@@ -402,27 +274,27 @@ void QgsAnnotation::_writeXml( QDomElement &itemElem, QDomDocument &doc, const Q
   {
     return;
   }
-  QDomElement annotationElem = doc.createElement( QStringLiteral( "AnnotationItem" ) );
-  annotationElem.setAttribute( QStringLiteral( "mapPositionFixed" ), mHasFixedMapPosition );
-  annotationElem.setAttribute( QStringLiteral( "mapPosX" ), qgsDoubleToString( mMapPosition.x() ) );
-  annotationElem.setAttribute( QStringLiteral( "mapPosY" ), qgsDoubleToString( mMapPosition.y() ) );
+  QDomElement annotationElem = doc.createElement( u"AnnotationItem"_s );
+  annotationElem.setAttribute( u"mapPositionFixed"_s, mHasFixedMapPosition );
+  annotationElem.setAttribute( u"mapPosX"_s, qgsDoubleToString( mMapPosition.x() ) );
+  annotationElem.setAttribute( u"mapPosY"_s, qgsDoubleToString( mMapPosition.y() ) );
   if ( mMapPositionCrs.isValid() )
     mMapPositionCrs.writeXml( annotationElem, doc );
-  annotationElem.setAttribute( QStringLiteral( "offsetXMM" ), qgsDoubleToString( mOffsetFromReferencePoint.x() ) );
-  annotationElem.setAttribute( QStringLiteral( "offsetYMM" ), qgsDoubleToString( mOffsetFromReferencePoint.y() ) );
-  annotationElem.setAttribute( QStringLiteral( "frameWidthMM" ), qgsDoubleToString( mFrameSize.width() ) );
-  annotationElem.setAttribute( QStringLiteral( "frameHeightMM" ), qgsDoubleToString( mFrameSize.height() ) );
-  annotationElem.setAttribute( QStringLiteral( "canvasPosX" ), qgsDoubleToString( mRelativePosition.x() ) );
-  annotationElem.setAttribute( QStringLiteral( "canvasPosY" ), qgsDoubleToString( mRelativePosition.y() ) );
-  annotationElem.setAttribute( QStringLiteral( "contentsMargin" ), mContentsMargins.toString() );
-  annotationElem.setAttribute( QStringLiteral( "visible" ), isVisible() );
+  annotationElem.setAttribute( u"offsetXMM"_s, qgsDoubleToString( mOffsetFromReferencePoint.x() ) );
+  annotationElem.setAttribute( u"offsetYMM"_s, qgsDoubleToString( mOffsetFromReferencePoint.y() ) );
+  annotationElem.setAttribute( u"frameWidthMM"_s, qgsDoubleToString( mFrameSize.width() ) );
+  annotationElem.setAttribute( u"frameHeightMM"_s, qgsDoubleToString( mFrameSize.height() ) );
+  annotationElem.setAttribute( u"canvasPosX"_s, qgsDoubleToString( mRelativePosition.x() ) );
+  annotationElem.setAttribute( u"canvasPosY"_s, qgsDoubleToString( mRelativePosition.y() ) );
+  annotationElem.setAttribute( u"contentsMargin"_s, mContentsMargins.toString() );
+  annotationElem.setAttribute( u"visible"_s, isVisible() );
   if ( mMapLayer )
   {
-    annotationElem.setAttribute( QStringLiteral( "mapLayer" ), mMapLayer->id() );
+    annotationElem.setAttribute( u"mapLayer"_s, mMapLayer->id() );
   }
   if ( mMarkerSymbol )
   {
-    QDomElement symbolElem = QgsSymbolLayerUtils::saveSymbol( QStringLiteral( "marker symbol" ), mMarkerSymbol.get(), doc, context );
+    const QDomElement symbolElem = QgsSymbolLayerUtils::saveSymbol( u"marker symbol"_s, mMarkerSymbol.get(), doc, context );
     if ( !symbolElem.isNull() )
     {
       annotationElem.appendChild( symbolElem );
@@ -430,8 +302,8 @@ void QgsAnnotation::_writeXml( QDomElement &itemElem, QDomDocument &doc, const Q
   }
   if ( mFillSymbol )
   {
-    QDomElement fillElem = doc.createElement( QStringLiteral( "fillSymbol" ) );
-    QDomElement symbolElem = QgsSymbolLayerUtils::saveSymbol( QStringLiteral( "fill symbol" ), mFillSymbol.get(), doc, context );
+    QDomElement fillElem = doc.createElement( u"fillSymbol"_s );
+    const QDomElement symbolElem = QgsSymbolLayerUtils::saveSymbol( u"fill symbol"_s, mFillSymbol.get(), doc, context );
     if ( !symbolElem.isNull() )
     {
       fillElem.appendChild( symbolElem );
@@ -448,15 +320,15 @@ void QgsAnnotation::_readXml( const QDomElement &annotationElem, const QgsReadWr
     return;
   }
   QPointF pos;
-  pos.setX( annotationElem.attribute( QStringLiteral( "canvasPosX" ), QStringLiteral( "0" ) ).toDouble() );
-  pos.setY( annotationElem.attribute( QStringLiteral( "canvasPosY" ), QStringLiteral( "0" ) ).toDouble() );
+  pos.setX( annotationElem.attribute( u"canvasPosX"_s, u"0"_s ).toDouble() );
+  pos.setY( annotationElem.attribute( u"canvasPosY"_s, u"0"_s ).toDouble() );
   if ( pos.x() >= 1 || pos.x() < 0 || pos.y() < 0 || pos.y() >= 1 )
     mRelativePosition = QPointF();
   else
     mRelativePosition = pos;
   QgsPointXY mapPos;
-  mapPos.setX( annotationElem.attribute( QStringLiteral( "mapPosX" ), QStringLiteral( "0" ) ).toDouble() );
-  mapPos.setY( annotationElem.attribute( QStringLiteral( "mapPosY" ), QStringLiteral( "0" ) ).toDouble() );
+  mapPos.setX( annotationElem.attribute( u"mapPosX"_s, u"0"_s ).toDouble() );
+  mapPos.setY( annotationElem.attribute( u"mapPosY"_s, u"0"_s ).toDouble() );
   mMapPosition = mapPos;
 
   if ( !mMapPositionCrs.readXml( annotationElem ) )
@@ -464,82 +336,81 @@ void QgsAnnotation::_readXml( const QDomElement &annotationElem, const QgsReadWr
     mMapPositionCrs = QgsCoordinateReferenceSystem();
   }
 
-  mContentsMargins = QgsMargins::fromString( annotationElem.attribute( QStringLiteral( "contentsMargin" ) ) );
-  const double dpiScale = 25.4 / qt_defaultDpiX();
-  if ( annotationElem.hasAttribute( QStringLiteral( "frameWidthMM" ) ) )
-    mFrameSize.setWidth( annotationElem.attribute( QStringLiteral( "frameWidthMM" ), QStringLiteral( "5" ) ).toDouble() );
+  mContentsMargins = QgsMargins::fromString( annotationElem.attribute( u"contentsMargin"_s ) );
+  const double dpiScale = 25.4 / QgsPainting::qtDefaultDpiX();
+  if ( annotationElem.hasAttribute( u"frameWidthMM"_s ) )
+    mFrameSize.setWidth( annotationElem.attribute( u"frameWidthMM"_s, u"5"_s ).toDouble() );
   else
-    mFrameSize.setWidth( dpiScale * annotationElem.attribute( QStringLiteral( "frameWidth" ), QStringLiteral( "50" ) ).toDouble() );
-  if ( annotationElem.hasAttribute( QStringLiteral( "frameHeightMM" ) ) )
-    mFrameSize.setHeight( annotationElem.attribute( QStringLiteral( "frameHeightMM" ), QStringLiteral( "3" ) ).toDouble() );
+    mFrameSize.setWidth( dpiScale * annotationElem.attribute( u"frameWidth"_s, u"50"_s ).toDouble() );
+  if ( annotationElem.hasAttribute( u"frameHeightMM"_s ) )
+    mFrameSize.setHeight( annotationElem.attribute( u"frameHeightMM"_s, u"3"_s ).toDouble() );
   else
-    mFrameSize.setHeight( dpiScale * annotationElem.attribute( QStringLiteral( "frameHeight" ), QStringLiteral( "50" ) ).toDouble() );
+    mFrameSize.setHeight( dpiScale * annotationElem.attribute( u"frameHeight"_s, u"50"_s ).toDouble() );
 
-  if ( annotationElem.hasAttribute( QStringLiteral( "offsetXMM" ) ) )
-    mOffsetFromReferencePoint.setX( annotationElem.attribute( QStringLiteral( "offsetXMM" ), QStringLiteral( "0" ) ).toDouble() );
+  if ( annotationElem.hasAttribute( u"offsetXMM"_s ) )
+    mOffsetFromReferencePoint.setX( annotationElem.attribute( u"offsetXMM"_s, u"0"_s ).toDouble() );
   else
-    mOffsetFromReferencePoint.setX( dpiScale * annotationElem.attribute( QStringLiteral( "offsetX" ), QStringLiteral( "0" ) ).toDouble() );
-  if ( annotationElem.hasAttribute( QStringLiteral( "offsetYMM" ) ) )
-    mOffsetFromReferencePoint.setY( annotationElem.attribute( QStringLiteral( "offsetYMM" ), QStringLiteral( "0" ) ).toDouble() );
+    mOffsetFromReferencePoint.setX( dpiScale * annotationElem.attribute( u"offsetX"_s, u"0"_s ).toDouble() );
+  if ( annotationElem.hasAttribute( u"offsetYMM"_s ) )
+    mOffsetFromReferencePoint.setY( annotationElem.attribute( u"offsetYMM"_s, u"0"_s ).toDouble() );
   else
-    mOffsetFromReferencePoint.setY( dpiScale * annotationElem.attribute( QStringLiteral( "offsetY" ), QStringLiteral( "0" ) ).toDouble() );
+    mOffsetFromReferencePoint.setY( dpiScale * annotationElem.attribute( u"offsetY"_s, u"0"_s ).toDouble() );
 
-  mHasFixedMapPosition = annotationElem.attribute( QStringLiteral( "mapPositionFixed" ), QStringLiteral( "1" ) ).toInt();
-  mVisible = annotationElem.attribute( QStringLiteral( "visible" ), QStringLiteral( "1" ) ).toInt();
-  if ( annotationElem.hasAttribute( QStringLiteral( "mapLayer" ) ) )
+  mHasFixedMapPosition = annotationElem.attribute( u"mapPositionFixed"_s, u"1"_s ).toInt();
+  mVisible = annotationElem.attribute( u"visible"_s, u"1"_s ).toInt();
+  if ( annotationElem.hasAttribute( u"mapLayer"_s ) )
   {
-    mMapLayer = QgsProject::instance()->mapLayer( annotationElem.attribute( QStringLiteral( "mapLayer" ) ) );
+    mMapLayer = QgsProject::instance()->mapLayer( annotationElem.attribute( u"mapLayer"_s ) ); // skip-keyword-check
   }
 
   //marker symbol
   {
-    QDomElement symbolElem = annotationElem.firstChildElement( QStringLiteral( "symbol" ) );
+    const QDomElement symbolElem = annotationElem.firstChildElement( u"symbol"_s );
     if ( !symbolElem.isNull() )
     {
-      QgsMarkerSymbol *symbol = QgsSymbolLayerUtils::loadSymbol<QgsMarkerSymbol>( symbolElem, context );
+      std::unique_ptr< QgsMarkerSymbol > symbol = QgsSymbolLayerUtils::loadSymbol<QgsMarkerSymbol>( symbolElem, context );
       if ( symbol )
       {
-        mMarkerSymbol.reset( symbol );
+        mMarkerSymbol = std::move( symbol );
       }
     }
   }
 
   mFillSymbol.reset( nullptr );
-  QDomElement fillElem = annotationElem.firstChildElement( QStringLiteral( "fillSymbol" ) );
+  const QDomElement fillElem = annotationElem.firstChildElement( u"fillSymbol"_s );
   if ( !fillElem.isNull() )
   {
-    QDomElement symbolElem = fillElem.firstChildElement( QStringLiteral( "symbol" ) );
+    const QDomElement symbolElem = fillElem.firstChildElement( u"symbol"_s );
     if ( !symbolElem.isNull() )
     {
-      QgsFillSymbol *symbol = QgsSymbolLayerUtils::loadSymbol<QgsFillSymbol>( symbolElem, context );
+      std::unique_ptr< QgsFillSymbol > symbol = QgsSymbolLayerUtils::loadSymbol<QgsFillSymbol>( symbolElem, context );
       if ( symbol )
       {
-        mFillSymbol.reset( symbol );
+        mFillSymbol = std::move( symbol );
       }
     }
   }
   if ( !mFillSymbol )
   {
     QColor frameColor;
-    frameColor.setNamedColor( annotationElem.attribute( QStringLiteral( "frameColor" ), QStringLiteral( "#000000" ) ) );
-    frameColor.setAlpha( annotationElem.attribute( QStringLiteral( "frameColorAlpha" ), QStringLiteral( "255" ) ).toInt() );
+    frameColor.setNamedColor( annotationElem.attribute( u"frameColor"_s, u"#000000"_s ) );
+    frameColor.setAlpha( annotationElem.attribute( u"frameColorAlpha"_s, u"255"_s ).toInt() );
     QColor frameBackgroundColor;
-    frameBackgroundColor.setNamedColor( annotationElem.attribute( QStringLiteral( "frameBackgroundColor" ) ) );
-    frameBackgroundColor.setAlpha( annotationElem.attribute( QStringLiteral( "frameBackgroundColorAlpha" ), QStringLiteral( "255" ) ).toInt() );
-    double frameBorderWidth = annotationElem.attribute( QStringLiteral( "frameBorderWidth" ), QStringLiteral( "0.5" ) ).toDouble();
+    frameBackgroundColor.setNamedColor( annotationElem.attribute( u"frameBackgroundColor"_s ) );
+    frameBackgroundColor.setAlpha( annotationElem.attribute( u"frameBackgroundColorAlpha"_s, u"255"_s ).toInt() );
+    double frameBorderWidth = annotationElem.attribute( u"frameBorderWidth"_s, u"0.5"_s ).toDouble();
     // need to roughly convert border width from pixels to mm - just assume 96 dpi
     frameBorderWidth = frameBorderWidth * 25.4 / 96.0;
     QVariantMap props;
-    props.insert( QStringLiteral( "color" ), frameBackgroundColor.name() );
-    props.insert( QStringLiteral( "style" ), QStringLiteral( "solid" ) );
-    props.insert( QStringLiteral( "style_border" ), QStringLiteral( "solid" ) );
-    props.insert( QStringLiteral( "color_border" ), frameColor.name() );
-    props.insert( QStringLiteral( "width_border" ), QString::number( frameBorderWidth ) );
-    props.insert( QStringLiteral( "joinstyle" ), QStringLiteral( "miter" ) );
-    mFillSymbol.reset( QgsFillSymbol::createSimple( props ) );
+    props.insert( u"color"_s, frameBackgroundColor.name() );
+    props.insert( u"style"_s, u"solid"_s );
+    props.insert( u"style_border"_s, u"solid"_s );
+    props.insert( u"color_border"_s, frameColor.name() );
+    props.insert( u"width_border"_s, QString::number( frameBorderWidth ) );
+    props.insert( u"joinstyle"_s, u"miter"_s );
+    mFillSymbol = QgsFillSymbol::createSimple( props );
   }
 
-  updateBalloon();
   emit mapLayerChanged();
 }
 
@@ -555,11 +426,7 @@ void QgsAnnotation::copyCommonProperties( QgsAnnotation *target ) const
   target->mMarkerSymbol.reset( mMarkerSymbol ? mMarkerSymbol->clone() : nullptr );
   target->mContentsMargins = mContentsMargins;
   target->mFillSymbol.reset( mFillSymbol ? mFillSymbol->clone() : nullptr );
-  target->mBalloonSegment = mBalloonSegment;
-  target->mBalloonSegmentPoint1 = mBalloonSegmentPoint1;
-  target->mBalloonSegmentPoint2 = mBalloonSegmentPoint2;
   target->mSegmentPointWidthMm = mSegmentPointWidthMm;
   target->mMapLayer = mMapLayer;
   target->mFeature = mFeature;
 }
-

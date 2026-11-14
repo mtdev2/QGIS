@@ -16,23 +16,25 @@
 #ifndef QGSEXPRESSIONTREEVIEW_H
 #define QGSEXPRESSIONTREEVIEW_H
 
-#include <QTreeView>
-#include <QStandardItemModel>
-#include <QSortFilterProxyModel>
-
 #include "qgis_gui.h"
 #include "qgis_sip.h"
 #include "qgsexpressioncontext.h"
 #include "qgsproject.h"
 
+#include <QPointer>
+#include <QSortFilterProxyModel>
+#include <QStandardItemModel>
+#include <QString>
+#include <QTreeView>
+
+using namespace Qt::StringLiterals;
 
 class QgsVectorLayer;
 
 
-
 /**
  * \ingroup gui
- * An expression item that can be used in the QgsExpressionBuilderWidget tree.
+ * \brief An expression item that can be used in the QgsExpressionBuilderWidget tree.
   */
 class GUI_EXPORT QgsExpressionItem : public QStandardItem
 {
@@ -44,10 +46,7 @@ class GUI_EXPORT QgsExpressionItem : public QStandardItem
       ExpressionNode
     };
 
-    QgsExpressionItem( const QString &label,
-                       const QString &expressionText,
-                       const QString &helpText,
-                       QgsExpressionItem::ItemType itemType = ExpressionNode )
+    QgsExpressionItem( const QString &label, const QString &expressionText, const QString &helpText, QgsExpressionItem::ItemType itemType = ExpressionNode )
       : QStandardItem( label )
     {
       mExpressionText = expressionText;
@@ -56,9 +55,7 @@ class GUI_EXPORT QgsExpressionItem : public QStandardItem
       setData( itemType, ITEM_TYPE_ROLE );
     }
 
-    QgsExpressionItem( const QString &label,
-                       const QString &expressionText,
-                       QgsExpressionItem::ItemType itemType = ExpressionNode )
+    QgsExpressionItem( const QString &label, const QString &expressionText, QgsExpressionItem::ItemType itemType = ExpressionNode )
       : QStandardItem( label )
     {
       mExpressionText = expressionText;
@@ -97,6 +94,8 @@ class GUI_EXPORT QgsExpressionItem : public QStandardItem
     static const int SEARCH_TAGS_ROLE = Qt::UserRole + 3;
     //! Item name role
     static const int ITEM_NAME_ROLE = Qt::UserRole + 4;
+    //! Layer ID role \since QGIS 3.24
+    static const int LAYER_ID_ROLE = Qt::UserRole + 5;
 
   private:
     QString mExpressionText;
@@ -107,10 +106,11 @@ class GUI_EXPORT QgsExpressionItem : public QStandardItem
 
 /**
  * \ingroup gui
- * Search proxy used to filter the QgsExpressionBuilderWidget tree.
-  * The default search for a tree model only searches top level this will handle one
-  * level down
-  */
+ * \brief Search proxy used to filter the QgsExpressionBuilderWidget tree.
+ *
+ * The default search for a tree model only searches top level this will handle one
+ * level down.
+ */
 class GUI_EXPORT QgsExpressionItemSearchProxy : public QSortFilterProxyModel
 {
     Q_OBJECT
@@ -120,15 +120,24 @@ class GUI_EXPORT QgsExpressionItemSearchProxy : public QSortFilterProxyModel
 
     bool filterAcceptsRow( int source_row, const QModelIndex &source_parent ) const override;
 
-  protected:
+    /**
+     * Sets the search filter \a string.
+     *
+     * \since QGIS 3.22
+     */
+    void setFilterString( const QString &string );
 
+  protected:
     bool lessThan( const QModelIndex &left, const QModelIndex &right ) const override;
+
+  private:
+    QString mFilterString;
 };
 
 /**
  * \ingroup gui
  * \class QgsExpressionTreeView
- * QgsExpressionTreeView is a tree view to list all expressions
+ * \brief A tree view to list all expressions
  * functions, variables and fields that can be used in an expression.
  * \see QgsExpressionBuilderWidget
  * \since QGIS 3.14
@@ -137,23 +146,25 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
 {
     Q_OBJECT
   public:
-
     /**
      * \ingroup gui
      * \class MenuProvider
-     * Implementation of this interface can be implemented to allow QgsExpressionTreeView
+     * \brief Implementation of this interface can be implemented to allow QgsExpressionTreeView
      * instance to provide custom context menus (opened upon right-click).
      * \since QGIS 3.14
      */
     class MenuProvider
     {
       public:
-        //! Constructor
         explicit MenuProvider() = default;
         virtual ~MenuProvider() = default;
 
         //! Returns a newly created menu instance
-        virtual QMenu *createContextMenu( QgsExpressionItem *item ) SIP_FACTORY {Q_UNUSED( item ) return nullptr;}
+        virtual QMenu *createContextMenu( QgsExpressionItem *item ) SIP_FACTORY
+        {
+          Q_UNUSED( item )
+          return nullptr;
+        }
     };
 
     //! Constructor
@@ -216,16 +227,16 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
     /**
      * Returns a pointer to the dialog's function item model.
      * This method is exposed for testing purposes only - it should not be used to modify the model
-     * \note will be removed in QGIS 4
-     * \deprecated since QGIS 3.14
+     * \note will be removed in QGIS 5
+     * \deprecated QGIS 3.14
      */
-    Q_DECL_DEPRECATED QStandardItemModel *model() SIP_SKIP; // TODO remove QGIS 4
+    Q_DECL_DEPRECATED QStandardItemModel *model() SIP_SKIP; // TODO remove QGIS 5
 
     /**
      * Loads the recent expressions from the given \a collection.
      * By default it is loaded from the collection "generic".
      */
-    void loadRecent( const QString &collection = QStringLiteral( "generic" ) );
+    void loadRecent( const QString &collection = u"generic"_s );
 
     /**
      * Adds the current expression to the given \a collection.
@@ -236,7 +247,7 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
     /**
      * Stores the user \a expression with given \a label and \a helpText.
      */
-    void saveToUserExpressions( const QString &label, const QString expression, const QString &helpText );
+    void saveToUserExpressions( const QString &label, const QString &expression, const QString &helpText );
 
     /**
      * Removes the expression \a label from the user stored expressions.
@@ -247,7 +258,7 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
      * Loads the user expressions.
      * This is done on request since it can be very slow if there are thousands of user expressions
      */
-    void loadUserExpressions( );
+    void loadUserExpressions();
 
     /**
      * Returns the list of expression items matching a \a label.
@@ -306,13 +317,18 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
      * \param tags tags to find function
      * \param name name of the item
      */
-    void registerItem( const QString &group, const QString &label, const QString &expressionText,
-                       const QString &helpText = QString(),
-                       QgsExpressionItem::ItemType type = QgsExpressionItem::ExpressionNode,
-                       bool highlightedItem = false, int sortOrder = 1,
-                       QIcon icon = QIcon(),
-                       const QStringList &tags = QStringList(),
-                       const QString &name = QString() );
+    QgsExpressionItem *registerItem(
+      const QString &group,
+      const QString &label,
+      const QString &expressionText,
+      const QString &helpText = QString(),
+      QgsExpressionItem::ItemType type = QgsExpressionItem::ExpressionNode,
+      bool highlightedItem = false,
+      int sortOrder = 1,
+      const QIcon &icon = QIcon(),
+      const QStringList &tags = QStringList(),
+      const QString &name = QString()
+    );
 
     /**
      * Registers a node item for the expression builder, adding multiple items when the function exists in multiple groups
@@ -325,14 +341,21 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
      * \param sortOrder sort ranking for item
      * \param tags tags to find function
      */
-    void registerItemForAllGroups( const QStringList &groups, const QString &label, const QString &expressionText,
-                                   const QString &helpText = QString(),
-                                   QgsExpressionItem::ItemType type = QgsExpressionItem::ExpressionNode,
-                                   bool highlightedItem = false, int sortOrder = 1, const QStringList &tags = QStringList() );
+    void registerItemForAllGroups(
+      const QStringList &groups,
+      const QString &label,
+      const QString &expressionText,
+      const QString &helpText = QString(),
+      QgsExpressionItem::ItemType type = QgsExpressionItem::ExpressionNode,
+      bool highlightedItem = false,
+      int sortOrder = 1,
+      const QStringList &tags = QStringList()
+    );
 
     void loadExpressionContext();
     void loadRelations();
     void loadLayers();
+    void loadLayerFields( QgsVectorLayer *layer, QgsExpressionItem *parentItem );
     void loadFieldNames();
 
     /**
@@ -356,7 +379,7 @@ class GUI_EXPORT QgsExpressionTreeView : public QTreeView
     MenuProvider *mMenuProvider = nullptr;
 
     QgsVectorLayer *mLayer = nullptr;
-    QPointer< QgsProject > mProject;
+    QPointer<QgsProject> mProject;
     QgsExpressionContext mExpressionContext;
     QString mRecentKey;
 

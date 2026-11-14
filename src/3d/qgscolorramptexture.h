@@ -20,36 +20,31 @@
 
 /// @cond PRIVATE
 
+#include "qgscolorrampshader.h"
+
+#include <QByteArray>
+#include <QUrl>
+#include <QVector2D>
+#include <QVector3D>
+#include <QVector4D>
 #include <Qt3DRender/QEffect>
 #include <Qt3DRender/QGraphicsApiFilter>
 #include <Qt3DRender/QParameter>
 #include <Qt3DRender/QTexture>
 
-#include <QUrl>
-#include <QVector2D>
-#include <QVector3D>
-#include <QVector4D>
-#include <Qt3DRender/QBuffer>
-#include <QByteArray>
-
-#include "qgsmeshlayer.h"
-#include "qgsmeshlayerutils.h"
-#include "qgstriangularmesh.h"
-
 #define SIP_NO_FILE
 
-class QgsColorRampTextureGenerator: public Qt3DRender::QTextureImageDataGenerator
+class QgsColorRampTextureGenerator : public Qt3DRender::QTextureImageDataGenerator
 {
-
   public:
     QgsColorRampTextureGenerator( const QgsColorRampShader &colorRampShader, double verticalScale = 1 );
 
   public:
     Qt3DRender::QTextureImageDataPtr operator()() override;
 
-    bool operator ==( const Qt3DRender::QTextureImageDataGenerator &other ) const override;
+    qintptr id() const override { return reinterpret_cast<qintptr>( &Qt3DCore::FunctorType<QgsColorRampTextureGenerator>::id ); }
 
-    QT3D_FUNCTOR( QgsColorRampTextureGenerator )
+    bool operator==( const Qt3DRender::QTextureImageDataGenerator &other ) const override;
 
   private:
     QgsColorRampShader mColorRampShader;
@@ -57,8 +52,10 @@ class QgsColorRampTextureGenerator: public Qt3DRender::QTextureImageDataGenerato
 };
 
 
-class QgsColorRampTexture: public Qt3DRender::QAbstractTextureImage
+class QgsColorRampTexture : public Qt3DRender::QAbstractTextureImage
 {
+    Q_OBJECT
+
   public:
     QgsColorRampTexture( const QgsColorRampShader &colorRampShader, double verticalScale = 1, Qt3DCore::QNode *parent = nullptr );
     // QAbstractTextureImage interface

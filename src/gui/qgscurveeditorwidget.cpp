@@ -15,12 +15,20 @@
 
 
 #include "qgscurveeditorwidget.h"
+
+#include <algorithm>
+#include <memory>
+
 #include "qgsvectorlayer.h"
 
-#include <QPainter>
-#include <QVBoxLayout>
 #include <QMouseEvent>
-#include <algorithm>
+#include <QPainter>
+#include <QString>
+#include <QVBoxLayout>
+
+#include "moc_qgscurveeditorwidget.cpp"
+
+using namespace Qt::StringLiterals;
 
 // QWT Charting widget
 #include <qwt_global.h>
@@ -34,6 +42,8 @@
 #include <qwt_plot_layout.h>
 #include <qwt_symbol.h>
 #include <qwt_legend.h>
+#include <qwt_scale_div.h>
+#include <qwt_scale_map.h>
 
 #include <qwt_plot_renderer.h>
 #include <qwt_plot_histogram.h>
@@ -64,16 +74,15 @@ QgsCurveEditorWidget::QgsCurveEditorWidget( QWidget *parent, const QgsCurveTrans
 
   // add a grid
   QwtPlotGrid *grid = new QwtPlotGrid();
-  QwtScaleDiv gridDiv( 0.0, 1.0, QList<double>(), QList<double>(), QList<double>() << 0.2 << 0.4 << 0.6 << 0.8 );
+  const QwtScaleDiv gridDiv( 0.0, 1.0, QList<double>(), QList<double>(), QList<double>() << 0.2 << 0.4 << 0.6 << 0.8 );
   grid->setXDiv( gridDiv );
   grid->setYDiv( gridDiv );
   grid->setPen( QPen( QColor( 0, 0, 0, 50 ) ) );
   grid->attach( mPlot );
 
   mPlotCurve = new QwtPlotCurve();
-  mPlotCurve->setTitle( QStringLiteral( "Curve" ) );
-  mPlotCurve->setPen( QPen( QColor( 30, 30, 30 ), 0.0 ) ),
-             mPlotCurve->setRenderHint( QwtPlotItem::RenderAntialiased, true );
+  mPlotCurve->setTitle( u"Curve"_s );
+  mPlotCurve->setPen( QPen( QColor( 30, 30, 30 ), 0.0 ) ), mPlotCurve->setRenderHint( QwtPlotItem::RenderAntialiased, true );
   mPlotCurve->attach( mPlot );
 
   mPlotFilter = new QgsCurveEditorPlotEventFilter( mPlot );
@@ -91,7 +100,7 @@ QgsCurveEditorWidget::~QgsCurveEditorWidget()
   {
     connect( mGatherer.get(), &QgsHistogramValuesGatherer::finished, mGatherer.get(), &QgsHistogramValuesGatherer::deleteLater );
     mGatherer->stop();
-    ( void )mGatherer.release();
+    ( void ) mGatherer.release();
   }
 }
 
@@ -106,15 +115,14 @@ void QgsCurveEditorWidget::setHistogramSource( const QgsVectorLayer *layer, cons
 {
   if ( !mGatherer )
   {
-    mGatherer.reset( new QgsHistogramValuesGatherer() );
-    connect( mGatherer.get(), &QgsHistogramValuesGatherer::calculatedHistogram, this, [ = ]
-    {
-      mHistogram.reset( new QgsHistogram( mGatherer->histogram() ) );
+    mGatherer = std::make_unique<QgsHistogramValuesGatherer>();
+    connect( mGatherer.get(), &QgsHistogramValuesGatherer::calculatedHistogram, this, [this] {
+      mHistogram = std::make_unique<QgsHistogram>( mGatherer->histogram() );
       updateHistogram();
     } );
   }
 
-  bool changed = mGatherer->layer() != layer || mGatherer->expression() != expression;
+  const bool changed = mGatherer->layer() != layer || mGatherer->expression() != expression;
   if ( changed )
   {
     mGatherer->setExpression( expression );
@@ -153,7 +161,7 @@ void QgsCurveEditorWidget::keyPressEvent( QKeyEvent *event )
 {
   if ( event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace )
   {
-    QList< QgsPointXY > cp = mCurve.controlPoints();
+    QList<QgsPointXY> cp = mCurve.controlPoints();
     if ( mCurrentPlotMarkerIndex > 0 && mCurrentPlotMarkerIndex < cp.count() - 1 )
     {
       cp.removeAt( mCurrentPlotMarkerIndex );
@@ -183,11 +191,11 @@ int QgsCurveEditorWidget::findNearestControlPoint( QPointF point ) const
   double minDist = 3.0 / mPlot->width();
   int currentPlotMarkerIndex = -1;
 
-  QList< QgsPointXY > controlPoints = mCurve.controlPoints();
+  const QList<QgsPointXY> controlPoints = mCurve.controlPoints();
 
   for ( int i = 0; i < controlPoints.count(); ++i )
   {
-    QgsPointXY currentPoint = controlPoints.at( i );
+    const QgsPointXY currentPoint = controlPoints.at( i );
     double currentDist;
     currentDist = std::pow( point.x() - currentPoint.x(), 2.0 ) + std::pow( point.y() - currentPoint.y(), 2.0 );
     if ( currentDist < minDist )
@@ -201,15 +209,14 @@ int QgsCurveEditorWidget::findNearestControlPoint( QPointF point ) const
 
 
 void QgsCurveEditorWidget::plotMouseRelease( QPointF )
-{
-}
+{}
 
 void QgsCurveEditorWidget::plotMouseMove( QPointF point )
 {
   if ( mCurrentPlotMarkerIndex < 0 )
     return;
 
-  QList< QgsPointXY > cp = mCurve.controlPoints();
+  QList<QgsPointXY> cp = mCurve.controlPoints();
   bool removePoint = false;
   if ( mCurrentPlotMarkerIndex == 0 )
   {
@@ -236,7 +243,7 @@ void QgsCurveEditorWidget::plotMouseMove( QPointF point )
   }
   else
   {
-    cp[ mCurrentPlotMarkerIndex ] = QgsPointXY( point.x(), point.y() );
+    cp[mCurrentPlotMarkerIndex] = QgsPointXY( point.x(), point.y() );
   }
   mCurve.setControlPoints( cp );
   updatePlot();
@@ -245,12 +252,12 @@ void QgsCurveEditorWidget::plotMouseMove( QPointF point )
 
 void QgsCurveEditorWidget::addPlotMarker( double x, double y, bool isSelected )
 {
-  QColor borderColor( 0, 0, 0 );
+  const QColor borderColor( 0, 0, 0 );
 
-  QColor brushColor = isSelected ? borderColor : QColor( 255, 255, 255, 0 );
+  const QColor brushColor = isSelected ? borderColor : QColor( 255, 255, 255, 0 );
 
   QwtPlotMarker *marker = new QwtPlotMarker();
-  marker->setSymbol( new QwtSymbol( QwtSymbol::Ellipse,  QBrush( brushColor ), QPen( borderColor, isSelected ? 2 : 1 ), QSize( 8, 8 ) ) );
+  marker->setSymbol( new QwtSymbol( QwtSymbol::Ellipse, QBrush( brushColor ), QPen( borderColor, isSelected ? 2 : 1 ), QSize( 8, 8 ) ) );
   marker->setValue( x, y );
   marker->attach( mPlot );
   marker->setRenderHint( QwtPlotItem::RenderAntialiased, true );
@@ -263,31 +270,30 @@ void QgsCurveEditorWidget::updateHistogram()
     return;
 
   //draw histogram
-  QBrush histoBrush( QColor( 0, 0, 0, 70 ) );
+  const QBrush histoBrush( QColor( 0, 0, 0, 70 ) );
 
   delete mPlotHistogram;
   mPlotHistogram = createPlotHistogram( histoBrush );
   QVector<QwtIntervalSample> dataHisto;
 
-  int bins = 40;
+  const int bins = 40;
   QList<double> edges = mHistogram->binEdges( bins );
-  QList<int> counts = mHistogram->counts( bins );
+  const QList<int> counts = mHistogram->counts( bins );
 
   // scale counts to 0->1
-  double max = *std::max_element( counts.constBegin(), counts.constEnd() );
+  const double max = *std::max_element( counts.constBegin(), counts.constEnd() );
 
   // scale bin edges to fit in 0->1 range
   if ( !qgsDoubleNear( mMinValueRange, mMaxValueRange ) )
   {
-    std::transform( edges.begin(), edges.end(), edges.begin(),
-                    [this]( double d ) -> double { return ( d - mMinValueRange ) / ( mMaxValueRange - mMinValueRange ); } );
+    std::transform( edges.begin(), edges.end(), edges.begin(), [this]( double d ) -> double { return ( d - mMinValueRange ) / ( mMaxValueRange - mMinValueRange ); } );
   }
 
   for ( int bin = 0; bin < bins; ++bin )
   {
-    double binValue = counts.at( bin ) / max;
+    const double binValue = counts.at( bin ) / max;
 
-    double upperEdge = edges.at( bin + 1 );
+    const double upperEdge = edges.at( bin + 1 );
 
     dataHisto << QwtIntervalSample( binValue, edges.at( bin ), upperEdge );
   }
@@ -309,7 +315,7 @@ void QgsCurveEditorWidget::updatePlot()
   mMarkers.clear();
 
   QPolygonF curvePoints;
-  QVector< double > x;
+  QVector<double> x;
 
   int i = 0;
   const auto constControlPoints = mCurve.controlPoints();
@@ -327,7 +333,7 @@ void QgsCurveEditorWidget::updatePlot()
     x << p;
   }
   std::sort( x.begin(), x.end() );
-  QVector< double > y = mCurve.y( x );
+  const QVector<double> y = mCurve.y( x );
 
   for ( int j = 0; j < x.count(); ++j )
   {
@@ -379,7 +385,7 @@ bool QgsCurveEditorPlotEventFilter::eventFilter( QObject *object, QEvent *event 
   {
     case QEvent::MouseButtonPress:
     {
-      const QMouseEvent *mouseEvent = static_cast<QMouseEvent * >( event );
+      const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>( event );
       if ( mouseEvent->button() == Qt::LeftButton )
       {
         emit mousePress( mapPoint( mouseEvent->pos() ) );
@@ -388,7 +394,7 @@ bool QgsCurveEditorPlotEventFilter::eventFilter( QObject *object, QEvent *event 
     }
     case QEvent::MouseMove:
     {
-      const QMouseEvent *mouseEvent = static_cast<QMouseEvent * >( event );
+      const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>( event );
       if ( mouseEvent->buttons() & Qt::LeftButton )
       {
         // only emit when button pressed
@@ -398,7 +404,7 @@ bool QgsCurveEditorPlotEventFilter::eventFilter( QObject *object, QEvent *event 
     }
     case QEvent::MouseButtonRelease:
     {
-      const QMouseEvent *mouseEvent = static_cast<QMouseEvent * >( event );
+      const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>( event );
       if ( mouseEvent->button() == Qt::LeftButton )
       {
         emit mouseRelease( mapPoint( mouseEvent->pos() ) );
@@ -417,8 +423,7 @@ QPointF QgsCurveEditorPlotEventFilter::mapPoint( QPointF point ) const
   if ( !mPlot )
     return QPointF();
 
-  return QPointF( mPlot->canvasMap( QwtPlot::xBottom ).invTransform( point.x() ),
-                  mPlot->canvasMap( QwtPlot::yLeft ).invTransform( point.y() ) );
+  return QPointF( mPlot->canvasMap( QwtPlot::xBottom ).invTransform( point.x() ), mPlot->canvasMap( QwtPlot::yLeft ).invTransform( point.y() ) );
 }
 
 

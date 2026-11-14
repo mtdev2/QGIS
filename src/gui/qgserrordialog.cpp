@@ -15,9 +15,15 @@
  *                                                                         *
  ***************************************************************************/
 #include "qgserrordialog.h"
+
 #include "qgssettings.h"
 
 #include <QMessageBox>
+#include <QString>
+
+#include "moc_qgserrordialog.cpp"
+
+using namespace Qt::StringLiterals;
 
 QgsErrorDialog::QgsErrorDialog( const QgsError &error, const QString &title, QWidget *parent, Qt::WindowFlags fl )
   : QDialog( parent, fl )
@@ -33,7 +39,7 @@ QgsErrorDialog::QgsErrorDialog( const QgsError &error, const QString &title, QWi
     setWindowTitle( title );
 
   // QMessageBox has static standardIcon( Icon icon ), but it is marked as obsolete
-  QMessageBox messageBox( QMessageBox::Critical, QString(), QString() );
+  const QMessageBox messageBox( QMessageBox::Critical, QString(), QString() );
   mIconLabel->setPixmap( messageBox.iconPixmap() );
   mSummaryTextBrowser->setOpenExternalLinks( true );
   mDetailTextBrowser->setOpenExternalLinks( true );
@@ -50,8 +56,8 @@ QgsErrorDialog::QgsErrorDialog( const QgsError &error, const QString &title, QWi
 
   resize( width(), 150 );
 
-  QgsSettings settings;
-  Qt::CheckState state = ( Qt::CheckState ) settings.value( QStringLiteral( "Error/dialog/detail" ), 0 ).toInt();
+  const QgsSettings settings;
+  const Qt::CheckState state = ( Qt::CheckState ) settings.value( u"Error/dialog/detail"_s, 0 ).toInt();
   mDetailCheckBox->setCheckState( state );
   if ( state == Qt::Checked )
     mDetailPushButton_clicked();
@@ -75,6 +81,5 @@ void QgsErrorDialog::mDetailPushButton_clicked()
 void QgsErrorDialog::mDetailCheckBox_stateChanged( int state )
 {
   QgsSettings settings;
-  settings.setValue( QStringLiteral( "Error/dialog/detail" ), state );
+  settings.setValue( u"Error/dialog/detail"_s, state );
 }
-

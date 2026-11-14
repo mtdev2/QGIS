@@ -1,9 +1,8 @@
 add_definitions(-DQT_PLUGIN)
-add_definitions(-DQT_NO_DEBUG)
 add_definitions(-DQT_SHARED)
 
-find_package(Qt5UiPlugin REQUIRED)
-find_package(Qt5Designer REQUIRED)
+find_package(${QT_VERSION_BASE}UiPlugin REQUIRED)
+find_package(${QT_VERSION_BASE}Designer REQUIRED)
 
 set(QT_USE_QTDESIGNER ON)
 
@@ -95,16 +94,23 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}/../ui
 )
 include_directories(SYSTEM
-  ${Qt5UiPlugin_INCLUDE_DIRS}
-  ${Qt5Designer_INCLUDE_DIRS}
+  ${${QT_VERSION_BASE}UiPlugin_INCLUDE_DIRS}
+  ${${QT_VERSION_BASE}Designer_INCLUDE_DIRS}
 )
-
-QT5_WRAP_CPP(QGIS_CUSTOMWIDGETS_MOC_SRCS ${QGIS_CUSTOMWIDGETS_MOC_HDRS})
 
 #############################################################
 # qgis_customwidgets library
 
 add_library(qgis_customwidgets SHARED ${QGIS_CUSTOMWIDGETS_SRCS} ${QGIS_CUSTOMWIDGETS_MOC_SRCS} ${QGIS_CUSTOMWIDGETS_MOC_HDRS})
+
+if(QGISPOSTFIX)
+  set_target_properties(qgis_customwidgets PROPERTIES
+    RUNTIME_OUTPUT_NAME qgis_customwidgets${QGISPOSTFIX}
+    LIBRARY_OUTPUT_NAME qgis_customwidgets${QGISPOSTFIX}
+  )
+endif()
+
+set_target_properties(qgis_customwidgets PROPERTIES UNITY_BUILD ${ENABLE_UNITY_BUILDS})
 
 set_target_properties(qgis_customwidgets PROPERTIES
   VERSION ${COMPLETE_VERSION}
@@ -122,13 +128,12 @@ GENERATE_EXPORT_HEADER(
    EXPORT_FILE_NAME qgis_customwidgets.h
 )
 
-set(QGIS_CUSTOMWIDGETS_INSTALL_HDRS ${QGIS_CUSTOMWIDGETS_MOC_HDRS} ${CMAKE_CURRENT_BINARY_DIR}/qgis_customwidgets.h)
+set(QGIS_CUSTOMWIDGETS_HDRS ${QGIS_CUSTOMWIDGETS_MOC_HDRS} ${CMAKE_CURRENT_BINARY_DIR}/qgis_customwidgets.h)
 
 # install
 install(TARGETS qgis_customwidgets
   RUNTIME DESTINATION ${QT_PLUGINS_DIR}/designer
   LIBRARY DESTINATION ${QT_PLUGINS_DIR}/designer
 )
-
 # TODO: apple
-install(FILES ${QGIS_CUSTOMWIDGETS_INSTALL_HDRS} DESTINATION ${QGIS_INCLUDE_DIR})
+install(FILES ${QGIS_CUSTOMWIDGETS_HDRS} DESTINATION ${QGIS_INCLUDE_DIR})

@@ -16,11 +16,16 @@
  ***************************************************************************/
 
 #include "qgslayoutitemundocommand.h"
-#include "qgslayoutitem.h"
-#include "qgsreadwritecontext.h"
+
 #include "qgslayout.h"
-#include "qgsproject.h"
+#include "qgslayoutitem.h"
 #include "qgslayoutundostack.h"
+#include "qgsproject.h"
+#include "qgsreadwritecontext.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 ///@cond PRIVATE
 QgsLayoutItemUndoCommand::QgsLayoutItemUndoCommand( QgsLayoutItem *item, const QString &text, int id, QUndoCommand *parent )
@@ -28,9 +33,7 @@ QgsLayoutItemUndoCommand::QgsLayoutItemUndoCommand( QgsLayoutItem *item, const Q
   , mItemUuid( item->uuid() )
   , mLayout( item->layout() )
   , mItemType( item->type() )
-{
-
-}
+{}
 
 bool QgsLayoutItemUndoCommand::mergeWith( const QUndoCommand *command )
 {
@@ -52,13 +55,18 @@ bool QgsLayoutItemUndoCommand::mergeWith( const QUndoCommand *command )
 void QgsLayoutItemUndoCommand::saveState( QDomDocument &stateDoc ) const
 {
   stateDoc.clear();
-  QDomElement documentElement = stateDoc.createElement( QStringLiteral( "ItemState" ) );
+  QDomElement documentElement = stateDoc.createElement( u"ItemState"_s );
 
   QgsLayoutItem *item = mLayout->itemByUuid( mItemUuid );
-  Q_ASSERT_X( item, "QgsLayoutItemUndoCommand::saveState", "could not retrieve item for saving state" );
-
-  item->writeXml( documentElement, stateDoc, QgsReadWriteContext() );
-  stateDoc.appendChild( documentElement );
+  if ( item )
+  {
+    item->writeXml( documentElement, stateDoc, QgsReadWriteContext() );
+    stateDoc.appendChild( documentElement );
+  }
+  else
+  {
+    QgsDebugError( u"QgsLayoutItemUndoCommand::saveState: could not retrieve item %1 for saving state"_s.arg( mItemUuid ) );
+  }
 }
 
 void QgsLayoutItemUndoCommand::restoreState( QDomDocument &stateDoc )

@@ -16,23 +16,22 @@
 #ifndef QGSOPTIONSWIDGETFACTORY_H
 #define QGSOPTIONSWIDGETFACTORY_H
 
-#include <QListWidgetItem>
 #include "qgis_gui.h"
 #include "qgis_sip.h"
 #include "qgsoptionsdialoghighlightwidget.h"
 
+#include <QListWidgetItem>
+
 /**
  * \ingroup gui
  * \class QgsOptionsPageWidget
- * Base class for widgets for pages included in the options dialog.
- * \since QGIS 3.0
+ * \brief Base class for widgets for pages included in the options dialog.
  */
 class GUI_EXPORT QgsOptionsPageWidget : public QWidget
 {
     Q_OBJECT
 
   public:
-
     /**
      * Constructor for QgsOptionsPageWidget.
      */
@@ -52,13 +51,22 @@ class GUI_EXPORT QgsOptionsPageWidget : public QWidget
      */
     virtual QString helpKey() const { return QString(); }
 
-
     /**
      * Returns the registered highlight widgets used to search and highlight text in
      * options dialogs.
      */
-    QHash<QWidget *, QgsOptionsDialogHighlightWidget *> registeredHighlightWidgets() {return mHighlightWidgets;} SIP_SKIP
+    QHash<QWidget *, QgsOptionsDialogHighlightWidget *> registeredHighlightWidgets() SIP_SKIP { return mHighlightWidgets; }
 
+    /**
+     * Validates the current state of the widget.
+     *
+     * Subclasses should return TRUE if the widget state is currently valid and acceptable to apply().
+     *
+     * The default implementation returns TRUE.
+     *
+     * \since QGIS 3.24
+     */
+    virtual bool isValid() { return true; }
 
   public slots:
 
@@ -68,29 +76,28 @@ class GUI_EXPORT QgsOptionsPageWidget : public QWidget
      */
     virtual void apply() = 0;
 
-  protected:
+    /**
+     * Called to cancel settings changed in the options page (e.g. save them to
+     * QgsSettings objects). This is usually called when the options dialog is canceled.
+     */
+    virtual void cancel() { return; }
 
+  protected:
     /**
      * Register a highlight widget to be used to search and highlight text in
      * options dialogs. This can be used to provide a custom implementation of
      * QgsOptionsDialogHighlightWidget.
      */
-    void registerHighlightWidget( QgsOptionsDialogHighlightWidget *highlightWidget )
-    {
-      mHighlightWidgets.insert( highlightWidget->widget(), highlightWidget );
-    }
+    void registerHighlightWidget( QgsOptionsDialogHighlightWidget *highlightWidget ) { mHighlightWidgets.insert( highlightWidget->widget(), highlightWidget ); }
 
   private:
     QHash<QWidget *, QgsOptionsDialogHighlightWidget *> mHighlightWidgets;
-
-
 };
 
 /**
  * \ingroup gui
  * \class QgsOptionsWidgetFactory
- * A factory class for creating custom options pages.
- * \since QGIS 3.0
+ * \brief A factory class for creating custom options pages.
  */
 // NOTE - this is a QObject so we can detect its destruction and avoid
 // QGIS crashing when a plugin crashes/exits without deregistering a factory
@@ -99,14 +106,13 @@ class GUI_EXPORT QgsOptionsWidgetFactory : public QObject
     Q_OBJECT
 
   public:
-
-    //! Constructor
     QgsOptionsWidgetFactory() = default;
 
     //! Constructor
-    QgsOptionsWidgetFactory( const QString &title, const QIcon &icon )
+    QgsOptionsWidgetFactory( const QString &title, const QIcon &icon, const QString &key = QString() )
       : mTitle( title )
       , mIcon( icon )
+      , mKey( key )
     {}
 
     /**
@@ -135,6 +141,20 @@ class GUI_EXPORT QgsOptionsWidgetFactory : public QObject
     void setTitle( const QString &title ) { mTitle = title; }
 
     /**
+     * The key of the panel (untranslated title).
+     * \see setKey()
+     *
+     * \since QGIS 3.32
+     */
+    virtual QString key() const { return mKey; }
+
+    /**
+     * Set the \a key for the interface.
+     * \see key()
+     */
+    void setKey( const QString &key ) { mKey = key; }
+
+    /**
      * Returns a tab name hinting at where this page should be inserted into the
      * options properties tab list.
      *
@@ -149,6 +169,17 @@ class GUI_EXPORT QgsOptionsWidgetFactory : public QObject
     virtual QString pagePositionHint() const { return QString(); }
 
     /**
+     * Returns the path to place the widget page at, for options dialogs
+     * which are structured using a tree view.
+     *
+     * A factory which returns "Code", "Javascript" would have its widget placed
+     * in a group named "Javascript", contained in a parent group named "Code".
+     *
+     * \since QGIS 3.22
+     */
+    virtual QStringList path() const { return QStringList(); }
+
+    /**
      * \brief Factory function to create the widget on demand as needed by the options dialog.
      * \param parent The parent of the widget.
      * \returns A new widget to show as a page in the options dialog.
@@ -158,8 +189,7 @@ class GUI_EXPORT QgsOptionsWidgetFactory : public QObject
   private:
     QString mTitle;
     QIcon mIcon;
-
-
+    QString mKey;
 };
 
 #endif // QGSOPTIONSWIDGETFACTORY_H

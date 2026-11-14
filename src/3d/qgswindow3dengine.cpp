@@ -15,96 +15,83 @@
 
 #include "qgswindow3dengine.h"
 
-#include <Qt3DRender/QRenderCapture>
-#include <Qt3DExtras/Qt3DWindow>
-#include <Qt3DExtras/QForwardRenderer>
+#include "qgs3dmapcanvas.h"
+#include "qgsframegraph.h"
+#include "qgsshadowrenderview.h"
+
 #include <Qt3DRender/QRenderSettings>
 
-#include "qgspreviewquad.h"
+#include "moc_qgswindow3dengine.cpp"
 
-QgsWindow3DEngine::QgsWindow3DEngine( QObject *parent )
+QgsWindow3DEngine::QgsWindow3DEngine( Qgs3DMapCanvas *parent )
   : QgsAbstract3DEngine( parent )
 {
-  mWindow3D = new Qt3DExtras::Qt3DWindow;
+  mMapCanvas3D = parent;
 
   mRoot = new Qt3DCore::QEntity;
-  mWindow3D->setRootEntity( mRoot );
+  mMapCanvas3D->setRootEntity( mRoot );
 
-  mShadowRenderingFrameGraph = new QgsShadowRenderingFrameGraph( mWindow3D, QSize( 1024, 768 ), mWindow3D->camera(), mRoot );
-
-  mWindow3D->setActiveFrameGraph( mShadowRenderingFrameGraph->getFrameGraphRoot() );
+  mFrameGraph = new QgsFrameGraph( mMapCanvas3D, QSize( 1024, 768 ), mMapCanvas3D->camera(), mRoot );
+  mMapCanvas3D->setActiveFrameGraph( mFrameGraph->frameGraphRoot() );
 
   // force switching to no shadow rendering
-  setShadowRenderingEnabled( false );
+  mFrameGraph->shadowRenderView().setEnabled( false );
 }
 
 QWindow *QgsWindow3DEngine::window()
 {
-  return mWindow3D;
+  return mMapCanvas3D;
 }
 
-void QgsWindow3DEngine::requestCaptureImage()
+Qt3DCore::QEntity *QgsWindow3DEngine::root() const
 {
-  Qt3DRender::QRenderCaptureReply *captureReply;
-  captureReply = mShadowRenderingFrameGraph->renderCapture()->requestCapture();
-  connect( captureReply, &Qt3DRender::QRenderCaptureReply::completed, this, [ = ]
-  {
-    emit imageCaptured( captureReply->image() );
-    captureReply->deleteLater();
-  } );
-}
-
-void QgsWindow3DEngine::setShadowRenderingEnabled( bool enabled )
-{
-  mShadowRenderingEnabled = enabled;
-  mShadowRenderingFrameGraph->setShadowRenderingEnabled( mShadowRenderingEnabled );
+  return mRoot;
 }
 
 void QgsWindow3DEngine::setClearColor( const QColor &color )
 {
-  mShadowRenderingFrameGraph->setClearColor( color );
+  mFrameGraph->setClearColor( color );
 }
 
 void QgsWindow3DEngine::setFrustumCullingEnabled( bool enabled )
 {
   // Not sure if this works properly
-  mShadowRenderingFrameGraph->setFrustumCullingEnabled( enabled );
+  mFrameGraph->setFrustumCullingEnabled( enabled );
 }
 
 void QgsWindow3DEngine::setRootEntity( Qt3DCore::QEntity *root )
 {
   mSceneRoot = root;
   mSceneRoot->setParent( mRoot );
-  mSceneRoot->addComponent( mShadowRenderingFrameGraph->forwardRenderLayer() );
-  mSceneRoot->addComponent( mShadowRenderingFrameGraph->castShadowsLayer() );
 }
 
 Qt3DRender::QRenderSettings *QgsWindow3DEngine::renderSettings()
 {
-  return mWindow3D->renderSettings();
+  return mMapCanvas3D->renderSettings();
 }
 
 Qt3DRender::QCamera *QgsWindow3DEngine::camera()
 {
-  return mWindow3D->camera();
+  return mMapCanvas3D->camera();
 }
 
 QSize QgsWindow3DEngine::size() const
 {
-  return mWindow3D->size();
+  return mMapCanvas3D->size();
 }
 
 QSurface *QgsWindow3DEngine::surface() const
 {
-  return mWindow3D;
+  return mMapCanvas3D;
 }
 
 void QgsWindow3DEngine::setSize( QSize s )
 {
   mSize = s;
 
-  mWindow3D->setWidth( mSize.width() );
-  mWindow3D->setHeight( mSize.height() );
-  mShadowRenderingFrameGraph->setSize( mSize );
+  mMapCanvas3D->setWidth( mSize.width() );
+  mMapCanvas3D->setHeight( mSize.height() );
+  mFrameGraph->setSize( mSize * mMapCanvas3D->devicePixelRatio() );
   camera()->setAspectRatio( float( mSize.width() ) / float( mSize.height() ) );
+  emit sizeChanged();
 }

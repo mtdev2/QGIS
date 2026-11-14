@@ -24,7 +24,7 @@ class QgsVirtualLayerDefinition;
 
 /**
  * \ingroup core
- * Utils class for QgsVirtualLayerDefinition
+ * \brief Utility class for QgsVirtualLayerDefinition.
  */
 class CORE_EXPORT QgsVirtualLayerDefinitionUtils
 {

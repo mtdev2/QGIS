@@ -14,25 +14,25 @@
  ***************************************************************************/
 
 #include "qgsmodelviewtool.h"
-#include "qgsmodelgraphicsview.h"
+
 #include "qgsmodelgraphicsscene.h"
+#include "qgsmodelgraphicsview.h"
 #include "qgsmodelviewmouseevent.h"
+
+#include "moc_qgsmodelviewtool.cpp"
 
 QgsModelViewTool::QgsModelViewTool( QgsModelGraphicsView *view, const QString &name )
   : QObject( view )
   , mView( view )
   , mToolName( name )
 {
-  connect( mView, &QgsModelGraphicsView::willBeDeleted, this, [ = ]
-  {
-    mView = nullptr;
-  } );
+  connect( mView, &QgsModelGraphicsView::willBeDeleted, this, [this] { mView = nullptr; } );
 }
 
 bool QgsModelViewTool::isClickAndDrag( QPoint startViewPoint, QPoint endViewPoint ) const
 {
-  int diffX = endViewPoint.x() - startViewPoint.x();
-  int diffY = endViewPoint.y() - startViewPoint.y();
+  const int diffX = endViewPoint.x() - startViewPoint.x();
+  const int diffY = endViewPoint.y() - startViewPoint.y();
   return std::abs( diffX ) >= 2 || std::abs( diffY ) >= 2;
 }
 
@@ -43,7 +43,7 @@ QgsModelGraphicsView *QgsModelViewTool::view() const
 
 QgsModelGraphicsScene *QgsModelViewTool::scene() const
 {
-  return qobject_cast< QgsModelGraphicsScene * >( mView->scene() );
+  return qobject_cast<QgsModelGraphicsScene *>( mView->scene() );
 }
 
 QgsModelViewTool::~QgsModelViewTool()

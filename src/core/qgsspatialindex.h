@@ -19,6 +19,10 @@
 
 #include "qgis_sip.h"
 
+#include <QString>
+
+using namespace Qt::StringLiterals;
+
 // forward declaration
 namespace SpatialIndex SIP_SKIP
 {
@@ -31,7 +35,7 @@ namespace SpatialIndex SIP_SKIP
   {
     class IBuffer;
   }
-}
+} //namespace SpatialIndex
 
 class QgsFeedback;
 class QgsFeature;
@@ -53,7 +57,7 @@ class QgsFeatureSource;
  * \ingroup core
  * \class QgsSpatialIndex
  *
- * A spatial index for QgsFeature objects.
+ * \brief A spatial index for QgsFeature objects.
  *
  * QgsSpatialIndex objects are implicitly shared and can be inexpensively copied.
  *
@@ -66,15 +70,14 @@ class QgsFeatureSource;
  */
 class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
 {
-
   public:
-
     /* creation of spatial index */
 
     //! Flags controlling index behavior
-    enum Flag
+    enum Flag SIP_ENUM_BASETYPE( IntFlag )
     {
-      FlagStoreFeatureGeometries = 1 << 0, //!< Indicates that the spatial index should also store feature geometries. This requires more memory, but can speed up operations by avoiding additional requests to data providers to fetch matching feature geometries. Additionally, it is required for non-bounding box nearest neighbor searches.
+      FlagStoreFeatureGeometries
+      = 1 << 0, //!< Indicates that the spatial index should also store feature geometries. This requires more memory, but can speed up operations by avoiding additional requests to data providers to fetch matching feature geometries. Additionally, it is required for non-bounding box nearest neighbor searches.
     };
     Q_DECLARE_FLAGS( Flags, Flag )
 
@@ -91,7 +94,6 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      * of \a feedback is not transferred, and callers must take care that the lifetime of feedback exceeds
      * that of the spatial index construction.
      *
-     * \since QGIS 2.8
      */
     explicit QgsSpatialIndex( const QgsFeatureIterator &fi, QgsFeedback *feedback = nullptr, QgsSpatialIndex::Flags flags = QgsSpatialIndex::Flags() );
 
@@ -107,7 +109,6 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      * load and iteration is canceled.
      *
      * \note Not available in Python bindings
-     * \since QGIS 2.12
      */
     explicit QgsSpatialIndex( const QgsFeatureIterator &fi, const std::function< bool( const QgsFeature & ) > &callback, QgsSpatialIndex::Flags flags = QgsSpatialIndex::Flags() );
 #endif
@@ -121,24 +122,21 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      * that of the spatial index construction.
 
      *
-     * \since QGIS 3.0
      */
     explicit QgsSpatialIndex( const QgsFeatureSource &source, QgsFeedback *feedback = nullptr, QgsSpatialIndex::Flags flags = QgsSpatialIndex::Flags() );
 
-    //! Copy constructor
     QgsSpatialIndex( const QgsSpatialIndex &other );
 
     //! Destructor finalizes work with spatial index
     ~QgsSpatialIndex() override;
 
-    //! Implement assignment operator
     QgsSpatialIndex &operator=( const QgsSpatialIndex &other );
 
     /* operations */
 
     /**
      * Adds a \a feature to the index.
-     * \deprecated Use addFeature() instead
+     * \deprecated QGIS 3.40. Use addFeature() instead.
      */
     Q_DECL_DEPRECATED bool insertFeature( const QgsFeature &feature ) SIP_DEPRECATED;
 
@@ -150,6 +148,8 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      * \since QGIS 3.4
      */
     bool addFeature( QgsFeature &feature, QgsFeatureSink::Flags flags = QgsFeatureSink::Flags() ) override;
+
+    using QgsFeatureSink::addFeatures;
 
     /**
      * Adds a list of \a features to the index.
@@ -163,7 +163,7 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
     /**
      * Add a feature \a id to the index with a specified bounding box.
      * \returns TRUE if feature was successfully added to index.
-     * \deprecated Use addFeature() instead
+     * \deprecated QGIS 3.40. Use addFeature() instead.
     */
     Q_DECL_DEPRECATED bool insertFeature( QgsFeatureId id, const QgsRectangle &bounds ) SIP_DEPRECATED;
 
@@ -179,6 +179,12 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      */
     bool deleteFeature( const QgsFeature &feature );
 
+    /**
+     * Removes a feature from the index by \a id and \a bounds.
+     *
+     * \since QGIS 3.36
+     */
+    bool deleteFeature( QgsFeatureId id, const QgsRectangle &bounds );
 
     /* queries */
 
@@ -241,21 +247,23 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
     QgsGeometry geometry( QgsFeatureId id ) const;
 
 #else
+    // clang-format off
 
     /**
-     * Returns the stored geometry for the indexed feature with matching \a id. A KeyError will be raised if no
-     * geometry with the specified feature id exists in the index.
+     * Returns the stored geometry for the indexed feature with matching \a id.
      *
      * Geometry is only stored if the QgsSpatialIndex was created with the FlagStoreFeatureGeometries flag.
+     *
+     * \throws KeyError if no geometry with the specified feature id exists in the index.
      *
      * \since QGIS 3.6
      */
     SIP_PYOBJECT geometry( QgsFeatureId id ) const SIP_TYPEHINT( QgsGeometry );
     % MethodCode
-    std::unique_ptr< QgsGeometry > g = qgis::make_unique< QgsGeometry >( sipCpp->geometry( a0 ) );
+    auto g = std::make_unique< QgsGeometry >( sipCpp->geometry( a0 ) );
     if ( g->isNull() )
     {
-      PyErr_SetString( PyExc_KeyError, QStringLiteral( "No geometry with feature id %1 exists in the index." ).arg( a0 ).toUtf8().constData() );
+      PyErr_SetString( PyExc_KeyError, u"No geometry with feature id %1 exists in the index."_s.arg( a0 ).toUtf8().constData() );
       sipIsErr = 1;
     }
     else
@@ -263,6 +271,7 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
       sipRes = sipConvertFromType( g.release(), sipType_QgsGeometry, Py_None );
     }
     % End
+// clang-format on
 #endif
 
     /* debugging */
@@ -270,8 +279,14 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
     //! Gets reference count - just for debugging!
     QAtomicInt SIP_PYALTERNATIVETYPE( int ) refs() const;
 
-  private:
+    /**
+     * Detaches this instance of QgsSpatialIndex from all shared copies.
+     *
+     * \since QGIS 4.4
+     */
+    void detach();
 
+  private:
     /**
      * Calculates feature info to insert into index.
     * \param f input feature
@@ -289,16 +304,13 @@ class CORE_EXPORT QgsSpatialIndex : public QgsFeatureSink
      * \param id will be set to feature's ID
      * \returns TRUE if feature info was successfully retrieved and the feature can be added to
      * the index
-     * \since QGIS 3.0
      */
     static bool featureInfo( const QgsFeature &f, QgsRectangle &rect, QgsFeatureId &id );
 
     friend class QgsFeatureIteratorDataStream; // for access to featureInfo()
 
   private:
-
-    QSharedDataPointer<QgsSpatialIndexData> d;
-
+    QExplicitlySharedDataPointer<QgsSpatialIndexData> d;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsSpatialIndex::Flags )

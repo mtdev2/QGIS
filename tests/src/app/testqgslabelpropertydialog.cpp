@@ -13,17 +13,21 @@
  *                                                                         *
  ***************************************************************************/
 
-#include "qgstest.h"
-#include <QObject>
-
 #include "qgisapp.h"
-#include "qgsproject.h"
 #include "qgsapplication.h"
-#include "qgsvectorlayer.h"
-#include "qgslabelingengine.h"
 #include "qgsauxiliarystorage.h"
+#include "qgslabelingengine.h"
 #include "qgslabelpropertydialog.h"
+#include "qgsmapcanvas.h"
+#include "qgsproject.h"
+#include "qgstest.h"
+#include "qgsvectorlayer.h"
 #include "qgsvectorlayerlabeling.h"
+
+#include <QObject>
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 class TestQgsLabelPropertyDialog : public QObject
 {
@@ -44,44 +48,42 @@ class TestQgsLabelPropertyDialog : public QObject
       QgsApplication::initQgis();
       mQgisApp = new QgisApp();
 
-      QString myDataDir( TEST_DATA_DIR );
+      const QString myDataDir( TEST_DATA_DIR );
       mTestDataDir = myDataDir + '/';
     }
 
-    void cleanupTestCase()
-    {
-      QgsApplication::exitQgis();
-    }
+    void cleanupTestCase() { QgsApplication::exitQgis(); }
 
     void test()
     {
       // init vector layer
-      QString pointFileName = mTestDataDir + "points.shp";
-      QFileInfo pointFileInfo( pointFileName );
-      QgsVectorLayer *vl = new QgsVectorLayer( pointFileInfo.filePath(),
-          pointFileInfo.completeBaseName(), QStringLiteral( "ogr" ) );
+      const QString pointFileName = mTestDataDir + "points.shp";
+      const QFileInfo pointFileInfo( pointFileName );
+      QgsVectorLayer *vl = new QgsVectorLayer( pointFileInfo.filePath(), pointFileInfo.completeBaseName(), u"ogr"_s );
       QgsProject::instance()->addMapLayer( vl );
 
       // activate labeling
-      QgsPalLayerSettings settings;
+      const QgsPalLayerSettings settings;
       vl->setLabeling( new QgsVectorLayerSimpleLabeling( settings ) );
 
       // create auxiliary layer
-      QgsField field = vl->fields().field( 1 );
+      const QgsField field = vl->fields().field( 1 );
       QgsAuxiliaryLayer *al = QgsProject::instance()->auxiliaryStorage()->createAuxiliaryLayer( field, vl );
       vl->setAuxiliaryLayer( al );
 
       // create auxiliary field for BufferDraw
-      QgsAuxiliaryLayer::createProperty( QgsPalLayerSettings::BufferDraw, vl );
-      QgsPropertyDefinition def = QgsPalLayerSettings::propertyDefinitions()[QgsPalLayerSettings::BufferDraw];
-      QString propName = QgsAuxiliaryLayer::nameFromProperty( def, true );
+      QgsAuxiliaryLayer::createProperty( QgsPalLayerSettings::Property::BufferDraw, vl );
+      const QgsPropertyDefinition def = QgsPalLayerSettings::propertyDefinitions()[static_cast<int>( QgsPalLayerSettings::Property::BufferDraw )];
+      const QString propName = QgsAuxiliaryLayer::nameFromProperty( def, true );
       QCOMPARE( int( al->featureCount() ), 0 );
 
-      QgsFeatureId fid = 0;
+      const QgsFeatureId fid = 0;
       QVariant val = vl->getFeature( fid ).attribute( propName );
 
+      const std::unique_ptr<QgsMapCanvas> mapCanvas = std::make_unique<QgsMapCanvas>();
+
       // init label property dialog and togle buffer draw
-      QgsLabelPropertyDialog dialog( vl->id(), QString(), fid, QFont(), QString(), false, settings );
+      QgsLabelPropertyDialog dialog( vl->id(), QString(), fid, QFont(), QString(), false, settings, mapCanvas.get() );
       dialog.bufferDrawToggled( true );
 
       // apply changes

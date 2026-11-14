@@ -15,24 +15,28 @@
 #ifndef QGSMESHSTATICDATASETWIDGET_H
 #define QGSMESHSTATICDATASETWIDGET_H
 
-#include <QAbstractListModel>
+#include "ui_qgsmeshstaticdatasetwidgetbase.h"
 
 #include "qgis_gui.h"
-#include "ui_qgsmeshstaticdatasetwidgetbase.h"
 #include "qgsmeshdataset.h"
+
+#include <QAbstractListModel>
 
 SIP_NO_FILE
 
 class QgsMeshLayer;
 class QgsMeshDataProvider;
 
-
 /**
- * List model for dataset contained in dataset group,
+ * \ingroup gui
+ * \class QgsMeshDatasetListModel
+ *
+ * \brief List model for dataset contained in dataset group,
  * used to display by time dataset in widget
  */
-class QgsMeshDatasetListModel: public QAbstractListModel
+class QgsMeshDatasetListModel : public QAbstractListModel
 {
+    Q_OBJECT
   public:
     //! Constructor
     QgsMeshDatasetListModel( QObject *parent );
@@ -51,9 +55,12 @@ class QgsMeshDatasetListModel: public QAbstractListModel
 };
 
 /**
- * A widget for setup of the static dataset of a mesh layer.
+ * \ingroup gui
+ * \class QgsMeshStaticDatasetWidget
+ *
+ * \brief A widget for setup of the static dataset of a mesh layer.
  */
-class GUI_EXPORT QgsMeshStaticDatasetWidget  : public QWidget, private Ui::QgsMeshStaticDatasetWidget
+class GUI_EXPORT QgsMeshStaticDatasetWidget : public QWidget, private Ui::QgsMeshStaticDatasetWidget
 {
     Q_OBJECT
   public:
@@ -85,7 +92,7 @@ class GUI_EXPORT QgsMeshStaticDatasetWidget  : public QWidget, private Ui::QgsMe
     QgsMeshDatasetListModel *mDatasetScalarModel = nullptr;
     QgsMeshDatasetListModel *mDatasetVectorModel = nullptr;
 
-    QgsMeshLayer *mLayer;
+    QgsMeshLayer *mLayer = nullptr;
 };
 
 #endif // QGSMESHSTATICDATASETWIDGET_H

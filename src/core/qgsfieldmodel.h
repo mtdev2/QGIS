@@ -16,24 +16,23 @@
 #ifndef QGSFIELDMODEL_H
 #define QGSFIELDMODEL_H
 
+#include "qgis_core.h"
+#include "qgis_sip.h"
+#include "qgsfields.h"
+
 #include <QAbstractItemModel>
 #include <QComboBox>
 #include <QItemSelectionModel>
-
-#include "qgsfields.h"
-#include "qgis_core.h"
-
-#include "qgis_sip.h"
 
 class QgsVectorLayer;
 
 /**
  * \ingroup core
- * \brief The QgsFieldModel class is a model to display the list of fields in widgets
+ * \brief A model which displays the list of fields in widgets
  * (optionally associated with a vector layer).
+ *
  * If allowed, expressions might be added to the end of the model.
  * It can be associated with a QgsMapLayerModel to dynamically display a layer and its fields.
- * \since QGIS 2.3
  */
 class CORE_EXPORT QgsFieldModel : public QAbstractItemModel
 {
@@ -44,22 +43,30 @@ class CORE_EXPORT QgsFieldModel : public QAbstractItemModel
     Q_PROPERTY( QgsVectorLayer *layer READ layer WRITE setLayer )
 
   public:
+    // *INDENT-OFF*
 
-    //! Roles utilized by the model
-    enum FieldRoles
+    /**
+     * Custom model roles.
+     *
+     * \note Prior to QGIS 3.36 this was available as QgsFieldModel::FieldRoles
+     * \since QGIS 3.36
+     */
+    enum class CustomRole SIP_MONKEYPATCH_SCOPEENUM_UNNEST( QgsFieldModel, FieldRoles ) : int
     {
-      FieldNameRole = Qt::UserRole + 1,  //!< Return field name if index corresponds to a field
-      FieldIndexRole = Qt::UserRole + 2, //!< Return field index if index corresponds to a field
-      ExpressionRole = Qt::UserRole + 3, //!< Return field name or expression
-      IsExpressionRole = Qt::UserRole + 4, //!< Return if index corresponds to an expression
-      ExpressionValidityRole = Qt::UserRole + 5, //!< Return if expression is valid or not
-      FieldTypeRole = Qt::UserRole + 6, //!< Return the field type (if a field, return QVariant if expression)
-      FieldOriginRole = Qt::UserRole + 7, //!< Return the field origin (if a field, returns QVariant if expression)
-      IsEmptyRole = Qt::UserRole + 8, //!< Return if the index corresponds to the empty value
-      EditorWidgetType = Qt::UserRole + 9, //!< Editor widget type
-      JoinedFieldIsEditable = Qt::UserRole + 10, //!< TRUE if a joined field is editable (returns QVariant if not a joined field)
-      FieldIsWidgetEditable = Qt::UserRole + 11, //!< TRUE if a is editable from the widget
+      FieldName SIP_MONKEYPATCH_COMPAT_NAME( FieldNameRole ) = Qt::UserRole + 1,                   //!< Return field name if index corresponds to a field
+      FieldIndex SIP_MONKEYPATCH_COMPAT_NAME( FieldIndexRole ) = Qt::UserRole + 2,                 //!< Return field index if index corresponds to a field
+      Expression SIP_MONKEYPATCH_COMPAT_NAME( ExpressionRole ) = Qt::UserRole + 3,                 //!< Return field name or expression
+      IsExpression SIP_MONKEYPATCH_COMPAT_NAME( IsExpressionRole ) = Qt::UserRole + 4,             //!< Return if index corresponds to an expression
+      ExpressionValidity SIP_MONKEYPATCH_COMPAT_NAME( ExpressionValidityRole ) = Qt::UserRole + 5, //!< Return if expression is valid or not
+      FieldType SIP_MONKEYPATCH_COMPAT_NAME( FieldTypeRole ) = Qt::UserRole + 6,                   //!< Return the field type (if a field, return QVariant if expression)
+      FieldOrigin SIP_MONKEYPATCH_COMPAT_NAME( FieldOriginRole ) = Qt::UserRole + 7,               //!< Return the field origin (if a field, returns QVariant if expression)
+      IsEmpty SIP_MONKEYPATCH_COMPAT_NAME( IsEmptyRole ) = Qt::UserRole + 8,                       //!< Return if the index corresponds to the empty value
+      EditorWidgetType = Qt::UserRole + 9,                                                         //!< Editor widget type
+      JoinedFieldIsEditable = Qt::UserRole + 10,                                                   //!< TRUE if a joined field is editable (returns QVariant if not a joined field)
+      FieldIsWidgetEditable = Qt::UserRole + 11,                                                   //!< TRUE if a is editable from the widget
     };
+    Q_ENUM( CustomRole )
+    // *INDENT-ON*
 
     /**
      * Constructor for QgsFieldModel - creates a model to display the fields of a given layer.
@@ -82,19 +89,17 @@ class CORE_EXPORT QgsFieldModel : public QAbstractItemModel
      * Returns TRUE if the model allows custom expressions to be created and displayed.
      * \see setAllowExpression()
      */
-    bool allowExpression() { return mAllowExpression; }
+    bool allowExpression() const { return mAllowExpression; }
 
     /**
      * Sets whether an optional empty field ("not set") option is present in the model.
      * \see allowEmptyFieldName()
-     * \since QGIS 3.0
      */
     void setAllowEmptyFieldName( bool allowEmpty );
 
     /**
      * Returns TRUE if the model allows the empty field ("not set") choice.
      * \see setAllowEmptyFieldName()
-     * \since QGIS 3.0
      */
     bool allowEmptyFieldName() const { return mAllowEmpty; }
 
@@ -134,17 +139,18 @@ class CORE_EXPORT QgsFieldModel : public QAbstractItemModel
 
     /**
      * Returns a HTML formatted tooltip string for a \a field, containing details
-     * like the field name, alias and type.
-     * \since QGIS 3.0
+     * like the field name, alias, type and comment.
+     * A predefined comment can be passed overriding the field comment (e.g. when it's data defined)
      */
-    static QString fieldToolTip( const QgsField &field );
+    static QString fieldToolTip( const QgsField &field, const QString &predefinedComment = QString() );
 
     /**
      * Returns a HTML formatted tooltip string for a \a field, containing details
-     * like the field name, alias, type and expression.
+     * like the field name, alias, type, comment and expression.
+     * A predefined comment can be passed overriding the field comment (e.g. when it's data defined)
      * \since QGIS 3.14
      */
-    static QString fieldToolTipExtended( const QgsField &field, const QgsVectorLayer *layer );
+    static QString fieldToolTipExtended( const QgsField &field, const QgsVectorLayer *layer, const QString &predefinedComment = QString() );
 
     /**
      * Manually sets the \a fields to use for the model.

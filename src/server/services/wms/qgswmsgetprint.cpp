@@ -18,19 +18,22 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include "qgswmsutils.h"
 #include "qgswmsgetprint.h"
+
 #include "qgswmsrenderer.h"
+#include "qgswmsrequest.h"
 #include "qgswmsserviceexception.h"
+#include "qgswmsutils.h"
+
+#include <QString>
+
+using namespace Qt::StringLiterals;
 
 namespace QgsWms
 {
-  void writeGetPrint( QgsServerInterface *serverIface, const QgsProject *project,
-                      const QString &, const QgsServerRequest &request,
-                      QgsServerResponse &response )
+  void writeGetPrint( QgsServerInterface *serverIface, const QgsProject *project, const QgsWmsRequest &request, QgsServerResponse &response )
   {
-    // get wms parameters from query
-    const QgsWmsParameters parameters( QUrlQuery( request.url() ) );
+    const QgsWmsParameters parameters = request.wmsParameters();
 
     // GetPrint supports svg/png/pdf
     const QgsWmsParameters::Format format = parameters.format();
@@ -38,20 +41,19 @@ namespace QgsWms
     switch ( format )
     {
       case QgsWmsParameters::PNG:
-        contentType = QStringLiteral( "image/png" );
+        contentType = u"image/png"_s;
         break;
       case QgsWmsParameters::JPG:
-        contentType = QStringLiteral( "image/jpeg" );
+        contentType = u"image/jpeg"_s;
         break;
       case QgsWmsParameters::SVG:
-        contentType = QStringLiteral( "image/svg+xml" );
+        contentType = u"image/svg+xml"_s;
         break;
       case QgsWmsParameters::PDF:
-        contentType = QStringLiteral( "application/pdf" );
+        contentType = u"application/pdf"_s;
         break;
       default:
-        throw QgsBadRequestException( QgsServiceException::OGC_InvalidFormat,
-                                      parameters[QgsWmsParameter::FORMAT] );
+        throw QgsBadRequestException( QgsServiceException::OGC_InvalidFormat, parameters[QgsWmsParameter::FORMAT] );
         break;
     }
 
@@ -64,11 +66,13 @@ namespace QgsWms
     context.setFlag( QgsWmsRenderContext::SetAccessControl );
     context.setFlag( QgsWmsRenderContext::AddHighlightLayers );
     context.setFlag( QgsWmsRenderContext::AddExternalLayers );
+    context.setFlag( QgsWmsRenderContext::AddAllLayers );
     context.setParameters( parameters );
+    context.setSocketFeedback( response.feedback() );
 
     // rendering
     QgsRenderer renderer( context );
-    response.setHeader( QStringLiteral( "Content-Type" ), contentType );
+    response.setHeader( u"Content-Type"_s, contentType );
     response.write( renderer.getPrint() );
   }
 } // namespace QgsWms

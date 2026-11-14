@@ -16,22 +16,28 @@
 #ifndef QGSBILLBOARDGEOMETRY_H
 #define QGSBILLBOARDGEOMETRY_H
 
+#include "qgis_3d.h"
+
 #include <QObject>
-#include <Qt3DRender/QGeometry>
-#include <Qt3DRender/QBuffer>
-#include <Qt3DRender/QAttribute>
+#include <QVector2D>
+#include <QVector3D>
+#include <Qt3DCore/QAttribute>
+#include <Qt3DCore/QBuffer>
+#include <Qt3DCore/QGeometry>
 
 #define SIP_NO_FILE
 
 /**
- * \ingroup 3d
- * Geometry of the billboard rendering for points in 3D map view.
+ * \ingroup qgis_3d
+ * \brief Geometry of the billboard rendering for points in 3D map view.
+ *
+ * This class is designed for use with the QgsPoint3DBillboardMaterial material class.
  *
  * \note Not available in Python bindings
  *
  * \since QGIS 3.10
  */
-class QgsBillboardGeometry : public Qt3DRender::QGeometry
+class _3D_EXPORT QgsBillboardGeometry : public Qt3DCore::QGeometry
 {
     Q_OBJECT
 
@@ -40,19 +46,84 @@ class QgsBillboardGeometry : public Qt3DRender::QGeometry
     //! Constructor of QgsBillboardGeometry.
     QgsBillboardGeometry( Qt3DCore::QNode *parent = nullptr );
 
-    //! Set the points for the billboard with \a vertices.
-    void setPoints( const QVector<QVector3D> &vertices );
+    /**
+     * Sets the vertex positions for the billboards.
+     *
+     * Use this method when rendering multiple billboards with the same texture, and texture
+     * atlas handling is not required.
+     *
+     * \see setBillboardData()
+     */
+    void setPositions( const QVector<QVector3D> &vertices );
+
+    /**
+     * Sets per-instance \a positions and \a sizes for billboards sharing a single texture.
+     *
+     * Use this method when rendering multiple billboards with the same texture but different sizes, and texture
+     * atlas handling is not required.
+     *
+     * \see setBillboardData()
+     */
+    void setPositionsAndSizes( const QVector<QVector3D> &positions, const QVector<QSizeF> &sizes );
+
+    /**
+     * \ingroup qgis_3d
+     * \brief Contains the billboard positions and texture information.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 4.0
+     */
+    struct BillboardAtlasData
+    {
+        //! Vertex position for billboard placement
+        QVector3D position;
+        //! Texture atlas offset for associated billboard texture
+        QVector2D textureAtlasOffset;
+        //! Texture atlas size for associated billboard texture
+        QVector2D textureAtlasSize;
+        //! Optional pixel offset for billboard
+        QPoint pixelOffset;
+    };
+
+    /**
+     * Set the position and texture data for the billboard.
+     *
+     * Use this method when rendering billboards with the different textures, and texture
+     * atlas handling is required.
+     *
+     * Set \a includePixelOffsets to TRUE if the billboard data includes the optional pixel offsets for each billboard
+     *
+     * \see setPositions()
+     */
+    void setBillboardData( const QVector<QgsBillboardGeometry::BillboardAtlasData> &billboards, bool includePixelOffsets = false );
 
     //! Returns the number of points.
     int count() const;
+
   signals:
     //! Signal when the number of points changed.
     void countChanged( int count );
 
   private:
-    Qt3DRender::QAttribute *mPositionAttribute = nullptr;
-    Qt3DRender::QBuffer *mVertexBuffer = nullptr;
-    int mVertexCount = 0;
+    enum class Attribute
+    {
+      Position = 1 << 0,
+      Size = 1 << 1,
+      TextureData = 1 << 2,
+      PixelOffsets = 1 << 3,
+    };
+    Q_DECLARE_FLAGS( Attributes, Attribute )
+
+    void setAttributes( Attributes attributes );
+    Attributes mAttributes;
+
+    Qt3DCore::QAttribute *mPositionAttribute = nullptr;
+    Qt3DCore::QAttribute *mSizeAttribute = nullptr;
+    Qt3DCore::QAttribute *mAtlasOffsetAttribute = nullptr;
+    Qt3DCore::QAttribute *mAtlasSizeAttribute = nullptr;
+    Qt3DCore::QAttribute *mAtlasPixelOffsetAttribute = nullptr;
+    Qt3DCore::QBuffer *mVertexBuffer = nullptr;
+    qsizetype mVertexCount = 0;
 };
 
 #endif // QGSBILLBOARDGEOMETRY_H

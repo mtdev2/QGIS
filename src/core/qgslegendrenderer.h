@@ -17,6 +17,7 @@
 #define QGSLEGENDRENDERER_H
 
 #include "qgis_core.h"
+
 #include <QPointF>
 
 class QRectF;
@@ -30,28 +31,56 @@ class QgsLayerTreeModelLegendNode;
 class QgsLayerTreeNode;
 class QgsSymbol;
 class QgsRenderContext;
+class QgsLayerTreeFilterProxyModel;
 
 #include "qgslegendsettings.h"
 
 /**
  * \ingroup core
- * \brief The QgsLegendRenderer class handles automatic layout and rendering of legend.
+ * \brief Handles automatic layout and rendering of legends.
+ *
  * The content is given by QgsLayerTreeModel instance. Various layout properties can be configured
  * within QgsLegendRenderer.
  *
  * All spacing and sizes are in millimeters.
  *
- * \since QGIS 2.6
  */
 class CORE_EXPORT QgsLegendRenderer
 {
   public:
-
     /**
      * Constructor for QgsLegendRenderer. The ownership of the legend model is not changed,
      * and the model must exist for the lifetime of this renderer.
      */
     QgsLegendRenderer( QgsLayerTreeModel *legendModel, const QgsLegendSettings &settings );
+    ~QgsLegendRenderer();
+
+#ifndef SIP_RUN
+    QgsLegendRenderer( const QgsLegendRenderer &other ) = delete;
+    QgsLegendRenderer &operator=( const QgsLegendRenderer &other ) = delete;
+    QgsLegendRenderer( QgsLegendRenderer &&other );
+#endif
+
+    /**
+     * Sets the filter proxy \a model to use for filtering the legend model content
+     * during rendering.
+     *
+     * Ownership of \a proxy is transferred to the renderer.
+     *
+     * \see proxyModel()
+     * \since QGIS 4.0
+     */
+    void setProxyModel( QgsLayerTreeFilterProxyModel *model SIP_TRANSFER );
+
+    /**
+     * Returns the filter proxy model used for filtering the legend model content during
+     * rendering.
+     *
+     * Filters can be set on the proxy model to filter rendered legend content.
+     *
+     * \since QGIS 3.40
+     */
+    QgsLayerTreeFilterProxyModel *proxyModel();
 
     /**
      * Runs the layout algorithm and returns the minimum size required for the legend.
@@ -84,7 +113,7 @@ class CORE_EXPORT QgsLegendRenderer
      * Draws the legend with given \a painter. The legend will occupy the area reported in legendSize().
      * The \a painter should be scaled beforehand so that units correspond to millimeters.
      *
-     * \deprecated Use the variant which accepts a QgsRenderContext instead.
+     * \deprecated QGIS 3.40. Use the variant which accepts a QgsRenderContext instead.
      */
     Q_DECL_DEPRECATED void drawLegend( QPainter *painter ) SIP_DEPRECATED;
 
@@ -107,17 +136,16 @@ class CORE_EXPORT QgsLegendRenderer
      *
      * \see nodeLegendStyle()
      */
-    static void setNodeLegendStyle( QgsLayerTreeNode *node, QgsLegendStyle::Style style );
+    static void setNodeLegendStyle( QgsLayerTreeNode *node, Qgis::LegendComponent style );
 
     /**
      * Returns the style for the given \a node, within the specified \a model.
      *
      * \see setNodeLegendStyle()
      */
-    static QgsLegendStyle::Style nodeLegendStyle( QgsLayerTreeNode *node, QgsLayerTreeModel *model );
+    static Qgis::LegendComponent nodeLegendStyle( QgsLayerTreeNode *node, QgsLayerTreeModel *model );
 
   private:
-
 #ifndef SIP_RUN
 
     /**
@@ -130,7 +158,6 @@ class CORE_EXPORT QgsLegendRenderer
     class LegendComponent
     {
       public:
-
         LegendComponent() = default;
 
         QObject *item = nullptr;
@@ -143,6 +170,12 @@ class CORE_EXPORT QgsLegendRenderer
 
         //! Component size
         QSizeF size;
+
+        /**
+         * Starting indent for groups/subgroups nested in other groups/subgroups.
+         * This value is the sum of the indents of all parent groups/subgroups.
+         */
+        double indent = 0;
 
         /**
          * Horizontal offset for the symbol label.
@@ -160,7 +193,7 @@ class CORE_EXPORT QgsLegendRenderer
     };
 
     /**
-     * An component group is an indivisible set of legend components (i.e. it is indivisible into more columns).
+     * A component group is an indivisible set of legend components (i.e. it is indivisible into more columns).
      *
      * A group may consist of one or more component(s), depending on the layer splitting mode:
      *
@@ -176,7 +209,6 @@ class CORE_EXPORT QgsLegendRenderer
     class LegendComponentGroup
     {
       public:
-
         //! List of child components belonging to this group.
         QList<LegendComponent> components;
 
@@ -190,7 +222,6 @@ class CORE_EXPORT QgsLegendRenderer
          * TRUE if a forced column break should be placed just before the group
          */
         bool placeColumnBreakBeforeGroup = false;
-
     };
 
     /**
@@ -199,11 +230,7 @@ class CORE_EXPORT QgsLegendRenderer
     class ColumnContext
     {
       public:
-
-        ColumnContext()
-          : left( 0 )
-          , right( 0 )
-        {}
+        ColumnContext() {}
 
         //! Left edge of column
         double left = 0;
@@ -215,7 +242,7 @@ class CORE_EXPORT QgsLegendRenderer
      * Returns a list of component groups for the specified \a parentGroup, respecting the current layer's
      * splitting settings.
      */
-    QList<LegendComponentGroup> createComponentGroupList( QgsLayerTreeGroup *parentGroup, QgsRenderContext &context );
+    QList<LegendComponentGroup> createComponentGroupList( QgsLayerTreeGroup *parentGroup, QgsRenderContext &context, double indent = 0 );
 
     /**
      * Divides a list of component groups into columns, and sets the column index for each group in the list.
@@ -251,7 +278,7 @@ class CORE_EXPORT QgsLegendRenderer
      *
      * If \a context is NULLPTR, no painting will be attempted, but the required size will still be calculated and returned.
      */
-    QSizeF drawTitle( QgsRenderContext &context, double top, Qt::AlignmentFlag halignment = Qt::AlignLeft, double legendWidth = 0 );
+    QSizeF drawTitle( QgsRenderContext &context, double top, Qt::AlignmentFlag halignment = Qt::AlignLeft, double legendWidth = 0 ) const;
 
     /**
      * Draws an \a group and return its actual size, using the specified render \a context.
@@ -287,9 +314,10 @@ class CORE_EXPORT QgsLegendRenderer
     /**
      * Returns the style of the given \a node.
      */
-    QgsLegendStyle::Style nodeLegendStyle( QgsLayerTreeNode *node );
+    Qgis::LegendComponent nodeLegendStyle( QgsLayerTreeNode *node );
 
     QgsLayerTreeModel *mLegendModel = nullptr;
+    std::unique_ptr< QgsLayerTreeFilterProxyModel > mProxyModel;
 
     QgsLegendSettings mSettings;
 
@@ -297,7 +325,11 @@ class CORE_EXPORT QgsLegendRenderer
 
 #endif
 
-    void widthAndOffsetForTitleText( const Qt::AlignmentFlag halignment, double legendWidth, double &width, double &offset );
+#ifdef SIP_RUN
+    QgsLegendRenderer( const QgsLegendRenderer &other );
+#endif
+
+    void widthAndOffsetForTitleText( const Qt::AlignmentFlag halignment, double legendWidth, double &width, double &offset ) const;
 };
 
 #endif // QGSLEGENDRENDERER_H

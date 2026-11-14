@@ -13,9 +13,9 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QIcon>
-
 #include "qgsclassificationmethodregistry.h"
+
+#include <QIcon>
 
 // classification methods
 #include "qgsclassificationcustom.h"
@@ -25,6 +25,7 @@
 #include "qgsclassificationstandarddeviation.h"
 #include "qgsclassificationprettybreaks.h"
 #include "qgsclassificationlogarithmic.h"
+#include "qgsclassificationfixedinterval.h"
 
 QgsClassificationMethodRegistry::QgsClassificationMethodRegistry()
 {
@@ -34,6 +35,7 @@ QgsClassificationMethodRegistry::QgsClassificationMethodRegistry()
   addMethod( new QgsClassificationStandardDeviation() );
   addMethod( new QgsClassificationPrettyBreaks() );
   addMethod( new QgsClassificationLogarithmic() );
+  addMethod( new QgsClassificationFixedInterval() );
 }
 
 QgsClassificationMethodRegistry::~QgsClassificationMethodRegistry()
@@ -50,16 +52,18 @@ bool QgsClassificationMethodRegistry::addMethod( QgsClassificationMethod *method
   return true;
 }
 
-QgsClassificationMethod *QgsClassificationMethodRegistry::method( const QString &id )
+std::unique_ptr< QgsClassificationMethod > QgsClassificationMethodRegistry::method( const QString &id )
 {
-  QgsClassificationMethod *method = mMethods.value( id, new QgsClassificationCustom() );
-  return method->clone();
+  auto it = mMethods.constFind( id );
+  if ( it == mMethods.constEnd() )
+    return std::make_unique< QgsClassificationCustom >();
+  return it.value()->clone();
 }
 
 QMap<QString, QString> QgsClassificationMethodRegistry::methodNames() const
 {
   QMap<QString, QString> methods;
-  for ( const QgsClassificationMethod *method : qgis::as_const( mMethods ) )
+  for ( const QgsClassificationMethod *method : std::as_const( mMethods ) )
     methods.insert( method->name(), method->id() );
   return methods;
 }
@@ -72,4 +76,3 @@ QIcon QgsClassificationMethodRegistry::icon( const QString &id ) const
   else
     return QIcon();
 }
-

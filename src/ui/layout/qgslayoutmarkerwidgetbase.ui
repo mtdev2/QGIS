@@ -38,7 +38,7 @@
       </sizepolicy>
      </property>
      <property name="styleSheet">
-      <string notr="true">padding: 2px; font-weight: bold; background-color: rgb(200, 200, 200);</string>
+      <string notr="true">padding: 2px; font-weight: bold; background-color: palette(mid);</string>
      </property>
      <property name="text">
       <string>Marker</string>
@@ -56,7 +56,7 @@
         <x>0</x>
         <y>0</y>
         <width>306</width>
-        <height>247</height>
+        <height>248</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="mainLayout">
@@ -75,13 +75,6 @@
           <bool>false</bool>
          </property>
          <layout class="QGridLayout" name="gridLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>Symbol</string>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="1">
            <widget class="QgsSymbolButton" name="mShapeStyleButton">
             <property name="sizePolicy">
@@ -94,6 +87,26 @@
              <string>Change…</string>
             </property>
            </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Symbol</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </widget>
@@ -167,18 +180,6 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>QgsScrollArea</class>
-   <extends>QScrollArea</extends>
-   <header>qgsscrollarea.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>QgsCollapsibleGroupBoxBasic</class>
-   <extends>QGroupBox</extends>
-   <header>qgscollapsiblegroupbox.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>QgsDoubleSpinBox</class>
    <extends>QDoubleSpinBox</extends>
    <header>qgsdoublespinbox.h</header>
@@ -189,15 +190,32 @@
    <header>qgssymbolbutton.h</header>
   </customwidget>
   <customwidget>
+   <class>QgsScrollArea</class>
+   <extends>QScrollArea</extends>
+   <header>qgsscrollarea.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>QgsCollapsibleGroupBoxBasic</class>
+   <extends>QGroupBox</extends>
+   <header location="global">qgscollapsiblegroupbox.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
    <class>QgsLayoutItemComboBox</class>
    <extends>QComboBox</extends>
    <header>qgslayoutitemcombobox.h</header>
   </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>groupBox</tabstop>
   <tabstop>scrollArea</tabstop>
+  <tabstop>groupBox</tabstop>
   <tabstop>mShapeStyleButton</tabstop>
+  <tabstop>mRotationGroupBox</tabstop>
+  <tabstop>mRotationFromMapCheckBox</tabstop>
+  <tabstop>mMapComboBox</tabstop>
+  <tabstop>mNorthTypeComboBox</tabstop>
+  <tabstop>mNorthOffsetSpinBox</tabstop>
  </tabstops>
  <resources/>
  <connections/>

@@ -16,12 +16,14 @@
 #define QGSSYMBOLLAYERSELECTIONWIDGET_H
 
 // We don't want to expose this in the public API
-#define SIP_NO_FILE
+
+#include "qgis_gui.h"
+#include "qgis_sip.h"
+#include "qgssymbollayerreference.h"
 
 #include <QWidget>
-#include "qgis_sip.h"
-#include "qgis_gui.h"
-#include "qgssymbollayerreference.h"
+
+#define SIP_NO_FILE
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -29,7 +31,7 @@ class QgsVectorLayer;
 
 /**
  * \ingroup gui
- * A widget that allows the selection of a list of symbol layers from a layer.
+ * \brief A widget that allows the selection of a list of symbol layers from a layer.
  * A tree shows a list of selectable symbol layers.
  *
  * \since QGIS 3.14
@@ -45,10 +47,10 @@ class GUI_EXPORT QgsSymbolLayerSelectionWidget : public QWidget
     void setLayer( const QgsVectorLayer *layer );
 
     //! Returns current symbol layer selection
-    QSet<QgsSymbolLayerId> selection() const;
+    QSet<QString> selection() const;
 
     //! Sets the symbol layer selection
-    void setSelection( const QSet<QgsSymbolLayerId> &sel );
+    void setSelection( const QSet<QString> &sel );
 
   signals:
     //! Signal emitted when something the configuration is changed
@@ -61,7 +63,9 @@ class GUI_EXPORT QgsSymbolLayerSelectionWidget : public QWidget
     const QgsVectorLayer *mLayer = nullptr;
 
     // Mapping between symbol layer id and tree elements
-    QHash<QgsSymbolLayerId, QTreeWidgetItem *> mItems;
+    QHash<QString, QTreeWidgetItem *> mItems;
+
+    friend class TestQgsMaskingWidget;
 };
 
 #endif

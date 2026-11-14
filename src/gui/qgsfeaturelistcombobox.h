@@ -15,26 +15,24 @@
 #ifndef QGSFIELDLISTCOMBOBOX_H
 #define QGSFIELDLISTCOMBOBOX_H
 
-#include <QComboBox>
-
-#include "qgsfeature.h"
-#include "qgsfeaturerequest.h"
 #include "qgis_gui.h"
+#include "qgsfeature.h"
+
+#include <QComboBox>
 
 class QgsVectorLayer;
 class QgsFeatureFilterModel;
 class QgsAnimatedIcon;
 class QgsFilterLineEdit;
-
+class QgsFeatureRequest;
 
 /**
  * \ingroup gui
- * This offers a combobox with autocompleter that allows selecting features from a layer.
+ * \brief This offers a combobox with autocompleter that allows selecting features from a layer.
  *
  * It will show up to 100 entries at a time. The entries can be chosen based on the displayExpression
  * and whenever text is typed into the combobox, the completer and popup will adjust to features matching the typed text.
  *
- * \since QGIS 3.0
  */
 class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
 {
@@ -49,7 +47,6 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     Q_PROPERTY( bool allowNull READ allowNull WRITE setAllowNull NOTIFY allowNullChanged )
 
   public:
-
     /**
      * Create a new QgsFeatureListComboBox, optionally specifying a \a parent.
      */
@@ -84,12 +81,6 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     void setDisplayExpression( const QString &displayExpression );
 
     /**
-     * An additional expression to further restrict the available features.
-     * This can be used to integrate additional spatial or other constraints.
-     */
-    QString filterExpression() const;
-
-    /**
      * Returns the current index of the NULL value, or -1 if NULL values are
      * not allowed.
      *
@@ -101,12 +92,42 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
      * An additional expression to further restrict the available features.
      * This can be used to integrate additional spatial or other constraints.
      */
+    QString filterExpression() const;
+
+    /**
+     * An additional expression to further restrict the available features.
+     * This can be used to integrate additional spatial or other constraints.
+     */
     void setFilterExpression( const QString &filterExpression );
+
+    /**
+     * Returns an attribute form feature to be used with the filter expression.
+     * \since QGIS 3.42.2
+     */
+    QgsFeature formFeature() const;
+
+    /**
+     * Sets an attribute form \a feature to be used with the filter expression.
+     * \since QGIS 3.42.2
+     */
+    void setFormFeature( const QgsFeature &feature );
+
+    /**
+     * Returns a parent attribute form feature to be used with the filter expression.
+     * \since QGIS 3.42.2
+     */
+    QgsFeature parentFormFeature() const;
+
+    /**
+     * Sets a parent attribute form \a feature to be used with the filter expression.
+     * \since QGIS 3.42.2
+     */
+    void setParentFormFeature( const QgsFeature &feature );
 
     /**
      * The identifier value of the currently selected feature. A value from the
      * identifierField.
-     * \deprecated since QGIS 3.10
+     * \deprecated QGIS 3.10
      */
     Q_DECL_DEPRECATED QVariant identifierValue() const SIP_DEPRECATED;
 
@@ -121,7 +142,7 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     /**
      * The identifier value of the currently selected feature. A value from the
      * identifierField.
-     * \deprecated since QGIS 3.10 use setIdentifierValues
+     * \deprecated QGIS 3.10. Use setIdentifierValues.
      */
     Q_DECL_DEPRECATED void setIdentifierValue( const QVariant &identifierValue ) SIP_DEPRECATED;
 
@@ -155,9 +176,22 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     void setAllowNull( bool allowNull );
 
     /**
+     * Returns the feature request fetch limit
+     * \since QGIS 3.32
+     */
+    int fetchLimit() const;
+
+    /**
+     * Defines the feature request fetch limit
+     * If set to 0, no limit is applied when fetching
+     * \since QGIS 3.32
+     */
+    void setFetchLimit( int fetchLimit );
+
+    /**
      * Field name that will be used to uniquely identify the current feature.
      * Normally the primary key of the layer.
-     * \deprecated since QGIS 3.10
+     * \deprecated QGIS 3.10
      */
     Q_DECL_DEPRECATED QString identifierField() const SIP_DEPRECATED;
 
@@ -171,7 +205,7 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     /**
      * Field name that will be used to uniquely identify the current feature.
      * Normally the primary key of the layer.
-     * \deprecated since QGIS 3.10
+     * \deprecated QGIS 3.10
      */
     Q_DECL_DEPRECATED void setIdentifierField( const QString &identifierField ) SIP_DEPRECATED;
 
@@ -190,6 +224,30 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     void focusOutEvent( QFocusEvent *event ) override;
 
     void keyPressEvent( QKeyEvent *event ) override;
+
+    /**
+     * The order expression of the model. It is used to evaluate sort values of the combobox.
+     * \since QGIS 4.0
+     */
+    QString orderExpression() const;
+
+    /**
+     * The order expression of the model. It is used to evaluate sort values of the combobox.
+     * \since QGIS 4.0
+     */
+    void setOrderExpression( const QString &orderExpression );
+
+    /**
+     * The order direction of the model. It defines the direction on sorting the combobox as ascending or descending.
+     * \since QGIS 4.0
+     */
+    Qt::SortOrder sortOrder() const;
+
+    /**
+     * The order direction of the model. It defines the direction on sorting the combobox as ascending or descending.
+     * \since QGIS 4.0
+     */
+    void setSortOrder( const Qt::SortOrder sortOrder );
 
   signals:
 
@@ -218,6 +276,18 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
     void filterExpressionChanged();
 
     /**
+     * An attribute form feature to be used alongside the filter expression.
+     * \since QGIS 3.42.2
+     */
+    void formFeatureChanged();
+
+    /**
+     * A parent attribute form feature to be used alongside the filter expression.
+     * \since QGIS 3.42.2
+     */
+    void parentFormFeatureChanged();
+
+    /**
      * The identifier value of the currently selected feature. A value from the
      * identifierField.
      */
@@ -234,8 +304,21 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
      */
     void allowNullChanged();
 
+    /**
+     * Emitted when the current feature changes
+     * \since QGIS 3.16.5
+     */
+    void currentFeatureChanged();
+
+    /**
+     * Emitted when the feature picker model changes its feature \a found state
+     * \since QGIS 3.38
+     */
+    void currentFeatureFoundChanged( bool found );
+
   private slots:
     void onCurrentTextChanged( const QString &text );
+    void onFilterLineEditCleared();
     void onFilterUpdateCompleted();
     void onLoadingChanged();
     void onItemSelected( const QModelIndex &index );
@@ -254,7 +337,6 @@ class GUI_EXPORT QgsFeatureListComboBox : public QComboBox
 
     friend class TestQgsFeatureListComboBox;
 };
-
 
 
 #endif // QGSFIELDLISTCOMBOBOX_H

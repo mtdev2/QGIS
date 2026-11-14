@@ -34,18 +34,15 @@ email                : nyall dot dawson at gmail dot com
  ****************************************************************************/
 
 #include "qgsfields.h"
-
 #include "qgsgeometry.h"
+#include "qgssymbol.h"
 
 class QgsFeaturePrivate : public QSharedData
 {
   public:
-
     explicit QgsFeaturePrivate( QgsFeatureId id )
       : fid( id )
-      , valid( false )
-    {
-    }
+    {}
 
     QgsFeaturePrivate( const QgsFeaturePrivate &other )
       : QSharedData( other )
@@ -54,12 +51,10 @@ class QgsFeaturePrivate : public QSharedData
       , geometry( other.geometry )
       , valid( other.valid )
       , fields( other.fields )
-    {
-    }
+      , symbol( other.symbol ? other.symbol->clone() : nullptr )
+    {}
 
-    ~QgsFeaturePrivate()
-    {
-    }
+    ~QgsFeaturePrivate() {}
 
     //! Feature ID
     QgsFeatureId fid;
@@ -71,14 +66,15 @@ class QgsFeaturePrivate : public QSharedData
     QgsGeometry geometry;
 
     //! Flag to indicate if this feature is valid
-    bool valid;
+    bool valid = false;
 
     //! Optional field map for name-based attribute lookups
     QgsFields fields;
 
+    std::unique_ptr< QgsSymbol > symbol;
+
   private:
     QgsFeaturePrivate &operator=( const QgsFeaturePrivate & ) = delete;
-
 };
 
 /// @endcond

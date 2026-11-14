@@ -18,22 +18,21 @@
 #ifndef QGSPROCESSINGMODELGROUPBOX_H
 #define QGSPROCESSINGMODELGROUPBOX_H
 
-#include "qgis_core.h"
 #include "qgis.h"
+#include "qgis_core.h"
 #include "qgsprocessingmodelcomponent.h"
 #include "qgsprocessingparameters.h"
 
 ///@cond NOT_STABLE
 
 /**
- * Represents a group box in a model.
+ * \brief Represents a group box in a model.
  * \ingroup core
  * \since QGIS 3.14
  */
 class CORE_EXPORT QgsProcessingModelGroupBox : public QgsProcessingModelComponent
 {
   public:
-
     /**
      * Constructor for QgsProcessingModelGroupBox with the specified \a description.
      */
@@ -59,7 +58,6 @@ class CORE_EXPORT QgsProcessingModelGroupBox : public QgsProcessingModelComponen
     QString uuid() const;
 
   private:
-
     QString mUuid;
 };
 
